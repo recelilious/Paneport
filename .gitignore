@@ -1,0 +1,30 @@
+# 本会话的调研草稿，最终路线报告会整理进 docs/
+/research_notes/
+/reports/
+
+# 签名材料、配对文件与凭据（C-0002 禁止提交）
+*.p12
+*.cer
+*.mobileprovision
+*.provisionprofile
+*.mobiledevicepairing
+pairing*.plist
+.env
+.env.*
+
+# 构建产物
+*.ipa
+*.dSYM/
+bin/
+obj/
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.vs/
+.idea/
+*.user
+
+# 系统文件
+.DS_Store
+Thumbs.db

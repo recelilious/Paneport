@@ -1,0 +1,8 @@
+
+# <type>(<scope>): <subject>    英文，祈使语气，不超过 72 个字符
+# type: feat | fix | perf | refactor | docs | contract | build | ci | test | chore
+#
+# 正文：说明为什么这样改，每行不超过 72 个字符。
+#
+# Claude 参与的提交，去掉下一行开头的 # 并写上实际模型名：
+# Co-Authored-By: Claude <model> <noreply@anthropic.com>

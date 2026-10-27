@@ -1,53 +1,51 @@
 # Paneport
 
-> Run your Windows PC games, including your Steam library, on iPhone 17 Pro and iPhone 18 Pro.
+> Run Windows programs on iPhone 17 Pro and iPhone 18 Pro, and launch the Windows games in your own Steam library through Steam.
 
-在 iPhone 17 Pro / 18 Pro 上本地运行 Windows 程序，并通过 Steam 启动你自己游戏库里的 Windows 游戏。
+**Status:** contracts only. There is no runnable code yet.
 
-**状态：** 契约阶段，还没有可运行的代码。
+## The name
 
-## 名字的由来
+Paneport combines pane and port.
 
-Paneport 由 pane 和 port 组成。
+- **pane** stands for Windows, as in a window pane.
+- **port** means porting, and also suggests portable and a harbor.
 
-- **pane**：窗格，指代 Windows。
-- **port**：移植，也有便携和港口的意思。
+Pane sounds like pain, which fits how porting usually feels.
 
-英文里 pane 和 pain 同音，顺带自嘲一下移植之痛。
+## What it is
 
-## 这是什么
+A sideloaded iOS app built from four layers:
 
-一个侧载安装的 iOS 应用，计划由四层组成：
+- **Windows compatibility layer:** an ARM64 build of upstream Wine, with the whole runtime inside one iOS process.
+- **CPU translation:** dynamic translation of x86 and x86-64 machine code to ARM64, which needs JIT.
+- **Graphics:** Direct3D calls translated to Metal.
+- **Steam integration:** sign in to the user's own account, manage the library, and keep each game's Steam features and DRM working as intended.
 
-- **Windows 兼容层**：基于上游 Wine 的 ARM64 版本，整个运行时放在一个 iOS 进程里。
-- **CPU 翻译**：把 x86 / x86-64 机器码动态翻译成 ARM64，需要 JIT。
-- **图形**：把 Direct3D 调用转换到 Metal。
-- **Steam 集成**：登录用户自己的账号，管理游戏库，并让游戏的 Steam 功能和 DRM 正常工作。
+The UI shell is planned in Avalonia (.NET). The roadmap and later contracts decide the exact technology choices.
 
-外壳界面计划使用 Avalonia（.NET）。具体技术选型以路线报告和后续契约为准。
+## Requirements
 
-## 使用前提
+- Developer Mode is enabled, and the app is signed with your own Apple ID and sideloaded.
+- JIT is obtained by attaching a debugger.
+- The app will not be published on the App Store.
 
-- 开启开发者模式，用自己的 Apple ID 签名侧载安装。
-- 通过调试器附加获得 JIT。
-- 不会上架 App Store。
+## Contracts first
 
-## 契约先行
+This project writes contracts before implementation. All contracts live in [docs/contracts](docs/contracts/README.md).
 
-本项目先写契约，再写实现。所有契约都在 [docs/contracts](docs/contracts/README.md)。
-
-| 编号 | 标题 |
+| Number | Title |
 |---|---|
-| [C-0001](docs/contracts/C-0001-project-charter.md) | 项目章程 |
-| [C-0002](docs/contracts/C-0002-repository-and-commits.md) | 仓库与提交 |
-| [C-0003](docs/contracts/C-0003-licensing.md) | 开源许可证 |
+| [C-0001](docs/contracts/C-0001-project-charter.md) | Project charter |
+| [C-0002](docs/contracts/C-0002-repository-and-commits.md) | Repository and commits |
+| [C-0003](docs/contracts/C-0003-licensing.md) | Open-source licensing |
 
-## 许可证
+## License
 
-本仓库的原创代码采用 [MIT](LICENSE)。Wine、DXMT 等上游组件保留各自的许可证，规则见 [C-0003](docs/contracts/C-0003-licensing.md)。
+Original code in this repository is released under the [MIT License](LICENSE). Upstream components such as Wine and DXMT keep their own licenses; see [C-0003](docs/contracts/C-0003-licensing.md).
 
-## 声明
+## Disclaimer
 
-本项目与 Microsoft、Valve、Apple 均无关联。Windows、Steam、iPhone 分别是其所有者的商标。
+This project is not affiliated with Microsoft, Valve or Apple. Windows, Steam and iPhone are trademarks of their respective owners.
 
-本项目不分发任何游戏，也不分发 Microsoft、Valve 或游戏厂商的二进制文件，不绕过任何 DRM。
+This project does not distribute any games or any binaries from Microsoft, Valve or game publishers, and it does not bypass any DRM.

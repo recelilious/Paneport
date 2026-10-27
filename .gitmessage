@@ -1,8 +1,8 @@
 
-# <type>(<scope>): <subject>    英文，祈使语气，不超过 72 个字符
+# <type>(<scope>): <subject>    English, imperative mood, at most 72 characters
 # type: feat | fix | perf | refactor | docs | contract | build | ci | test | chore
 #
-# 正文：说明为什么这样改，每行不超过 72 个字符。
+# Body: explain why the change was made, at most 72 characters per line.
 #
-# Claude 参与的提交，去掉下一行开头的 # 并写上实际模型名：
+# For commits Claude takes part in, uncomment the next line and fill in the model:
 # Co-Authored-By: Claude <model> <noreply@anthropic.com>

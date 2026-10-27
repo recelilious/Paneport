@@ -1,8 +1,8 @@
-# 本会话的调研草稿，最终路线报告会整理进 docs/
+# Local research notes and reports, not part of the repository
 /research_notes/
 /reports/
 
-# 签名材料、配对文件与凭据（C-0002 禁止提交）
+# Signing material, pairing files and credentials (never committed, see C-0002)
 *.p12
 *.cer
 *.mobileprovision
@@ -12,7 +12,7 @@ pairing*.plist
 .env
 .env.*
 
-# 构建产物
+# Build output
 *.ipa
 *.dSYM/
 bin/
@@ -25,6 +25,6 @@ xcuserdata/
 .idea/
 *.user
 
-# 系统文件
+# Operating system files
 .DS_Store
 Thumbs.db

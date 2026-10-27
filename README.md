@@ -40,6 +40,10 @@ This project writes contracts before implementation. All contracts live in [docs
 | [C-0002](docs/contracts/C-0002-repository-and-commits.md) | Repository and commits |
 | [C-0003](docs/contracts/C-0003-licensing.md) | Open-source licensing |
 
+## Research
+
+The research behind the design, including the implementation roadmap, is in [docs/research](docs/research/README.md).
+
 ## License
 
 Original code in this repository is released under the [MIT License](LICENSE). Upstream components such as Wine and DXMT keep their own licenses; see [C-0003](docs/contracts/C-0003-licensing.md).

@@ -1,102 +1,104 @@
-# C-0002 仓库与提交
+# C-0002 Repository and Commits
 
-| 字段 | 值 |
+| Field | Value |
 |---|---|
-| 状态 | 草案 |
-| 版本 | 0.1 |
-| 日期 | 2026-10-28 |
-| 负责人 | recelilious |
+| Status | Accepted |
+| Version | 1.0 |
+| Date | 2026-10-28 |
+| Owner | recelilious |
 
-## 1. 名称与位置
+## 1. Name and location
 
-| 项目 | 约定 |
+| Item | Convention |
 |---|---|
-| 项目名 | Paneport |
-| GitHub 仓库 | `recelilious/Paneport`，由 recelilious 手动创建 |
-| 远端地址 | `git@github.com:recelilious/Paneport.git` |
-| 本地路径 | `E:\Dev\Paneport` |
-| 默认分支 | `main` |
+| Project name | Paneport |
+| GitHub repository | `recelilious/Paneport`, created by recelilious |
+| Remote | `git@github.com:recelilious/Paneport.git` |
+| Local path | `E:\Dev\Paneport` |
+| Default branch | `main` |
 
-创建 GitHub 仓库时保持为空仓库，不勾选 README、.gitignore 和 license。本地已经有这些文件，空仓库才能直接推送。仓库是否公开由 recelilious 决定。
+The GitHub repository was created empty, without a README, .gitignore or license, so that the local history could be pushed as it was. recelilious decides the repository's visibility.
 
-## 2. 分支
+## 2. Branches
 
-- 初始化提交直接进入 `main`。
-- 之后 Claude 的改动默认放在短期分支上，命名为 `<类型>/<简述>`，例如 `feat/jit-request`。
-- 分支推送后由 recelilious 合并，可以用 Pull Request，也可以 fast-forward。
-- recelilious 可以要求某次改动直接提交到 `main`。
+- The bootstrap commit goes directly to `main`.
+- After that, Claude's changes go on short-lived branches named `<type>/<summary>`, for example `feat/jit-request`.
+- recelilious merges each pushed branch, through a pull request or a fast-forward.
+- recelilious may ask for a change to be committed directly to `main`.
 
-## 3. 推送节奏
+## 3. Push cadence
 
-- 每次开发会话结束前，把本次的提交推送到 GitHub。
-- 推送失败时，Claude 在会话结尾说明原因和本地状态。
+- Before every development session ends, its commits are pushed to GitHub.
+- If a push fails, Claude reports the reason and the local state at the end of the session.
 
-## 4. 作者与署名
+## 4. Authorship and credit
 
-- **作者：** 使用 recelilious 本机 git 配置中的身份。
-- **共同作者：** 凡是 Claude 参与的提交，提交信息最后加一行 trailer：
+- **Author:** the git identity configured on recelilious's machine.
+- **Co-author:** every commit Claude takes part in ends with this trailer:
 
   ```
-  Co-Authored-By: Claude <模型名> <noreply@anthropic.com>
+  Co-Authored-By: Claude <model name> <noreply@anthropic.com>
   ```
 
-  模型名写实际完成这次工作的 Claude 模型，例如 `Claude Opus 5.5`。
-- recelilious 独立完成的提交不加这一行。
+  The model name is the Claude model that actually did the work, for example `Claude Opus 5.5`.
+- Commits made by recelilious alone do not carry this line.
 
-## 5. 提交信息格式
+## 5. Commit message format
 
-采用 Conventional Commits，用英文，祈使语气。
+Commits follow Conventional Commits, in English, in the imperative mood.
 
-- 标题格式为 `<type>(<scope>): <subject>`，scope 可以省略，标题不超过 72 个字符。
-- 正文说明为什么这样改，每行不超过 72 个字符。
-- trailer 放在最后，与正文之间空一行。
+- The subject is `<type>(<scope>): <subject>`. The scope is optional. The subject is at most 72 characters.
+- The body explains why the change was made, with lines of at most 72 characters.
+- Trailers come last, separated from the body by a blank line.
 
-| type | 用途 |
+| type | Use |
 |---|---|
-| feat | 新功能 |
-| fix | 修复缺陷 |
-| perf | 性能优化 |
-| refactor | 不改变行为的重构 |
-| docs | 文档，契约除外 |
-| contract | 修改 `docs/contracts/` 下的文件，必须单独提交 |
-| build | 构建系统与依赖 |
-| ci | 持续集成 |
-| test | 测试 |
-| chore | 其他杂项 |
+| feat | New feature |
+| fix | Bug fix |
+| perf | Performance improvement |
+| refactor | Restructuring without behavior change |
+| docs | Documentation other than contracts |
+| contract | Changes under `docs/contracts/`, always in their own commit |
+| build | Build system and dependencies |
+| ci | Continuous integration |
+| test | Tests |
+| chore | Anything else |
 
-示例：
+Example:
 
 ```
 contract: add licensing policy (C-0003)
 
 Our own code is MIT. Upstream-derived code keeps its upstream
-licence and lives in a separate fork repository.
+license and lives in a separate fork repository.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-仓库根目录的 `.gitmessage` 是提交模板，本地已用 `git config commit.template .gitmessage` 启用。
+`.gitmessage` in the repository root is the commit template. It is enabled locally with `git config commit.template .gitmessage`.
 
-## 6. 禁止提交的内容
+## 6. Never commit
 
-| 类别 | 例子 |
+| Category | Examples |
 |---|---|
-| 签名材料 | `.p12`、`.cer`、`.mobileprovision` |
-| 设备配对文件 | `.mobiledevicepairing`，它相当于设备的钥匙 |
-| 凭据 | Apple ID、Steam 账号、密码、登录令牌、API 密钥 |
-| 第三方二进制 | Microsoft、Valve 或游戏的任何文件 |
-| 构建产物 | `.ipa`、`bin/`、`obj/`、`DerivedData/` |
+| Signing material | `.p12`, `.cer`, `.mobileprovision` |
+| Device pairing files | `.mobiledevicepairing`, which works like a key to the device |
+| Credentials | Apple ID, Steam account, passwords, sign-in tokens, API keys |
+| Third-party binaries | Any file from Microsoft, Valve or a game |
+| Build output | `.ipa`, `bin/`, `obj/`, `DerivedData/` |
 
-大型二进制文件通过 GitHub Releases 发布，不进 git 历史。
+Large binaries are published through GitHub Releases and stay out of git history.
 
-## 7. 文本格式
+## 7. Text and language
 
-- 仓库内统一使用 LF 行尾，由 `.gitattributes` 强制。`.bat` 和 `.cmd` 文件例外，使用 CRLF。
-- 文本统一使用 UTF-8 编码。
-- 文档用中文，代码标识符和提交信息用英文。
+- The repository uses LF line endings, enforced by `.gitattributes`. `.bat` and `.cmd` files are the exception and use CRLF.
+- All text is UTF-8.
+- All documentation in the repository is written in English. Code identifiers and commit messages are in English too.
+- A Simplified Chinese version of a document exists only when recelilious explicitly asks for one. It sits next to the English file with the `_zh_CN` suffix, for example `README_zh_CN.md`, and each file of the pair links to the other at the top.
 
-## 变更记录
+## Change log
 
-| 版本 | 日期 | 说明 |
+| Version | Date | Notes |
 |---|---|---|
-| 0.1 | 2026-10-28 | 初稿 |
+| 0.1 | 2026-10-28 | First draft |
+| 1.0 | 2026-10-28 | Accepted by recelilious; translated to English; documentation is now English only, with `_zh_CN` versions only on explicit request |

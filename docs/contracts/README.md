@@ -1,32 +1,32 @@
-# 契约索引
+# Contracts
 
-契约是本项目的约束性文档。先写契约，再写实现。
+Contracts are the binding documents of this project. Contracts come first; implementation follows.
 
-## 规则
+## Rules
 
-1. **契约优先。** 实现与契约冲突时，以契约为准。要改变行为，先改契约。
-2. **编号与状态。** 每份契约都有编号、状态、版本和日期。状态分三种：草案、已生效、已废止。
-3. **生效需要确认。** 新契约和契约的实质修改，要经 recelilious 明确同意，状态才能改为"已生效"，版本升为 1.0 或更高。
-4. **单独提交。** 修改 `docs/contracts/` 下的任何文件都要单独提交，提交类型用 `contract`，并在该契约末尾的变更记录里写明原因。
-5. **先读后做。** Claude 每次开发会话开始时，先读本索引和与任务相关的契约。
+1. **Contracts win.** When the implementation and a contract disagree, the contract wins. To change behavior, change the contract first.
+2. **Number and status.** Every contract has a number, a status, a version and a date. The status is Draft, Accepted or Superseded.
+3. **Acceptance needs approval.** A new contract, or a substantive change to an existing one, becomes Accepted only after recelilious explicitly approves it. Accepted versions are 1.0 or higher.
+4. **Separate commits.** Any change under `docs/contracts/` goes in its own commit with the `contract` type, and the contract's change log records why.
+5. **Read before working.** At the start of every development session, Claude reads this index and the contracts relevant to the task.
 
-## 现有契约
+## Current contracts
 
-| 编号 | 标题 | 状态 | 版本 | 日期 |
+| Number | Title | Status | Version | Date |
 |---|---|---|---|---|
-| [C-0001](C-0001-project-charter.md) | 项目章程 | 草案 | 0.1 | 2026-10-28 |
-| [C-0002](C-0002-repository-and-commits.md) | 仓库与提交 | 草案 | 0.1 | 2026-10-28 |
-| [C-0003](C-0003-licensing.md) | 开源许可证 | 草案 | 0.1 | 2026-10-28 |
+| [C-0001](C-0001-project-charter.md) | Project charter | Accepted | 1.0 | 2026-10-28 |
+| [C-0002](C-0002-repository-and-commits.md) | Repository and commits | Accepted | 1.0 | 2026-10-28 |
+| [C-0003](C-0003-licensing.md) | Open-source licensing | Accepted | 1.0 | 2026-10-28 |
 
-## 待写契约
+## Planned contracts
 
-路线报告完成后再起草，按依赖顺序排列。
+To be drafted next, in dependency order.
 
-| 编号 | 标题 | 内容 |
+| Number | Title | Scope |
 |---|---|---|
-| C-0004 | 组件边界与目录结构 | 各模块的职责和所在仓库 |
-| C-0005 | 原生运行时宿主接口 | Avalonia 外壳与原生核心之间的 C ABI |
-| C-0006 | JIT 请求协议 | 应用向外部调试器申请可执行内存的约定 |
-| C-0007 | Steam 集成 | 登录、游戏库、下载和启动的方案与合规边界 |
-| C-0008 | 兼容性数据库 | 每个游戏的配置与测试结果的格式 |
-| C-0009 | 构建与签名 | 从 Windows 11 开发机到可安装 .ipa 的流水线 |
+| C-0004 | Component boundaries and layout | What each module is responsible for and which repository it lives in |
+| C-0005 | Native runtime host interface | The C ABI between the Avalonia shell and the native core |
+| C-0006 | JIT request protocol | How the app asks an external debugger for executable memory |
+| C-0007 | Steam integration | Sign-in, library, download and launch design, and its compliance boundary |
+| C-0008 | Compatibility database | Format of per-game configuration and test results |
+| C-0009 | Build and signing | The pipeline from a Windows 11 workstation to an installable .ipa |

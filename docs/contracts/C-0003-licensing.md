@@ -1,105 +1,105 @@
-# C-0003 开源许可证
+# C-0003 Open-Source Licensing
 
-| 字段 | 值 |
+| Field | Value |
 |---|---|
-| 状态 | 草案 |
-| 版本 | 0.1 |
-| 日期 | 2026-10-28 |
-| 负责人 | recelilious |
+| Status | Accepted |
+| Version | 1.0 |
+| Date | 2026-10-28 |
+| Owner | recelilious |
 
-本契约是工程层面的许可证管理规则，不构成法律意见。正式公开发布前，条件允许时请专业人士复核。
+These are engineering rules for managing licenses, not legal advice. Before a formal public release, have a professional review them if possible.
 
-## 1. 结论
+## 1. Decision
 
-| 代码 | 许可证 | 放在哪里 |
+| Code | License | Where it lives |
 |---|---|---|
-| Paneport 的原创代码 | MIT | 本仓库 |
-| 对 LGPL 上游的修改，例如 Wine、DXMT | 保持 LGPL-2.1-or-later | 各自的 fork 仓库 |
-| 对 MIT 上游的修改，例如 FEX-Emu、Box64 | 保持 MIT | 各自的 fork 仓库 |
+| Paneport's own code | MIT | This repository |
+| Changes to LGPL upstreams such as Wine and DXMT | Stays LGPL-2.1-or-later | That upstream's fork repository |
+| Changes to MIT upstreams such as FEX-Emu and Box64 | Stays MIT | That upstream's fork repository |
 
-我们自己写的每一行代码都用 MIT。整个安装包不能整体按 MIT 发布，因为它包含 LGPL 组件。在不违反上游许可证的前提下，这是最接近 MIT 的做法。
+Every line we write ourselves is MIT. The app package as a whole cannot be released under MIT because it contains LGPL components. Within the upstream licenses, this is as close to MIT as the project can get.
 
-## 2. 为什么不能全部用 MIT
+## 2. Why not MIT everywhere
 
-Wine 和 DXMT 都采用 LGPL-2.1-or-later。修改它们得到的代码属于库的衍生作品，必须继续以 LGPL 发布。这包括写在 Wine 源码树里的 iOS 显示驱动，以及为单进程运行而对 Wine 做的改造。
+Wine and DXMT are both LGPL-2.1-or-later. Code that modifies them is a derivative of the library and must stay LGPL. That includes the iOS display driver written inside the Wine source tree and the changes that make Wine run in a single process.
 
-DXMT 在 0.80 及更早的版本使用 MIT，之后改为 LGPL-2.1-or-later。我们跟随新版本，按 LGPL 处理。
+DXMT was MIT up to and including 0.80 and has been LGPL-2.1-or-later since. We follow current versions and treat it as LGPL.
 
-## 3. 为什么 MIT 代码可以和 LGPL 组件放进同一个应用
+## 3. Why MIT code and LGPL components can ship in one app
 
-LGPL-2.1 第 6 节允许把库和"使用该库的作品"组合起来发布，条件有三个：
+Section 6 of LGPL-2.1 allows a library to be combined and distributed with "a work that uses the Library" under three conditions:
 
-1. 组合作品的条款允许用户为自用而修改，并允许为调试这些修改而逆向工程。MIT 满足这一点。
-2. 随附库的完整源码。
-3. 让用户能用修改过的库重新链接出新的可执行文件。
+1. The terms of the combined work allow modification for the user's own use and reverse engineering to debug such modifications. MIT meets this.
+2. The complete source of the library accompanies it.
+3. The user can relink the work with a modified library to produce a new executable.
 
-我们的做法：
+How we meet them:
 
-- **动态打包：** Wine 等组件的 Unix 侧代码以动态库或 Framework 的形式放进 .app，用户可以替换。
-- **公开源码：** SteamKit2（LGPL-2.1）经 .NET AOT 静态编译进可执行文件。本仓库的全部源码和构建脚本都公开，用户可以换掉 SteamKit2 后重新构建，满足重新链接的要求。
-- **用户可安装：** 侧载本来就由用户用自己的 Apple ID 签名，用户能安装自己重新构建的版本。
-- **随发布附带：** 每个发布版都附带 `THIRD_PARTY_NOTICES.md` 和全部许可证全文。应用内提供"开源许可"页面。发布说明里给出对应源码标签的链接。
+- **Dynamic packaging:** the Unix-side code of Wine and similar components ships inside the .app as dynamic libraries or frameworks that the user can replace.
+- **Public source:** SteamKit2 (LGPL-2.1) is compiled statically into the executable by .NET AOT. All source code and build scripts in this repository are public, so a user can swap SteamKit2 and rebuild, which satisfies the relinking requirement.
+- **User installability:** sideloading already means the user signs the app with their own Apple ID, so the user can install a rebuilt version.
+- **Shipped with every release:** each release includes `THIRD_PARTY_NOTICES.md` and the full text of every license. The app has an open-source licenses screen. Release notes link to the matching source tag.
 
-## 4. 仓库划分
+## 4. Repository layout
 
-- 本仓库的 `src/` 只放原创代码，全部 MIT。
-- 从上游派生的代码一律放在独立的 fork 仓库，命名为 `Paneport-<上游名>`，例如 `Paneport-wine`，以 git submodule 的形式挂在本仓库的 `external/` 下。
-- fork 仓库保留上游的许可证文件和版权声明。
-- 原创源文件的头部写 `SPDX-License-Identifier: MIT`。fork 仓库里的新文件使用该上游的许可证标识，例如 `SPDX-License-Identifier: LGPL-2.1-or-later`。
-- 各许可证全文放在本仓库的 `LICENSES/` 目录，第一个第三方依赖进来时创建。
+- `src/` in this repository holds only original code, all MIT.
+- Code derived from an upstream always lives in its own fork repository named `Paneport-<upstream>`, for example `Paneport-wine`, attached under `external/` as a git submodule.
+- Fork repositories keep the upstream license files and copyright notices.
+- Original source files start with `SPDX-License-Identifier: MIT`. New files inside a fork use that upstream's identifier, for example `SPDX-License-Identifier: LGPL-2.1-or-later`.
+- Full license texts go in `LICENSES/` in this repository, created when the first third-party dependency arrives.
 
-## 5. 准入规则
+## 5. Intake rules
 
-新增任何依赖之前，先在第 6 节的登记表里登记。
+Before adding any dependency, register it in the table in section 6.
 
-| 类别 | 许可证 | 规则 |
+| Category | Licenses | Rule |
 |---|---|---|
-| 允许 | MIT、BSD-2-Clause、BSD-3-Clause、ISC、Zlib、0BSD、BSL-1.0、Apache-2.0、CC0-1.0、FTL | 保留版权声明。Apache-2.0 还要保留 NOTICE 文件。FTL 要在文档里注明使用了 FreeType。 |
-| 有条件 | LGPL-2.1-or-later、LGPL-3.0、MPL-2.0 | 只能作为可单独识别的组件使用。修改要以同一许可证公开。要保持可重新链接。LGPL-3.0 还要提供安装信息。 |
-| 禁止 | GPL-2.0、GPL-3.0、AGPL-3.0、SSPL、仅限非商业使用的许可、没有许可证的代码 | 不得进入本仓库、fork 仓库和安装包。 |
-| 禁止 | 厂商 SDK 头文件、反编译得到的代码 | 例如 Steamworks SDK 和 Windows SDK 的头文件。需要的接口定义自己编写，并在设计文档里记录依据。 |
-| 待审 | 专有组件，例如 Apple Metal Shader Converter | 公开渠道没有找到它的再分发条款。使用前必须阅读其许可协议并记录结论，并且不放进仓库。 |
+| Allowed | MIT, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, 0BSD, BSL-1.0, Apache-2.0, CC0-1.0, FTL | Keep the copyright notices. Apache-2.0 also requires keeping the NOTICE file. FTL requires crediting FreeType in the documentation. |
+| Conditional | LGPL-2.1-or-later, LGPL-3.0, MPL-2.0 | Only as separately identifiable components. Changes are published under the same license. Relinking must stay possible. LGPL-3.0 also requires installation information. |
+| Forbidden | GPL-2.0, GPL-3.0, AGPL-3.0, SSPL, non-commercial-only licenses, code with no license | Never enters this repository, a fork repository or the app package. |
+| Forbidden | Vendor SDK headers, decompiled code | For example the Steamworks SDK and Windows SDK headers. Write the needed interface definitions ourselves and record their basis in a design document. |
+| Under review | Proprietary components such as Apple's Metal Shader Converter | No redistribution terms were found publicly. Read its license and record the conclusion before using it, and never put it in the repository. |
 
-双许可的组件选择限制较少的一方。例如 FreeType 在 FTL 和 GPL-2.0 之间选 FTL。
+For dual-licensed components, choose the less restrictive option. For example, FreeType is used under FTL rather than GPL-2.0.
 
-## 6. 组件登记表
+## 6. Component register
 
-核对日期为 2026-10-28，许可证取自各仓库的 LICENSE 文件。
+Checked on 2026-10-28. Licenses are taken from each repository's LICENSE file.
 
-| 组件 | 用途 | 许可证 | 类别 |
+| Component | Purpose | License | Category |
 |---|---|---|---|
-| Wine | Windows 兼容层 | LGPL-2.1-or-later | 有条件 |
-| FEX-Emu | x86-64 翻译 | MIT | 允许 |
-| Box64 | x86 翻译备选 | MIT | 允许 |
-| FEX-darwin（dbc-hbin） | FEX 的 Darwin 与 Wine 集成模块 | MIT | 允许 |
-| DXMT | Direct3D 10/11 到 Metal | LGPL-2.1-or-later | 有条件 |
-| MoltenVK | Vulkan 到 Metal，可选 | Apache-2.0 | 允许 |
-| SPIRV-Cross | 着色器转换，MoltenVK 的依赖 | Apache-2.0 | 允许 |
-| DXVK | Direct3D 到 Vulkan，在 iOS 上大概率不用 | Zlib | 允许 |
-| vkd3d-proton | Direct3D 12 到 Vulkan，在 iOS 上大概率不用 | LGPL-2.1 | 有条件 |
-| SteamKit2 | Steam 网络协议 | LGPL-2.1 | 有条件 |
-| protobuf-net | SteamKit2 的依赖 | Apache-2.0 | 允许 |
-| Avalonia | 界面外壳 | MIT | 允许 |
-| SkiaSharp | Avalonia 的渲染库 | MIT | 允许 |
-| .NET 运行时 | 托管运行时 | MIT | 允许 |
-| .NET for iOS（dotnet/macios） | iOS 绑定 | MIT | 允许 |
-| SDL | 输入与音频辅助 | Zlib | 允许 |
-| FAudio | XAudio2 实现 | Zlib | 允许 |
-| FreeType | 字体渲染，Wine 的依赖 | FTL 或 GPL-2.0 | 允许，选 FTL |
-| GStreamer | 媒体解码，Wine 的可选依赖 | LGPL-2.1-or-later | 有条件，不带 GPL 插件 |
-| idevice（jkcoxson） | 设备协议，可选 | MIT | 允许 |
+| Wine | Windows compatibility layer | LGPL-2.1-or-later | Conditional |
+| FEX-Emu | x86-64 translation | MIT | Allowed |
+| Box64 | Fallback x86 translation | MIT | Allowed |
+| FEX-darwin (dbc-hbin) | FEX integration modules for Darwin and Wine | MIT | Allowed |
+| DXMT | Direct3D 10/11 to Metal | LGPL-2.1-or-later | Conditional |
+| MoltenVK | Vulkan to Metal, optional | Apache-2.0 | Allowed |
+| SPIRV-Cross | Shader translation, a MoltenVK dependency | Apache-2.0 | Allowed |
+| DXVK | Direct3D to Vulkan, probably unused on iOS | Zlib | Allowed |
+| vkd3d-proton | Direct3D 12 to Vulkan, probably unused on iOS | LGPL-2.1 | Conditional |
+| SteamKit2 | Steam network protocol | LGPL-2.1 | Conditional |
+| protobuf-net | SteamKit2 dependency | Apache-2.0 | Allowed |
+| Avalonia | UI shell | MIT | Allowed |
+| SkiaSharp | Avalonia's rendering library | MIT | Allowed |
+| .NET runtime | Managed runtime | MIT | Allowed |
+| .NET for iOS (dotnet/macios) | iOS bindings | MIT | Allowed |
+| SDL | Input and audio helpers | Zlib | Allowed |
+| FAudio | XAudio2 implementation | Zlib | Allowed |
+| FreeType | Font rendering, a Wine dependency | FTL or GPL-2.0 | Allowed, under FTL |
+| GStreamer | Media decoding, an optional Wine dependency | LGPL-2.1-or-later | Conditional, no GPL plugins |
+| idevice (jkcoxson) | Device protocol, optional | MIT | Allowed |
 
-媒体解码优先使用 Apple 系统框架，以避开 GStreamer 的 GPL 插件和编解码器专利问题。
+Media decoding prefers Apple's system frameworks, which avoids GStreamer's GPL plugins and codec patent issues.
 
-## 7. 只能参考、代码不得复用的项目
+## 7. Reference-only projects whose code must not be reused
 
-这些项目要么是现成产品，受 C-0001 第 6 节约束，要么许可证与本项目不兼容。
+These projects are either existing products, covered by section 6 of C-0001, or licensed incompatibly with this project.
 
-| 项目 | 许可证 |
+| Project | License |
 |---|---|
 | Madeira | GPL-3.0 |
-| madeira-dock | GPL-3.0-or-later 加 Madeira Converter Exception |
-| BCD、WiniOS、Playport、iDeck（Madeira 的分支） | GPL-3.0 系，据各仓库的声明 |
+| madeira-dock | GPL-3.0-or-later with the Madeira Converter Exception |
+| BCD, WiniOS, Playport, iDeck (Madeira forks) | GPL-3.0 family, per each repository |
 | GameNative | GPL-3.0 |
 | Winlator | LGPL-2.1 |
 | DepotDownloader | GPL-2.0 |
@@ -107,68 +107,72 @@ LGPL-2.1 第 6 节允许把库和"使用该库的作品"组合起来发布，条
 | LiveContainer | AGPL-3.0 |
 | StikDebug | AGPL-3.0 |
 | UTM | Apache-2.0 |
-| SteamARM（LukeOkk） | MIT |
-| SteamRE/open-steamworks | 没有许可证，已归档 |
-| Apple D3DMetal（Game Porting Toolkit） | 专有，仅限非商业使用，只支持 macOS |
-| GameHub | 闭源 |
+| SteamARM (LukeOkk) | MIT |
+| SteamRE/open-steamworks | No license, archived |
+| Apple D3DMetal (Game Porting Toolkit) | Proprietary, non-commercial use only, macOS only |
+| GameHub | Closed source |
 
-UTM 和 SteamARM 的许可证虽然宽松，但它们是现成产品，同样只作参考。
+UTM and SteamARM have permissive licenses, but they are existing products, so they are reference-only as well.
 
-## 8. 运行时下载、不进仓库和安装包的组件
+## 8. Components downloaded at run time, never in the repository or package
 
-| 组件 | 来源 |
+| Component | Source |
 |---|---|
-| Microsoft VC++ 运行库、DirectX 运行库 | 用户设备从 Microsoft 官方下载，或由用户提供 |
-| Valve Steam 客户端组件 | 用户设备从 Valve 官方 CDN 下载 |
-| Wine Mono、Wine Gecko | 首次需要时从官方地址下载，适用各自的许可证 |
-| 游戏文件 | 用户用自己的 Steam 账号下载 |
+| Microsoft VC++ and DirectX runtimes | Downloaded by the user's device from Microsoft, or provided by the user |
+| Valve Steam client components | Downloaded by the user's device from Valve's official CDN |
+| Wine Mono and Wine Gecko | Downloaded from their official locations when first needed, under their own licenses |
+| Game files | Downloaded with the user's own Steam account |
 
-## 9. 与 AGPL 程序的边界
+## 9. Boundary with AGPL programs
 
-StikDebug 是独立的 App，采用 AGPL-3.0。Paneport 只通过公开的 JIT 请求约定与它协作，不链接、不内嵌它的任何代码。
+StikDebug is a separate app under AGPL-3.0. Paneport cooperates with it only through the public JIT request convention and never links or embeds any of its code.
 
-如果以后要在应用内自行启用 JIT，就基于 MIT 的 idevice 自己实现。
+If the app ever enables JIT by itself, that code will be our own, built on the MIT-licensed idevice.
 
-## 10. 回馈上游
+## 10. Contributing upstream
 
-各上游对 AI 辅助贡献的政策不同。
+Upstream projects treat AI-assisted contributions differently.
 
-| 项目 | 政策 |
+| Project | Policy |
 |---|---|
-| QEMU | 2025 年起明确拒绝 AI 生成的代码 |
-| Gentoo、NetBSD | 禁止或严格限制 |
-| GNU Binutils | 要求标注 LLM 生成的内容 |
-| GCC | 截至 2026 年 4 月仍在讨论 |
-| Wine、FEX-Emu | 截至 2026-10-28 未查到明确政策 |
+| FEX-Emu | Forbids AI-generated code in contributions, stated in its AGENTS.md, CLAUDE.md and CONTRIBUTING.md |
+| QEMU | Explicitly declines AI-generated code since 2025 |
+| Gentoo, NetBSD | Ban or tightly restrict it |
+| GNU Binutils | Requires LLM-generated content to be labeled |
+| GCC | Still under discussion as of April 2026 |
+| Wine | No explicit policy found as of 2026-10-28 |
 
-规则：
+Rules:
 
-1. 向上游提交前，先查对方当前的政策并遵守。
-2. 不得为了绕过政策而删除 AI 署名。
-3. 因此，Wine、DXMT、FEX-Emu 的改动可能要长期维护在我们自己的 fork 里。
+1. Before submitting anything upstream, check that project's current policy and follow it.
+2. Never remove AI attribution to get around a policy.
+3. Our FEX-Emu changes stay in our fork and are never proposed upstream. Wine and DXMT changes may also have to live in our forks for the long term.
 
-## 11. 备选方案
+## 11. Alternative
 
-如果以后需要明确的专利授权，可以把原创代码改为 `MIT OR Apache-2.0` 双许可。默认保持 MIT。
+If an explicit patent grant becomes necessary, our own code can move to `MIT OR Apache-2.0` dual licensing. MIT stays the default.
 
-## 12. 依据
+## 12. Sources
 
-- Wine 许可证：<https://github.com/wine-mirror/wine/blob/HEAD/LICENSE>
-- DXMT 许可证：<https://github.com/3Shain/dxmt/blob/HEAD/LICENSE>
-- FEX-Emu 许可证：<https://github.com/FEX-Emu/FEX/blob/HEAD/LICENSE>
-- SteamKit2 许可证：<https://github.com/SteamRE/SteamKit/blob/HEAD/LICENSE>
-- protobuf-net 许可证：<https://github.com/protobuf-net/protobuf-net/blob/HEAD/Licence.txt>
-- Madeira：<https://github.com/willfaust/Madeira>
-- FEX-darwin：<https://github.com/dbc-hbin/FEX-darwin>
-- Metal Shader Converter：<https://developer.apple.com/metal/shader-converter/>
-- 关于在应用里附带 Metal Shader Converter 的未答复提问：<https://developer.apple.com/forums/thread/829379>
-- QEMU 的 AI 代码政策补丁：<https://patchew.org/QEMU/20250616092241.212898-1-armbru@redhat.com>
-- GCC 的讨论：<https://gcc.gnu.org/pipermail/gcc/2026-April/247958.html>
-- GNU Binutils 的声明：<https://gnu.googlesource.com/binutils-gdb/+/c0316a54b489d68e30de718aee69ab441799aad2%5E%21>
-- 开源项目 AI 政策综述：<https://www.ssdnodes.com/learn/lang/pcm/ai-assisted-code-open-source-policies>
+- Wine license: <https://github.com/wine-mirror/wine/blob/HEAD/LICENSE>
+- DXMT license: <https://github.com/3Shain/dxmt/blob/HEAD/LICENSE>
+- FEX-Emu license: <https://github.com/FEX-Emu/FEX/blob/HEAD/LICENSE>
+- FEX-Emu contribution policy: <https://github.com/FEX-Emu/FEX/blob/HEAD/CONTRIBUTING.md>
+- SteamKit2 license: <https://github.com/SteamRE/SteamKit/blob/HEAD/LICENSE>
+- protobuf-net license: <https://github.com/protobuf-net/protobuf-net/blob/HEAD/Licence.txt>
+- Madeira: <https://github.com/willfaust/Madeira>
+- madeira-dock: <https://github.com/125hz/madeira-dock>
+- FEX-darwin: <https://github.com/dbc-hbin/FEX-darwin>
+- Metal Shader Converter: <https://developer.apple.com/metal/shader-converter/>
+- Unanswered question about shipping Metal Shader Converter inside an app: <https://developer.apple.com/forums/thread/829379>
+- QEMU AI code policy patch: <https://patchew.org/QEMU/20250616092241.212898-1-armbru@redhat.com>
+- GCC discussion: <https://gcc.gnu.org/pipermail/gcc/2026-April/247958.html>
+- GNU Binutils statement: <https://gnu.googlesource.com/binutils-gdb/+/c0316a54b489d68e30de718aee69ab441799aad2%5E%21>
+- Survey of open-source AI policies: <https://www.ssdnodes.com/learn/lang/pcm/ai-assisted-code-open-source-policies>
 
-## 变更记录
+## Change log
 
-| 版本 | 日期 | 说明 |
+| Version | Date | Notes |
 |---|---|---|
-| 0.1 | 2026-10-28 | 初稿 |
+| 0.1 | 2026-10-28 | First draft |
+| 1.0 | 2026-10-28 | Accepted by recelilious; translated to English; corrected the FEX-Emu entry in section 10, since FEX-Emu forbids AI-generated contributions |

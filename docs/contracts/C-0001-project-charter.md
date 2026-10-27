@@ -1,72 +1,73 @@
-# C-0001 项目章程
+# C-0001 Project Charter
 
-| 字段 | 值 |
+| Field | Value |
 |---|---|
-| 状态 | 草案 |
-| 版本 | 0.1 |
-| 日期 | 2026-10-28 |
-| 负责人 | recelilious |
+| Status | Accepted |
+| Version | 1.0 |
+| Date | 2026-10-28 |
+| Owner | recelilious |
 
-## 1. 目标
+## 1. Goals
 
-1. 在 iPhone 上本地运行 Windows x86 和 x86-64 程序。
-2. 兼容用户自己的 Steam 游戏库，包括登录、浏览、安装和更新。
-3. 通过 Steam 启动 Windows 游戏，让游戏自带的 Steam API 和 Steam DRM 在 Valve 官方组件的支持下正常工作。
+1. Run Windows x86 and x86-64 programs natively on iPhone.
+2. Support the user's own Steam library: sign-in, browsing, installing and updating.
+3. Launch Windows games through Steam, so that each game's own Steam API and Steam DRM work as intended, backed by Valve's official components.
 
-## 2. 目标设备与系统
+## 2. Target devices and systems
 
-| 项目 | 范围 |
+| Item | Scope |
 |---|---|
-| 设备 | iPhone 17 Pro、17 Pro Max（A19 Pro）；iPhone 18 Pro、18 Pro Max（A20 Pro） |
-| 系统 | iOS 26.x、iOS 27.x |
+| Devices | iPhone 17 Pro and 17 Pro Max (A19 Pro); iPhone 18 Pro and 18 Pro Max (A20 Pro) |
+| Systems | iOS 26.x and iOS 27.x |
 
-其他机型和系统版本不做保证，也不刻意阻止。
+Other devices and system versions are neither guaranteed nor deliberately blocked.
 
-## 3. 接受的前提
+## 3. Accepted premises
 
-- 用户开启开发者模式。
-- 应用由用户用自己的 Apple ID 签名，侧载安装。
-- JIT 通过调试器附加获得。
-- 应用永远不上架 App Store。
-- iOS 不允许应用创建子进程，所有 Windows 进程都要在一个 iOS 进程内运行。
+- The user enables Developer Mode.
+- The user signs the app with their own Apple ID and sideloads it.
+- JIT is obtained by attaching a debugger.
+- The app will never be published on the App Store.
+- iOS does not let apps create child processes, so every Windows process must run inside a single iOS process.
 
-## 4. 技术方向
+## 4. Technical direction
 
-以下方向用来指导前期调研，最终方案由路线报告和后续契约确定。
+These directions guide the early research. The roadmap and later contracts set the final design.
 
-| 层 | 方向 |
+| Layer | Direction |
 |---|---|
-| 界面外壳 | Avalonia（.NET），由 recelilious 指定 |
-| Windows 兼容层 | 上游 Wine 的 ARM64 构建 |
-| CPU 翻译 | 上游 FEX-Emu，Box64 作为备选 |
-| 图形 | Direct3D 9 到 11 直接转换到 Metal；Direct3D 12 另行评估 |
-| Steam | 方案由 C-0007 决定 |
+| UI shell | Avalonia (.NET), chosen by recelilious |
+| Windows compatibility layer | ARM64 build of upstream Wine |
+| CPU translation | Upstream FEX-Emu, with Box64 as the fallback |
+| Graphics | Direct3D 9 to 11 translated directly to Metal; Direct3D 12 evaluated separately |
+| Steam | Decided by C-0007 |
 
-## 5. 非目标
+## 5. Non-goals
 
-- 上架 App Store。
-- 支持依赖反作弊系统的游戏。
-- 绕过、移除或模拟任何 DRM。
-- 分发游戏文件，或分发 Microsoft、Valve、游戏厂商的二进制文件。
+- Publishing on the App Store.
+- Supporting games that depend on anti-cheat systems.
+- Bypassing, removing or emulating any DRM.
+- Distributing game files, or binaries from Microsoft, Valve or game publishers.
 
-## 6. 原创规则
+## 6. Originality rules
 
-recelilious 的要求是：不抄现成产品的代码，但可以使用和整合已有技术栈。具体执行如下。
+recelilious requires that no code is copied from existing products, while existing technology stacks may be used and integrated. In practice:
 
-1. **可以集成：** 上游的库和运行时，例如 Wine、FEX-Emu、Box64、DXMT、MoltenVK、SteamKit2、Avalonia、.NET、SDL、FAudio。可以作为依赖使用，也可以 fork 后修改，但要遵守 C-0003。
-2. **不能复制：** 现成产品的代码，不论其许可证是什么。例如 Madeira 及其分支（BCD、WiniOS、Playport、iDeck）、GameNative、Winlator、GameHub、LiveContainer、StikDebug、iSH、Juice、UTM、CrossOver。不复制，不逐行翻译，也不改写成另一种语言。
-3. **可以学习：** 这些产品公开的文档、README、issue 讨论和测试数据，只用来了解哪些做法可行。实现时依据上游库文档、Apple 文档和我们自己的设计文档。
-4. **记录来源：** 每份设计文档都要列出参考过的公开资料。
+1. **May integrate:** upstream libraries and runtimes such as Wine, FEX-Emu, Box64, DXMT, MoltenVK, SteamKit2, Avalonia, .NET, SDL and FAudio. They may be used as dependencies, or forked and modified, under C-0003.
+2. **Must not copy:** code from existing products, whatever their license. Examples are Madeira and its forks (BCD, WiniOS, Playport, iDeck), GameNative, Winlator, GameHub, LiveContainer, StikDebug, iSH, Juice, UTM and CrossOver. No copying, no line-by-line translation, and no rewriting into another language.
+3. **May learn from:** the public documentation, READMEs, issue discussions and test data of those products, only to learn what is feasible. Implementations follow upstream library documentation, Apple documentation and our own design documents.
+4. **Record sources:** every design document lists the public material it consulted.
 
-## 7. 合规红线
+## 7. Compliance red lines
 
-1. 不绕过、不移除、不模拟任何 DRM，包括 SteamStub 和 CEG。不使用、不分发 steam_api 模拟器和 DRM 移除工具。
-2. 仓库和安装包里不放任何 Microsoft、Valve 或游戏的二进制文件。需要时由用户设备从官方来源下载，或由用户自己提供。
-3. 用户的 Steam 凭据只用于直接与 Valve 服务器通信，不发送给任何第三方。登录令牌只保存在设备钥匙串中。
-4. 名称、图标和界面不得暗示与 Microsoft、Valve、Apple 有关联。
+1. Never bypass, remove or emulate any DRM, including SteamStub and CEG. Never use or distribute steam_api emulators or DRM-removal tools.
+2. Neither the repository nor the app package contains any binary from Microsoft, Valve or a game. When one is needed, the user's device downloads it from the official source, or the user provides it.
+3. The user's Steam credentials are used only to talk directly to Valve's servers and are never sent to any third party. Sign-in tokens are stored only in the device keychain.
+4. The name, icon and interface must not suggest any affiliation with Microsoft, Valve or Apple.
 
-## 变更记录
+## Change log
 
-| 版本 | 日期 | 说明 |
+| Version | Date | Notes |
 |---|---|---|
-| 0.1 | 2026-10-28 | 初稿 |
+| 0.1 | 2026-10-28 | First draft |
+| 1.0 | 2026-10-28 | Accepted by recelilious; translated to English |

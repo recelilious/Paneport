@@ -170,6 +170,34 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - GNU Binutils statement: <https://gnu.googlesource.com/binutils-gdb/+/c0316a54b489d68e30de718aee69ab441799aad2%5E%21>
 - Survey of open-source AI policies: <https://www.ssdnodes.com/learn/lang/pcm/ai-assisted-code-open-source-policies>
 
+## Proposed changes for 1.1
+
+**Not yet accepted.** Version 1.0 above stays binding until recelilious approves these changes. They come from drafting contracts C-0004 to C-0012.
+
+1. **Section 3, last bullet.** Replace "Release notes link to the matching source tag." with: "Each release attaches source archives of this repository and of every fork at exactly the released revisions, and its notes link to them (C-0009 section 6)."
+2. **Section 4, last bullet.** Replace it with: "`LICENSES/` holds the texts of the licenses that files in this repository use. It is created with `MIT.txt` together with the first file that carries the SPDX lines of C-0010 section 6. Files that cannot carry a header are covered by `REUSE.toml` (C-0010 section 6). The license texts of third-party components are generated from the register in section 6 into each release and into the app bundle, not into `LICENSES/`."
+3. **Section 5.** Add `Apache-2.0 WITH LLVM-exception` to the Allowed row and `LGPL-2.1-only` to the Conditional row. Add a row: "Build and CI tool | Any license, including GPL | Only for tools that build or check the repository and are never copied into the repository, a fork or the app package. Registered in section 6 with the category Tool."
+4. **Section 6.** Change SteamKit2's license to `LGPL-2.1-only`, and add these rows:
+
+   | Component | Purpose | License | Category |
+   |---|---|---|---|
+   | LLVM runtime libraries (compiler-rt, libunwind, libc++, libc++abi) | Linked by llvm-mingw into Windows-side binaries that ship | Apache-2.0 WITH LLVM-exception; parts not yet relicensed remain under LLVM's legacy NCSA-or-MIT dual license, used under MIT | Allowed |
+   | mingw-w64 runtime | Linked by llvm-mingw into Windows-side binaries that ship | Several permissive licenses with notice requirements, listed in its `COPYING.MinGW-w64-runtime.txt` | Under review: collect the notices and confirm that no code of unclear license is linked, before the first Windows-side build |
+   | xunit.v3 | Test framework, not shipped | Apache-2.0 | Allowed |
+   | Avalonia.Headless.XUnit | Headless UI tests, not shipped | MIT | Allowed |
+   | CommunityToolkit.Mvvm | MVVM source generators | MIT | Allowed |
+   | JsonSchema.Net | Schema validation, CI only | MIT source; NuGet packages under the json-everything Open Source Maintenance Fee agreement | Under review; not used until recelilious decides |
+   | llvm-mingw | Windows-side toolchain | Recorded when first pinned | Tool |
+   | CMake | Native build configuration | BSD-3-Clause | Tool |
+   | Meson, Ninja | Build systems the forks need | Apache-2.0 | Tool |
+   | Xcode | Apple's toolchain | Apple proprietary | Tool |
+   | clang-format, clang-tidy | Native formatting and analysis | Apache-2.0 WITH LLVM-exception | Tool |
+   | gitleaks (command-line tool) | Secret scanning | MIT | Tool |
+   | REUSE tool | License header checks | GPL-3.0-or-later | Tool |
+   | lychee | Link checks | MIT OR Apache-2.0 | Tool |
+
+5. **Section 9, first paragraph.** Replace it with: "StikDebug is a separate app under AGPL-3.0. Paneport cooperates with it only through the JIT request convention and the URL scheme documented in `INTEGRATION.md` of StikDebug/StikJIT (MPL-2.0), using a broker script that Paneport writes itself (C-0006). Paneport never links, embeds or copies StikDebug's code or scripts, and nobody writing Paneport's side reads their source."
+
 ## Change log
 
 | Version | Date | Notes |

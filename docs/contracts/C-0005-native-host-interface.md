@@ -7,7 +7,7 @@
 | Date | 2026-10-28 |
 | Owner | recelilious |
 
-This contract defines the C interface between the .NET side (`Paneport.Interop`) and the native host (`src/native/host`), the bridge between the native host and the Wine fork, and how signals are owned in the process. It fixes conventions and the initial function groups. Exact parameter lists are settled in the headers and may still change while this contract is a draft.
+This contract defines the C interface between the .NET side (`Paneport.Interop`) and the native host (`src/native/host`), the bridge between the native host and the Wine fork, and how signals are owned in the process. It fixes conventions and the initial function groups. Exact parameter lists are settled in the headers, and changing them follows the versioning rules in section 1.
 
 ## 1. Conventions
 

@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
-| Version | 0.1 |
+| Status | Accepted |
+| Version | 1.0 |
 | Date | 2026-10-28 |
 | Owner | recelilious |
 
@@ -82,3 +82,4 @@ Rules for these groups:
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
+| 1.0 | 2026-10-28 | Accepted by recelilious |

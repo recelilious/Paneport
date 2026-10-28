@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
-| Version | 0.1 |
+| Status | Accepted |
+| Version | 1.0 |
 | Date | 2026-10-28 |
 | Owner | recelilious |
 
@@ -26,7 +26,7 @@ This contract defines how Paneport obtains executable memory for the x86 transla
 
 | Role | Who | Notes |
 |---|---|---|
-| Enabler | StikDebug, a separate app under AGPL-3.0 | Paneport uses only the convention and the URL scheme described in StikJIT's `INTEGRATION.md`, and never links, embeds or copies StikDebug code. This needs the C-0003 section 9 change proposed alongside this contract. |
+| Enabler | StikDebug, a separate app under AGPL-3.0 | Paneport uses only the convention and the URL scheme described in StikJIT's `INTEGRATION.md`, and never links, embeds or copies StikDebug code. C-0003 section 9 allows this. |
 | Broker script | Our own script, MIT, in `src/jit-broker/` | Written from `INTEGRATION.md` only. Bundled in the app and handed to StikDebug through the URL scheme. It handles only the two commands above. |
 | App side | The native host, in `src/native/host/jit/` | Requests, maps and verifies the code pool, hands it to the translator, and reports its state through C-0005. |
 
@@ -62,7 +62,7 @@ Timeouts: if the pool is not complete within 60 seconds of entering `requesting`
 
 If the memory limit allows less than the minimum, the state becomes `failed`. The whole pool counts against the memory limit once it is authorized.
 
-Shipped emulators use 64 to 288 MB. The default and the maximum above are Paneport's own choice, following a Windows-games project that measured authorization at about 2.0 s for 256 MiB, 2.5 s for 512 MiB and 3.1 to 3.3 s for 896 MiB. recelilious sets these values by accepting this contract, and the phase 1 gate confirms or corrects them (C-0012).
+Shipped emulators use 64 to 288 MB. The default and the maximum above are Paneport's own choice, following a Windows-games project that measured authorization at about 2.0 s for 256 MiB, 2.5 s for 512 MiB and 3.1 to 3.3 s for 896 MiB. recelilious set these values on 2026-10-28, and the phase 1 gate confirms or corrects them (C-0012).
 
 ## 5. States
 
@@ -96,3 +96,4 @@ Leaving `failed` always needs a relaunch.
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
+| 1.0 | 2026-10-28 | Accepted by recelilious |

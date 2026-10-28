@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
-| Version | 0.1 |
+| Status | Accepted |
+| Version | 1.0 |
 | Date | 2026-10-28 |
 | Owner | recelilious |
 
@@ -82,7 +82,7 @@ SPDX-License-Identifier: MIT
 ```
 
 - Files that cannot carry comments, such as JSON and images, and the documentation under `docs/`, are covered by `REUSE.toml` at the repository root, which declares the same copyright text and license.
-- `LICENSES/MIT.txt` is added together with the first file that carries these lines. `LICENSES/` holds only the licenses that files in this repository use; third-party license texts are generated into releases (C-0009 section 6). This depends on the C-0003 change proposed alongside this contract.
+- `LICENSES/MIT.txt` is added together with the first file that carries these lines. `LICENSES/` holds only the licenses that files in this repository use; third-party license texts are generated into releases (C-0009 section 6). C-0003 section 4 sets the same rule.
 - New files inside a fork follow section 4.
 
 ## 7. Text and file names
@@ -96,3 +96,4 @@ SPDX-License-Identifier: MIT
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
+| 1.0 | 2026-10-28 | Accepted by recelilious |

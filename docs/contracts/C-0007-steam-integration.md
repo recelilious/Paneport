@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
-| Version | 0.1 |
+| Status | Accepted |
+| Version | 1.0 |
 | Date | 2026-10-28 |
 | Owner | recelilious |
 
@@ -37,7 +37,7 @@ This contract defines how Paneport signs in to Steam, shows the user's library, 
 - The refresh token is the only secret kept, in the keychain (C-0004 section 4). Passwords are never stored.
 - The Dock host receives the token from the native host in memory, through `pp_steam_set_token` and the Wine bridge (C-0005). Paneport's own code, including the Dock host, never writes the token to the Wine prefix or any other file.
 - Valve's client may cache its own login state in its folder inside the prefix. Paneport deletes that state at every app launch before any session starts, when a Dock session ends, and when the user signs out. The Dock host design document lists those files, and the phase 4 gate confirms the list (C-0012).
-- That cache is a sign-in token outside the keychain, so it is a bounded exception to C-0001 section 7 item 3. recelilious decides on it when accepting this contract; if it is accepted, C-0001 gets a matching change in its own contract commit.
+- That cache is a sign-in token outside the keychain. It is the bounded exception that C-0001 section 7 item 3 records.
 - Signing out deletes the token from the keychain and the cached state above.
 - Paneport itself sends no telemetry about the user's account or library anywhere. What SteamKit2 and Valve's client send to Valve while signing in and running games is outside Paneport's control.
 - Paneport.Desktop never stores a Steam token on disk; a token obtained on Windows lives in memory for that run only.
@@ -92,7 +92,7 @@ Never allowed: placing a `steam_appid.txt` file or setting environment variables
 
 ## 8. Legal position
 
-recelilious accepts the first two tiers below by accepting this contract. This section records the project's decision; it is not legal advice.
+recelilious accepted the first two tiers below on 2026-10-28. This section records the project's decision; it is not legal advice.
 
 | Tier | What | Status | Residual risk |
 |---|---|---|---|
@@ -105,3 +105,4 @@ recelilious accepts the first two tiers below by accepting this contract. This s
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
+| 1.0 | 2026-10-28 | Accepted by recelilious |

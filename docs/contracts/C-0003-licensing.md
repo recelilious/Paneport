@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.0 |
+| Version | 1.1 |
 | Date | 2026-10-28 |
 | Owner | recelilious |
 
@@ -36,9 +36,9 @@ Section 6 of LGPL-2.1 allows a library to be combined and distributed with "a wo
 How we meet them:
 
 - **Dynamic packaging:** the Unix-side code of Wine and similar components ships inside the .app as dynamic libraries or frameworks that the user can replace.
-- **Public source:** SteamKit2 (LGPL-2.1) is compiled statically into the executable by .NET AOT. All source code and build scripts in this repository are public, so a user can swap SteamKit2 and rebuild, which satisfies the relinking requirement.
+- **Public source:** SteamKit2 (LGPL-2.1-only) is compiled statically into the executable by .NET AOT. All source code and build scripts in this repository are public, so a user can swap SteamKit2 and rebuild, which satisfies the relinking requirement.
 - **User installability:** sideloading already means the user signs the app with their own Apple ID, so the user can install a rebuilt version.
-- **Shipped with every release:** each release includes `THIRD_PARTY_NOTICES.md` and the full text of every license. The app has an open-source licenses screen. Release notes link to the matching source tag.
+- **Shipped with every release:** each release includes `THIRD_PARTY_NOTICES.md` and the full text of every license. The app has an open-source licenses screen. Each release attaches source archives of this repository and of every fork at exactly the released revisions, and its notes link to them (C-0009 section 6).
 
 ## 4. Repository layout
 
@@ -46,7 +46,7 @@ How we meet them:
 - Code derived from an upstream always lives in its own fork repository named `Paneport-<upstream>`, for example `Paneport-wine`, attached under `external/` as a git submodule.
 - Fork repositories keep the upstream license files and copyright notices.
 - Original source files start with `SPDX-License-Identifier: MIT`. New files inside a fork use that upstream's identifier, for example `SPDX-License-Identifier: LGPL-2.1-or-later`.
-- Full license texts go in `LICENSES/` in this repository, created when the first third-party dependency arrives.
+- `LICENSES/` holds the texts of the licenses that files in this repository use. It is created with `MIT.txt` together with the first file that carries the SPDX lines of C-0010 section 6. Files that cannot carry a header are covered by `REUSE.toml` (C-0010 section 6). The license texts of third-party components are generated from the register in section 6 into each release and into the app bundle, not into `LICENSES/`.
 
 ## 5. Intake rules
 
@@ -54,11 +54,12 @@ Before adding any dependency, register it in the table in section 6.
 
 | Category | Licenses | Rule |
 |---|---|---|
-| Allowed | MIT, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, 0BSD, BSL-1.0, Apache-2.0, CC0-1.0, FTL | Keep the copyright notices. Apache-2.0 also requires keeping the NOTICE file. FTL requires crediting FreeType in the documentation. |
-| Conditional | LGPL-2.1-or-later, LGPL-3.0, MPL-2.0 | Only as separately identifiable components. Changes are published under the same license. Relinking must stay possible. LGPL-3.0 also requires installation information. |
+| Allowed | MIT, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, 0BSD, BSL-1.0, Apache-2.0, Apache-2.0 WITH LLVM-exception, CC0-1.0, FTL | Keep the copyright notices. Apache-2.0 also requires keeping the NOTICE file. FTL requires crediting FreeType in the documentation. |
+| Conditional | LGPL-2.1-only, LGPL-2.1-or-later, LGPL-3.0, MPL-2.0 | Only as separately identifiable components. Changes are published under the same license. Relinking must stay possible. LGPL-3.0 also requires installation information. |
 | Forbidden | GPL-2.0, GPL-3.0, AGPL-3.0, SSPL, non-commercial-only licenses, code with no license | Never enters this repository, a fork repository or the app package. |
 | Forbidden | Vendor SDK headers, decompiled code | For example the Steamworks SDK and Windows SDK headers. Write the needed interface definitions ourselves and record their basis in a design document. |
 | Under review | Proprietary components such as Apple's Metal Shader Converter | No redistribution terms were found publicly. Read its license and record the conclusion before using it, and never put it in the repository. |
+| Build and CI tool | Any license, including GPL | Only for tools that build or check the repository and are never copied into the repository, a fork or the app package. Registered in section 6 with the category Tool. |
 
 For dual-licensed components, choose the less restrictive option. For example, FreeType is used under FTL rather than GPL-2.0.
 
@@ -77,7 +78,7 @@ Checked on 2026-10-28. Licenses are taken from each repository's LICENSE file.
 | SPIRV-Cross | Shader translation, a MoltenVK dependency | Apache-2.0 | Allowed |
 | DXVK | Direct3D to Vulkan, probably unused on iOS | Zlib | Allowed |
 | vkd3d-proton | Direct3D 12 to Vulkan, probably unused on iOS | LGPL-2.1 | Conditional |
-| SteamKit2 | Steam network protocol | LGPL-2.1 | Conditional |
+| SteamKit2 | Steam network protocol | LGPL-2.1-only | Conditional |
 | protobuf-net | SteamKit2 dependency | Apache-2.0 | Allowed |
 | Avalonia | UI shell | MIT | Allowed |
 | SkiaSharp | Avalonia's rendering library | MIT | Allowed |
@@ -88,6 +89,20 @@ Checked on 2026-10-28. Licenses are taken from each repository's LICENSE file.
 | FreeType | Font rendering, a Wine dependency | FTL or GPL-2.0 | Allowed, under FTL |
 | GStreamer | Media decoding, an optional Wine dependency | LGPL-2.1-or-later | Conditional, no GPL plugins |
 | idevice (jkcoxson) | Device protocol, optional | MIT | Allowed |
+| LLVM runtime libraries (compiler-rt, libunwind, libc++, libc++abi) | Linked by llvm-mingw into Windows-side binaries that ship | Apache-2.0 WITH LLVM-exception; parts not yet relicensed remain under LLVM's legacy NCSA-or-MIT dual license, used under MIT | Allowed |
+| mingw-w64 runtime | Linked by llvm-mingw into Windows-side binaries that ship | Several permissive licenses with notice requirements, listed in its `COPYING.MinGW-w64-runtime.txt` | Under review: collect the notices and confirm that no code of unclear license is linked, before the first Windows-side build |
+| xunit.v3 | Test framework, not shipped | Apache-2.0 | Allowed |
+| Avalonia.Headless.XUnit | Headless UI tests, not shipped | MIT | Allowed |
+| CommunityToolkit.Mvvm | MVVM source generators | MIT | Allowed |
+| JsonSchema.Net | Schema validation, CI only | MIT source; NuGet packages under the json-everything Open Source Maintenance Fee agreement | Under review; not used until recelilious decides |
+| llvm-mingw | Windows-side toolchain | Recorded when first pinned | Tool |
+| CMake | Native build configuration | BSD-3-Clause | Tool |
+| Meson, Ninja | Build systems the forks need | Apache-2.0 | Tool |
+| Xcode | Apple's toolchain | Apple proprietary | Tool |
+| clang-format, clang-tidy | Native formatting and analysis | Apache-2.0 WITH LLVM-exception | Tool |
+| gitleaks (command-line tool) | Secret scanning | MIT | Tool |
+| REUSE tool | License header checks | GPL-3.0-or-later | Tool |
+| lychee | Link checks | MIT OR Apache-2.0 | Tool |
 
 Media decoding prefers Apple's system frameworks, which avoids GStreamer's GPL plugins and codec patent issues.
 
@@ -125,7 +140,7 @@ UTM and SteamARM have permissive licenses, but they are existing products, so th
 
 ## 9. Boundary with AGPL programs
 
-StikDebug is a separate app under AGPL-3.0. Paneport cooperates with it only through the public JIT request convention and never links or embeds any of its code.
+StikDebug is a separate app under AGPL-3.0. Paneport cooperates with it only through the JIT request convention and the URL scheme documented in `INTEGRATION.md` of StikDebug/StikJIT (MPL-2.0), using a broker script that Paneport writes itself (C-0006). Paneport never links, embeds or copies StikDebug's code or scripts, and nobody writing Paneport's side reads their source.
 
 If the app ever enables JIT by itself, that code will be our own, built on the MIT-licensed idevice.
 
@@ -170,37 +185,10 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - GNU Binutils statement: <https://gnu.googlesource.com/binutils-gdb/+/c0316a54b489d68e30de718aee69ab441799aad2%5E%21>
 - Survey of open-source AI policies: <https://www.ssdnodes.com/learn/lang/pcm/ai-assisted-code-open-source-policies>
 
-## Proposed changes for 1.1
-
-**Not yet accepted.** Version 1.0 above stays binding until recelilious approves these changes. They come from drafting contracts C-0004 to C-0012.
-
-1. **Section 3, last bullet.** Replace "Release notes link to the matching source tag." with: "Each release attaches source archives of this repository and of every fork at exactly the released revisions, and its notes link to them (C-0009 section 6)."
-2. **Section 4, last bullet.** Replace it with: "`LICENSES/` holds the texts of the licenses that files in this repository use. It is created with `MIT.txt` together with the first file that carries the SPDX lines of C-0010 section 6. Files that cannot carry a header are covered by `REUSE.toml` (C-0010 section 6). The license texts of third-party components are generated from the register in section 6 into each release and into the app bundle, not into `LICENSES/`."
-3. **Section 5.** Add `Apache-2.0 WITH LLVM-exception` to the Allowed row and `LGPL-2.1-only` to the Conditional row. Add a row: "Build and CI tool | Any license, including GPL | Only for tools that build or check the repository and are never copied into the repository, a fork or the app package. Registered in section 6 with the category Tool."
-4. **Section 6.** Change SteamKit2's license to `LGPL-2.1-only`, and add these rows:
-
-   | Component | Purpose | License | Category |
-   |---|---|---|---|
-   | LLVM runtime libraries (compiler-rt, libunwind, libc++, libc++abi) | Linked by llvm-mingw into Windows-side binaries that ship | Apache-2.0 WITH LLVM-exception; parts not yet relicensed remain under LLVM's legacy NCSA-or-MIT dual license, used under MIT | Allowed |
-   | mingw-w64 runtime | Linked by llvm-mingw into Windows-side binaries that ship | Several permissive licenses with notice requirements, listed in its `COPYING.MinGW-w64-runtime.txt` | Under review: collect the notices and confirm that no code of unclear license is linked, before the first Windows-side build |
-   | xunit.v3 | Test framework, not shipped | Apache-2.0 | Allowed |
-   | Avalonia.Headless.XUnit | Headless UI tests, not shipped | MIT | Allowed |
-   | CommunityToolkit.Mvvm | MVVM source generators | MIT | Allowed |
-   | JsonSchema.Net | Schema validation, CI only | MIT source; NuGet packages under the json-everything Open Source Maintenance Fee agreement | Under review; not used until recelilious decides |
-   | llvm-mingw | Windows-side toolchain | Recorded when first pinned | Tool |
-   | CMake | Native build configuration | BSD-3-Clause | Tool |
-   | Meson, Ninja | Build systems the forks need | Apache-2.0 | Tool |
-   | Xcode | Apple's toolchain | Apple proprietary | Tool |
-   | clang-format, clang-tidy | Native formatting and analysis | Apache-2.0 WITH LLVM-exception | Tool |
-   | gitleaks (command-line tool) | Secret scanning | MIT | Tool |
-   | REUSE tool | License header checks | GPL-3.0-or-later | Tool |
-   | lychee | Link checks | MIT OR Apache-2.0 | Tool |
-
-5. **Section 9, first paragraph.** Replace it with: "StikDebug is a separate app under AGPL-3.0. Paneport cooperates with it only through the JIT request convention and the URL scheme documented in `INTEGRATION.md` of StikDebug/StikJIT (MPL-2.0), using a broker script that Paneport writes itself (C-0006). Paneport never links, embeds or copies StikDebug's code or scripts, and nobody writing Paneport's side reads their source."
-
 ## Change log
 
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious; translated to English; corrected the FEX-Emu entry in section 10, since FEX-Emu forbids AI-generated contributions |
+| 1.1 | 2026-10-28 | Accepted by recelilious. Adds the Build and CI tool category, LGPL-2.1-only and Apache-2.0 WITH LLVM-exception to section 5. Registers the llvm-mingw runtime libraries, test libraries and CI tools in section 6, and corrects SteamKit2 to LGPL-2.1-only. Creates `LICENSES/` with the first SPDX header and generates third-party license texts into releases (section 4). Releases attach source archives (section 3). Section 9 allows the convention and URL scheme documented in StikJIT's `INTEGRATION.md`. |

@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
-| Version | 0.1 |
+| Status | Accepted |
+| Version | 1.0 |
 | Date | 2026-10-28 |
 | Owner | recelilious |
 
@@ -47,7 +47,7 @@ This contract fixes how Paneport is split into components, who owns what at run 
 | FEX fork | C++ | MIT | `external/Paneport-FEX` | The ARM64EC and WoW64 emulation modules, with iOS host hooks. |
 | DXMT fork | C++ | LGPL-2.1-or-later | `external/Paneport-dxmt` | Direct3D 10 and 11 on Metal. |
 | Tools | C# | MIT | `tools` | Build orchestration and repository checks. |
-| Compatibility database | JSON | MIT, pending recelilious's decision (C-0008 section 6) | `compat` | Per-title settings and test reports (C-0008). |
+| Compatibility database | JSON | MIT | `compat` | Per-title settings and test reports (C-0008). |
 
 Windows-side binaries built with llvm-mingw also contain the mingw-w64 runtime and LLVM's runtime libraries. They ship in the app, so they are registered under C-0003 before the first Windows-side build, and their notices go into the generated third-party notices (C-0009 section 6).
 
@@ -161,3 +161,4 @@ All paths are inside the app container.
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
+| 1.0 | 2026-10-28 | Accepted by recelilious |

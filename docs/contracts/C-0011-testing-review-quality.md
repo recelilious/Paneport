@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
-| Version | 0.1 |
+| Status | Accepted |
+| Version | 1.0 |
 | Date | 2026-10-28 |
 | Owner | recelilious |
 
@@ -38,7 +38,7 @@ Rules:
 | Trimming of dependencies | A trimmed test app that roots our libraries, published with every trimming warning shown |
 | Native formatting | `clang-format` in check mode, on `src/` and `tests/` only |
 | Native analysis | `clang-tidy`, and compiler warnings as errors (C-0010 section 3) |
-| License headers and license texts | REUSE (`reuse lint`), once the C-0003 change proposed alongside this contract is accepted |
+| License headers and license texts | REUSE (`reuse lint`) |
 | Secrets | The gitleaks command-line tool, from a pinned release. Not the gitleaks GitHub Action, which has been under a proprietary license since version 2. |
 | Personal data and forbidden files | A tool in `tools/` that fails on UDIDs, ECIDs, serial numbers, team identifiers and application-identifier prefixes, e-mail addresses, Steam IDs, IP addresses, tokens, depot keys, manifest request codes and local paths in `docs/evidence/`, `compat/` and `tests/`, and on any tracked file with an extension that C-0002 section 6 forbids. Device model identifiers are allowed. |
 | Links in Markdown | lychee |
@@ -70,9 +70,9 @@ GitHub Actions runs these jobs on every pull request and every push.
 - recelilious decides whether the `ios` job runs on every pull request or only before merging, once its run time is known.
 - Device tests cannot run in CI. They are recorded as evidence instead (C-0012).
 
-## 5. Libraries and tools to register under C-0003
+## 5. Libraries and tools registered under C-0003
 
-These are added to the C-0003 register by the change proposed alongside this contract. Each needs recelilious's approval like any other change to C-0003. The proposal also registers CMake, Meson, Ninja, Xcode, llvm-mingw and its runtime libraries.
+These are registered in C-0003 section 6 (version 1.1), together with CMake, Meson, Ninja, Xcode, llvm-mingw and its runtime libraries.
 
 | Package or tool | License | Use |
 |---|---|---|
@@ -95,3 +95,4 @@ Not allowed: FluentAssertions 8 and later. They are under Xceed's proprietary Co
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
+| 1.0 | 2026-10-28 | Accepted by recelilious |

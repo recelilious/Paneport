@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
-| Version | 0.1 |
+| Status | Accepted |
+| Version | 1.0 |
 | Date | 2026-10-28 |
 | Owner | recelilious |
 
@@ -31,14 +31,14 @@ A change is done when all of these hold:
 3. Claude cannot operate recelilious's iPhone. For anything that needs the device, Claude writes the test steps and an evidence record template. recelilious runs the steps and fills in the results, or attaches the logs.
 4. recelilious reviews and merges. When recelilious explicitly asks, Claude performs the merge for them.
 
-**Proposed standing exceptions.** On 2026-10-28 recelilious gave these instructions for that day's research documents and contract drafts. They become standing rules only if recelilious accepts this contract, and then C-0002 sections 2 and 3 are changed in their own contract commit to point here:
+**Standing exceptions**, approved by recelilious on 2026-10-28. C-0002 sections 2 and 3 point here:
 
 - **Research documents.** Claude may branch, push and merge changes that touch only `docs/research/`, after checking them against section 1 and after the CI `checks` job has passed. Roadmap files (`docs/research/roadmap-*.md`) are excluded and go through normal review, because the roadmap shapes the design (C-0001 section 4).
 - **Contract drafts.** New contracts and changes to contracts are committed locally on a `contract/<summary>` branch and are not pushed until recelilious has reviewed them.
 
 ## 3. Milestone gates
 
-The phases come from [the roadmap](../research/roadmap-2026-10.md). The table below is authoritative: a later change to the roadmap changes a gate only through a change to this contract. The numeric thresholds are proposals that recelilious sets by accepting this contract.
+The phases come from [the roadmap](../research/roadmap-2026-10.md). The table below is authoritative: a later change to the roadmap changes a gate only through a change to this contract. recelilious set the numeric thresholds on 2026-10-28.
 
 | Phase | Gate | Passes when |
 |---|---|---|
@@ -94,3 +94,4 @@ A contract becomes Accepted, and an Accepted contract changes, only on recelilio
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
+| 1.0 | 2026-10-28 | Accepted by recelilious |

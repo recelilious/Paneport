@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
-| Version | 0.1 |
+| Status | Accepted |
+| Version | 1.0 |
 | Date | 2026-10-28 |
 | Owner | recelilious |
 
@@ -96,10 +96,11 @@ The CI check rejects a file whose `rating` differs from this result (C-0011).
 
 ## 6. License of the data
 
-The data is proposed to be released under the repository's MIT license. C-0003 covers code, so recelilious decides this when accepting this contract. JSON files cannot carry a license header, so `REUSE.toml` at the repository root declares their license (C-0010 section 6).
+The data is released under the repository's MIT license, as recelilious decided on 2026-10-28. JSON files cannot carry a license header, so `REUSE.toml` at the repository root declares their license (C-0010 section 6).
 
 ## Change log
 
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
+| 1.0 | 2026-10-28 | Accepted by recelilious |

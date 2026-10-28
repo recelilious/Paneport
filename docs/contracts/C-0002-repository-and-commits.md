@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.0 |
+| Version | 1.1 |
 | Date | 2026-10-28 |
 | Owner | recelilious |
 
@@ -23,12 +23,12 @@ The GitHub repository was created empty, without a README, .gitignore or license
 
 - The bootstrap commit goes directly to `main`.
 - After that, Claude's changes go on short-lived branches named `<type>/<summary>`, for example `feat/jit-request`.
-- recelilious merges each pushed branch, through a pull request or a fast-forward.
+- recelilious merges each pushed branch, through a pull request or a fast-forward, except where a standing exception in C-0012 section 2 applies. When recelilious explicitly asks, Claude performs the merge for them.
 - recelilious may ask for a change to be committed directly to `main`.
 
 ## 3. Push cadence
 
-- Before every development session ends, its commits are pushed to GitHub.
+- Before every development session ends, its commits are pushed to GitHub, except contract changes, which are pushed only after recelilious has reviewed them (C-0012 section 2).
 - If a push fails, Claude reports the reason and the local state at the end of the session.
 
 ## 4. Authorship and credit
@@ -102,3 +102,4 @@ Large binaries are published through GitHub Releases and stay out of git history
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious; translated to English; documentation is now English only, with `_zh_CN` versions only on explicit request |
+| 1.1 | 2026-10-28 | Accepted by recelilious: sections 2 and 3 point to the standing exceptions in C-0012 section 2 |

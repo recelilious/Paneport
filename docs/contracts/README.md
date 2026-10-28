@@ -15,7 +15,7 @@ Contracts are the binding documents of this project. Contracts come first; imple
 | Number | Title | Status | Version | Date |
 |---|---|---|---|---|
 | [C-0001](C-0001-project-charter.md) | Project charter | Accepted | 1.0 | 2026-10-28 |
-| [C-0002](C-0002-repository-and-commits.md) | Repository and commits | Accepted | 1.0 | 2026-10-28 |
+| [C-0002](C-0002-repository-and-commits.md) | Repository and commits | Accepted | 1.1 | 2026-10-28 |
 | [C-0003](C-0003-licensing.md) | Open-source licensing | Accepted | 1.1 | 2026-10-28 |
 | [C-0004](C-0004-architecture-and-layout.md) | Architecture, components and layout | Accepted | 1.0 | 2026-10-28 |
 | [C-0005](C-0005-native-host-interface.md) | Native runtime host interface | Accepted | 1.0 | 2026-10-28 |

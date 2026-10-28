@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.0 |
+| Version | 1.1 |
 | Date | 2026-10-28 |
 | Owner | recelilious |
 
@@ -62,7 +62,7 @@ recelilious requires that no code is copied from existing products, while existi
 
 1. Never bypass, remove or emulate any DRM, including SteamStub and CEG. Never use or distribute steam_api emulators or DRM-removal tools.
 2. Neither the repository nor the app package contains any binary from Microsoft, Valve or a game. When one is needed, the user's device downloads it from the official source, or the user provides it.
-3. The user's Steam credentials are used only to talk directly to Valve's servers and are never sent to any third party. Sign-in tokens are stored only in the device keychain.
+3. The user's Steam credentials are used only to talk directly to Valve's servers and are never sent to any third party. Sign-in tokens are stored only in the device keychain. The one exception is the login state that Valve's own client caches inside the Wine prefix; C-0007 section 3 bounds it and makes Paneport delete it at every launch, at the end of every Dock session and at sign-out.
 4. The name, icon and interface must not suggest any affiliation with Microsoft, Valve or Apple.
 
 ## Change log
@@ -71,3 +71,4 @@ recelilious requires that no code is copied from existing products, while existi
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious; translated to English |
+| 1.1 | 2026-10-28 | Accepted by recelilious: section 7 item 3 records the bounded exception for the login state Valve's client caches (C-0007 section 3) |

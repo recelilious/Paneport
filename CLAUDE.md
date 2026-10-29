@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+
 # Working Rules for Claude
 
 This file is for Claude sessions working on Paneport. The binding versions of these rules live in `docs/contracts/`. When the two disagree, the contracts win.

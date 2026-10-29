@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+# SPDX-License-Identifier: MIT
+
+# Copyright and license of the files that carry no header of their own (C-0010 section 6).
+version = 1
+
+# The documentation. It overrides what the files say, because the contracts quote SPDX tags
+# as examples, and REUSE would read those quotes as the files' own license information.
+[[annotations]]
+path = "docs/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 recelilious and the Paneport contributors"
+SPDX-License-Identifier = "MIT"
+
+# JSON files, including the solution filter, cannot hold a comment.
+[[annotations]]
+path = ["*.json", "**/*.json", "**/*.slnf"]
+SPDX-FileCopyrightText = "2026 recelilious and the Paneport contributors"
+SPDX-License-Identifier = "MIT"

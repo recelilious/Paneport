@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+
 # Contributing
 
 Start with the [contracts index](docs/contracts/README.md).

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+
 # Paneport
 
 > Run Windows programs on iPhone 17 Pro and iPhone 18 Pro, and launch the Windows games in your own Steam library through Steam.

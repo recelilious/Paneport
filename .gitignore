@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+# SPDX-License-Identifier: MIT
+
 # Local research notes and reports, not part of the repository
 /research_notes/
 /reports/
@@ -28,3 +31,8 @@ xcuserdata/
 # Operating system files
 .DS_Store
 Thumbs.db
+
+# Test results and build logs
+TestResults/
+*.trx
+*.binlog

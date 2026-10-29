@@ -13,13 +13,13 @@ Back to the [development plan](../development-plan.md).
 | L0 | Foundation | Large | Planned | | |
 | S0.0.1 | Evidence folder and the L0 record template | Small | Planned | | |
 | S0.0.2 | Root README and contributing guide | Small | Planned | | |
-| M0.1 | Solution scaffold and repository hygiene | Medium | Planned | | |
-| S0.1.1 | Build properties and analyzers | Small | Planned | | |
-| S0.1.2 | Central package management and lock files | Small | Planned | | |
-| S0.1.3 | REUSE, LICENSES and SPDX headers | Small | Planned | | |
-| S0.1.4 | Folder READMEs | Small | Planned | | |
-| S0.1.5 | Test projects and dependency direction tests | Small | Planned | | |
-| S0.1.6 | First CI workflow | Small | Planned | | |
+| M0.1 | Solution scaffold and repository hygiene | Medium | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
+| S0.1.1 | Build properties and analyzers | Small | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
+| S0.1.2 | Central package management and lock files | Small | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
+| S0.1.3 | REUSE, LICENSES and SPDX headers | Small | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
+| S0.1.4 | Folder READMEs | Small | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
+| S0.1.5 | Test projects and dependency direction tests | Small | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
+| S0.1.6 | First CI workflow | Small | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
 | M0.2 | Repository checks and CI | Medium | Planned | | |
 | S0.2.1 | Personal-data and forbidden-file scanner | Small | Planned | | |
 | S0.2.2 | Dependency license checker | Small | Planned | | |
@@ -229,7 +229,12 @@ Out:
 
 **Session log.**
 
-_No sessions yet._
+- **2026-10-29 (UTC), first session.** Pull request: [#2](https://github.com/recelilious/Paneport/pull/2).
+  - **Done.** With recelilious's approval, installed .NET SDK 10.0.403 on the workstation, which had none, and pinned it. Created the solution, the build properties, central package management with lock files, `eng/nuget.config`, the code-style rules, the dependency direction tests and one headless test, REUSE metadata and the SPDX lines, the folder READMEs, the first CI workflow, and `docs/design/solution-and-build.md`.
+  - **Verification.** On the workstation, from a clean tree, all five commands of the verification table pass: the locked restore changes no lock file, and the build reports 0 warnings and 0 errors. The tests pass 7 of 7, with 2, 2 and 3 per project and none skipped, and the format check exits with 0. The local planted failures fail as required (CS8602, WHITESPACE, NU1008). So do planted style violations, a reference from Paneport.Core to Paneport.Interop, and a reference to a missing project. In CI, on commit 790d695, `dotnet` passed on `windows-2025` and `ubuntu-24.04` and `checks` passed `reuse lint`, in both the push run and the pull request run. On the draft scratch pull request [#3](https://github.com/recelilious/Paneport/pull/3), a `.cs` file without the SPDX lines made `reuse lint` fail and name the file ([run](https://github.com/recelilious/Paneport/actions/runs/40812228249)), while `dotnet` passed; that pull request was closed without merging and its branch deleted.
+  - **Confirmed in this stage.** `dotnet test` must run in Microsoft.Testing.Platform mode, which `global.json` sets: in VSTest mode it runs nothing and exits with 0. The plain `dotnet test eng/ci.slnf` form works in that mode. `dotnet build`, `dotnet test` and `dotnet format` all accept `eng/ci.slnf` over `Paneport.slnx`. Avalonia.Headless.XUnit 12.1.4 runs on xunit.v3 3.2.2 but is built against its 3.x extensibility API, so xunit.v3 stays at 3.2.2. NuGet audits every package, and none had an advisory on 2026-10-29. `dotnet sln add` and `dotnet add package` keep the header comment. A README in `.github/` would replace the root README on GitHub. The licenses of the transitive packages and the CI actions are in section 5 of the design document.
+  - **Left.** recelilious accepted C-0003 1.2, which registers this stage's new components, on 2026-10-29. It is pull request [#4](https://github.com/recelilious/Paneport/pull/4) and merges before this stage. The status becomes Done when recelilious merges the stage branch.
+  - **For later sessions.** The workstation's own NuGet configuration has no package source, so restores rely on `eng/nuget.config`, which the .NET CLI honors. Update lock files with `dotnet restore eng/ci.slnf --force-evaluate`, because a plain restore keeps stale entries. Builds and test runs send telemetry unless the three variables of section 7 of the design document are set; CI sets them. M0.2: `eng/toolchain.json` keys each tool by name, with `version` and `source`; the mapping in section 5 of the design document can seed `eng/license-map.json`. M1.1: confirm that the 10.0.400-band workload set installs the iOS workload for the Xcode version it pins. M9.1: confirm which components listed in SkiaSharp's third-party notices the shipped iOS libraries contain. S0.0.2: the root README still says that there is no runnable code.
 
 ## M0.2 Repository checks and CI
 

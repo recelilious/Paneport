@@ -1,0 +1,15 @@
+{
+  "solution": {
+    "path": "..\\Paneport.slnx",
+    "projects": [
+      "src\\Paneport.Core\\Paneport.Core.csproj",
+      "src\\Paneport.Desktop\\Paneport.Desktop.csproj",
+      "src\\Paneport.Interop\\Paneport.Interop.csproj",
+      "src\\Paneport.Steam\\Paneport.Steam.csproj",
+      "src\\Paneport.UI\\Paneport.UI.csproj",
+      "tests\\Paneport.Core.Tests\\Paneport.Core.Tests.csproj",
+      "tests\\Paneport.Steam.Tests\\Paneport.Steam.Tests.csproj",
+      "tests\\Paneport.UI.Tests\\Paneport.UI.Tests.csproj"
+    ]
+  }
+}

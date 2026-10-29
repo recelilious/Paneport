@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+# SPDX-License-Identifier: MIT
 
 # <type>(<scope>): <subject>    English, imperative mood, at most 72 characters
 # type: feat | fix | perf | refactor | docs | contract | build | ci | test | chore

@@ -35,6 +35,19 @@ public sealed class TitleViewModelTests
         Assert.Equal("Downloading, 99%", InstallStateText(InstallState.Downloading(0.999)));
     }
 
+    // The doubles nearest to these fractions lie just below them, so their product with 100 does
+    // too; rounding down must still give the whole percentage.
+    [Theory]
+    [InlineData(0.29, "Downloading, 29%")]
+    [InlineData(0.57, "Downloading, 57%")]
+    [InlineData(0.58, "Downloading, 58%")]
+    [InlineData(0.9999999, "Downloading, 99%")]
+    [InlineData(1.0, "Downloading, 100%")]
+    public void ShowsExactPercentagesAndNever100BeforeTheEnd(double progress, string expected)
+    {
+        Assert.Equal(expected, InstallStateText(InstallState.Downloading(progress)));
+    }
+
     [Fact]
     public void ShowsEveryLaunchPath()
     {

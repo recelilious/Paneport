@@ -67,6 +67,12 @@ public sealed class TitleViewModel
         _ => throw new UnreachableException(),
     };
 
-    // Rounding down keeps a download that has not finished from showing 100%.
-    private static int DownloadPercent(double progress) => (int)Math.Floor(progress * 100);
+    // Rounding to six decimals first removes the binary error of the product, which is
+    // 28.999999999999996 for 0.29. Rounding down then gives the whole percentage, and a download
+    // that has not finished never shows 100%.
+    private static int DownloadPercent(double progress)
+    {
+        var percent = (int)Math.Floor(Math.Round(progress * 100, 6));
+        return progress < 1 && percent >= 100 ? 99 : percent;
+    }
 }

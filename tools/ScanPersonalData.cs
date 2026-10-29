@@ -979,7 +979,7 @@ internal static class SelfTest
                 [.. Encoding.BigEndianUnicode.GetPreamble(), .. Encoding.BigEndianUnicode.GetBytes(Text)]),
             ("UTF-32 with a byte-order mark", [.. Encoding.UTF32.GetPreamble(), .. Encoding.UTF32.GetBytes(Text)]),
             ("UTF-16 without a byte-order mark", Encoding.Unicode.GetBytes(Text)),
-            ("UTF-16 without a mark, with an ideographic space", Encoding.Unicode.GetBytes($"{Text}　")),
+            ("UTF-16 without a mark, with an ideographic space", Encoding.Unicode.GetBytes($"{Text}{(char)0x3000}")),
         ];
         foreach (var (name, bytes) in texts)
         {

@@ -108,7 +108,7 @@ During the work:
 At the end:
 
 1. Run the brief's verification and record the results in the pull request.
-2. Update the stage's status and append to its session log: the date in UTC, what was done, what is left, and what the next session must know.
+2. Update the stage's status and append to its session log: the date in UTC, what was done, what is left, and what the next session must know. When a Medium stage's verification passed and only the merge is left of its Done-when list, set it and its finished Small stages to Done in the branch's last commit. The status then reaches `main` with the merge, so the stages that depend on it can start as soon as recelilious merges. A Large stage stays In progress until recelilious accepts it; the commit that fills in its evidence record with a Pass verdict sets it to Accepted. A stage that is not finished stays In progress, or becomes Blocked with the reason.
 3. Commit following C-0002 and push the stage branch. Open a pull request unless recelilious asks otherwise.
 4. Give recelilious a short summary in Chinese, including the manual checks for a Large stage.
 

@@ -283,9 +283,11 @@ internal static partial class Patterns
         @"(?<![A-Za-z0-9_\\])\\{2}(?:\\{2})?[A-Za-z][A-Za-z0-9._-]*\\{1,2}[A-Za-z0-9$._-]+", Plain, Timeout)]
     public static partial Regex UncPath();
 
-    // The end of the text before a version: "version": ", Version=, "resolved": "[, Version.Parse(".
+    // The end of the text before a version: "version": ", Version=, version , build ,
+    // "resolved": "[, Version.Parse(".
     [GeneratedRegex(
-        @"(?:\b(?:resolved|requested)|version\w*)[""']?\s*[:=(,]\s*[""']?[\[(]?\s*$|version[\w.]*\s*\(\s*[""']$",
+        @"(?:\b(?:resolved|requested|build)|version\w*)[""']?\s*[:=(,]?\s*[""']?[\[(]?\s*$"
+            + @"|version[\w.]*\s*\(\s*[""']$",
         Caseless,
         Timeout)]
     public static partial Regex VersionLabelBefore();
@@ -850,6 +852,9 @@ internal static class SelfTest
             new("ip-address", false, "resolved version in a lock file", "    \"resolved\": \"8.3.1.3\",", LockFile),
             new("ip-address", false, "version range in a lock file", "    \"requested\": \"[8.3.1.3, )\",", LockFile),
             new("ip-address", false, "version with a v", "Released as v1.2.3.4."),
+            new("ip-address", false, "version after the word version", "Paneport version 1.2.3.4 started."),
+            new("ip-address", false, "build number", "OS build 10.0.200.123"),
+            new("ip-address", true, "address after a word that ends in build", "Rebuild at 192.0.2.20 failed."),
             new("ip-address", false, "version parsed in code", "var version = Version.Parse(\"1.2.3.4\");"),
             new("ip-address", false, "five-part version", "1.2.3.4.5"),
             new("ip-address", false, "version with a large part", "Avalonia.Angle.Windows.Natives 2.1.27548.20260419"),

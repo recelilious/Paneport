@@ -141,7 +141,7 @@ _No sessions yet._
 In:
 
 - The iOS workload set in `global.json` for the pinned .NET 10 SDK (C-0009 section 2). The exact property is to be confirmed in this stage, and the SDK pin may move in a reviewed change.
-- In `eng/toolchain.json`, the Xcode version that the workload set needs and the macOS runner image (C-0009 section 2), a pair that must exist on one hosted image. On 2026-10-27 the `macos-26` image had Xcode 26.0.1 to 26.6, Xcode 27 needed the preview label `xcode-27`, and the newest .NET 10 iOS workload, 27.1.10018, needed Xcode 27.1 (`avalonia_ui_layer.md` section 2.2). The pins are to be confirmed in this stage.
+- In `eng/toolchain.json`, the Xcode version that the workload set needs and the macOS runner image (C-0009 section 2), a pair that must exist on one hosted image. On 2026-10-27 the `macos-26` image had Xcode 26.0.1 to 26.6, Xcode 27 needed the preview label `xcode-27`, and the newest .NET 10 iOS workload, 27.1.10018, needed Xcode 27.1 (`avalonia_ui_layer.md` section 2.2). A check on 2026-10-29 found that the workload set of the pinned SDK 10.0.403 names iOS workload 27.1.10018, whose build check accepts only Xcode 27.1 (error E0191; [macios release](https://github.com/dotnet/macios/releases/tag/dotnet-10.0.1xx-xcode27.1-10018)). GitHub's changelog called the arm64 `xcode-27` image generally available on 2026-10-15, with Xcode 27.1 as its default ([changelog](https://github.blog/changelog/2026-10-15-xcode-27-runner-image-generally-available)), while the image README still showed a preview badge. That image carried .NET SDKs only up to 10.0.402, so the job installs the pinned SDK itself. The pins are to be confirmed in this stage.
 - `tools/CheckToolchain.cs` (M0.2) gains checks of `xcodebuild -version` and of the installed workload set, with new self-test cases.
 - `eng/mac/bootstrap.sh`, in Bash 3.2 (C-0010 section 1), for CI and a local Mac alike. It requires macOS on Apple silicon, runs `CheckToolchain` so that one tool owns the comparisons, installs the pinned workload set, explains anything missing, and exits non-zero on a mismatch. It never touches certificates, profiles or pairing files. M1.2 extends it.
 - A minimal `src/Paneport.iOS/`: `net10.0-ios` on Mono (C-0010 section 1), with an app delegate, a scene delegate and an empty view controller that shows the app name. It uses scenes from the start, because apps built with Xcode 27 must (`avalonia_ui_layer.md` section 2.2). The minimum iOS version is 26.0 (C-0001 section 2). The bundle identifier is D3's value, or a marked placeholder that M1.3 replaces. The project joins `Paneport.slnx` but not `eng/ci.slnf` (C-0011 section 4).
@@ -193,7 +193,7 @@ Scripts this stage creates: `eng/mac/bootstrap.sh` and the new `CheckToolchain` 
 
 **Risks and fallbacks.**
 
-- No workload set may have its Xcode on a stable hosted image. The options are an older workload set, the preview label, or building on recelilious's Mac (D1); recelilious decides.
+- No workload set may have its Xcode on a stable hosted image. The options are an older workload set or the preview label, because there is no local Mac (D1); recelilious decides.
 - Moving the SDK pin regenerates the lock files of L0, and the `dotnet` job must stay green.
 - An unsigned device build may need more properties than E13 lists. Ad-hoc signing comes with M1.3.
 - A locked restore for `ios-arm64` may add runtime-specific lock entries. If `tools/CheckLicenses.cs` cannot read them, this branch fixes the reader.

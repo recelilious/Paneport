@@ -139,18 +139,18 @@ The last column holds recelilious's answer and the date it was given. A stage se
 
 | ID | Decision | Needed before | Options or default | Recorded |
 |---|---|---|---|---|
-| D1 | Is a local Apple silicon Mac available? | M1.1, M4.2 | Without one, every Mac step runs in CI, and runtime debugging is much slower. | No local Mac (2026-10-30). Every Mac step runs in CI. |
-| D2 | Free or paid Apple developer account? | L1 | Paid is recommended: no three-app limit, one-year profiles, extended virtual addressing. | Free account (2026-10-30). |
+| D1 | Is a local Apple silicon Mac available? | M1.1, M4.2 | Without one, every Mac step runs in CI, and runtime debugging is much slower. | No local Mac (2026-10-29). Every Mac step runs in CI. |
+| D2 | Free or paid Apple developer account? | L1 | Paid is recommended: no three-app limit, one-year profiles, extended virtual addressing. | Free account (2026-10-29). |
 | D3 | The app's bundle identifier | M1.3 | C-0009 section 4 leaves it to recelilious. | Open. |
-| D4 | Who creates the fork repositories `Paneport-wine`, `Paneport-FEX` and `Paneport-dxmt` on GitHub | M4.1 | recelilious creates them, or authorizes Claude to create them with `gh`. | Under recelilious's GitHub account (2026-10-30). M4.1 confirms the names with recelilious, then creates them with `gh`. |
-| D5 | The upstream versions of Wine, FEX-Emu and DXMT to start from | M4.1 | M4.1 proposes versions with reasons; recelilious approves. | The newest versions that work together (2026-10-30). M4.1 proposes them with reasons; recelilious approves. |
+| D4 | Who creates the fork repositories `Paneport-wine`, `Paneport-FEX` and `Paneport-dxmt` on GitHub | M4.1 | recelilious creates them, or authorizes Claude to create them with `gh`. | Under recelilious's GitHub account (2026-10-29). M4.1 confirms the names with recelilious, then creates them with `gh`. |
+| D5 | The upstream versions of Wine, FEX-Emu and DXMT to start from | M4.1 | M4.1 proposes versions with reasons; recelilious approves. | The newest versions that work together (2026-10-29). M4.1 proposes them with reasons; recelilious approves. |
 | D6 | Test titles from recelilious's own library | M6.6, L7, L8 | A 2D or indie DX11 game (L6); a DRM-free Steam game and a 32-bit or fixed-base game (L7); a SteamStub-protected AAA game from the 2010s and a game that needs a launcher service (L8). | Open. |
-| D7 | Whether the `ios` CI job runs on every pull request or only before merging | M1.1 | C-0011 section 4 leaves it to recelilious once the job's run time is known. | Only before merging (2026-10-30). |
+| D7 | Whether the `ios` CI job runs on every pull request or only before merging | M1.1 | C-0011 section 4 leaves it to recelilious once the job's run time is known. | Only before merging (2026-10-29). |
 | D8 | Whether the JsonSchema.Net license terms are acceptable | M8.3 | If not, another validator is chosen (C-0011 section 5). | Open. |
 | D9 | How the app asks the user to relaunch after a session | M6.5 | C-0004 section 1 leaves it to a design document. | Open. |
 | D10 | Whether exporting saves to `Documents/` is enough while saves are not backed up | L7 | C-0004 section 4 open item. | Open. |
 | D11 | The paths for Direct3D 9, Direct3D 12 and 32-bit guests (FEX WoW64 or Box64) | M7.3, then after L6 | C-0004 section 2 open items. M7.3 settles 32-bit guests. | Open. |
-| D12 | Whether the device test app shares the main app's bundle identifier | M1.3 | Sharing it keeps the free account's three-app limit; recommended. | Shared (2026-10-30). |
+| D12 | Whether the device test app shares the main app's bundle identifier | M1.3 | Sharing it keeps the free account's three-app limit; recommended. | Shared (2026-10-29). |
 | D13 | How the Steam sign-in QR code is drawn | M2.3 (S2.3.10) | A QR code library registered under C-0003, or a small encoder of our own. | Open. |
 
 ## 5. Stage map
@@ -374,7 +374,7 @@ Each of these goes through the contract process (C-0012 section 2) when its stag
 | Mono for iOS ends with .NET 10, supported until 2027-05-11 | L10 is scheduled before that date, and only one Mono-specific call is used until then. |
 | Valve changes its client | Client builds are pinned, and the Dock host refuses unknown ones (C-0007 section 6). |
 | Fork builds are slow in CI | The `runtime` job caches fork builds by revision (M4.2). |
-| No local Mac (D1: none, 2026-10-30) | Every build and harness run goes through CI, so debugging is slower from M4.2 on. A Mac stays recommended from M4.2 on, and D1 can be revisited. |
+| No local Mac (D1: none, 2026-10-29) | Every build and harness run goes through CI, so debugging is slower from M4.2 on. A Mac stays recommended from M4.2 on, and D1 can be revisited. |
 
 ## 10. Backlog
 

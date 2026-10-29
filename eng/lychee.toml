@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+# SPDX-License-Identifier: MIT
+
+# lychee configuration (C-0011 section 2). The checks job runs the release that
+# eng/toolchain.json pins from the repository root:
+#
+#   lychee --config eng/lychee.toml --no-progress .
+#
+# docs/design/repository-checks.md explains these settings.
+
+# Links in Markdown files only. Files that git ignores are skipped. Hidden folders are read,
+# so that .github/workflows/README.md is checked, but not the .git folder itself.
+extensions = ["md"]
+hidden = true
+exclude_path = ['(^|/)\.git/']
+
+# Retry a failed request a few times before declaring a link dead.
+max_retries = 3
+retry_wait_time = 2
+timeout = 20

@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 # SPDX-License-Identifier: MIT
 
-# The jobs of C-0011 section 4 that exist so far. README.md in this folder explains them.
+# The jobs of C-0011 section 4 that exist so far. README.md in this folder lists them, and
+# docs/design/repository-checks.md describes every check.
 name: CI
 
 on:
@@ -19,6 +20,8 @@ env:
   AVALONIA_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
 
+# In both jobs, every step after the setup runs even when an earlier one failed, so that one
+# run shows every failure.
 jobs:
   dotnet:
     strategy:
@@ -40,29 +43,114 @@ jobs:
           cache: true
           cache-dependency-path: "**/packages.lock.json"
 
+      - name: Check the SDK against global.json
+        run: dotnet run tools/CheckToolchain.cs
+
       - name: Restore from the lock files
+        if: ${{ !cancelled() }}
         run: dotnet restore eng/ci.slnf --locked-mode
 
       - name: Build
+        if: ${{ !cancelled() }}
         run: dotnet build eng/ci.slnf -c Release --no-restore
 
       - name: Test
+        if: ${{ !cancelled() }}
         run: dotnet test eng/ci.slnf -c Release --no-build --fail-skips on
 
       - name: Check formatting
+        if: ${{ !cancelled() }}
         run: dotnet format eng/ci.slnf --verify-no-changes --no-restore
+
+      - name: Check the formatting of the tools
+        if: ${{ !cancelled() }}
+        run: dotnet format whitespace tools --folder --verify-no-changes
+
+      - name: Publish the trimmed test app, with every trimming warning shown
+        if: ${{ !cancelled() }}
+        run: dotnet publish tests/Paneport.TrimTest/Paneport.TrimTest.csproj -c Release --no-build
 
   checks:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - name: Check out
+      - name: Check out, with the whole history for gitleaks
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
-      - name: Install the REUSE tool that eng/toolchain.json pins
-        run: pipx install "reuse==$(jq -r '.tools.reuse.version' eng/toolchain.json)"
+      - name: Install the SDK that global.json pins
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
 
-      - name: Check license headers and texts
+      # REUSE comes from PyPI. gitleaks and lychee come from their GitHub releases, and each
+      # download must match the SHA-256 that eng/toolchain.json pins before it is unpacked.
+      - name: Install the CI tools that eng/toolchain.json pins
+        shell: bash
+        run: |
+          pipx install "reuse==$(jq -r '.tools.reuse.version' eng/toolchain.json)"
+          mkdir -p "$RUNNER_TEMP/bin"
+          for tool in $(jq -r '.tools | to_entries[] | select(.value.downloads["linux-x64"]) | .key' eng/toolchain.json); do
+            url=$(jq -r --arg tool "$tool" '.tools[$tool].downloads["linux-x64"].url' eng/toolchain.json)
+            sha256=$(jq -r --arg tool "$tool" '.tools[$tool].downloads["linux-x64"].sha256' eng/toolchain.json)
+            archive="$RUNNER_TEMP/$tool.tar.gz"
+            curl --fail --silent --show-error --location --retry 3 --output "$archive" "$url"
+            echo "$sha256  $archive" | sha256sum --check --strict
+            mkdir -p "$RUNNER_TEMP/$tool"
+            tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP/$tool"
+            binary=$(find "$RUNNER_TEMP/$tool" -type f -name "$tool" | head -n 1)
+            install -m 755 "$binary" "$RUNNER_TEMP/bin/$tool"
+          done
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Self-test the toolchain check
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/CheckToolchain.cs -- --self-test
+
+      - name: Check the SDK and the CI tools against their pins
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/CheckToolchain.cs -- --ci-tools
+
+      - name: Self-test the personal-data and forbidden-file check
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/ScanPersonalData.cs -- --self-test
+
+      - name: Self-test the dependency license check
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/CheckLicenses.cs -- --self-test
+
+      - name: Check license headers and texts (REUSE)
+        if: ${{ !cancelled() }}
         run: reuse lint
+
+      # The findings are redacted, and only their file, line, rule and commit are printed:
+      # gitleaks' own verbose output would also print each commit's author and e-mail address.
+      - name: Scan the whole history for secrets (gitleaks)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          report="$RUNNER_TEMP/gitleaks.json"
+          status=0
+          gitleaks git --config eng/gitleaks.toml --redact --ignore-gitleaks-allow --no-banner \
+            --report-format json --report-path "$report" . || status=$?
+          if [ -f "$report" ]; then
+            jq -r '.[] | "::error file=\(.File),line=\(.StartLine),title=gitleaks::\(.RuleID), commit \(.Commit[0:12])",
+              "\(.File):\(.StartLine): \(.RuleID): \(.Description) (commit \(.Commit[0:12]))"' "$report"
+          fi
+          exit "$status"
+
+      - name: Check for personal data and forbidden files
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/ScanPersonalData.cs
+
+      - name: Check links in Markdown (lychee)
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: lychee --config eng/lychee.toml --no-progress .
+
+      - name: Check dependency licenses
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/CheckLicenses.cs

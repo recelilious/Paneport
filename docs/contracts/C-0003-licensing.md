@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.1 |
-| Date | 2026-10-28 |
+| Version | 1.2 |
+| Date | 2026-10-29 |
 | Owner | recelilious |
 
 These are engineering rules for managing licenses, not legal advice. Before a formal public release, have a professional review them if possible.
@@ -54,7 +54,7 @@ Before adding any dependency, register it in the table in section 6.
 
 | Category | Licenses | Rule |
 |---|---|---|
-| Allowed | MIT, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, 0BSD, BSL-1.0, Apache-2.0, Apache-2.0 WITH LLVM-exception, CC0-1.0, FTL | Keep the copyright notices. Apache-2.0 also requires keeping the NOTICE file. FTL requires crediting FreeType in the documentation. |
+| Allowed | MIT, MIT-Modern-Variant, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, 0BSD, BSL-1.0, Apache-2.0, Apache-2.0 WITH LLVM-exception, CC0-1.0, FTL, OFL-1.1 | Keep the copyright notices. Apache-2.0 also requires keeping the NOTICE file. FTL requires crediting FreeType in the documentation. OFL-1.1 is only for fonts: keep the copyright notice and the license with the font, never sell the font by itself, and never give a modified font the original's Reserved Font Names. |
 | Conditional | LGPL-2.1-only, LGPL-2.1-or-later, LGPL-3.0, MPL-2.0 | Only as separately identifiable components. Changes are published under the same license. Relinking must stay possible. LGPL-3.0 also requires installation information. |
 | Forbidden | GPL-2.0, GPL-3.0, AGPL-3.0, SSPL, non-commercial-only licenses, code with no license | Never enters this repository, a fork repository or the app package. |
 | Forbidden | Vendor SDK headers, decompiled code | For example the Steamworks SDK and Windows SDK headers. Write the needed interface definitions ourselves and record their basis in a design document. |
@@ -65,7 +65,7 @@ For dual-licensed components, choose the less restrictive option. For example, F
 
 ## 6. Component register
 
-Checked on 2026-10-28. Licenses are taken from each repository's LICENSE file.
+Checked on 2026-10-28, and on 2026-10-29 for the rows that version 1.2 added. Licenses are taken from each repository's license file.
 
 | Component | Purpose | License | Category |
 |---|---|---|---|
@@ -81,7 +81,13 @@ Checked on 2026-10-28. Licenses are taken from each repository's LICENSE file.
 | SteamKit2 | Steam network protocol | LGPL-2.1-only | Conditional |
 | protobuf-net | SteamKit2 dependency | Apache-2.0 | Allowed |
 | Avalonia | UI shell | MIT | Allowed |
-| SkiaSharp | Avalonia's rendering library | MIT | Allowed |
+| SkiaSharp | Avalonia's rendering library | MIT. Its native-asset packages contain the Skia library (BSD-3-Clause) and list the further third-party components they contain in their `THIRD-PARTY-NOTICES.txt`. | Allowed |
+| Avalonia.BuildServices | Usage statistics that Avalonia's packages collect at build time; CI turns them off with `AVALONIA_TELEMETRY_OPTOUT` | MIT | Allowed |
+| MicroCom.Runtime | COM-style interop runtime, an Avalonia dependency | MIT | Allowed |
+| HarfBuzzSharp | Text shaping for Avalonia, with native HarfBuzz libraries | MIT. The native HarfBuzz library is under HarfBuzz's "Old MIT" license (MIT-Modern-Variant), and the native-asset packages list further components in their `THIRD-PARTY-NOTICES.txt`. | Allowed |
+| ANGLE (Avalonia.Angle.Windows.Natives) | OpenGL ES on Direct3D for Avalonia on Windows; desktop head only, not shipped | BSD-3-Clause | Allowed |
+| Tmds.DBus.Protocol | D-Bus client for Avalonia on Linux; desktop head only, not shipped | MIT | Allowed |
+| Inter font (Avalonia.Fonts.Inter) | Default font of Avalonia's headless platform; tests only, not shipped | OFL-1.1 | Allowed |
 | .NET runtime | Managed runtime | MIT | Allowed |
 | .NET for iOS (dotnet/macios) | iOS bindings | MIT | Allowed |
 | SDL | Input and audio helpers | Zlib | Allowed |
@@ -93,6 +99,8 @@ Checked on 2026-10-28. Licenses are taken from each repository's LICENSE file.
 | mingw-w64 runtime | Linked by llvm-mingw into Windows-side binaries that ship | Several permissive licenses with notice requirements, listed in its `COPYING.MinGW-w64-runtime.txt` | Under review: collect the notices and confirm that no code of unclear license is linked, before the first Windows-side build |
 | xunit.v3 | Test framework, not shipped | Apache-2.0 | Allowed |
 | Avalonia.Headless.XUnit | Headless UI tests, not shipped | MIT | Allowed |
+| Microsoft.Testing.Platform | Runs the xunit.v3 tests under `dotnet test`, with its MSBuild, report and telemetry extensions; not shipped | MIT | Allowed |
+| Application Insights SDK (Microsoft.ApplicationInsights) | Sends the test platform's telemetry; not shipped; CI turns it off | MIT | Allowed |
 | CommunityToolkit.Mvvm | MVVM source generators | MIT | Allowed |
 | JsonSchema.Net | Schema validation, CI only | MIT source; NuGet packages under the json-everything Open Source Maintenance Fee agreement | Under review; not used until recelilious decides |
 | llvm-mingw | Windows-side toolchain | Recorded when first pinned | Tool |
@@ -103,6 +111,8 @@ Checked on 2026-10-28. Licenses are taken from each repository's LICENSE file.
 | gitleaks (command-line tool) | Secret scanning | MIT | Tool |
 | REUSE tool | License header checks | GPL-3.0-or-later | Tool |
 | lychee | Link checks | MIT OR Apache-2.0 | Tool |
+| actions/checkout | GitHub Action that checks out the repository in CI | MIT | Tool |
+| actions/setup-dotnet | GitHub Action that installs the SDK that `global.json` pins in CI | MIT | Tool |
 
 Media decoding prefers Apple's system frameworks, which avoids GStreamer's GPL plugins and codec patent issues.
 
@@ -184,6 +194,20 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - GCC discussion: <https://gcc.gnu.org/pipermail/gcc/2026-April/247958.html>
 - GNU Binutils statement: <https://gnu.googlesource.com/binutils-gdb/+/c0316a54b489d68e30de718aee69ab441799aad2%5E%21>
 - Survey of open-source AI policies: <https://www.ssdnodes.com/learn/lang/pcm/ai-assisted-code-open-source-policies>
+- Avalonia.BuildServices license: <https://github.com/AvaloniaUI/Avalonia.BuildServices/blob/HEAD/LICENSE>
+- MicroCom license: <https://github.com/kekekeks/MicroCom/blob/HEAD/LICENSE>
+- SkiaSharp and HarfBuzzSharp license: <https://github.com/mono/SkiaSharp/blob/HEAD/LICENSE.md>
+- Skia license: <https://github.com/google/skia/blob/HEAD/LICENSE>
+- HarfBuzz license: <https://github.com/harfbuzz/harfbuzz/blob/HEAD/COPYING>
+- ANGLE license, Avalonia's build: <https://github.com/AvaloniaUI/angle/blob/HEAD/LICENSE>
+- Tmds.DBus license: <https://github.com/tmds/Tmds.DBus/blob/HEAD/COPYING>
+- Inter font license: <https://github.com/rsms/inter/blob/HEAD/LICENSE.txt>
+- Microsoft.Testing.Platform license: <https://github.com/microsoft/testfx/blob/HEAD/LICENSE>
+- Application Insights SDK license: <https://github.com/microsoft/ApplicationInsights-dotnet/blob/HEAD/LICENSE>
+- actions/checkout license: <https://github.com/actions/checkout/blob/HEAD/LICENSE>
+- actions/setup-dotnet license: <https://github.com/actions/setup-dotnet/blob/HEAD/LICENSE>
+- MIT-Modern-Variant: <https://spdx.org/licenses/MIT-Modern-Variant.html>
+- OFL-1.1: <https://spdx.org/licenses/OFL-1.1.html>
 
 ## Change log
 
@@ -192,3 +216,4 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious; translated to English; corrected the FEX-Emu entry in section 10, since FEX-Emu forbids AI-generated contributions |
 | 1.1 | 2026-10-28 | Accepted by recelilious. Adds the Build and CI tool category, LGPL-2.1-only and Apache-2.0 WITH LLVM-exception to section 5. Registers the llvm-mingw runtime libraries, test libraries and CI tools in section 6, and corrects SteamKit2 to LGPL-2.1-only. Creates `LICENSES/` with the first SPDX header and generates third-party license texts into releases (section 4). Releases attach source archives (section 3). Section 9 allows the convention and URL scheme documented in StikJIT's `INTEGRATION.md`. |
+| 1.2 | 2026-10-29 | Accepted by recelilious. Adds MIT-Modern-Variant, and OFL-1.1 for fonts only, to section 5. Registers in section 6 the components that stage M0.1's packages and CI workflow bring in: Avalonia.BuildServices, MicroCom.Runtime, HarfBuzzSharp, ANGLE, Tmds.DBus.Protocol, the Inter font, Microsoft.Testing.Platform, the Application Insights SDK, and the actions/checkout and actions/setup-dotnet actions. The SkiaSharp row names the Skia library and the third-party notices of its native-asset packages. |

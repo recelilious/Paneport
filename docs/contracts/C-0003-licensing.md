@@ -185,6 +185,43 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - GNU Binutils statement: <https://gnu.googlesource.com/binutils-gdb/+/c0316a54b489d68e30de718aee69ab441799aad2%5E%21>
 - Survey of open-source AI policies: <https://www.ssdnodes.com/learn/lang/pcm/ai-assisted-code-open-source-policies>
 
+## Proposed changes for 1.2
+
+**Not yet accepted.** Version 1.1 above stays binding until recelilious approves these changes. They come from stage M0.1: its packages bring in components that the register does not cover yet, and so does its first CI workflow. Each was checked on 2026-10-29 against its project's license file and its package metadata.
+
+1. **Section 5, Allowed row.** Add `MIT-Modern-Variant` and `OFL-1.1` to the licenses. Add to the rule: "OFL-1.1 is only for fonts: keep the copyright notice and the license with the font, never sell the font by itself, and never give a modified font the original's Reserved Font Names."
+2. **Section 6, SkiaSharp row.** Change its license to: "MIT. Its native-asset packages contain the Skia library (BSD-3-Clause) and list the further third-party components they contain in their `THIRD-PARTY-NOTICES.txt`."
+3. **Section 6.** Add these rows:
+
+   | Component | Purpose | License | Category |
+   |---|---|---|---|
+   | Avalonia.BuildServices | Usage statistics that Avalonia's packages collect at build time; CI turns them off with `AVALONIA_TELEMETRY_OPTOUT` | MIT | Allowed |
+   | MicroCom.Runtime | COM-style interop runtime, an Avalonia dependency | MIT | Allowed |
+   | HarfBuzzSharp | Text shaping for Avalonia, with native HarfBuzz libraries | MIT. The native HarfBuzz library is under HarfBuzz's "Old MIT" license (MIT-Modern-Variant), and the native-asset packages list further components in their `THIRD-PARTY-NOTICES.txt` | Allowed |
+   | ANGLE (Avalonia.Angle.Windows.Natives) | OpenGL ES on Direct3D for Avalonia on Windows; desktop head only, not shipped | BSD-3-Clause | Allowed |
+   | Tmds.DBus.Protocol | D-Bus client for Avalonia on Linux; desktop head only, not shipped | MIT | Allowed |
+   | Inter font (Avalonia.Fonts.Inter) | Default font of Avalonia's headless platform; tests only, not shipped | OFL-1.1 | Allowed |
+   | Microsoft.Testing.Platform | Runs the xunit.v3 tests under `dotnet test`, with its MSBuild, report and telemetry extensions; not shipped | MIT | Allowed |
+   | Application Insights SDK (Microsoft.ApplicationInsights) | Sends the test platform's telemetry; not shipped; CI turns it off | MIT | Allowed |
+   | actions/checkout | GitHub Action that checks out the repository in CI | MIT | Tool |
+   | actions/setup-dotnet | GitHub Action that installs the SDK that `global.json` pins in CI | MIT | Tool |
+
+4. **Section 12.** Add these sources:
+   - Avalonia.BuildServices license: <https://github.com/AvaloniaUI/Avalonia.BuildServices/blob/HEAD/LICENSE>
+   - MicroCom license: <https://github.com/kekekeks/MicroCom/blob/HEAD/LICENSE>
+   - SkiaSharp and HarfBuzzSharp license: <https://github.com/mono/SkiaSharp/blob/HEAD/LICENSE.md>
+   - Skia license: <https://github.com/google/skia/blob/HEAD/LICENSE>
+   - HarfBuzz license: <https://github.com/harfbuzz/harfbuzz/blob/HEAD/COPYING>
+   - ANGLE license, Avalonia's build: <https://github.com/AvaloniaUI/angle/blob/HEAD/LICENSE>
+   - Tmds.DBus license: <https://github.com/tmds/Tmds.DBus/blob/HEAD/COPYING>
+   - Inter font license: <https://github.com/rsms/inter/blob/HEAD/LICENSE.txt>
+   - Microsoft.Testing.Platform license: <https://github.com/microsoft/testfx/blob/HEAD/LICENSE>
+   - Application Insights SDK license: <https://github.com/microsoft/ApplicationInsights-dotnet/blob/HEAD/LICENSE>
+   - actions/checkout license: <https://github.com/actions/checkout/blob/HEAD/LICENSE>
+   - actions/setup-dotnet license: <https://github.com/actions/setup-dotnet/blob/HEAD/LICENSE>
+   - MIT-Modern-Variant: <https://spdx.org/licenses/MIT-Modern-Variant.html>
+   - OFL-1.1: <https://spdx.org/licenses/OFL-1.1.html>
+
 ## Change log
 
 | Version | Date | Notes |

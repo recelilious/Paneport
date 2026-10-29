@@ -52,7 +52,7 @@ The three tools are C# file-based apps, run from the repository root with `dotne
 
 ### 3.1 Rules
 
-Exact formats were checked against public documentation (section 10). Device model identifiers, such as `iPhone18,1`, are allowed and match no rule (C-0011 section 2).
+Exact formats were checked against public documentation (section 11). Device model identifiers, such as `iPhone18,1`, are allowed and match no rule (C-0011 section 2).
 
 | Rule | Matches | Known false positives, and how they are kept out |
 |---|---|---|
@@ -105,7 +105,7 @@ While the repository is public, CI logs are public too. The scanner prints the f
 
 **Adding a dependency.** Register it under C-0003 first (a contract change that recelilious approves), then add the package, tool, action or submodule, then map it in `eng/license-map.json`, then run `dotnet run tools/CheckLicenses.cs`. The pull request lists every new name with its row.
 
-**Not covered.** The tools that the runner image provides (Bash, curl, jq, pipx, tar) are part of the pinned image, not of the repository. The Python packages that pipx installs together with the REUSE tool are not pinned (section 9).
+**Not covered.** The tools that the runner image provides (Bash, curl, jq, pipx, tar) are part of the pinned image, not of the repository. The Python packages that pipx installs together with the REUSE tool are not pinned (section 10).
 
 ## 5. Toolchain pins
 
@@ -158,9 +158,9 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 
 **gitleaks.** It runs from the pinned release, not as the gitleaks GitHub Action (C-0011 section 2). `--redact` replaces every secret in its output and report, which is the option the L0 brief asked to confirm. `--ignore-gitleaks-allow` ignores inline `gitleaks:allow` comments, so that every exception lives in `eng/gitleaks.toml`, which extends gitleaks' default rules and adds nothing yet. The step prints each finding's file, line, rule and commit from the JSON report, and an annotation, because gitleaks' own verbose output would also print the author and e-mail address of each commit. A false positive goes into `eng/gitleaks.toml` with its reason, as narrowly as possible; a real secret is reported to recelilious at once and is never quoted.
 
-**lychee.** It checks every Markdown file that git does not ignore, including `.github/workflows/README.md` in a hidden folder, but not the `.git` folder. It retries a failed request up to three times. It uses the workflow's token, through `GITHUB_TOKEN`, for links to github.com, which GitHub rate-limits for anonymous requests; the token can only read this repository and expires with the job.
+**lychee.** The online run checks every Markdown file that git does not ignore outside `docs/research/`, including `.github/workflows/README.md` in a hidden folder, but not the `.git` folder. It retries a failed request up to three times, and reports a request that still times out without failing on it. It uses the workflow's token, through `GITHUB_TOKEN`, for links to github.com, which GitHub rate-limits for anonymous requests; the token can only read this repository and expires with the job.
 
-**Link-check policy.** The first full run, on 2026-10-29, checked 1,169 unique links. Every file outside `docs/research/` passed. All 70 failures were external sources of the research notes: 38 sites that turn automated clients away (403), 14 pages that are gone (404 and 410), 3 rate limits (429), and 15 server errors, network errors and timeouts. The research notes are a published snapshot (`docs/research/README.md`), so such failures come and go without any change to the repository. Following the fallback of the L0 brief, CI therefore checks the research notes narrowly: their relative links are checked offline, and their external links are not checked. Everything else, the contracts, the design documents and the READMEs, is checked online. recelilious agrees this policy before the stage merges. The other fallback of the brief, accepting more status codes, would still fail on the 14 dead pages and on every page that dies later.
+**Link-check policy.** The first full run, on 2026-10-29, checked 1,169 unique links. Every file outside `docs/research/` passed. All 70 failures were external sources of the research notes: 38 sites that turn automated clients away (403), 14 pages that are gone (404 and 410), 3 rate limits (429), and 15 server errors, network errors and timeouts. The research notes are a published snapshot (`docs/research/README.md`), so such failures come and go without any change to the repository. Following the fallback of the L0 brief, CI therefore checks the research notes narrowly: their relative links are checked offline, and their external links are not checked. Everything else, the contracts, the design documents and the READMEs, is checked online. The second run then failed only on one timeout, from a slow server behind a link in C-0003 that had passed the first run; a timeout is therefore reported but does not fail the check, while a page that is gone or a failed connection still does. recelilious agrees this policy before the stage merges. The other fallback of the brief, accepting more status codes, would still fail on the 14 dead pages and on every page that dies later.
 
 ## 7. The trimmed test app
 
@@ -168,7 +168,7 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 
 - **Runtime identifiers.** A trimmed publish is self-contained and needs runtime-specific assets. A runtime identifier given on the command line, as `dotnet publish -r` or `--use-current-runtime` would give it, also reaches the libraries; their lock files hold no runtime, so their locked restore fails (NU1004). The app therefore sets `RuntimeIdentifier` itself, to the SDK's own runtime identifier, and lists `linux-x64` and `win-x64` in `RuntimeIdentifiers`, so that its lock file covers both CI runners and the workstation and is the same everywhere. A machine with another runtime adds its identifier there in a reviewed change.
 - **Build and test.** The app is part of `eng/ci.slnf` and `Paneport.slnx`. `dotnet test` skips it, because it is not a test project. CI publishes it with `--no-build` after the Release build.
-- **Warnings.** Warnings are errors, so any trimming warning fails the publish. On 2026-10-29 the publish on Windows reported none, with Avalonia 12.1.4 and the libraries as M0.1 left them. If a dependency ever brings a warning, for example when M0.3 adds CommunityToolkit.Mvvm, the session lists the warning in its pull request and asks recelilious whether the publish fails on it or an approved list under `eng/` excuses it. Code suppressions stay limited to Paneport.Steam (C-0010 section 2).
+- **Warnings.** Warnings are errors, so any trimming warning fails the publish. On 2026-10-29 the publish reported none, on the workstation and on both CI runners, with Avalonia 12.1.4 and the libraries as M0.1 left them. If a dependency ever brings a warning, for example when M0.3 adds CommunityToolkit.Mvvm, the session lists the warning in its pull request and asks recelilious whether the publish fails on it or an approved list under `eng/` excuses it. Code suppressions stay limited to Paneport.Steam (C-0010 section 2).
 
 ## 8. Running the checks locally
 
@@ -203,7 +203,7 @@ Each check is shown to fail once, on a draft pull request from a scratch branch 
 | A misformatted line in a `.cs` file | Format check in `dotnet` |
 | A reflection call in Paneport.Core that the trimming analyzers reject | Build in `dotnet` |
 
-A run passes when each planted change fails its step and that step's output names the file. The forbidden-file rule is checked by its self-test only. The pull request of the stage links the run.
+A run passes when each planted change fails its step and that step's output names the file. The planted build error also fails the test step and the trimmed publish, which need the build. The forbidden-file rule is checked by its self-test only. The pull request of the stage links the run.
 
 ## 10. Open items
 

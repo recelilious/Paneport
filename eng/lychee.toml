@@ -19,7 +19,10 @@ hidden = true
 # relative links are checked by the second, offline run instead.
 exclude_path = ['(^|/)\.git/', '(^|/)docs/research/']
 
-# Retry a failed request a few times before declaring a link dead.
+# Retry a failed request a few times before declaring a link dead. A request that still times
+# out shows a slow server, not a dead link: it is reported but does not fail the check. A page
+# that is gone or a connection that fails still fails it.
 max_retries = 3
 retry_wait_time = 2
 timeout = 20
+accept_timeouts = true

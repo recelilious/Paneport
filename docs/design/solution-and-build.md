@@ -21,19 +21,19 @@ This document records how Paneport's .NET solution is laid out and built: the pr
 
 | Project | Kind | Role (C-0004 section 2) | May reference in the solution | Holds now | Full design |
 |---|---|---|---|---|---|
-| Paneport.Core | Library | Domain model, view models, settings, compatibility database reader, and the interfaces that platform code implements. No platform API. | Nothing | Nothing | M0.3, in `app-shell.md` |
+| Paneport.Core | Library | Domain model, view models, settings, compatibility database reader, and the interfaces that platform code implements. No platform API. | Nothing | The shell's domain model, service interfaces and view models | M0.3, in `app-shell.md` |
 | Paneport.Steam | Library | Steam sign-in, licenses, app information and depot downloads, built on SteamKit2. No UI code. | Paneport.Core | Nothing | M2.3, with its first code |
-| Paneport.UI | Library | Avalonia views, styles and overlay controls shared by both app heads. | Paneport.Core | The application class with the Fluent theme | M0.3, in `app-shell.md` |
+| Paneport.UI | Library | Avalonia views, styles and overlay controls shared by both app heads. | Paneport.Core | The application class, the shell's main view and its four pages | M0.3, in `app-shell.md` |
 | Paneport.Interop | Library | Source-generated bindings to the host interface. The only project allowed to use unsafe code. | Nothing | Nothing | M1.2, with its first bindings |
-| Paneport.Desktop | Executable | Desktop head with a fake host, for UI work on Windows. Never shipped. Never writes a Steam sign-in token to disk. | Paneport.Core, Paneport.Steam, Paneport.UI | A window titled Paneport | M0.3, in `app-shell.md` |
-| Paneport.Core.Tests | Test executable | Tests of Paneport.Core | Paneport.Core | Dependency direction tests | M0.3 adds tests |
+| Paneport.Desktop | Executable | Desktop head with a fake host, for UI work on Windows. Never shipped. Never writes a Steam sign-in token to disk. | Paneport.Core, Paneport.Steam, Paneport.UI | The composition root, the window titled Paneport and the fakes | M0.3, in `app-shell.md` |
+| Paneport.Core.Tests | Test executable | Tests of Paneport.Core | Paneport.Core | Dependency direction tests, and tests of the domain model, interfaces and view models | M0.3, in `app-shell.md` |
 | Paneport.Steam.Tests | Test executable | Tests of Paneport.Steam | Paneport.Steam, Paneport.Core | Dependency direction tests | M2.3 adds tests |
-| Paneport.UI.Tests | Test executable | Tests of Paneport.UI, headless | Paneport.UI, Paneport.Core | Dependency direction tests, one headless test | M0.3 adds tests |
+| Paneport.UI.Tests | Test executable | Tests of Paneport.UI, headless | Paneport.UI, Paneport.Core | Dependency direction tests, and headless tests of the shell and its pages | M0.3, in `app-shell.md` |
 | Paneport.TrimTest | Executable | Trimmed publish of the four libraries with their dependencies (C-0011 section 4). Not a test project. | Paneport.Core, Paneport.Steam, Paneport.UI, Paneport.Interop | A program that does nothing | M0.2, in `repository-checks.md` |
 
 Nothing references Paneport.Desktop or Paneport.iOS. A test project references only the project it tests and that project's dependencies, plus registered test libraries. Paneport.TrimTest checks the four libraries together, so it references each of them. Later stages add Paneport.iOS (M1.1 and M1.3; it may reference Core, Steam, UI and Interop), `tests/Paneport.Interop.Tests` (M1.2) and `tests/device` (M1.3; it may also reference Interop).
 
-Paneport.Desktop creates the desktop application lifetime and its window in `Program.cs`, so Paneport.UI holds no desktop-only concept: the iOS head shows a single main view instead of a window. Paneport.Desktop is a console executable, so that `dotnet run` shows Avalonia's errors in the terminal; a Windows-subsystem executable would detach from it.
+Paneport.Desktop creates the desktop application lifetime in `Program.cs` and its window in `CompositionRoot.cs`, so Paneport.UI holds no desktop-only concept: the iOS head shows a single main view instead of a window. Paneport.Desktop is a console executable, so that `dotnet run` shows Avalonia's errors in the terminal; a Windows-subsystem executable would detach from it.
 
 **Adding a project.**
 
@@ -100,7 +100,7 @@ No rule needed relaxing for the tests so far. If one does, it is relaxed only fo
 4. Run `dotnet restore eng/ci.slnf --force-evaluate`, and commit every changed lock file.
 5. In the pull request, list every new package ID with the register row that covers it.
 
-**Packages in the lock files after M0.1.** "1.2" marks a row that C-0003 version 1.2 added for this stage; recelilious accepted it on 2026-10-29.
+**Packages in the lock files after M0.3.** "1.2" marks a row that C-0003 version 1.2 added for M0.1; recelilious accepted it on 2026-10-29.
 
 | Packages | Brought in by | Register row |
 |---|---|---|
@@ -115,6 +115,7 @@ No rule needed relaxing for the tests so far. If one does, it is relaxed only fo
 | Tmds.DBus.Protocol (0.94.1) | Avalonia.FreeDesktop | Tmds.DBus.Protocol (1.2) |
 | Microsoft.NET.ILLink.Tasks (10.0.14), Microsoft.Bcl.AsyncInterfaces (6.0.0), Microsoft.Win32.Registry (5.0.0) | The SDK, for `IsAotCompatible`; xunit.v3 | .NET runtime |
 | xunit.v3, xunit.v3.assert, xunit.v3.common, xunit.v3.core.mtp-v1, xunit.v3.extensibility.core, xunit.v3.mtp-v1, xunit.v3.runner.common, xunit.v3.runner.inproc.console (3.2.2), xunit.analyzers (1.27.0) | The test projects | xunit.v3 |
+| CommunityToolkit.Mvvm (8.4.2) | Paneport.Core, since M0.3; it brings no other package | CommunityToolkit.Mvvm |
 | Microsoft.Testing.Platform, Microsoft.Testing.Platform.MSBuild, Microsoft.Testing.Extensions.TrxReport.Abstractions, Microsoft.Testing.Extensions.Telemetry (1.9.1) | xunit.v3 | Microsoft.Testing.Platform (1.2) |
 | Microsoft.ApplicationInsights (2.23.0) | Microsoft.Testing.Extensions.Telemetry | Application Insights SDK (1.2) |
 
@@ -127,7 +128,7 @@ Avalonia's usual templates add `Avalonia.Fonts.Inter` to the app itself. Panepor
 - **Commands.** Locally: `dotnet test eng/ci.slnf -c Release`. In CI, after the build: `dotnet test eng/ci.slnf -c Release --no-build --fail-skips on`. The solution filter works as a positional argument; `--solution eng/ci.slnf` works as well.
 - **Pass criteria.** A test project that runs no test exits with code 8, which fails `dotnet test` (Microsoft.Testing.Platform's default). `--fail-skips on`, an xunit.v3 option, turns every skipped test into a failure. A stage that needs a skipped test changes the CI command deliberately.
 - **Dependency direction tests.** Each test project has `DependencyDirectionTests`, which reads the project references that the build recorded in the test assembly's `deps.json` file, through `tests/Shared/ProjectReferences.cs`. It checks its own project and the test project itself against the rules of section 2. `deps.json` keeps every project reference, while the compiler drops a reference that no code uses from the assembly's metadata, so reflection would miss exactly the references that need catching. A planted reference from Paneport.Core to Paneport.Interop failed Paneport.Core.Tests. Paneport.Interop and Paneport.Desktop have no test project in `eng/ci.slnf`. Interop's rule gets its test with `tests/Paneport.Interop.Tests` in M1.2. Desktop's own references have no test; a reference to Desktop from Core, Steam or UI fails that project's test.
-- **Headless test.** `TestAppBuilder` starts the real Paneport application on Avalonia's headless platform for every `[AvaloniaFact]` test, and `HeadlessApplicationTests` shows a window there. Avalonia.Headless.XUnit 12.1.4 runs on xunit.v3 3.2.2, so the fallback of driving Avalonia.Headless directly was not needed.
+- **Headless test.** `TestAppBuilder` starts the real Paneport application on Avalonia's headless platform for every `[AvaloniaFact]` test, and `HeadlessApplicationTests` shows a window there. Avalonia.Headless.XUnit 12.1.4 runs on xunit.v3 3.2.2, so the fallback of driving Avalonia.Headless directly was not needed. Since M0.3 each headless test also fails when Avalonia logs a warning, which is how it reports a binding error, and the UI tests run one at a time; `app-shell.md` section 8 explains both.
 
 ## 7. Telemetry
 

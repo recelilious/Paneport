@@ -9,10 +9,10 @@ Paneport's own source code. Everything here is original and released under the M
 
 | Folder | What it holds | State |
 |---|---|---|
-| [Paneport.Core](Paneport.Core/README.md) | The domain model, view models, settings, and the interfaces that platform code implements | No code yet. M0.3 adds the first. |
+| [Paneport.Core](Paneport.Core/README.md) | The domain model, view models, settings, and the interfaces that platform code implements | The shell's domain model, service interfaces and view models (M0.3). |
 | [Paneport.Steam](Paneport.Steam/README.md) | Steam sign-in, licenses, app information and depot downloads, built on SteamKit2 | No code yet. M2.3 adds the first. |
-| [Paneport.UI](Paneport.UI/README.md) | The Avalonia application class, and the views and styles that both app heads share | The application class only. M0.3 adds the pages. |
+| [Paneport.UI](Paneport.UI/README.md) | The Avalonia application class, and the views and styles that both app heads share | The shell's main view and its four pages (M0.3). |
 | [Paneport.Interop](Paneport.Interop/README.md) | Source-generated bindings to the native host interface | No code yet. M1.2 adds the first bindings. |
-| [Paneport.Desktop](Paneport.Desktop/README.md) | The Avalonia desktop head, for working on the UI from Windows. Never shipped. | Opens an empty window titled Paneport. |
+| [Paneport.Desktop](Paneport.Desktop/README.md) | The Avalonia desktop head, for working on the UI from Windows. Never shipped. | Shows the shell over a fake host and fictional sample titles (M0.3). |
 
 The other folders of the C-0004 layout (`Paneport.iOS`, `native`, `jit-broker` and `guest`) are created by the stages that write their first code.

@@ -4,9 +4,87 @@ SPDX-License-Identifier: MIT
 -->
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Paneport.Core.ViewModels"
+             xmlns:views="using:Paneport.UI.Views"
              x:Class="Paneport.UI.App"
              RequestedThemeVariant="Default">
+  <!--
+  Each page view model has its view here. The match is by type and is compiled, so no view is
+  looked up by name at run time, which the trimming analyzers would reject.
+  -->
+  <Application.DataTemplates>
+    <DataTemplate DataType="vm:LibraryViewModel">
+      <views:LibraryPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:TitleDetailsViewModel">
+      <views:TitleDetailsPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:SettingsViewModel">
+      <views:SettingsPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:DiagnosticsViewModel">
+      <views:DiagnosticsPage />
+    </DataTemplate>
+  </Application.DataTemplates>
+
   <Application.Styles>
     <FluentTheme />
+
+    <!-- The bar above the page, with the back button and the page's heading. -->
+    <Style Selector="Border.header">
+      <Setter Property="Padding" Value="16,12" />
+    </Style>
+    <Style Selector="TextBlock.heading">
+      <Setter Property="FontSize" Value="22" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- The navigation bar below the page, one equal cell per section. -->
+    <Style Selector="ListBox.navigation">
+      <Setter Property="Padding" Value="8,4" />
+    </Style>
+    <Style Selector="ListBox.navigation ListBoxItem">
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="Padding" Value="12,10" />
+    </Style>
+
+    <Style Selector="TextBlock.error">
+      <Setter Property="Margin" Value="16,0,16,8" />
+      <Setter Property="Foreground" Value="#C42B1C" />
+    </Style>
+
+    <!-- Secondary text works in light and dark themes alike by fading the theme's own color. -->
+    <Style Selector="TextBlock.secondary">
+      <Setter Property="Opacity" Value="0.7" />
+    </Style>
+    <Style Selector="TextBlock.section">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.name">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- A title in the Library list: a full-width button that opens the title. -->
+    <Style Selector="Button.title">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="12" />
+    </Style>
+    <Style Selector="Border.chip">
+      <Setter Property="BorderBrush" Value="#80808080" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="6,2" />
+    </Style>
+
+    <!-- Label and value pairs on the Title details and Diagnostics pages. -->
+    <Style Selector="Grid.facts > :is(Control)">
+      <Setter Property="Margin" Value="0,0,24,10" />
+    </Style>
+    <Style Selector="Grid.facts > TextBlock.label">
+      <Setter Property="Opacity" Value="0.7" />
+    </Style>
   </Application.Styles>
 </Application>

@@ -1,0 +1,39 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Paneport.Core.ViewModels"
+             xmlns:settings="using:Paneport.Core.Settings"
+             x:Class="Paneport.UI.Views.SettingsPage"
+             x:DataType="vm:SettingsViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="16" MaxWidth="560" HorizontalAlignment="Left" Spacing="24">
+      <StackPanel Spacing="6">
+        <TextBlock Classes="section" Text="Locale" />
+        <TextBlock Classes="secondary"
+                   Text="The language and region that Windows programs see in a game session."
+                   TextWrapping="Wrap" />
+        <ComboBox x:Name="LocaleChoice"
+                  MinWidth="280"
+                  ItemsSource="{Binding Locales}"
+                  SelectedItem="{Binding SelectedLocale}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="settings:LocaleOption">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="{Binding DisplayName}" />
+                <TextBlock Classes="secondary" Text="{Binding Tag}" />
+              </StackPanel>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Classes="section" Text="Steam account" />
+        <TextBlock x:Name="SteamAccount" Text="{Binding SteamAccountText}" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

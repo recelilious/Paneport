@@ -5,8 +5,13 @@ using Avalonia;
 using Avalonia.Headless;
 using Paneport.UI;
 using Paneport.UI.Tests;
+using Xunit;
 
 [assembly: AvaloniaTestApplication(typeof(TestAppBuilder))]
+
+// AvaloniaWarnings installs a sink in Avalonia's global logger for the length of a test, so tests
+// in this assembly must not run at the same time.
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 namespace Paneport.UI.Tests;
 

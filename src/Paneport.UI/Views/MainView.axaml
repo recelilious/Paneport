@@ -1,0 +1,58 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Paneport.Core.ViewModels"
+             x:Class="Paneport.UI.Views.MainView"
+             x:DataType="vm:ShellViewModel">
+  <DockPanel>
+    <ListBox x:Name="Navigation"
+             DockPanel.Dock="Bottom"
+             Classes="navigation"
+             ItemsSource="{Binding Sections}"
+             SelectedItem="{Binding SelectedSection}"
+             SelectionMode="AlwaysSelected">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <UniformGrid Rows="1" />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:ShellSection">
+          <TextBlock Text="{Binding}" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <Border DockPanel.Dock="Top" Classes="header">
+      <Grid ColumnDefinitions="Auto,*">
+        <Button x:Name="BackButton"
+                Margin="0,0,12,0"
+                Content="Back"
+                Command="{Binding GoBackCommand}"
+                IsVisible="{Binding CanGoBack}" />
+        <TextBlock x:Name="Heading"
+                   Grid.Column="1"
+                   Classes="heading"
+                   VerticalAlignment="Center"
+                   Text="{Binding CurrentPage.Header}"
+                   TextTrimming="CharacterEllipsis"
+                   ToolTip.Tip="{Binding CurrentPage.Header}" />
+      </Grid>
+    </Border>
+
+    <ProgressBar DockPanel.Dock="Top"
+                 IsIndeterminate="True"
+                 IsVisible="{Binding CurrentPage.IsLoading}" />
+    <TextBlock DockPanel.Dock="Top"
+               Classes="error"
+               Text="{Binding CurrentPage.LoadError}"
+               TextWrapping="Wrap"
+               IsVisible="{Binding CurrentPage.LoadError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+    <!-- App.axaml's data templates pick the page's view. -->
+    <ContentControl x:Name="Page" Content="{Binding CurrentPage}" />
+  </DockPanel>
+</UserControl>

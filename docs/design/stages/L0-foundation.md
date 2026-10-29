@@ -13,13 +13,13 @@ Back to the [development plan](../development-plan.md).
 | L0 | Foundation | Large | Planned | | |
 | S0.0.1 | Evidence folder and the L0 record template | Small | Planned | | |
 | S0.0.2 | Root README and contributing guide | Small | Planned | | |
-| M0.1 | Solution scaffold and repository hygiene | Medium | Planned | | |
-| S0.1.1 | Build properties and analyzers | Small | Planned | | |
-| S0.1.2 | Central package management and lock files | Small | Planned | | |
-| S0.1.3 | REUSE, LICENSES and SPDX headers | Small | Planned | | |
-| S0.1.4 | Folder READMEs | Small | Planned | | |
-| S0.1.5 | Test projects and dependency direction tests | Small | Planned | | |
-| S0.1.6 | First CI workflow | Small | Planned | | |
+| M0.1 | Solution scaffold and repository hygiene | Medium | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
+| S0.1.1 | Build properties and analyzers | Small | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
+| S0.1.2 | Central package management and lock files | Small | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
+| S0.1.3 | REUSE, LICENSES and SPDX headers | Small | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
+| S0.1.4 | Folder READMEs | Small | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
+| S0.1.5 | Test projects and dependency direction tests | Small | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
+| S0.1.6 | First CI workflow | Small | In progress | `build/m0-1-solution-scaffold` | 2026-10-29 |
 | M0.2 | Repository checks and CI | Medium | Planned | | |
 | S0.2.1 | Personal-data and forbidden-file scanner | Small | Planned | | |
 | S0.2.2 | Dependency license checker | Small | Planned | | |

@@ -79,6 +79,47 @@ public sealed class SettingsViewModelTests
         Assert.DoesNotContain("detail", error.Message, StringComparison.Ordinal);
     }
 
+    // While the page loads, what it shows is not yet the saved value, so a choice then would be
+    // overwritten by the load. The view keeps the choice disabled; the view model ignores it too.
+    [Fact]
+    public async Task AChoiceWhileThePageLoadsIsNotSaved()
+    {
+        var fakes = new FakeServices();
+        fakes.Settings.Saved = new AppSettings { Locale = "de-DE" };
+        fakes.Settings.LoadGate = new TaskCompletionSource();
+        var settings = new SettingsViewModel(fakes.Settings, fakes.Steam, fakes.Log);
+
+        var loading = settings.LoadAsync(TestContext.Current.CancellationToken);
+        settings.SelectedLocale = LocaleOption.Find("fr-FR");
+        fakes.Settings.LoadGate.SetResult();
+        await loading;
+
+        Assert.Equal(0, fakes.Settings.SaveCount);
+        Assert.Equal("de-DE", fakes.Settings.Saved?.Locale);
+        Assert.Equal("de-DE", settings.SelectedLocale?.Tag);
+    }
+
+    // A newer change cancels the save before it, which is no failure.
+    [Fact]
+    public async Task ASaveThatANewerChangeSupersedesIsNoError()
+    {
+        var fakes = new FakeServices();
+        var settings = await LoadAsync(fakes);
+        fakes.Settings.SaveGate = new TaskCompletionSource();
+
+        settings.SelectedLocale = LocaleOption.Find("fr-FR");
+        var firstSave = settings.SaveCommand.ExecutionTask ?? Task.CompletedTask;
+        settings.SelectedLocale = LocaleOption.Find("it-IT");
+        var secondSave = settings.SaveCommand.ExecutionTask ?? Task.CompletedTask;
+        fakes.Settings.SaveGate.SetResult();
+        await firstSave;
+        await secondSave;
+
+        Assert.Equal("it-IT", fakes.Settings.Saved?.Locale);
+        Assert.Equal(1, fakes.Settings.SaveCount);
+        Assert.DoesNotContain(fakes.Log.Lines, line => line.Level == LogLevel.Error);
+    }
+
     [Fact]
     public async Task AnUnsupportedSavedLocaleLeavesNoChoiceMarked()
     {

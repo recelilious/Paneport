@@ -17,7 +17,6 @@ public sealed partial class SettingsViewModel : PageViewModel
     private readonly ISettingsStore _store;
     private readonly ISteamService _steam;
     private AppSettings _settings = AppSettings.Default;
-    private bool _showingLoadedSettings;
 
     /// <summary>Creates the page.</summary>
     /// <param name="store">The settings store that the page reads and writes.</param>
@@ -39,9 +38,9 @@ public sealed partial class SettingsViewModel : PageViewModel
     public IReadOnlyList<LocaleOption> Locales { get; } = LocaleOption.Supported;
 
     /// <summary>
-    /// Gets or sets the locale that game sessions hand to Wine. Setting it saves the settings.
-    /// It is null until the page has loaded, or when the saved locale is not one of
-    /// <see cref="Locales"/>.
+    /// Gets or sets the locale that game sessions hand to Wine. Setting it saves the settings,
+    /// except while the page loads, when the view also keeps the choice disabled. It is null until
+    /// the page has loaded, or when the saved locale is not one of <see cref="Locales"/>.
     /// </summary>
     [ObservableProperty]
     public partial LocaleOption? SelectedLocale { get; set; }
@@ -53,22 +52,14 @@ public sealed partial class SettingsViewModel : PageViewModel
     protected override async Task OnLoadAsync(CancellationToken cancellationToken)
     {
         _settings = await _store.LoadAsync(cancellationToken);
-
-        // Showing the loaded value is not a change by the user, so it must not save.
-        _showingLoadedSettings = true;
-        try
-        {
-            SelectedLocale = LocaleOption.Find(_settings.Locale);
-        }
-        finally
-        {
-            _showingLoadedSettings = false;
-        }
+        SelectedLocale = LocaleOption.Find(_settings.Locale);
     }
 
     partial void OnSelectedLocaleChanged(LocaleOption? value)
     {
-        if (_showingLoadedSettings || value is null || value.Tag == _settings.Locale)
+        // While the page loads, a change is either the loaded value arriving or a choice that the
+        // load would overwrite; neither is saved.
+        if (IsLoading || value is null || value.Tag == _settings.Locale)
         {
             return;
         }
@@ -80,6 +71,7 @@ public sealed partial class SettingsViewModel : PageViewModel
     /// <summary>Saves the settings as the page shows them.</summary>
     /// <param name="cancellationToken">Cancels the save.</param>
     /// <returns>A task that completes when the settings are saved or the failure is logged.</returns>
+    /// <remarks>A newer change cancels a save that has not finished, and saves in its place.</remarks>
     [RelayCommand]
     private async Task SaveAsync(CancellationToken cancellationToken)
     {
@@ -88,6 +80,10 @@ public sealed partial class SettingsViewModel : PageViewModel
         {
             await _store.SaveAsync(settings, cancellationToken);
             Log.Write(LogLevel.Information, nameof(SettingsViewModel), $"Saved the settings, locale {settings.Locale}.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Not a failure: the newer change's own save follows.
         }
         catch (Exception exception)
         {

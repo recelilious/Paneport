@@ -50,6 +50,29 @@ public sealed class SettingsAndDiagnosticsPageTests
         Assert.Empty(warnings.Entries);
     }
 
+    // A choice made before the saved value arrives would be overwritten by it.
+    [AvaloniaFact]
+    public void TheLocaleChoiceWaitsForTheSettingsToLoad()
+    {
+        using var warnings = AvaloniaWarnings.Record();
+        var fakes = new FakeServices();
+        fakes.Settings.Saved = new AppSettings { Locale = "de-DE" };
+        fakes.Settings.LoadGate = new TaskCompletionSource();
+        using var harness = ShellHarness.Show(fakes);
+
+        harness.OpenSection(ShellSection.Settings);
+        var locale = harness.Page<SettingsPage>().FindControl<ComboBox>("LocaleChoice");
+        Assert.NotNull(locale);
+        Assert.False(locale.IsEffectivelyEnabled);
+
+        fakes.Settings.LoadGate.SetResult();
+        harness.Settle();
+
+        Assert.True(locale.IsEffectivelyEnabled);
+        Assert.Equal("de-DE", Assert.IsType<LocaleOption>(locale.SelectedItem).Tag);
+        Assert.Empty(warnings.Entries);
+    }
+
     // A newer navigation cancels the load of the page it leaves. With a store that takes its time,
     // that cancellation must not reach the dispatcher, where it would end the app.
     [AvaloniaFact]

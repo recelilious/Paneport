@@ -15,8 +15,10 @@ SPDX-License-Identifier: MIT
         <TextBlock Classes="secondary"
                    Text="The language and region that Windows programs see in a game session."
                    TextWrapping="Wrap" />
+        <!-- Disabled until the saved value arrives, which would overwrite an earlier choice. -->
         <ComboBox x:Name="LocaleChoice"
                   MinWidth="280"
+                  IsEnabled="{Binding !IsLoading}"
                   ItemsSource="{Binding Locales}"
                   SelectedItem="{Binding SelectedLocale}">
           <ComboBox.ItemTemplate>

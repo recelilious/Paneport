@@ -20,13 +20,13 @@ Back to the [development plan](../development-plan.md).
 | S0.1.4 | Folder READMEs | Small | Done | [#2](https://github.com/recelilious/Paneport/pull/2) | 2026-10-29 |
 | S0.1.5 | Test projects and dependency direction tests | Small | Done | [#2](https://github.com/recelilious/Paneport/pull/2) | 2026-10-29 |
 | S0.1.6 | First CI workflow | Small | Done | [#2](https://github.com/recelilious/Paneport/pull/2) | 2026-10-29 |
-| M0.2 | Repository checks and CI | Medium | Planned | | |
-| S0.2.1 | Personal-data and forbidden-file scanner | Small | Planned | | |
-| S0.2.2 | Dependency license checker | Small | Planned | | |
-| S0.2.3 | Toolchain pin checker | Small | Planned | | |
-| S0.2.4 | Complete CI jobs | Small | Planned | | |
-| S0.2.5 | Trimmed test app | Small | Planned | | |
-| S0.2.6 | Repository checks design document | Small | Planned | | |
+| M0.2 | Repository checks and CI | Medium | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
+| S0.2.1 | Personal-data and forbidden-file scanner | Small | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
+| S0.2.2 | Dependency license checker | Small | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
+| S0.2.3 | Toolchain pin checker | Small | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
+| S0.2.4 | Complete CI jobs | Small | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
+| S0.2.5 | Trimmed test app | Small | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
+| S0.2.6 | Repository checks design document | Small | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
 | M0.3 | Shell skeleton with a fake host | Medium | Planned | | |
 | S0.3.1 | Domain model | Small | Planned | | |
 | S0.3.2 | Service interfaces | Small | Planned | | |

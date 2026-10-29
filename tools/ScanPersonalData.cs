@@ -155,8 +155,9 @@ internal static partial class Patterns
     // 10 capital letters and digits, with at least one of each, as a team identifier has.
     private const string TeamIdValue = @"(?-i:(?=[A-Z]*[0-9])(?=[0-9]*[A-Z])[A-Z0-9]{10})(?![A-Za-z0-9])";
 
-    // What ends a user name in a path, after a name that identifies nobody.
-    private const string NameEnd = @"(?:[\\/\s""'<>.,;:)]|$)";
+    // After a name that identifies nobody, anything that cannot go on with the name, such as a
+    // slash, a backtick or a bracket around a Markdown code span or link, or the end.
+    private const string NameEnd = @"(?![A-Za-z0-9_-])";
 
     // Devices from 2018 on: an 8-digit chip ID, a hyphen and the 16-digit ECID. A hyphen may
     // join it to other text, as in syslog-<UDID>.txt; a GUID's grouping never matches.
@@ -325,11 +326,12 @@ internal static partial class Patterns
     [GeneratedRegex(@"(?<![A-Za-z0-9_.~-])(?:/private)?/var/(?:mobile|folders)/", Plain, Timeout)]
     public static partial Regex AppleDevicePath();
 
-    // \\host\share, also \\wsl$\distribution, and \\\\host\\share as in a C# or JSON string. A
-    // drive path in such a string ("C:\\Windows") is no share, and neither is "\\bword\\b".
+    // \\host\share, also \\wsl$\distribution, and \\\\host\\share as in a C# or JSON string, also
+    // right after a label's colon. A drive path in such a string ("C:\\Windows") is no share, and
+    // neither is "\\bword\\b", whose separators are not escaped like its start.
     [GeneratedRegex(
-        @"(?<![A-Za-z0-9_:\\])(?:\\{2}[A-Za-z][A-Za-z0-9._$-]*\\(?!\\)|\\{4}[A-Za-z][A-Za-z0-9._$-]*\\{2})"
-            + @"[A-Za-z0-9$._-]{2,}",
+        @"(?<![A-Za-z0-9_\\])(?<!(?<![A-Za-z0-9])[A-Za-z]:)"
+            + @"(?:\\{2}[A-Za-z][A-Za-z0-9._$-]*\\(?!\\)|\\{4}[A-Za-z][A-Za-z0-9._$-]*\\{2})[A-Za-z0-9$._-]+",
         Plain,
         Timeout)]
     public static partial Regex UncPath();
@@ -549,7 +551,7 @@ internal static class ContentScanner
     }
 
     // UTF-16 without a byte-order mark: one byte of at least half of the byte pairs is NUL, as
-    // in mostly ASCII text, and the other byte of a pair never is.
+    // in mostly ASCII text, and the other byte at most an eighth as often, as for U+3000.
     private static UnicodeEncoding? Utf16WithoutMark(ReadOnlySpan<byte> sample)
     {
         var pairs = sample.Length / 2;
@@ -563,8 +565,10 @@ internal static class ContentScanner
         return (nulFirst, nulSecond) switch
         {
             _ when pairs == 0 => null,
-            (0, var second) when second * 2 >= pairs => new UnicodeEncoding(bigEndian: false, byteOrderMark: false),
-            (var first, 0) when first * 2 >= pairs => new UnicodeEncoding(bigEndian: true, byteOrderMark: false),
+            var (first, second) when second * 2 >= pairs && first * 8 <= second =>
+                new UnicodeEncoding(bigEndian: false, byteOrderMark: false),
+            var (first, second) when first * 2 >= pairs && second * 8 <= first =>
+                new UnicodeEncoding(bigEndian: true, byteOrderMark: false),
             _ => null,
         };
     }
@@ -975,6 +979,7 @@ internal static class SelfTest
                 [.. Encoding.BigEndianUnicode.GetPreamble(), .. Encoding.BigEndianUnicode.GetBytes(Text)]),
             ("UTF-32 with a byte-order mark", [.. Encoding.UTF32.GetPreamble(), .. Encoding.UTF32.GetBytes(Text)]),
             ("UTF-16 without a byte-order mark", Encoding.Unicode.GetBytes(Text)),
+            ("UTF-16 without a mark, with an ideographic space", Encoding.Unicode.GetBytes($"{Text}　")),
         ];
         foreach (var (name, bytes) in texts)
         {
@@ -1229,6 +1234,8 @@ internal static class SelfTest
             new("local-path", true, "iOS app container", "/var/mobile/Containers/Data/Application/"),
             new("local-path", true, "JSON-escaped iOS app container", @"""path"": ""\/private\/var\/mobile\/Library"""),
             new("local-path", true, "network share", @"\\buildhost\share\logs"),
+            new("local-path", true, "network share right after a label's colon", @"Source:\\nas01\backups\tester"),
+            new("local-path", true, "network share with a one-letter name", @"\\buildhost\c\logs"),
             new("local-path", true, "WSL share", @"\\wsl$\Ubuntu\home\tester"),
             new("local-path", false, "web address with a home folder", "https://example.com/home/tester/page"),
             new("local-path", false, "web address with a Users folder", "https://example.com/Users/tester"),
@@ -1237,6 +1244,9 @@ internal static class SelfTest
             new("local-path", false, "placeholder for the user name", @"C:\Users\%USERNAME%\AppData"),
             new("local-path", false, "public Windows profile in Git Bash", "/c/Users/Public/Documents"),
             new("local-path", false, "shared macOS folder", "/Users/Shared/Paneport"),
+            new("local-path", false, "shared macOS folder in a code span", "Logs go to `/Users/Shared`."),
+            new("local-path", false, "shared macOS folder before a bracket", "[shared logs: /Users/Shared]"),
+            new("local-path", false, "public Windows profile in a code span", "`/c/Users/Public`"),
             new("local-path", false, "drive path in a C# string", "var system = \"C:\\\\Windows\\\\System32\";"),
             new("local-path", false, "regular expression in a C# string", "new Regex(\"\\\\bPaneport\\\\b\")"),
             new("local-path", false, "relative path", "tests/Paneport.Core.Tests/README.md"),

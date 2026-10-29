@@ -10,4 +10,4 @@ Source files that several test projects compile in, each through a `Compile` ite
 | File or folder | What it is |
 |---|---|
 | `ProjectReferences.cs` | Reads the project references that the build recorded in the test assembly's `deps.json` file. The dependency direction tests use it. |
-| `Fakes/` | Hand-written fakes of the services that the shell needs (C-0011 section 1), the made-up titles they list, and `FakeServices`, which collects them. Paneport.Core.Tests and Paneport.UI.Tests compile them in. |
+| `Fakes/` | Hand-written fakes of the services that the shell needs (C-0011 section 1), the made-up titles they list, and `FakeServices`, which collects them. The settings fake can hold a load or a save open, as a store on disk would take its time. Paneport.Core.Tests and Paneport.UI.Tests compile them in. |

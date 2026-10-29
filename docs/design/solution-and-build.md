@@ -99,23 +99,23 @@ No rule needed relaxing for the tests so far. If one does, it is relaxed only fo
 4. Run `dotnet restore eng/ci.slnf --force-evaluate`, and commit every changed lock file.
 5. In the pull request, list every new package ID with the register row that covers it.
 
-**Packages in the lock files after M0.1.** "Proposed" marks a row of the C-0003 change that this stage proposes on `contract/register-l0-dependencies`; it covers the package only once recelilious accepts it.
+**Packages in the lock files after M0.1.** "1.2" marks a row that C-0003 version 1.2 added for this stage; recelilious accepted it on 2026-10-29.
 
 | Packages | Brought in by | Register row |
 |---|---|---|
 | Avalonia, Avalonia.Desktop, Avalonia.FreeDesktop, Avalonia.FreeDesktop.AtSpi, Avalonia.HarfBuzz, Avalonia.Headless, Avalonia.Native, Avalonia.Remote.Protocol, Avalonia.Skia, Avalonia.Themes.Fluent, Avalonia.Win32, Avalonia.X11 (12.1.4) | Paneport.UI, Paneport.Desktop, Paneport.UI.Tests | Avalonia |
 | Avalonia.Headless.XUnit (12.1.4) | Paneport.UI.Tests | Avalonia.Headless.XUnit |
-| Avalonia.BuildServices (11.3.2) | Avalonia | Avalonia.BuildServices (proposed) |
-| Avalonia.Angle.Windows.Natives (2.1.27548.20260419) | Avalonia.Win32 | ANGLE (proposed) |
-| Avalonia.Fonts.Inter (12.1.4) | Avalonia.Headless | Inter font (proposed) |
-| SkiaSharp and SkiaSharp.NativeAssets.Linux, .macOS, .WebAssembly and .Win32 (3.119.4) | Avalonia.Skia | SkiaSharp (license text amended, proposed) |
-| HarfBuzzSharp and HarfBuzzSharp.NativeAssets.Linux, .macOS, .WebAssembly and .Win32 (8.3.1.3) | Avalonia.HarfBuzz | HarfBuzzSharp (proposed) |
-| MicroCom.Runtime (0.11.6) | Avalonia | MicroCom.Runtime (proposed) |
-| Tmds.DBus.Protocol (0.94.1) | Avalonia.FreeDesktop | Tmds.DBus.Protocol (proposed) |
+| Avalonia.BuildServices (11.3.2) | Avalonia | Avalonia.BuildServices (1.2) |
+| Avalonia.Angle.Windows.Natives (2.1.27548.20260419) | Avalonia.Win32 | ANGLE (1.2) |
+| Avalonia.Fonts.Inter (12.1.4) | Avalonia.Headless | Inter font (1.2) |
+| SkiaSharp and SkiaSharp.NativeAssets.Linux, .macOS, .WebAssembly and .Win32 (3.119.4) | Avalonia.Skia | SkiaSharp (license text from 1.2) |
+| HarfBuzzSharp and HarfBuzzSharp.NativeAssets.Linux, .macOS, .WebAssembly and .Win32 (8.3.1.3) | Avalonia.HarfBuzz | HarfBuzzSharp (1.2) |
+| MicroCom.Runtime (0.11.6) | Avalonia | MicroCom.Runtime (1.2) |
+| Tmds.DBus.Protocol (0.94.1) | Avalonia.FreeDesktop | Tmds.DBus.Protocol (1.2) |
 | Microsoft.NET.ILLink.Tasks (10.0.14), Microsoft.Bcl.AsyncInterfaces (6.0.0), Microsoft.Win32.Registry (5.0.0) | The SDK, for `IsAotCompatible`; xunit.v3 | .NET runtime |
 | xunit.v3, xunit.v3.assert, xunit.v3.common, xunit.v3.core.mtp-v1, xunit.v3.extensibility.core, xunit.v3.mtp-v1, xunit.v3.runner.common, xunit.v3.runner.inproc.console (3.2.2), xunit.analyzers (1.27.0) | The test projects | xunit.v3 |
-| Microsoft.Testing.Platform, Microsoft.Testing.Platform.MSBuild, Microsoft.Testing.Extensions.TrxReport.Abstractions, Microsoft.Testing.Extensions.Telemetry (1.9.1) | xunit.v3 | Microsoft.Testing.Platform (proposed) |
-| Microsoft.ApplicationInsights (2.23.0) | Microsoft.Testing.Extensions.Telemetry | Application Insights SDK (proposed) |
+| Microsoft.Testing.Platform, Microsoft.Testing.Platform.MSBuild, Microsoft.Testing.Extensions.TrxReport.Abstractions, Microsoft.Testing.Extensions.Telemetry (1.9.1) | xunit.v3 | Microsoft.Testing.Platform (1.2) |
+| Microsoft.ApplicationInsights (2.23.0) | Microsoft.Testing.Extensions.Telemetry | Application Insights SDK (1.2) |
 
 Avalonia's usual templates add `Avalonia.Fonts.Inter` to the app itself. Paneport.UI does not, so the Inter font reaches only the headless tests, through Avalonia.Headless.
 
@@ -154,7 +154,6 @@ Three components send usage data from builds and test runs unless an environment
 
 ## 10. Open items
 
-- **Register change.** The rows marked "proposed" in section 5, and the GitHub Actions `actions/checkout` and `actions/setup-dotnet`, wait for recelilious's review of the C-0003 change on `contract/register-l0-dependencies`. M0.1 does not merge before it is accepted.
 - **SkiaSharp's native libraries.** The third-party notices in SkiaSharp's and HarfBuzzSharp's native-asset packages list about twenty components, among them libmicrohttpd under LGPL-2.1-or-later. Before the first iOS release, M9.1 confirms which of them the shipped native libraries contain, so that the generated notices and the register match them.
 - **IDE restores.** Whether Visual Studio's own NuGet restore honors `RestoreConfigFile` was not tested; see section 5.
 

@@ -10,8 +10,7 @@ The Avalonia desktop head, for working on the Paneport UI from Windows without a
 | File or folder | What it is |
 |---|---|
 | `Program.cs` | The entry point. It creates the desktop application lifetime, so that Paneport.UI holds no desktop-only concept. |
-| `CompositionRoot.cs` | Wires the head by hand: the log, the fakes, the shell over them, and the window titled Paneport that hosts the shell's view. |
-| `AvaloniaLogForwarder.cs` | Passes what Avalonia logs at warning level or above, such as a binding that fails at run time, to the head's log. Without it, Avalonia drops those lines. |
+| `CompositionRoot.cs` | Wires the head by hand: the log, Paneport.UI's forwarder of Avalonia's warnings to it, the fakes, the shell over them, and the window titled Paneport that hosts the shell's view. |
 | `Fakes/` | The fake runtime host, the fictional sample library, the in-memory settings and token stores, and a log sink that writes to the terminal. |
 
 Run it from the repository root:

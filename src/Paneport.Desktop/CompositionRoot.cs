@@ -7,6 +7,7 @@ using Paneport.Core;
 using Paneport.Core.Steam;
 using Paneport.Core.ViewModels;
 using Paneport.Desktop.Fakes;
+using Paneport.UI;
 using Paneport.UI.Views;
 
 namespace Paneport.Desktop;

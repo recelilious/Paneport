@@ -117,7 +117,9 @@ public sealed record TitleId
             var digits = text.AsSpan(SteamPrefix.Length);
 
             // A leading zero would give a second text for the same app ID, and app ID 0 is invalid.
-            if (digits.Length > 0 && digits[0] != '0'
+            // Only ASCII digits count, because the integer parser skips trailing NUL characters
+            // even with NumberStyles.None, which would give a second text as well.
+            if (digits.Length > 0 && digits[0] != '0' && !digits.ContainsAnyExceptInRange('0', '9')
                 && uint.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var appId))
             {
                 id = Steam(appId);

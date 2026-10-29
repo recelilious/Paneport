@@ -87,6 +87,8 @@ public sealed class TitleIdTests
     [InlineData("steam-+1")]
     [InlineData("steam- 1")]
     [InlineData("steam-12a")]
+    [InlineData("steam-480\0")]
+    [InlineData("steam-1\0\0")]
     [InlineData("steam-4294967296")]
     [InlineData("Steam-480")]
     [InlineData("local-")]

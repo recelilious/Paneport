@@ -5,6 +5,7 @@
 # eng/toolchain.json pins from the repository root:
 #
 #   lychee --config eng/lychee.toml --no-progress .
+#   lychee --offline --no-progress --extensions md docs/research
 #
 # docs/design/repository-checks.md explains these settings.
 
@@ -12,7 +13,11 @@
 # so that .github/workflows/README.md is checked, but not the .git folder itself.
 extensions = ["md"]
 hidden = true
-exclude_path = ['(^|/)\.git/']
+
+# The research notes are a published snapshot with more than a thousand external sources,
+# which rot or turn automated clients away without any change to the repository. Their
+# relative links are checked by the second, offline run instead.
+exclude_path = ['(^|/)\.git/', '(^|/)docs/research/']
 
 # Retry a failed request a few times before declaring a link dead.
 max_retries = 3

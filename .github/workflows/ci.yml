@@ -145,11 +145,16 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/ScanPersonalData.cs
 
-      - name: Check links in Markdown (lychee)
+      - name: Check links in Markdown, outside the research notes (lychee)
         if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: lychee --config eng/lychee.toml --no-progress .
+
+      # The research notes' external sources are not checked (eng/lychee.toml says why).
+      - name: Check the relative links of the research notes (lychee, offline)
+        if: ${{ !cancelled() }}
+        run: lychee --offline --no-progress --extensions md docs/research
 
       - name: Check dependency licenses
         if: ${{ !cancelled() }}

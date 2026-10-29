@@ -14,7 +14,7 @@ Runs on every push and every pull request.
 | Job | Runner | Steps |
 |---|---|---|
 | `dotnet` | `windows-2025` and `ubuntu-24.04` | Install the SDK that `global.json` pins and check it against the pin; restore `eng/ci.slnf` from the lock files; build it in Release; run its tests, with a skipped test counted as a failure; check its formatting and the formatting of the tools; publish the trimmed test app, which fails on any trimming warning. |
-| `checks` | `ubuntu-24.04` | Install the SDK and the CI tools that `eng/toolchain.json` pins, each download checked against its SHA-256; check the SDK and the tools against their pins; run the tools' self-tests; then REUSE, gitleaks over the whole history, the personal-data and forbidden-file check, lychee, and the dependency licenses. |
+| `checks` | `ubuntu-24.04` | Install the SDK and the CI tools that `eng/toolchain.json` pins, each download checked against its SHA-256; check the SDK and the tools against their pins; run the tools' self-tests; then REUSE, gitleaks over the whole history, the personal-data and forbidden-file check, lychee (online outside `docs/research/`, and offline for the relative links of the research notes), and the dependency licenses. |
 
 - **Pins.** Actions are pinned to a full commit hash, with the release tag in a comment. Runner images are named by version, not `-latest`. The SDK comes from `global.json`, packages from the lock files, and CI tools from `eng/toolchain.json` (C-0009 section 2).
 - **Every failure in one run.** Each step after the setup runs even when an earlier step failed.

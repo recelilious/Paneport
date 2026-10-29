@@ -152,12 +152,15 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 5. REUSE: `reuse lint`.
 6. gitleaks over the whole history: `gitleaks git --config eng/gitleaks.toml --redact --ignore-gitleaks-allow`, with a JSON report.
 7. The personal-data and forbidden-file check.
-8. lychee: `lychee --config eng/lychee.toml --no-progress .`.
-9. The dependency license check.
+8. lychee, online, on every Markdown file outside `docs/research/`: `lychee --config eng/lychee.toml --no-progress .`.
+9. lychee, offline, on the relative links of `docs/research/`: `lychee --offline --no-progress --extensions md docs/research`.
+10. The dependency license check.
 
 **gitleaks.** It runs from the pinned release, not as the gitleaks GitHub Action (C-0011 section 2). `--redact` replaces every secret in its output and report, which is the option the L0 brief asked to confirm. `--ignore-gitleaks-allow` ignores inline `gitleaks:allow` comments, so that every exception lives in `eng/gitleaks.toml`, which extends gitleaks' default rules and adds nothing yet. The step prints each finding's file, line, rule and commit from the JSON report, and an annotation, because gitleaks' own verbose output would also print the author and e-mail address of each commit. A false positive goes into `eng/gitleaks.toml` with its reason, as narrowly as possible; a real secret is reported to recelilious at once and is never quoted.
 
-**lychee.** It checks every Markdown file that git does not ignore, including `.github/workflows/README.md` in a hidden folder, but not the `.git` folder. It retries a failed request up to three times. It uses the workflow's token, through `GITHUB_TOKEN`, for links to github.com, which the research notes hold by the hundred and which GitHub rate-limits for anonymous requests; the token can only read this repository and expires with the job. The external links of `docs/research/` can fail through link rot or rate limits without any change to the repository; section 9 records the policy for that.
+**lychee.** It checks every Markdown file that git does not ignore, including `.github/workflows/README.md` in a hidden folder, but not the `.git` folder. It retries a failed request up to three times. It uses the workflow's token, through `GITHUB_TOKEN`, for links to github.com, which GitHub rate-limits for anonymous requests; the token can only read this repository and expires with the job.
+
+**Link-check policy.** The first full run, on 2026-10-29, checked 1,169 unique links. Every file outside `docs/research/` passed. All 70 failures were external sources of the research notes: 38 sites that turn automated clients away (403), 14 pages that are gone (404 and 410), 3 rate limits (429), and 15 server errors, network errors and timeouts. The research notes are a published snapshot (`docs/research/README.md`), so such failures come and go without any change to the repository. Following the fallback of the L0 brief, CI therefore checks the research notes narrowly: their relative links are checked offline, and their external links are not checked. Everything else, the contracts, the design documents and the READMEs, is checked online. recelilious agrees this policy before the stage merges. The other fallback of the brief, accepting more status codes, would still fail on the 14 dead pages and on every page that dies later.
 
 ## 7. The trimmed test app
 
@@ -181,7 +184,7 @@ From the repository root, with the SDK that `global.json` pins. Setting `DOTNET_
 | Formatting | `dotnet format eng/ci.slnf --verify-no-changes` and `dotnet format whitespace tools --folder --verify-no-changes` |
 | Trimmed publish | `dotnet build eng/ci.slnf -c Release`, then `dotnet publish tests/Paneport.TrimTest/Paneport.TrimTest.csproj -c Release --no-build` |
 | Secrets | `gitleaks git --config eng/gitleaks.toml --redact --ignore-gitleaks-allow .`, once the pinned release is installed |
-| Links | `lychee --config eng/lychee.toml --no-progress .`, once the pinned release is installed |
+| Links | `lychee --config eng/lychee.toml --no-progress .` and `lychee --offline --no-progress --extensions md docs/research`, once the pinned release is installed. Before a research note is published, `lychee --no-progress <note>` also checks its external sources. |
 
 Before every push, Claude runs the personal-data scan, gitleaks if it is installed, and the format check (C-0011 section 2). gitleaks and lychee are not installed on the workstation yet; a session asks recelilious before downloading either. The REUSE tool is a Python program and runs in CI only (solution-and-build.md section 8).
 
@@ -195,7 +198,7 @@ Each check is shown to fail once, on a draft pull request from a scratch branch 
 | An address from an RFC 5737 range in a test source file | Personal data and forbidden files |
 | An entry for an unregistered tool in `eng/toolchain.json` | Dependency licenses; the toolchain step fails as well, because the tool has no version check |
 | A `.cs` file without the SPDX lines | REUSE |
-| A broken relative link in a README | lychee |
+| A broken relative link in a README | lychee, online run |
 | An unsigned JSON Web Token with `"alg":"none"` and a made-up subject, a format that gitleaks' default rules detect | gitleaks |
 | A misformatted line in a `.cs` file | Format check in `dotnet` |
 | A reflection call in Paneport.Core that the trimming analyzers reject | Build in `dotnet` |
@@ -204,7 +207,7 @@ A run passes when each planted change fails its step and that step's output name
 
 ## 10. Open items
 
-- **Link-check policy.** If the external links of `docs/research/` fail through link rot or rate limits, recelilious agrees a policy before the stage merges: accepted status codes and retries, or a narrower external check for `docs/research/`. The L0 brief's session log records the outcome.
+- **Link-check policy.** The narrower check of `docs/research/` (section 6) needs recelilious's agreement before the stage merges. The L0 brief's session log records the outcome.
 - **Unpinned Python packages.** pipx installs the REUSE tool at its pinned version, but the Python packages it depends on are resolved at install time.
 - **Third-party binaries.** C-0002 section 6 forbids any file from Microsoft, Valve or a game, but names no file type for them, so the scanner cannot tell such a file from our own. A rule for `.dll` and `.exe` files would change the list of checks in C-0011 and goes through the contract process.
 - **Style rules of the tools.** IDE0003 and IDE0049 are not checked for the tools (section 2).

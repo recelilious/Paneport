@@ -4,6 +4,10 @@
       "version": "6.2.0",
       "source": "https://pypi.org/project/reuse/"
     },
+    "planted-tool": {
+      "version": "1.0.0",
+      "source": "https://example.com/planted-tool"
+    },
     "gitleaks": {
       "version": "8.30.1",
       "source": "https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1",

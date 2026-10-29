@@ -26,3 +26,7 @@ dotnet test eng/ci.slnf -c Release
 Everything in this folder passes the personal-data scan of `tools/ScanPersonalData.cs` (C-0011 section 2). Tests never keep e-mail addresses, IP addresses, tokens or other values that it looks for as literal strings; they build such values in memory. [repository-checks.md](../docs/design/repository-checks.md) lists the rules.
 
 The other folders of the C-0004 layout come with later stages: `Paneport.Interop.Tests` and `native` with M1.2, and `device` with M1.3.
+
+Planted for the M0.2 check run, not real data: planted.tester@example.com
+
+[Planted broken link](planted-missing-file.md)

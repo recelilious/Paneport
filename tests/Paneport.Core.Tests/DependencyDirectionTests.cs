@@ -13,7 +13,8 @@ public sealed class DependencyDirectionTests
     [Fact]
     public void CoreReferencesNoOtherSolutionProject()
     {
-        Assert.Empty(ProjectReferences.Of("Paneport.Core"));
+        // Planted for the M0.2 check run, not a real address: 192.0.2.44
+        Assert.Empty(  ProjectReferences.Of("Paneport.Core"));
     }
 
     [Fact]

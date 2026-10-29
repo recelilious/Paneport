@@ -20,3 +20,5 @@ dotnet run --project src/Paneport.Desktop
 - **Depends on:** Paneport.Core, Paneport.Steam and Paneport.UI, and the Avalonia.Desktop package.
 - **Build:** a console executable, so that a run from a terminal shows Avalonia's errors there.
 - **Design:** [solution-and-build.md](../../docs/design/solution-and-build.md) records its role. M0.3 adds the shell, the fake host and the fake services, and writes the full design in `docs/design/app-shell.md`.
+
+Planted for the M0.2 check run, an unsigned token with a made-up subject, not a credential: eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJwYW5lcG9ydC1wbGFudGVkLWZha2UtdmFsdWUifQ.

@@ -13,6 +13,9 @@ public interface INavigator
     /// </summary>
     /// <param name="page">The page to show.</param>
     /// <param name="cancellationToken">Cancels the page's load.</param>
-    /// <returns>A task that completes when the page is shown and loaded.</returns>
+    /// <returns>
+    /// A task that completes when the page is shown and loaded. A cancelled load ends it without
+    /// an exception, as a newer navigation does.
+    /// </returns>
     Task PushAsync(PageViewModel page, CancellationToken cancellationToken);
 }

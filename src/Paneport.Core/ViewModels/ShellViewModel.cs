@@ -65,14 +65,14 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
 
     /// <summary>Loads the page that the shell starts on.</summary>
     /// <param name="cancellationToken">Cancels the load.</param>
-    /// <returns>A task that completes when the page has loaded.</returns>
+    /// <returns>A task that completes when the page has loaded, or its load was cancelled.</returns>
     [RelayCommand]
-    private Task StartAsync(CancellationToken cancellationToken) => CurrentPage.LoadAsync(cancellationToken);
+    private Task StartAsync(CancellationToken cancellationToken) => LoadPageAsync(CurrentPage, cancellationToken);
 
     /// <summary>Opens a section on a new page, and clears the back stack.</summary>
     /// <param name="section">The section to open.</param>
     /// <param name="cancellationToken">Cancels the page's load.</param>
-    /// <returns>A task that completes when the page is shown and loaded.</returns>
+    /// <returns>A task that completes when the page is shown and loaded, or its load was cancelled.</returns>
     [RelayCommand]
     private Task OpenSectionAsync(ShellSection section, CancellationToken cancellationToken)
     {
@@ -113,7 +113,22 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         CurrentPage = page;
         CanGoBack = _backStack.Count > 0;
         _services.Log.Write(LogLevel.Information, nameof(ShellViewModel), $"Opened {page.GetType().Name}.");
-        return page.LoadAsync(cancellationToken);
+        return LoadPageAsync(page, cancellationToken);
+    }
+
+    // A newer navigation cancels the load of the page that it replaces, through the command's
+    // token. That is a normal end. Let through, the cancellation would reach the command, which
+    // rethrows it on the UI thread, where nothing handles it.
+    private static async Task LoadPageAsync(PageViewModel page, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await page.LoadAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The page is no longer shown, so it needs no data.
+        }
     }
 
     private PageViewModel CreatePage(ShellSection section) => section switch

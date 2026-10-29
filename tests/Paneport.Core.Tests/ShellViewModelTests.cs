@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using Paneport.Core.Logging;
 using Paneport.Core.ViewModels;
 using Paneport.Tests.Fakes;
 using Xunit;
@@ -92,6 +93,45 @@ public sealed class ShellViewModelTests
         Assert.False(shell.CanGoBack);
         shell.GoBackCommand.Execute(null);
         Assert.IsType<SettingsViewModel>(shell.CurrentPage);
+    }
+
+    // A newer navigation cancels the load of the page it replaces. That must end quietly: the
+    // command would rethrow the cancellation on the UI thread, where nothing handles it.
+    [Fact]
+    public async Task OpeningASectionWhileAPageLoadsEndsTheOlderLoadQuietly()
+    {
+        var fakes = new FakeServices();
+        fakes.Settings.LoadGate = new TaskCompletionSource();
+        var shell = new ShellViewModel(fakes.ToAppServices());
+
+        var openingSettings = shell.OpenSectionCommand.ExecuteAsync(ShellSection.Settings);
+        var settings = Assert.IsType<SettingsViewModel>(shell.CurrentPage);
+        Assert.True(settings.IsLoading);
+        await shell.OpenSectionCommand.ExecuteAsync(ShellSection.Diagnostics);
+        await openingSettings;
+
+        Assert.IsType<DiagnosticsViewModel>(shell.CurrentPage);
+        Assert.False(settings.IsLoading);
+        Assert.Null(settings.LoadError);
+        Assert.DoesNotContain(fakes.Log.Lines, line => line.Level == LogLevel.Error);
+    }
+
+    [Fact]
+    public async Task ACancelledPushEndsQuietly()
+    {
+        var fakes = new FakeServices();
+        fakes.Settings.LoadGate = new TaskCompletionSource();
+        var shell = new ShellViewModel(fakes.ToAppServices());
+        using var cancellation = new CancellationTokenSource();
+        var page = new SettingsViewModel(fakes.Settings, fakes.Steam, fakes.Log);
+
+        var pushing = shell.PushAsync(page, cancellation.Token);
+        await cancellation.CancelAsync();
+        await pushing;
+
+        Assert.Same(page, shell.CurrentPage);
+        Assert.False(page.IsLoading);
+        Assert.Null(page.LoadError);
     }
 
     [Fact]

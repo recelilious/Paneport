@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Paneport.Core.Settings;
 using Paneport.Core.ViewModels;
+using Paneport.Tests.Fakes;
 using Paneport.UI.Views;
 using Xunit;
 
@@ -46,6 +47,25 @@ public sealed class SettingsAndDiagnosticsPageTests
         var locale = harness.Page<SettingsPage>().FindControl<ComboBox>("LocaleChoice");
         Assert.Equal("de-DE", Assert.IsType<LocaleOption>(locale?.SelectedItem).Tag);
         Assert.Equal("de-DE", harness.Fakes.Settings.Saved?.Locale);
+        Assert.Empty(warnings.Entries);
+    }
+
+    // A newer navigation cancels the load of the page it leaves. With a store that takes its time,
+    // that cancellation must not reach the dispatcher, where it would end the app.
+    [AvaloniaFact]
+    public void OpeningAnotherSectionWhileSettingsLoadsRaisesNothing()
+    {
+        using var warnings = AvaloniaWarnings.Record();
+        var fakes = new FakeServices();
+        fakes.Settings.LoadGate = new TaskCompletionSource();
+        using var harness = ShellHarness.Show(fakes);
+
+        harness.OpenSection(ShellSection.Settings);
+        Assert.True(harness.Shell.CurrentPage.IsLoading);
+        harness.OpenSection(ShellSection.Diagnostics);
+
+        Assert.IsType<DiagnosticsViewModel>(harness.Shell.CurrentPage);
+        Assert.NotNull(harness.Page<DiagnosticsPage>());
         Assert.Empty(warnings.Entries);
     }
 

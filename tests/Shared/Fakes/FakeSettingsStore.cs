@@ -5,7 +5,9 @@ using Paneport.Core.Settings;
 
 namespace Paneport.Tests.Fakes;
 
-// A settings store in memory that counts saves, and fails them when a test sets a failure.
+// A settings store in memory that counts saves, and fails them when a test sets a failure. A
+// test can hold a load or a save open with a gate, as a store on disk would take its time; a
+// held load or save honors its cancellation token.
 internal sealed class FakeSettingsStore : ISettingsStore
 {
     public AppSettings? Saved { get; set; }
@@ -14,22 +16,35 @@ internal sealed class FakeSettingsStore : ISettingsStore
 
     public Exception? SaveFailure { get; set; }
 
-    public Task<AppSettings> LoadAsync(CancellationToken cancellationToken)
+    public TaskCompletionSource? LoadGate { get; set; }
+
+    public TaskCompletionSource? SaveGate { get; set; }
+
+    public async Task<AppSettings> LoadAsync(CancellationToken cancellationToken)
     {
+        if (LoadGate is { } gate)
+        {
+            await gate.Task.WaitAsync(cancellationToken);
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(Saved ?? AppSettings.Default);
+        return Saved ?? AppSettings.Default;
     }
 
-    public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken)
+    public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken)
     {
+        if (SaveGate is { } gate)
+        {
+            await gate.Task.WaitAsync(cancellationToken);
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
         if (SaveFailure is not null)
         {
-            return Task.FromException(SaveFailure);
+            throw SaveFailure;
         }
 
         Saved = settings;
         SaveCount++;
-        return Task.CompletedTask;
     }
 }

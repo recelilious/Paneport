@@ -20,13 +20,13 @@ Back to the [development plan](../development-plan.md).
 | S0.1.4 | Folder READMEs | Small | Done | [#2](https://github.com/recelilious/Paneport/pull/2) | 2026-10-29 |
 | S0.1.5 | Test projects and dependency direction tests | Small | Done | [#2](https://github.com/recelilious/Paneport/pull/2) | 2026-10-29 |
 | S0.1.6 | First CI workflow | Small | Done | [#2](https://github.com/recelilious/Paneport/pull/2) | 2026-10-29 |
-| M0.2 | Repository checks and CI | Medium | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
-| S0.2.1 | Personal-data and forbidden-file scanner | Small | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
-| S0.2.2 | Dependency license checker | Small | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
-| S0.2.3 | Toolchain pin checker | Small | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
-| S0.2.4 | Complete CI jobs | Small | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
-| S0.2.5 | Trimmed test app | Small | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
-| S0.2.6 | Repository checks design document | Small | In progress | `ci/m0-2-repository-checks` | 2026-10-29 |
+| M0.2 | Repository checks and CI | Medium | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
+| S0.2.1 | Personal-data and forbidden-file scanner | Small | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
+| S0.2.2 | Dependency license checker | Small | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
+| S0.2.3 | Toolchain pin checker | Small | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
+| S0.2.4 | Complete CI jobs | Small | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
+| S0.2.5 | Trimmed test app | Small | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
+| S0.2.6 | Repository checks design document | Small | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
 | M0.3 | Shell skeleton with a fake host | Medium | Planned | | |
 | S0.3.1 | Domain model | Small | Planned | | |
 | S0.3.2 | Service interfaces | Small | Planned | | |
@@ -369,7 +369,13 @@ Planted failures run on a draft pull request from a scratch branch, which is clo
 
 **Session log.**
 
-_No sessions yet._
+- **2026-10-29 (UTC), first session.** Pull request: [#5](https://github.com/recelilious/Paneport/pull/5).
+  - **Done.** S0.2.1 to S0.2.6: the three file-based tools with their self-tests, `eng/license-map.json` and `eng/personal-data-allow-list.json`, the gitleaks 8.30.1 and lychee 0.24.2 pins with the SHA-256 of their Linux and Windows downloads, `eng/gitleaks.toml` and `eng/lychee.toml`, both jobs complete in `ci.yml`, `tests/Paneport.TrimTest` in `Paneport.slnx` and `eng/ci.slnf`, and `docs/design/repository-checks.md`.
+  - **Verification.** On the workstation, every command of the verification table passes: the self-tests pass 133, 27 and 20 checks, the scan finds nothing, every dependency is covered, and the SDK matches its pin. The M0.1 commands pass as in M0.1, with 7 of 7 tests; the tools' format check passes; the trimmed publish shows no warning. In CI, `dotnet` passed on `windows-2025` and `ubuntu-24.04`, trimmed publish included, and `checks` passed, each self-test before its tool's check: on `c3ce60b` ([run](https://github.com/recelilious/Paneport/actions/runs/40910109744)) and again on the pull request's last commit. On the draft scratch pull request [#6](https://github.com/recelilious/Paneport/pull/6), every planted change of the brief's table failed its step, and the step named the file ([run](https://github.com/recelilious/Paneport/actions/runs/40910183157)); #5 lists each step's output. The toolchain step, the test step and the trimmed publish failed as well, because the planted tool has no version check and the planted build error stops the build. #6 was closed without merging and its branch deleted. A scan of a temporary copy of `docs/`, a large sample of real prose, found the rules working as designed and led to one fix: a version label now counts without a colon, as in "version 1.2.3.4".
+  - **Confirmed in this stage.** File-based tools get the root props files; their default `PublishAot=true` would make their shared lock file platform-specific, so each tool turns it off. `dotnet format` does not accept file-based apps; the tools get a whitespace check in folder mode. A runtime identifier on the command line breaks the libraries' locked restore (NU1004), so the trimmed test app sets its own. Avalonia 12.1.4 publishes trimmed without a warning. gitleaks redacts with `--redact`, and its verbose output would print commit authors' e-mail addresses, so the step prints file, line, rule and commit only. lychee uses the workflow's read-only token. The identifier formats were checked against public sources, listed in the design document.
+  - **Link-check policy.** The first lychee run failed only on 70 of 1,169 links, all external sources of the research notes: 38 sites that turn automated clients away, 14 dead pages, 3 rate limits and 15 server or network errors. Following the brief's fallback, CI checks `docs/research/` offline and everything else online. The second run failed only on a timeout from a slow server behind a C-0003 link that had passed the first run, so a timeout is now reported without failing the check; a dead page or a failed connection still fails it. recelilious agrees this policy by merging the stage, or asks for the other fallback.
+  - **Left.** recelilious reviews the policy above and merges; the status is set to Done in this branch's last commit, as plan section 3.3 asks. gitleaks and lychee are not installed on the workstation; a session asks before downloading them.
+  - **For later sessions.** M0.3: map every new package in `eng/license-map.json` (an entry that matches nothing fails too), keep tests free of literal values that the scanner looks for, and report any trimming warning that CommunityToolkit.Mvvm brings. M1.1: C-0009 section 2 also pins the Xcode version and the macOS runner image in `eng/toolchain.json`; the license checker treats every key there as a tool that needs a register row, and the toolchain checker needs a version check for each, so M1.1 decides how the runner image is registered and checked. M4.1: each submodule needs an entry in `eng/license-map.json`.
 
 ## M0.3 Shell skeleton with a fake host
 

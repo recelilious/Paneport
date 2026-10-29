@@ -29,7 +29,7 @@ try
         _ => Cli.Usage(),
     };
 }
-catch (InvalidDataException exception)
+catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
 {
     Console.Error.WriteLine($"error: {exception.Message}");
     return 2;
@@ -64,7 +64,9 @@ internal static class GlobalJson
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("sdk", out var sdk) || sdk.ValueKind != JsonValueKind.Object)
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("sdk", out var sdk)
+                || sdk.ValueKind != JsonValueKind.Object)
             {
                 throw new InvalidDataException($"{FilePath} has no \"sdk\" object.");
             }
@@ -85,20 +87,34 @@ internal static class GlobalJson
 
 // eng/toolchain.json: each tool has its exact version and the source it is installed from.
 // A tool that CI downloads has, per runtime identifier, the download's address and SHA-256.
+// The file holds nothing but "tools", and no field beyond these, so that no pin escapes the
+// version check here and the register check of tools/CheckLicenses.cs.
 internal static partial class ToolchainJson
 {
     public const string FilePath = "eng/toolchain.json";
 
     private static readonly string[] s_toolFields = ["version", "source", "downloads"];
+    private static readonly string[] s_downloadFields = ["url", "sha256"];
 
     public static List<ToolPin> Parse(string json)
     {
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("tools", out var tools) || tools.ValueKind != JsonValueKind.Object)
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("tools", out var tools)
+                || tools.ValueKind != JsonValueKind.Object)
             {
                 throw new InvalidDataException($"{FilePath} has no \"tools\" object.");
+            }
+
+            var other = root.EnumerateObject().Select(key => key.Name).FirstOrDefault(name => name != "tools");
+            if (other is not null)
+            {
+                throw new InvalidDataException(
+                    $"{FilePath}: \"{other}\" is not \"tools\". tools/CheckToolchain.cs and tools/CheckLicenses.cs "
+                        + "read only \"tools\", so a pin elsewhere would go unchecked.");
             }
 
             return tools.EnumerateObject().Select(tool => ParseTool(tool.Name, tool.Value)).ToList();
@@ -128,8 +144,24 @@ internal static partial class ToolchainJson
         var downloads = new List<Download>();
         if (tool.TryGetProperty("downloads", out var runtimes))
         {
+            if (runtimes.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidDataException($"{where}: \"downloads\" is not an object.");
+            }
+
             foreach (var runtime in runtimes.EnumerateObject())
             {
+                var field = runtime.Value.ValueKind == JsonValueKind.Object
+                    ? runtime.Value.EnumerateObject()
+                        .Select(property => property.Name)
+                        .FirstOrDefault(name => !s_downloadFields.Contains(name))
+                    : throw new InvalidDataException($"{where}: the download for {runtime.Name} is not an object.");
+                if (field is not null)
+                {
+                    throw new InvalidDataException(
+                        $"{where}: unknown field \"{field}\" in the download for {runtime.Name}.");
+                }
+
                 var download = new Download(
                     runtime.Name,
                     Https(Pins.Text(runtime.Value, "url", where), where),
@@ -277,13 +309,14 @@ internal static class ToolchainCheck
 
         Console.WriteLine("Toolchain pins (C-0009 section 2)");
         var failed = 0;
-        var sdk = GlobalJson.Parse(File.ReadAllText(Path.Combine(directory, GlobalJson.FilePath)));
+        var sdk = GlobalJson.Parse(Read(directory, GlobalJson.FilePath));
         failed += Report(
             $".NET SDK {sdk.Version} from {GlobalJson.FilePath}", Checks.Sdk(sdk, runner("dotnet", ["--version"])));
 
+        // The pin file is read on every run, so that a local run finds a broken pin too.
+        var pins = ToolchainJson.Parse(Read(directory, ToolchainJson.FilePath));
         if (ciTools)
         {
-            var pins = ToolchainJson.Parse(File.ReadAllText(Path.Combine(directory, ToolchainJson.FilePath)));
             foreach (var tool in pins)
             {
                 var pin = $"{tool.Name} {tool.Version} from {ToolchainJson.FilePath}";
@@ -292,11 +325,18 @@ internal static class ToolchainCheck
         }
         else
         {
-            Console.WriteLine($"  The CI tools in {ToolchainJson.FilePath} were not checked; --ci-tools checks them.");
+            Console.WriteLine(
+                $"  The {pins.Count} CI tools in {ToolchainJson.FilePath} were read, not run; --ci-tools runs them.");
         }
 
         Console.WriteLine(failed == 0 ? "Everything checked matches its pin." : $"{failed} pins do not match.");
         return failed == 0 ? 0 : 1;
+    }
+
+    private static string Read(string directory, string file)
+    {
+        var path = Path.Combine(directory, file);
+        return File.Exists(path) ? File.ReadAllText(path) : throw new InvalidDataException($"{file} does not exist.");
     }
 
     private static int Report(string pin, List<string> problems)
@@ -417,6 +457,7 @@ internal static class SelfTest
             Checks.Sdk(sdk with { RollForward = "latestFeature" }, new CommandResult(0, "10.0.403", "")).Count == 1,
             "a pin that may roll forward fails");
         tally.Expect(Rejects(() => GlobalJson.Parse("""{ "sdk": { } }""")), "global.json without a version fails");
+        tally.Expect(Rejects(() => GlobalJson.Parse("[]")), "global.json that is no object fails");
 
         Console.WriteLine("Pin file:");
         var pins = ToolchainJson.Parse(Pinned);
@@ -435,6 +476,17 @@ internal static class SelfTest
         tally.Expect(
             Rejects(() => ToolchainJson.Parse(Edit(Pinned, "\"6.2.0\",", "\"6.2.0\", \"x\": \"y\","))),
             "an unknown field is rejected");
+        tally.Expect(
+            Rejects(() => ToolchainJson.Parse(Edit(Pinned, "\"sha256\":", "\"sha512\": \"x\", \"sha256\":"))),
+            "an unknown field in a download is rejected");
+        tally.Expect(
+            Rejects(() => ToolchainJson.Parse(Edit(Pinned, "\"tools\": {", "\"xcode\": {}, \"tools\": {"))),
+            "a pin beside \"tools\" is rejected");
+        tally.Expect(
+            Rejects(() => ToolchainJson.Parse(
+                """{ "tools": { "x": { "version": "1.0", "source": "https://example.com/", "downloads": [] } } }""")),
+            "downloads that are no object are rejected");
+        tally.Expect(Rejects(() => ToolchainJson.Parse("[]")), "a pin file that is no object is rejected");
 
         Console.WriteLine("Tool versions:");
         var outputs = new Dictionary<string, CommandResult>

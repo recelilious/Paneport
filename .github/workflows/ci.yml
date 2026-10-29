@@ -50,6 +50,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet restore eng/ci.slnf --locked-mode
 
+      # Locked mode writes a missing lock file instead of failing, so a lock file that the
+      # restore or a tool's run created or changed fails here: every project commits its own.
+      - name: Check that no lock file was written
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          written=$(git status --porcelain --untracked-files=all -- '*.lock.json')
+          if [ -n "$written" ]; then
+            echo "$written"
+            echo "::error title=Lock files::A lock file was created or changed. Commit each project's lock file (C-0009 section 2)."
+            exit 1
+          fi
+
       - name: Build
         if: ${{ !cancelled() }}
         run: dotnet build eng/ci.slnf -c Release --no-restore
@@ -127,10 +140,16 @@ jobs:
 
       # The findings are redacted, and only their file, line, rule and commit are printed:
       # gitleaks' own verbose output would also print each commit's author and e-mail address.
+      # gitleaks skips the findings that a .gitleaksignore in the scanned folder lists, whatever
+      # its options, so such a file fails the step: every exception lives in eng/gitleaks.toml.
       - name: Scan the whole history for secrets (gitleaks)
         if: ${{ !cancelled() }}
         shell: bash
         run: |
+          if [ -e .gitleaksignore ]; then
+            echo "::error file=.gitleaksignore,title=gitleaks::gitleaks would skip the findings this file lists. Exceptions belong in eng/gitleaks.toml."
+            exit 1
+          fi
           report="$RUNNER_TEMP/gitleaks.json"
           status=0
           gitleaks git --config eng/gitleaks.toml --redact --ignore-gitleaks-allow --no-banner \

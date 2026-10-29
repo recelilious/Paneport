@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Fails on any dependency that the register in C-0003 section 6 does not cover (C-0011
-// section 2). It reads every packages.lock.json (direct and transitive packages), the package
+// section 2). It reads every NuGet lock file (direct and transitive packages), the package
 // directives of the file-based tools in tools/, .gitmodules, eng/toolchain.json, and the uses:
-// lines of the workflows, because actions are CI tools under C-0003 section 5.
-// eng/license-map.json maps each of them to the register row that covers it.
+// lines and container images of the workflows and actions, because actions are CI tools under
+// C-0003 section 5. eng/license-map.json maps each of them to the register row that covers
+// it. A way to bring in a package that no lock file records fails too, as does a project
+// without a lock file, because the checker would not see its packages.
 //
 //   dotnet run tools/CheckLicenses.cs                 check the repository
 //   dotnet run tools/CheckLicenses.cs -- --self-test  check the parsers and rules on fixtures
@@ -15,6 +17,7 @@
 
 #:property PublishAot=false
 
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -29,7 +32,7 @@ try
         _ => Cli.Usage(),
     };
 }
-catch (InvalidDataException exception)
+catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
 {
     Console.Error.WriteLine($"error: {exception.Message}");
     return 2;
@@ -63,6 +66,7 @@ internal enum Reason
     MissingRow,
     CategoryDoesNotCover,
     Unused,
+    Unseen,
 }
 
 internal sealed record Problem(Reason Reason, Kind Kind, string Name, string File, int Line, string Message);
@@ -181,6 +185,11 @@ internal sealed class LicenseMap(Dictionary<Kind, Dictionary<string, string>> se
         try
         {
             using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidDataException($"{FilePath} must be a JSON object.");
+            }
+
             foreach (var section in document.RootElement.EnumerateObject())
             {
                 if (!s_sectionNames.TryGetValue(section.Name, out var kind)
@@ -220,6 +229,19 @@ internal sealed class LicenseMap(Dictionary<Kind, Dictionary<string, string>> se
 
 internal static partial class Inventory
 {
+    // NuGet's lock files: packages.lock.json, and packages.<project>.lock.json, which NuGet uses
+    // in its place when it exists. The project of a file-based app tools/X.cs is named X.cs.
+    public static bool IsLockFile(string file) => LockFileName().IsMatch(file.Split('/')[^1]);
+
+    // Where actions are used: the workflows and every other YAML file under .github/, and the
+    // action.yml of each local action, wherever it lives.
+    public static bool IsActionFile(string file)
+    {
+        var name = file.Split('/')[^1];
+        var yaml = name.EndsWith(".yml", StringComparison.Ordinal) || name.EndsWith(".yaml", StringComparison.Ordinal);
+        return name is "action.yml" or "action.yaml" || (yaml && file.StartsWith(".github/", StringComparison.Ordinal));
+    }
+
     // Direct, transitive and centrally pinned packages of every target and runtime. Project
     // entries are the solution's own projects.
     public static List<Use> LockFile(string path, string json)
@@ -228,7 +250,8 @@ internal static partial class Inventory
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("dependencies", out var targets)
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("dependencies", out var targets)
                 || targets.ValueKind != JsonValueKind.Object)
             {
                 throw new InvalidDataException($"{path} has no \"dependencies\" object.");
@@ -236,8 +259,18 @@ internal static partial class Inventory
 
             foreach (var target in targets.EnumerateObject())
             {
+                if (target.Value.ValueKind != JsonValueKind.Object)
+                {
+                    throw new InvalidDataException($"{path}: the target {target.Name} is not an object.");
+                }
+
                 foreach (var package in target.Value.EnumerateObject())
                 {
+                    if (package.Value.ValueKind != JsonValueKind.Object)
+                    {
+                        throw new InvalidDataException($"{path}: package {package.Name} is not an object.");
+                    }
+
                     var type = package.Value.TryGetProperty("type", out var property)
                         && property.ValueKind == JsonValueKind.String
                             ? property.GetString()
@@ -265,16 +298,34 @@ internal static partial class Inventory
         return uses;
     }
 
-    // #:package Name@Version, #:package Name (with central package management), and
-    // #:sdk Name@Version, which NuGet also resolves. The compiler accepts directives only at the
-    // top of a file, before any code, so reading stops at the first line of code.
-    public static List<Use> Directives(string path, string source)
+    // The #: directives of a file-based app, with their line numbers. The compiler accepts them
+    // before the first token of the file: after blank lines, comments and preprocessor lines
+    // such as #nullable, but not after #if. Reading stops where the compiler stops accepting.
+    public static List<(int Line, string Text)> HeaderDirectives(string source)
     {
-        var uses = new List<Use>();
+        var directives = new List<(int Line, string Text)>();
         var lines = source.Split('\n');
+        var inComment = false;
         for (var index = 0; index < lines.Length; index++)
         {
             var line = lines[index].Trim();
+            if (inComment)
+            {
+                var end = line.IndexOf("*/", StringComparison.Ordinal);
+                if (end < 0)
+                {
+                    continue;
+                }
+
+                (line, inComment) = (line[(end + 2)..].TrimStart(), false);
+            }
+
+            while (line.StartsWith("/*", StringComparison.Ordinal))
+            {
+                var end = line.IndexOf("*/", 2, StringComparison.Ordinal);
+                (line, inComment) = end < 0 ? (string.Empty, true) : (line[(end + 2)..].TrimStart(), false);
+            }
+
             if (line.Length == 0
                 || line.StartsWith("//", StringComparison.Ordinal)
                 || line.StartsWith("#!", StringComparison.Ordinal))
@@ -282,25 +333,42 @@ internal static partial class Inventory
                 continue;
             }
 
-            if (!line.StartsWith("#:", StringComparison.Ordinal))
+            if (line.StartsWith("#:", StringComparison.Ordinal))
+            {
+                directives.Add((index + 1, line));
+                continue;
+            }
+
+            if (!line.StartsWith('#') || IfDirective().IsMatch(line))
             {
                 break;
             }
+        }
 
-            if (!line.StartsWith("#:package", StringComparison.Ordinal)
-                && !line.StartsWith("#:sdk", StringComparison.Ordinal))
+        return directives;
+    }
+
+    // #:package Name@Version, #:package Name (with central package management), and
+    // #:sdk Name@Version, which NuGet also resolves.
+    public static List<Use> Directives(string path, string source)
+    {
+        var uses = new List<Use>();
+        foreach (var (line, text) in HeaderDirectives(source))
+        {
+            if (!text.StartsWith("#:package", StringComparison.Ordinal)
+                && !text.StartsWith("#:sdk", StringComparison.Ordinal))
             {
                 continue;
             }
 
-            var match = Directive().Match(line);
+            var match = Directive().Match(text);
             if (!match.Success)
             {
                 throw new InvalidDataException(
-                    $"{path} line {index + 1}: a package directive that the checker cannot read.");
+                    $"{path} line {line}: a package directive that the checker cannot read.");
             }
 
-            uses.Add(new Use(Kind.Package, match.Groups[1].Value, path, index + 1));
+            uses.Add(new Use(Kind.Package, match.Groups[1].Value, path, line));
         }
 
         return uses;
@@ -311,7 +379,9 @@ internal static partial class Inventory
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("tools", out var tools) || tools.ValueKind != JsonValueKind.Object)
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("tools", out var tools)
+                || tools.ValueKind != JsonValueKind.Object)
             {
                 throw new InvalidDataException($"{path} has no \"tools\" object.");
             }
@@ -326,27 +396,59 @@ internal static partial class Inventory
         }
     }
 
-    // The uses: lines of a workflow. owner/repo/path@ref names the action owner/repo; a local
-    // action (./path) is our own code; docker://image:tag names the image.
+    // The actions and images of a workflow or action file. owner/repo/path@ref names the action
+    // owner/repo; a local action (./path) is our own code, and its action.yml is read too;
+    // docker://image:tag, and the image of a job container or service, name the image without
+    // its tag. A uses:, container: or image: line in a form that the checker cannot read, such
+    // as a flow mapping or a value on the next line, stops it, so that no step escapes it.
     public static List<Use> Workflow(string path, string yaml)
     {
         var uses = new List<Use>();
         var lines = yaml.Split('\n');
         for (var index = 0; index < lines.Length; index++)
         {
-            var match = UsesLine().Match(lines[index]);
-            if (!match.Success || match.Groups[1].Value.StartsWith("./", StringComparison.Ordinal))
+            var line = lines[index].TrimEnd('\r');
+            var number = index + 1;
+            if (line.TrimStart().StartsWith('#'))
             {
                 continue;
             }
 
-            uses.Add(new Use(Kind.Action, ActionName(match.Groups[1].Value, path, index + 1), path, index + 1));
+            if (UsesKey().IsMatch(line))
+            {
+                var value = UsesLine().Match(line) is { Success: true } usesLine
+                    ? usesLine.Groups[3].Value
+                    : throw Unreadable(path, number, "uses: owner/repo@ref");
+                if (!value.StartsWith("./", StringComparison.Ordinal))
+                {
+                    uses.Add(new Use(Kind.Action, ActionName(value, path, number), path, number));
+                }
+            }
+            else if (ImageKey().IsMatch(line))
+            {
+                var image = ImageLine().Match(line) is { Success: true } imageLine
+                    ? imageLine
+                    : throw Unreadable(path, number, "image: name:tag");
+                var (key, value) = (image.Groups[2].Value, image.Groups[4].Value);
+                if (value.Length == 0 && key == "image")
+                {
+                    throw Unreadable(path, number, "image: name:tag");
+                }
+
+                // container: followed by a mapping names its image on an image: line of its own,
+                // and Dockerfile or ./path builds a local image.
+                if (value.Length > 0 && value != "Dockerfile" && !value.StartsWith("./", StringComparison.Ordinal))
+                {
+                    uses.Add(new Use(Kind.Action, ImageName(value, path, number), path, number));
+                }
+            }
         }
 
         return uses;
     }
 
-    // Each submodule is named by its path, for example external/Paneport-wine.
+    // Each submodule is named by its path, for example external/Paneport-wine. Git reads section
+    // and key names without regard to case.
     public static List<Use> GitModules(string path, string text)
     {
         var uses = new List<Use>();
@@ -357,7 +459,7 @@ internal static partial class Inventory
             var line = lines[index].Trim();
             if (line.StartsWith('['))
             {
-                inSubmodule = line.StartsWith("[submodule ", StringComparison.Ordinal);
+                inSubmodule = line.StartsWith("[submodule ", StringComparison.OrdinalIgnoreCase);
                 continue;
             }
 
@@ -375,7 +477,7 @@ internal static partial class Inventory
     {
         if (value.StartsWith("docker://", StringComparison.Ordinal))
         {
-            return DockerTag().Replace(value, string.Empty);
+            return ImageName(value, path, line);
         }
 
         var at = value.IndexOf('@', StringComparison.Ordinal);
@@ -385,23 +487,194 @@ internal static partial class Inventory
             : throw new InvalidDataException($"{path} line {line}: \"{value}\" is not of the form owner/repo@ref.");
     }
 
+    private static string ImageName(string value, string path, int line)
+    {
+        if (value.Contains("${{", StringComparison.Ordinal))
+        {
+            throw Unreadable(path, line, "a fixed image name");
+        }
+
+        var image = value.StartsWith("docker://", StringComparison.Ordinal) ? value : $"docker://{value}";
+        return DockerTag().Replace(image, string.Empty);
+    }
+
+    private static InvalidDataException Unreadable(string path, int line, string form) => new(
+        $"{path} line {line}: a line that the checker cannot read. Write it in block style on one line, as {form}.");
+
     private static int LineOf(string text, string needle)
     {
         var index = text.IndexOf(needle, StringComparison.Ordinal);
         return index < 0 ? 0 : text.AsSpan(0, index).Count('\n') + 1;
     }
 
+    [GeneratedRegex(@"^packages(?:\.[^/]+)?\.lock\.json$")]
+    private static partial Regex LockFileName();
+
     [GeneratedRegex(@"^#:(?:package|sdk)\s+([A-Za-z0-9_.-]+)(?:@\S+)?$")]
     private static partial Regex Directive();
 
-    [GeneratedRegex(@"^\s*(?:-\s+)?uses:\s*[""']?([^""'\s#]+)[""']?")]
+    [GeneratedRegex(@"^#\s*if\b")]
+    private static partial Regex IfDirective();
+
+    // A uses: key anywhere on a line, in block or flow style.
+    [GeneratedRegex(@"(?:^|[\s{,])[""']?uses[""']?\s*:")]
+    private static partial Regex UsesKey();
+
+    // The form the checker reads: the key and its value on one line, in block style.
+    [GeneratedRegex(@"^\s*(?:-\s+)?([""']?)uses\1\s*:\s*([""']?)([^""'\s#]+)\2\s*(?:#.*)?$")]
     private static partial Regex UsesLine();
+
+    [GeneratedRegex(@"(?:^|[\s{,])[""']?(?:container|image)[""']?\s*:")]
+    private static partial Regex ImageKey();
+
+    [GeneratedRegex(@"^\s*(?:-\s+)?([""']?)(container|image)\1\s*:\s*([""']?)([^""'\s#]*)\3\s*(?:#.*)?$")]
+    private static partial Regex ImageLine();
 
     [GeneratedRegex(@"(?:@[^/]*|:[^/:]*)$")]
     private static partial Regex DockerTag();
 
-    [GeneratedRegex(@"^path\s*=\s*(.+)$")]
+    [GeneratedRegex(@"^path\s*=\s*(.+)$", RegexOptions.IgnoreCase)]
     private static partial Regex SubmodulePath();
+}
+
+// Packages that no lock file records, and projects and tools whose lock file the checker
+// cannot find. The checker would not see their packages, so each one fails until the
+// checker learns to read it.
+internal static partial class Unseen
+{
+    private const string LockFilePathMessage =
+        "NuGetLockFilePath moves the lock file where tools/CheckLicenses.cs does not look. Keep the lock file "
+            + "next to the project, as packages.lock.json or packages.<project>.lock.json.";
+
+    public static List<Problem> Find(IEnumerable<string> files, Func<string, string> read)
+    {
+        var tracked = files.Order(StringComparer.Ordinal).ToList();
+        var problems = new List<Problem>();
+        foreach (var project in tracked.Where(file => file.EndsWith(".csproj", StringComparison.Ordinal)))
+        {
+            var (folder, name) = Split(project);
+            if (!tracked.Contains($"{folder}packages.lock.json")
+                && !tracked.Contains($"{folder}packages.{name[..^".csproj".Length]}.lock.json"))
+            {
+                problems.Add(Problem(
+                    project,
+                    0,
+                    "the project has no lock file, so its packages cannot be checked. Restore it and commit "
+                        + "its packages.lock.json (C-0009 section 2)."));
+            }
+        }
+
+        foreach (var tool in tracked.Where(IsTool))
+        {
+            var source = read(tool);
+            var (folder, name) = Split(tool);
+            var own = $"{folder}packages.{name}.lock.json";
+            if (Inventory.Directives(tool, source).Count > 0 && !tracked.Contains(own))
+            {
+                problems.Add(Problem(
+                    tool,
+                    0,
+                    $"the tool has package directives but no lock file of its own. Create {own} with the content "
+                        + "of tools/packages.lock.json, run the tool once, and commit the lock file."));
+            }
+
+            foreach (var (line, text) in Inventory.HeaderDirectives(source))
+            {
+                if (LockFilePathProperty().IsMatch(text))
+                {
+                    problems.Add(Problem(tool, line, LockFilePathMessage));
+                }
+            }
+        }
+
+        foreach (var file in tracked.Where(IsBuildFile))
+        {
+            var lines = read(file).Split('\n');
+            for (var index = 0; index < lines.Length; index++)
+            {
+                if (UnseenForm(lines[index]) is { } message)
+                {
+                    problems.Add(Problem(file, index + 1, message));
+                }
+            }
+        }
+
+        if (tracked.Contains("global.json") && HasMsbuildSdks(read("global.json")))
+        {
+            problems.Add(Problem(
+                "global.json",
+                0,
+                "msbuild-sdks names MSBuild SDKs, which NuGet resolves without a lock file. Remove them, or "
+                    + "teach tools/CheckLicenses.cs to read them first."));
+        }
+
+        foreach (var manifest in tracked.Where(file => file.Split('/')[^1] == "dotnet-tools.json"))
+        {
+            problems.Add(Problem(
+                manifest,
+                0,
+                "a tool manifest names .NET tools, packages that no lock file records. Remove it, or teach "
+                    + "tools/CheckLicenses.cs to read it first."));
+        }
+
+        return problems;
+    }
+
+    private static bool IsTool(string file) =>
+        file.StartsWith("tools/", StringComparison.Ordinal) && file.EndsWith(".cs", StringComparison.Ordinal);
+
+    private static bool IsBuildFile(string file) =>
+        file.EndsWith(".csproj", StringComparison.Ordinal)
+            || file.EndsWith(".props", StringComparison.Ordinal)
+            || file.EndsWith(".targets", StringComparison.Ordinal);
+
+    private static (string Folder, string Name) Split(string file)
+    {
+        var slash = file.LastIndexOf('/');
+        return (file[..(slash + 1)], file[(slash + 1)..]);
+    }
+
+    private static string? UnseenForm(string line) => line switch
+    {
+        _ when LockFilePathElement().IsMatch(line) => LockFilePathMessage,
+        _ when VersionedSdk().IsMatch(line) =>
+            "an MSBuild SDK with a version is a package that NuGet resolves without a lock file. Remove it, or "
+                + "teach tools/CheckLicenses.cs to read it first.",
+        _ when PackageDownload().IsMatch(line) =>
+            "PackageDownload fetches a package that no lock file records. Remove it, or teach "
+                + "tools/CheckLicenses.cs to read it first.",
+        _ => null,
+    };
+
+    private static bool HasMsbuildSdks(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("msbuild-sdks", out _);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException($"global.json is not valid JSON: {exception.Message}");
+        }
+    }
+
+    private static Problem Problem(string file, int line, string message) =>
+        new(Reason.Unseen, Kind.Package, file, file, line, message);
+
+    [GeneratedRegex(@"^#:property\s+NuGetLockFilePath\b", RegexOptions.IgnoreCase)]
+    private static partial Regex LockFilePathProperty();
+
+    [GeneratedRegex(@"<NuGetLockFilePath\b", RegexOptions.IgnoreCase)]
+    private static partial Regex LockFilePathElement();
+
+    // Sdk="Name/Version" on a project or an import, and <Sdk> or <Import> with a Version.
+    [GeneratedRegex(@"\bSdk\s*=\s*""[^""]*/|<(?:Sdk|Import)\b[^>]*\bVersion\s*=", RegexOptions.IgnoreCase)]
+    private static partial Regex VersionedSdk();
+
+    [GeneratedRegex(@"<PackageDownload\b", RegexOptions.IgnoreCase)]
+    private static partial Regex PackageDownload();
 }
 
 internal static class Coverage
@@ -489,19 +762,16 @@ internal static class LicenseCheck
         var register = Register.Parse(Read(root, Register.FilePath));
         var map = LicenseMap.Parse(Read(root, LicenseMap.FilePath));
 
-        var lockFiles = files.Where(file => file.Split('/')[^1] == "packages.lock.json").ToList();
+        var lockFiles = files.Where(Inventory.IsLockFile).ToList();
         var tools = files.Where(file => IsIn(file, "tools/") && HasExtension(file, ".cs")).ToList();
-        var workflows = files
-            .Where(file => IsIn(file, ".github/workflows/"))
-            .Where(file => HasExtension(file, ".yml") || HasExtension(file, ".yaml"))
-            .ToList();
+        var actionFiles = files.Where(Inventory.IsActionFile).ToList();
         var toolchain = files.Contains("eng/toolchain.json");
         var gitModules = files.Contains(".gitmodules");
 
         var uses = new List<Use>();
         uses.AddRange(lockFiles.SelectMany(file => Inventory.LockFile(file, Read(root, file))));
         uses.AddRange(tools.SelectMany(file => Inventory.Directives(file, Read(root, file))));
-        uses.AddRange(workflows.SelectMany(file => Inventory.Workflow(file, Read(root, file))));
+        uses.AddRange(actionFiles.SelectMany(file => Inventory.Workflow(file, Read(root, file))));
         uses.AddRange(toolchain ? Inventory.Toolchain("eng/toolchain.json", Read(root, "eng/toolchain.json")) : []);
         uses.AddRange(gitModules ? Inventory.GitModules(".gitmodules", Read(root, ".gitmodules")) : []);
 
@@ -509,10 +779,12 @@ internal static class LicenseCheck
         Console.WriteLine($"Register: {register.Count} rows in {Register.FilePath} section 6.");
         Console.WriteLine(
             $"Read {lockFiles.Count} lock files, the directives of {tools.Count} file-based tools, "
-                + $"{workflows.Count} workflows, {(toolchain ? "eng/toolchain.json" : "no eng/toolchain.json")} "
+                + $"{actionFiles.Count} workflow and action files, "
+                + $"{(toolchain ? "eng/toolchain.json" : "no eng/toolchain.json")} "
                 + $"and {(gitModules ? ".gitmodules" : "no .gitmodules")}.");
 
         var problems = Coverage.Check(uses, register, map);
+        problems.AddRange(Unseen.Find(files, file => Read(root, file)));
         foreach (var kind in Enum.GetValues<Kind>())
         {
             PrintCovered(kind, uses, problems, register, map);
@@ -587,13 +859,25 @@ internal static class Git
             start.ArgumentList.Add(argument);
         }
 
-        using var process = Process.Start(start) ?? throw new InvalidDataException("git could not be started.");
+        using var process = Start(start);
         var error = process.StandardError.ReadToEndAsync();
         var output = process.StandardOutput.ReadToEnd();
         process.WaitForExit();
         return process.ExitCode == 0
             ? output
             : throw new InvalidDataException($"git {string.Join(' ', arguments)} failed: {error.Result.Trim()}");
+    }
+
+    private static Process Start(ProcessStartInfo start)
+    {
+        try
+        {
+            return Process.Start(start) ?? throw new InvalidDataException("git could not be started.");
+        }
+        catch (Win32Exception exception)
+        {
+            throw new InvalidDataException($"git could not be started: {exception.Message}");
+        }
     }
 }
 
@@ -658,12 +942,19 @@ internal static class SelfTest
 
     private const string SampleTool =
         """
-        // A sample file-based tool.
-
+        /* A sample file-based tool,
+           whose header starts with a block comment. */
+        // A line comment.
+        #nullable enable
         #:package Sample.Directive@1.2.3
         #:package Sample.Pinned.Centrally
+        #pragma warning disable CA1000
         #:sdk Sample.Sdk@4.5.6
         #:property PublishAot=false
+        /* #:package Sample.In.Comment@1.0.0 */
+        #if DEBUG
+        #:package Sample.After.If@1.0.0
+        #endif
 
         return 0;
 
@@ -674,12 +965,28 @@ internal static class SelfTest
         """
         jobs:
           sample:
+            container: sample/container:1.0
+            services:
+              cache:
+                image: "sample/service@sha256:0123456789abcdef"
             steps:
+              # uses: commented-out/action@v1
               - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567 # v1.0.0
               - name: A local action
                 uses: ./.github/actions/local
               - uses: "sample-owner/sample-action/sub/path@v2"
               - uses: docker://sample/image:1.0
+          build:
+            container:
+              image: sample/mapped-container:2.0
+        """;
+
+    private const string SampleAction =
+        """
+        runs:
+          using: composite
+          steps:
+            - uses: sample-owner/composite-step@v1
         """;
 
     private const string SampleGitModules =
@@ -687,6 +994,9 @@ internal static class SelfTest
         [submodule "external/Paneport-sample"]
             path = external/Paneport-sample
             url = https://example.com/sample.git
+        [Submodule "external/Paneport-other"]
+            Path = external/Paneport-other
+            url = https://example.com/other.git
         """;
 
     private const string SampleToolchain =
@@ -710,9 +1020,15 @@ internal static class SelfTest
           "actions": {
             "actions/checkout": "Sample.Tool",
             "sample-owner/sample-action": "Sample.Allowed",
-            "docker://sample/image": "Sample.Tool"
+            "docker://sample/image": "Sample.Tool",
+            "docker://sample/container": "Sample.Tool",
+            "docker://sample/service": "Sample.Tool",
+            "docker://sample/mapped-container": "Sample.Tool"
           },
-          "submodules": { "external/Paneport-sample": "Sample.Tool" }
+          "submodules": {
+            "external/Paneport-sample": "Sample.Tool",
+            "external/Paneport-other": "Sample.Allowed"
+          }
         }
         """;
 
@@ -739,6 +1055,12 @@ internal static class SelfTest
             "rejects a row with a missing cell");
 
         Console.WriteLine("Inputs:");
+        string[] lockFiles =
+            ["src/A/packages.lock.json", "src/A/packages.A.lock.json", "tools/packages.CheckCompat.cs.lock.json"];
+        string[] otherFiles = ["src/A/packages.json", "src/A/my.packages.lock.json", "src/A/packages.lock.json.bak"];
+        tally.Expect(
+            lockFiles.All(Inventory.IsLockFile) && !otherFiles.Any(Inventory.IsLockFile),
+            "packages.lock.json and packages.<project>.lock.json are lock files, and nothing else is");
         var lockUses = Inventory.LockFile("sample/packages.lock.json", SampleLockFile);
         tally.Expect(
             Names(lockUses).SetEquals(["Sample.Direct", "Sample.Transitive", "Sample.Central", "Sample.Native"]),
@@ -746,18 +1068,50 @@ internal static class SelfTest
         var directiveUses = Inventory.Directives("tools/Sample.cs", SampleTool);
         tally.Expect(
             Names(directiveUses).SetEquals(["Sample.Directive", "Sample.Pinned.Centrally", "Sample.Sdk"]),
-            "a file-based tool yields the #:package and #:sdk directives at its top, not #:property");
-        var actionUses = Inventory.Workflow(".github/workflows/sample.yml", SampleWorkflow);
+            "a file-based tool yields the #:package and #:sdk directives before its first token, also after "
+                + "comments and #nullable or #pragma, but not in a comment, after #if or after code");
+        string[] actionFiles =
+            [".github/workflows/ci.yml", ".github/actions/local/action.yml", "eng/actions/helper/action.yaml"];
+        string[] notActionFiles = [".github/workflows/README.md", "docs/samples/workflow.yml"];
         tally.Expect(
-            Names(actionUses).SetEquals(["actions/checkout", "sample-owner/sample-action", "docker://sample/image"]),
-            "a workflow yields its actions and images, not its local actions");
+            actionFiles.All(Inventory.IsActionFile) && !notActionFiles.Any(Inventory.IsActionFile),
+            "the YAML files under .github/ and every action.yml are read for actions, and nothing else is");
+        var actionUses = Inventory.Workflow(".github/workflows/sample.yml", SampleWorkflow);
+        string[] actions =
+        [
+            "actions/checkout",
+            "sample-owner/sample-action",
+            "docker://sample/image",
+            "docker://sample/container",
+            "docker://sample/service",
+            "docker://sample/mapped-container",
+        ];
+        tally.Expect(
+            Names(actionUses).SetEquals(actions),
+            "a workflow yields its actions and the images of its containers and services, not local actions");
+        tally.Expect(
+            Names(Inventory.Workflow(".github/actions/local/action.yml", SampleAction))
+                .SetEquals(["sample-owner/composite-step"]),
+            "a local action yields the actions its steps use");
+        foreach (var (name, yaml) in UnreadableWorkflows())
+        {
+            tally.Expect(Rejects(() => Inventory.Workflow(".github/workflows/sample.yml", yaml)), $"rejects {name}");
+        }
+
         var submoduleUses = Inventory.GitModules(".gitmodules", SampleGitModules);
-        tally.Expect(Names(submoduleUses).SetEquals(["external/Paneport-sample"]), ".gitmodules yields each path");
+        tally.Expect(
+            Names(submoduleUses).SetEquals(["external/Paneport-sample", "external/Paneport-other"]),
+            ".gitmodules yields each path, whatever the case of its keys");
         var toolUses = Inventory.Toolchain("eng/toolchain.json", SampleToolchain);
         tally.Expect(Names(toolUses).SetEquals(["sample-tool"]), "eng/toolchain.json yields each pinned tool");
         tally.Expect(
             Rejects(() => Inventory.Directives("tools/Sample.cs", "#:package Sample Directive@1.0")),
             "rejects a directive it cannot read");
+        tally.Expect(
+            Rejects(() => Inventory.LockFile("sample/packages.lock.json", """{ "dependencies": { "x": [] } }""")),
+            "rejects a lock file of the wrong shape");
+        tally.Expect(
+            Rejects(() => Inventory.Toolchain("eng/toolchain.json", "[]")), "rejects a pin file that is no object");
 
         Console.WriteLine("Coverage:");
         var uses = lockUses.Concat(directiveUses).Concat(actionUses).Concat(submoduleUses).Concat(toolUses).ToList();
@@ -774,12 +1128,14 @@ internal static class SelfTest
         Expect(tally, problems, "actions/checkout", null, "a Tool row covers an action");
         Expect(tally, problems, "sample-owner/sample-action", null, "an Allowed row covers an action");
         Expect(tally, problems, "docker://sample/image", null, "a Tool row covers an image");
+        Expect(tally, problems, "docker://sample/service", null, "a Tool row covers a service's image");
         Expect(
             tally,
             problems,
             "external/Paneport-sample",
             Reason.CategoryDoesNotCover,
             "a Tool row does not cover a submodule");
+        Expect(tally, problems, "external/Paneport-other", null, "an Allowed row covers a submodule");
         tally.Expect(problems.Count == 7, $"exactly the seven problems above are reported ({problems.Count})");
         tally.Expect(
             Rejects(() => LicenseMap.Parse("""{ "libraries": { "Sample.Direct": "Sample.Allowed" } }""")),
@@ -787,11 +1143,87 @@ internal static class SelfTest
         tally.Expect(
             Rejects(() => LicenseMap.Parse("""{ "packages": { "Sample.Direct": "A", "SAMPLE.DIRECT": "B" } }""")),
             "rejects a package listed twice");
+        tally.Expect(Rejects(() => LicenseMap.Parse("[]")), "rejects a map that is no object");
+
+        Console.WriteLine("Packages that no lock file shows:");
+        CheckUnseen(tally);
 
         Console.WriteLine(tally.Failed == 0
             ? $"Self-test passed: {tally.Total} of {tally.Total} checks as expected."
             : $"Self-test FAILED: {tally.Failed} of {tally.Total} checks not as expected.");
         return tally.Failed == 0 ? 0 : 1;
+    }
+
+    private static List<(string Name, string Yaml)> UnreadableWorkflows() =>
+    [
+        ("a step written as a flow mapping", "steps:\n  - { name: Flow, uses: sample-owner/flow@v1 }"),
+        ("a uses: value on the next line", "steps:\n  - uses:\n      sample-owner/next-line@v1"),
+        ("a container written as a flow mapping", "jobs:\n  a:\n    container: { image: sample/flow:1.0 }"),
+        ("an image on the next line", "jobs:\n  a:\n    container:\n      image:\n        sample/next-line:1.0"),
+        ("an image named by an expression", "jobs:\n  a:\n    container:\n      image: ${{ matrix.image }}"),
+    ];
+
+    private static void CheckUnseen(Tally tally)
+    {
+        const string Project = "<Project Sdk=\"Microsoft.NET.Sdk\" />";
+        var repository = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["src/Locked/Locked.csproj"] = Project,
+            ["src/Locked/packages.lock.json"] = SampleLockFile,
+            ["src/Named/Named.csproj"] = Project,
+            ["src/Named/packages.Named.lock.json"] = SampleLockFile,
+            ["src/Unlocked/Unlocked.csproj"] = Project,
+            ["src/Sdk/Sdk.csproj"] =
+                "<Project Sdk=\"Sample.Project.Sdk/1.0.0\">\n  <Sdk Name=\"Sample.Element.Sdk\" Version=\"1.0.0\" />\n"
+                    + "  <Import Project=\"Sdk.props\" Sdk=\"Sample.Import.Sdk\" Version=\"1.0.0\" />\n</Project>",
+            ["src/Sdk/packages.lock.json"] = SampleLockFile,
+            ["eng/Sample.targets"] = "<Project>\n  <PackageDownload Include=\"Sample.Download\" Version=\"[1.0.0]\" />",
+            ["eng/Sample.props"] = "<Project>\n  <NuGetLockFilePath>elsewhere.json</NuGetLockFilePath>",
+            ["tools/Plain.cs"] = "return 0;",
+            ["tools/Owned.cs"] = "#:package Sample.Owned@1.0.0\nreturn 0;",
+            ["tools/packages.Owned.cs.lock.json"] = SampleLockFile,
+            ["tools/Shared.cs"] = "#:package Sample.Shared@1.0.0\nreturn 0;",
+            ["tools/Moved.cs"] = "// A tool.\n#:property NuGetLockFilePath=elsewhere.json\nreturn 0;",
+            ["tools/packages.lock.json"] = SampleLockFile,
+            ["global.json"] = """{ "sdk": { "version": "1.0.0" }, "msbuild-sdks": { "Sample.Sdk": "1.0.0" } }""",
+            [".config/dotnet-tools.json"] = """{ "version": 1, "isRoot": true, "tools": {} }""",
+        };
+        var found = Unseen.Find(repository.Keys, file => repository[file])
+            .Select(problem => (problem.File, problem.Line))
+            .ToList();
+        (string File, int Line)[] expected =
+        [
+            ("src/Unlocked/Unlocked.csproj", 0),
+            ("src/Sdk/Sdk.csproj", 1),
+            ("src/Sdk/Sdk.csproj", 2),
+            ("src/Sdk/Sdk.csproj", 3),
+            ("eng/Sample.targets", 2),
+            ("eng/Sample.props", 2),
+            ("tools/Shared.cs", 0),
+            ("tools/Moved.cs", 2),
+            ("global.json", 0),
+            (".config/dotnet-tools.json", 0),
+        ];
+        tally.Expect(found.Contains(expected[0]), "a project without a lock file fails");
+        tally.Expect(
+            !found.Any(problem => problem.File.StartsWith("src/Locked/", StringComparison.Ordinal)
+                || problem.File.StartsWith("src/Named/", StringComparison.Ordinal)),
+            "a project with packages.lock.json or packages.<project>.lock.json passes");
+        tally.Expect(
+            expected[1..4].All(found.Contains),
+            "an MSBuild SDK with a version fails, on the project, as an element and on an import");
+        tally.Expect(found.Contains(expected[4]), "PackageDownload fails");
+        tally.Expect(
+            found.Contains(expected[5]) && found.Contains(expected[7]),
+            "NuGetLockFilePath fails, in a project file and in a directive");
+        tally.Expect(
+            found.Contains(expected[6]) && !found.Any(problem => problem.File is "tools/Owned.cs" or "tools/Plain.cs"),
+            "a tool with package directives needs a lock file of its own; other tools share one");
+        tally.Expect(found.Contains(expected[8]), "msbuild-sdks in global.json fails");
+        tally.Expect(found.Contains(expected[9]), "a tool manifest fails");
+        tally.Expect(
+            found.Count == expected.Length,
+            $"exactly the {expected.Length} problems above are reported ({found.Count})");
     }
 
     private static string Edit(string text, string from, string to) => text.Replace(from, to, StringComparison.Ordinal);

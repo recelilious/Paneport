@@ -11,15 +11,15 @@ namespace Paneport.Core.ViewModels;
 /// The shell: the navigation between the top-level sections, the back stack and the page shown.
 /// </summary>
 /// <remarks>
-/// Opening a section shows a new page for it and clears the back stack. A page that another
-/// page opens goes on top of it, and going back returns to the page below. The head shows the
-/// shell's view and then runs <see cref="StartCommand"/>, which loads the Library page.
+/// Opening a section, even the one already marked, shows a new page for it and clears the back
+/// stack. A page that another page opens goes on top of it, and going back returns to the page
+/// below. The head shows the shell's view and then runs <see cref="StartCommand"/>, which loads
+/// the Library page.
 /// </remarks>
 public sealed partial class ShellViewModel : ObservableObject, INavigator
 {
     private readonly AppServices _services;
     private readonly Stack<PageViewModel> _backStack = new();
-    private bool _openingSection;
 
     /// <summary>Creates the shell on the Library section. Its page loads when the shell starts.</summary>
     /// <param name="services">The services that the head provides.</param>
@@ -27,16 +27,17 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     {
         ArgumentNullException.ThrowIfNull(services);
         _services = services;
+        Sections = [new(ShellSection.Library), new(ShellSection.Settings), new(ShellSection.Diagnostics)];
         MarkSection(ShellSection.Library);
         CurrentPage = CreatePage(ShellSection.Library);
     }
 
-    /// <summary>Gets the sections that the navigation offers, in order.</summary>
-    public IReadOnlyList<ShellSection> Sections { get; } = [ShellSection.Library, ShellSection.Settings, ShellSection.Diagnostics];
+    /// <summary>Gets the entries of the navigation bar, one per section, in order.</summary>
+    public IReadOnlyList<NavigationEntry> Sections { get; }
 
-    /// <summary>Gets or sets the section that the navigation marks. Setting it opens the section.</summary>
+    /// <summary>Gets the section that the navigation bar marks: the last one opened.</summary>
     [ObservableProperty]
-    public partial ShellSection SelectedSection { get; set; }
+    public partial ShellSection SelectedSection { get; private set; }
 
     /// <summary>Gets the page that the shell shows.</summary>
     [ObservableProperty]
@@ -55,25 +56,24 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         return ShowAsync(page, cancellationToken);
     }
 
-    partial void OnSelectedSectionChanged(ShellSection value)
-    {
-        if (!_openingSection)
-        {
-            OpenSectionCommand.Execute(value);
-        }
-    }
-
     /// <summary>Loads the page that the shell starts on.</summary>
     /// <param name="cancellationToken">Cancels the load.</param>
     /// <returns>A task that completes when the page has loaded, or its load was cancelled.</returns>
     [RelayCommand]
     private Task StartAsync(CancellationToken cancellationToken) => LoadPageAsync(CurrentPage, cancellationToken);
 
-    /// <summary>Opens a section on a new page, and clears the back stack.</summary>
+    /// <summary>
+    /// Opens a section on a new page, and clears the back stack. The section already marked opens
+    /// again too, so choosing it returns to its first page.
+    /// </summary>
     /// <param name="section">The section to open.</param>
     /// <param name="cancellationToken">Cancels the page's load.</param>
     /// <returns>A task that completes when the page is shown and loaded, or its load was cancelled.</returns>
-    [RelayCommand]
+    /// <remarks>
+    /// The command stays available while a page loads, so that the navigation bar never waits for
+    /// a slow page; a newer run cancels the load of the page it replaces.
+    /// </remarks>
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private Task OpenSectionAsync(ShellSection section, CancellationToken cancellationToken)
     {
         var page = CreatePage(section);
@@ -94,17 +94,12 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         }
     }
 
-    // Marks a section that the shell opens itself, which must not open it a second time.
     private void MarkSection(ShellSection section)
     {
-        _openingSection = true;
-        try
+        SelectedSection = section;
+        foreach (var entry in Sections)
         {
-            SelectedSection = section;
-        }
-        finally
-        {
-            _openingSection = false;
+            entry.IsSelected = entry.Section == section;
         }
     }
 

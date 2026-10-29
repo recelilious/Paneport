@@ -39,13 +39,25 @@ SPDX-License-Identifier: MIT
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
-    <!-- The navigation bar below the page, one equal cell per section. -->
-    <Style Selector="ListBox.navigation">
-      <Setter Property="Padding" Value="8,4" />
+    <!--
+    The navigation bar below the page, one equal cell per section. The marked entry has a tint
+    that works in light and dark themes alike.
+    -->
+    <Style Selector="Border.navigation">
+      <Setter Property="BorderBrush" Value="#40808080" />
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="Padding" Value="8,6" />
     </Style>
-    <Style Selector="ListBox.navigation ListBoxItem">
+    <Style Selector="Button.section">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Margin" Value="4,0" />
       <Setter Property="Padding" Value="12,10" />
+    </Style>
+    <Style Selector="Button.section.selected">
+      <Setter Property="Background" Value="#593B82F6" />
+      <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style Selector="TextBlock.error">

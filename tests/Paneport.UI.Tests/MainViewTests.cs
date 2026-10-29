@@ -3,7 +3,6 @@
 
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
-using Avalonia.VisualTree;
 using Paneport.Core.ViewModels;
 using Paneport.UI.Views;
 using Xunit;
@@ -19,11 +18,10 @@ public sealed class MainViewTests
         using var warnings = AvaloniaWarnings.Record();
         using var harness = ShellHarness.Show();
 
-        var navigation = harness.View.FindControl<ListBox>("Navigation");
-        Assert.NotNull(navigation);
-        var entries = navigation.GetVisualDescendants().OfType<ListBoxItem>().ToList();
+        var entries = harness.NavigationButtons();
         Assert.Equal(["Library", "Settings", "Diagnostics"], entries.Select(entry => ShellHarness.TextsIn(entry).Single()));
-        Assert.Equal(ShellSection.Library, navigation.SelectedItem);
+        Assert.Equal(["Library"], entries.Where(entry => entry.Classes.Contains("selected")).Select(entry => entry.Content));
+        Assert.All(entries, entry => Assert.True(entry.IsEffectivelyEnabled));
 
         Assert.Equal("Library", harness.View.FindControl<TextBlock>("Heading")?.Text);
         Assert.False(harness.View.FindControl<Button>("BackButton")?.IsVisible);

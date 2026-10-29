@@ -63,12 +63,18 @@ internal sealed class ShellHarness : IDisposable
         Settle();
     }
 
+    // The navigation bar's buttons, in order.
+    public IReadOnlyList<Button> NavigationButtons()
+    {
+        var navigation = View.FindControl<ItemsControl>("Navigation")
+            ?? throw new InvalidOperationException("The main view has no navigation bar.");
+        return navigation.GetVisualDescendants().OfType<Button>().ToList();
+    }
+
     // Opens a section through the navigation bar, as a user would.
     public void OpenSection(ShellSection section)
     {
-        var navigation = View.FindControl<ListBox>("Navigation")
-            ?? throw new InvalidOperationException("The main view has no navigation.");
-        Click(navigation.GetVisualDescendants().OfType<ListBoxItem>().Single(item => Equals(item.Content, section)));
+        Click(NavigationButtons().Single(button => Equals(button.Content, section.ToString())));
     }
 
     // Runs what the dispatcher has queued and lays out the window, so that the view matches the

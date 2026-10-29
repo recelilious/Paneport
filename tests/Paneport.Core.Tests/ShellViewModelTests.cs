@@ -18,8 +18,12 @@ public sealed class ShellViewModelTests
 
         await shell.StartCommand.ExecuteAsync(null);
 
-        Assert.Equal([ShellSection.Library, ShellSection.Settings, ShellSection.Diagnostics], shell.Sections);
+        Assert.Equal(
+            [ShellSection.Library, ShellSection.Settings, ShellSection.Diagnostics],
+            shell.Sections.Select(entry => entry.Section));
+        Assert.Equal(["Library", "Settings", "Diagnostics"], shell.Sections.Select(entry => entry.Name));
         Assert.Equal(ShellSection.Library, shell.SelectedSection);
+        Assert.Equal(ShellSection.Library, Assert.Single(shell.Sections, entry => entry.IsSelected).Section);
         var library = Assert.IsType<LibraryViewModel>(shell.CurrentPage);
         Assert.Equal(TestTitles.All.Count, library.Titles.Count);
         Assert.False(shell.CanGoBack);
@@ -39,17 +43,27 @@ public sealed class ShellViewModelTests
         Assert.IsType(pageType, shell.CurrentPage);
         Assert.NotSame(startPage, shell.CurrentPage);
         Assert.Equal(section, shell.SelectedSection);
+        Assert.Equal(section, Assert.Single(shell.Sections, entry => entry.IsSelected).Section);
         Assert.False(shell.CanGoBack);
     }
 
+    // On a title's details the bar marks Library; choosing it returns to the list, as tapping the
+    // current tab does on a phone.
     [Fact]
-    public void ChoosingASectionInTheNavigationOpensIt()
+    public async Task ChoosingTheMarkedSectionReturnsToItsFirstPage()
     {
         var shell = new ShellViewModel(new FakeServices().ToAppServices());
+        await shell.StartCommand.ExecuteAsync(null);
+        var library = Assert.IsType<LibraryViewModel>(shell.CurrentPage);
+        await library.OpenTitleCommand.ExecuteAsync(library.Titles[0]);
+        Assert.Equal(ShellSection.Library, shell.SelectedSection);
 
-        shell.SelectedSection = ShellSection.Diagnostics;
+        await shell.OpenSectionCommand.ExecuteAsync(ShellSection.Library);
 
-        Assert.IsType<DiagnosticsViewModel>(shell.CurrentPage);
+        var reopened = Assert.IsType<LibraryViewModel>(shell.CurrentPage);
+        Assert.NotSame(library, reopened);
+        Assert.Equal(TestTitles.All.Count, reopened.Titles.Count);
+        Assert.False(shell.CanGoBack);
     }
 
     // S0.3.3: every page can be reached and left again.
@@ -107,6 +121,9 @@ public sealed class ShellViewModelTests
         var openingSettings = shell.OpenSectionCommand.ExecuteAsync(ShellSection.Settings);
         var settings = Assert.IsType<SettingsViewModel>(shell.CurrentPage);
         Assert.True(settings.IsLoading);
+
+        // The navigation bar stays available; a busy command would disable its buttons.
+        Assert.True(shell.OpenSectionCommand.CanExecute(ShellSection.Diagnostics));
         await shell.OpenSectionCommand.ExecuteAsync(ShellSection.Diagnostics);
         await openingSettings;
 

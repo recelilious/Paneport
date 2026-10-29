@@ -81,4 +81,24 @@ public sealed class LibraryPageTests
         Assert.False(back.IsVisible);
         Assert.Empty(warnings.Entries);
     }
+
+    // On a title's details the navigation bar marks Library. Choosing it returns to the list.
+    [AvaloniaFact]
+    public void ChoosingLibraryOnATitlesDetailsReturnsToTheList()
+    {
+        using var warnings = AvaloniaWarnings.Record();
+        using var harness = ShellHarness.Show();
+        var button = harness.Page<LibraryPage>().GetVisualDescendants().OfType<Button>()
+            .Single(candidate => AutomationProperties.GetName(candidate) == TestTitles.Local.Name);
+        harness.Click(button);
+        Assert.IsType<TitleDetailsViewModel>(harness.Shell.CurrentPage);
+
+        harness.OpenSection(ShellSection.Library);
+
+        Assert.IsType<LibraryViewModel>(harness.Shell.CurrentPage);
+        Assert.NotNull(harness.Page<LibraryPage>());
+        Assert.False(harness.Shell.CanGoBack);
+        Assert.Equal("Library", harness.View.FindControl<TextBlock>("Heading")?.Text);
+        Assert.Empty(warnings.Entries);
+    }
 }

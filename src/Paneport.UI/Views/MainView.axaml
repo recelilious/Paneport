@@ -8,23 +8,28 @@ SPDX-License-Identifier: MIT
              x:Class="Paneport.UI.Views.MainView"
              x:DataType="vm:ShellViewModel">
   <DockPanel>
-    <ListBox x:Name="Navigation"
-             DockPanel.Dock="Bottom"
-             Classes="navigation"
-             ItemsSource="{Binding Sections}"
-             SelectedItem="{Binding SelectedSection}"
-             SelectionMode="AlwaysSelected">
-      <ListBox.ItemsPanel>
-        <ItemsPanelTemplate>
-          <UniformGrid Rows="1" />
-        </ItemsPanelTemplate>
-      </ListBox.ItemsPanel>
-      <ListBox.ItemTemplate>
-        <DataTemplate x:DataType="vm:ShellSection">
-          <TextBlock Text="{Binding}" />
-        </DataTemplate>
-      </ListBox.ItemTemplate>
-    </ListBox>
+    <!--
+    The entries are buttons rather than a list selection, so that choosing the marked section,
+    for example Library on a title's details, opens it again.
+    -->
+    <Border DockPanel.Dock="Bottom" Classes="navigation">
+      <ItemsControl x:Name="Navigation" ItemsSource="{Binding Sections}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <UniformGrid Rows="1" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:NavigationEntry">
+            <Button Classes="section"
+                    Classes.selected="{Binding IsSelected}"
+                    Content="{Binding Name}"
+                    Command="{Binding $parent[ItemsControl].((vm:ShellViewModel)DataContext).OpenSectionCommand}"
+                    CommandParameter="{Binding Section}" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Border>
 
     <Border DockPanel.Dock="Top" Classes="header">
       <Grid ColumnDefinitions="Auto,*">

@@ -2,7 +2,7 @@
 
 | Author | Timestamp (UTC) |
 |---|---|
-| Claude (Anthropic), for the Paneport project | 2026-10-29T17:40Z |
+| Claude (Anthropic), for the Paneport project | 2026-10-29T18:49Z |
 
 Back to the [design index](README.md).
 
@@ -13,8 +13,8 @@ This document records the design of Paneport's app shell: the domain model, serv
 | Component | Holds | Depends on |
 |---|---|---|
 | Paneport.Core | The domain model, the service interfaces, the secret value type, the Steam stub and the view models | No other project. The CommunityToolkit.Mvvm package for the view models. No platform API. |
-| Paneport.UI | The application class, the main view, the four pages, the styles and the data templates | Paneport.Core; the Avalonia and Avalonia.Themes.Fluent packages |
-| Paneport.Desktop | The composition root, the window, the fakes, and the sink that shows Avalonia's warnings in the terminal | Paneport.Core, Paneport.Steam (no code yet) and Paneport.UI; the Avalonia.Desktop package |
+| Paneport.UI | The application class, the main view, the four pages, the styles, the data templates, and the sink that passes Avalonia's warnings to the app's log | Paneport.Core; the Avalonia and Avalonia.Themes.Fluent packages |
+| Paneport.Desktop | The composition root, the window and the fakes | Paneport.Core, Paneport.Steam (no code yet) and Paneport.UI; the Avalonia.Desktop package |
 
 ```mermaid
 flowchart LR
@@ -64,10 +64,10 @@ Rules that the types enforce:
 | `ILog` | Writing a log line | `ConsoleLog`, to the terminal | M1.3: a sink in `Library/Caches/Paneport/` |
 | `INavigator` | Opening a page on top of the current one | Not a head's: the shell implements it | The shell (section 5) |
 
-- **Shape.** Each interface covers only what the shell shows now, so that later stages, which know more, can change it cheaply before the iOS head exists. The library service and the settings and token stores are asynchronous, with a cancellation token, because their real implementations wait on files, the keychain or the network. Three members are synchronous. The runtime host's reads are cheap calls that any thread may make, `pp_abi_version` and `pp_memory_get_budget` (C-0005 section 2). The Steam sign-in state is a plain property until M2.3 designs sign-in. `ILog.Write` returns at once, so that logging never waits.
+- **Shape.** Each interface covers only what the shell shows now, so that later stages, which know more, can change it cheaply before the iOS head exists. The library service and the settings and token stores are asynchronous, with a cancellation token, because their real implementations wait on files, the keychain or the network. Five members are synchronous. The runtime host's three, `ImplementationName`, `AbiVersion` and `GetMemoryBudget`, are fixed values or cheap calls that any thread may make, such as `pp_abi_version` and `pp_memory_get_budget` (C-0005 section 2). The Steam sign-in state is a plain property until M2.3 designs sign-in. `ILog.Write` returns at once, so that logging never waits.
 - **`AppServices`** collects the six services that a head provides, and the shell takes it. The token store has no user yet; the Steam sign-in of M2.3 is the first.
 - **The Steam stub** `SignedOutSteamService` is in Paneport.Core, not in a head, because both heads use it until M2.3: the desktop head now, and the iOS head of M1.3.
-- **Logging.** A log line never holds a password, token or other personal data (C-0010 section 2). Where the shell logs a failure, it writes the exception's type and not its message, because a message can hold a local path. A `Secret` written into a message shows as `[redacted]`.
+- **Logging.** A log line never holds a password, token or other personal data (C-0010 section 2). Where the shell logs a failure, it writes the exception's type and not its message, because a message can hold a local path. A `Secret` written into a message shows as `[redacted]`. Avalonia's own warnings reach the log through `AvaloniaLogForwarder` in Paneport.UI, under the same rule (section 6).
 
 ## 4. Settings
 
@@ -85,7 +85,7 @@ The Settings page offers these locales, each with an English display name: `zh-C
 - **Sections.** The navigation bar's entries are buttons that run `OpenSectionCommand`, and each `NavigationEntry` tells the view whether to mark its button. Opening a section, even the one already marked, shows a new page for it and clears the back stack. Choosing Library on a title's details therefore returns to the list, as tapping the current tab does on a phone. A new page reads its data from the services, which is why a changed setting survives a visit to another page.
 - **Pushed pages.** A page opens another page through `INavigator.PushAsync`, which puts the current page on the back stack. Going back returns to that page as it was, without loading it again. The Library opens Title details this way.
 - **Loading.** The shell loads each page once, when it first shows it. While it loads, the main view shows a progress bar. If the load fails, the main view shows "This page could not load its data." and the failure is logged (section 3).
-- **A newer navigation wins.** `OpenSectionCommand` stays available while a page loads, so a slow page never disables the navigation bar. A newer run cancels the load of the page that it replaces, through the command's token, and the shell treats that cancellation as a normal end (section 7).
+- **A newer section wins.** `OpenSectionCommand` stays available while a page loads, so a slow page never disables the navigation bar. A newer run of the command cancels the load of a page that an earlier run opened, through the command's token, and the shell treats that cancellation as a normal end (section 7). The first Library page loads under `StartCommand`'s token and a pushed page under its caller's, so leaving either does not cancel its load: the load runs to its end on a page that is no longer shown (section 10).
 - **Pages.** Library lists the titles sorted by name, each with its identity, install state and launch path; choosing one opens Title details, which also shows the source and what the launch path means. Settings shows the locale and the Steam sign-in state. Diagnostics names the host implementation, so that a fake value is never taken for a device reading, and shows the ABI version and the memory budget, which Refresh reads again.
 - **Main view.** A navigation bar at the bottom, a header with a Back button and the page's heading, the progress bar and error text, and the page. The heading trims a long title name; Title details shows the whole name, wrapped. The layout works at desktop and phone widths alike.
 - **Titles in the Library are buttons**, not list selections, so that arrow keys never open a title and a click, a tap or Enter does.
@@ -95,7 +95,9 @@ The Settings page offers these locales, each with an English display name: `zh-C
 
 ## 6. Desktop head and fakes
 
-The composition root, `CompositionRoot.CreateMainWindow`, creates the log, the fakes, the shell over them, and the window titled Paneport, 1,024 by 720 and at least 400 by 400, that hosts the main view. It runs the shell's `StartCommand` when the window opens. Before any view exists, it gives Avalonia's logger `AvaloniaLogForwarder`, which passes what Avalonia logs at warning level or above, such as a binding that fails at run time, to the head's log. Without a sink, Avalonia drops those lines.
+The composition root, `CompositionRoot.CreateMainWindow`, creates the log, the fakes, the shell over them, and the window titled Paneport, 1,024 by 720 and at least 400 by 400, that hosts the main view. It runs the shell's `StartCommand` when the window opens. Before any view exists, it gives Avalonia's logger Paneport.UI's `AvaloniaLogForwarder`, which passes what Avalonia logs at warning level or above, such as a binding that fails at run time, to the head's log. Without a sink, Avalonia drops those lines. The iOS head can use the same forwarder.
+
+**What the forwarder writes.** Avalonia logs a message template with values, and a value can hold personal data: an exception's message and stack trace, or a binding error's message, which a converter's exception fills, can name a local path. Local builds are not path-mapped, so a stack trace from our own code names the clone's folder. The forwarder therefore fills a hole only with text that cannot carry such data: a property's or type's name, a number, a Boolean, an enum value, and the property and binding path of a binding error, which come from our own XAML. An exception and any other object show as their type's name, and any other text keeps its hole. A failing binding then reads, for example, `An error occurred binding Opacity to CurrentPage.Header: {Message} (TextBlock)`, with the control's type last.
 
 **Fake host.** `FakeRuntimeHost` reports the memory limit that C-0009 section 4 cites without Game Mode, and a footprint and available memory that add up to it, as the host's estimate does (C-0005 section 2). The Diagnostics page shows:
 
@@ -139,7 +141,7 @@ The titles were invented for Paneport and carry no game artwork or other game ma
 | Project | What it covers |
 |---|---|
 | Paneport.Core.Tests | Identities and slugs (C-0008 section 1), including a trailing NUL character; install states; titles, including a local title on the Dock path; ABI decoding and compatibility (C-0005 section 1); the four budget values; the secret's text forms and a log line that holds one; settings and locales; the services record; the Steam stub; each view model, including navigating to every page and back, choosing the marked section, a newer navigation while a page loads, a setting that round-trips through the store, a choice while Settings loads and a save that a newer change supersedes, exact download percentages, and Diagnostics with the Game Mode level reached and not reached |
-| Paneport.UI.Tests | Headless tests of the same shell that the desktop head shows: the navigation entries, every title with its state and launch path, the long name wrapping on a phone-sized window, opening a title and going back, choosing Library on a title's details, a changed locale that survives a visit to another page (the twin of L0 acceptance step 8), the locale choice waiting for the load, another section opened while Settings loads, the host's values on Diagnostics, and one view per page view model |
+| Paneport.UI.Tests | Headless tests of the same shell that the desktop head shows: the navigation entries, every title with its state and launch path, the long name wrapping on a phone-sized window, opening a title and going back, choosing Library on a title's details, a changed locale that survives a visit to another page (the twin of L0 acceptance step 8), the locale choice waiting for the load, another section opened while Settings loads, the host's values on Diagnostics, and one view per page view model. Also the log forwarder, which must write neither an exception's text nor a binding error's message, tested with values that name a local path built in memory. |
 
 - **Fakes.** The tests use hand-written fakes (C-0011 section 1) in `tests/Shared/Fakes`, which both test projects compile in, so neither depends on the other (C-0004 section 2). Their titles are made up and their app IDs, from 4,100,000,010, are as far from real ones as the samples'.
 - **Twin of the desktop head.** `ShellHarness` builds the shell the way the composition root does, over the test fakes, and drives it with the mouse.
@@ -159,7 +161,8 @@ The titles were invented for Paneport and carry no game artwork or other game ma
 - **Token store shape.** M1.3 keeps the account name next to the refresh token, and its developer menu writes a test item under its own key, so `ITokenStore` will grow there (M1.3, M7.1).
 - **The token in managed memory.** A .NET string cannot be wiped. C-0005 section 2 makes the host zero its own copy; whether the managed side keeps the token as bytes it can clear is for M2.3 to decide.
 - **A failed save.** Today only the log records it. How the Settings page shows it is decided with the first store that can fail, the settings file of M1.3.
-- **Overlapping saves.** A newer change cancels the save before it. The settings file of M1.3 must stop a cancelled save before it replaces the file, or serialize its saves; otherwise an older save could land last.
+- **Overlapping saves and loads.** A newer change cancels the save before it, and leaving Settings does not wait for its save, so a new Settings page can load while that save runs. The settings file of M1.3 must therefore serialize its work: a cancelled save stops before it replaces the file, and a load waits for a pending save. Otherwise an older save could land last, or a new page could show the older value while the file holds the newer one.
+- **Loads of pages that are gone.** Only a newer section cancels a load (section 5). Leaving the first Library page or a pushed page lets its load run to its end, which costs nothing with today's fakes. When M7.1 makes the Library's load a Steam request, it decides whether leaving a page cancels its load, for example through a token that the shell cancels when it drops the page.
 - **The locale in a session.** Whether Wine needs another form of the tag, such as `de_DE.UTF-8`, is for the session flow of M6.5, which converts it.
 - **Larger libraries.** The Library realizes every title. When the library comes from Steam (M7.1), it moves to a virtualizing panel, and download progress needs change notifications, which `TitleViewModel` does not raise yet.
 - **The phone.** The layout works at phone width on the headless platform. Safe areas, the on-screen keyboard and the overlay are checked on the device from M1.3 and M2.1.

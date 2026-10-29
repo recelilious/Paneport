@@ -1,0 +1,29 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<Project>
+  <!--
+  Central package management (C-0009 section 2). A package is added here only after the
+  register in C-0003 section 6 covers it and every package it brings in.
+  docs/design/solution-and-build.md describes how to add or update one.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Avalonia" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+  </ItemGroup>
+
+  <!--
+  Test libraries. Avalonia.Headless.XUnit 12.1.4 is built against xunit.v3 3.2.2, so
+  xunit.v3 moves only together with it.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.4" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+  </ItemGroup>
+</Project>

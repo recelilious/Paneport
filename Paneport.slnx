@@ -1,0 +1,18 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Paneport.Core/Paneport.Core.csproj" />
+    <Project Path="src/Paneport.Desktop/Paneport.Desktop.csproj" />
+    <Project Path="src/Paneport.Interop/Paneport.Interop.csproj" />
+    <Project Path="src/Paneport.Steam/Paneport.Steam.csproj" />
+    <Project Path="src/Paneport.UI/Paneport.UI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Paneport.Core.Tests/Paneport.Core.Tests.csproj" />
+    <Project Path="tests/Paneport.Steam.Tests/Paneport.Steam.Tests.csproj" />
+    <Project Path="tests/Paneport.UI.Tests/Paneport.UI.Tests.csproj" />
+  </Folder>
+</Solution>

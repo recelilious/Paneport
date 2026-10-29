@@ -25,7 +25,7 @@ internal static class Program
             .SetupWithLifetime(lifetime);
 
         // The window belongs to this head, so Paneport.UI never depends on a desktop concept.
-        lifetime.MainWindow = new Window { Title = "Paneport" };
+        lifetime.MainWindow = CompositionRoot.CreateMainWindow();
         return lifetime.Start(args);
     }
 }

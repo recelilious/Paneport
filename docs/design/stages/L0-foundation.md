@@ -27,14 +27,14 @@ Back to the [development plan](../development-plan.md).
 | S0.2.4 | Complete CI jobs | Small | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
 | S0.2.5 | Trimmed test app | Small | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
 | S0.2.6 | Repository checks design document | Small | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
-| M0.3 | Shell skeleton with a fake host | Medium | Planned | | |
-| S0.3.1 | Domain model | Small | Planned | | |
-| S0.3.2 | Service interfaces | Small | Planned | | |
-| S0.3.3 | Navigation and view-model base | Small | Planned | | |
-| S0.3.4 | Library and Title details pages | Small | Planned | | |
-| S0.3.5 | Settings and Diagnostics pages | Small | Planned | | |
-| S0.3.6 | Fake host and fake services | Small | Planned | | |
-| S0.3.7 | App shell design document | Small | Planned | | |
+| M0.3 | Shell skeleton with a fake host | Medium | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
+| S0.3.1 | Domain model | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
+| S0.3.2 | Service interfaces | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
+| S0.3.3 | Navigation and view-model base | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
+| S0.3.4 | Library and Title details pages | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
+| S0.3.5 | Settings and Diagnostics pages | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
+| S0.3.6 | Fake host and fake services | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
+| S0.3.7 | App shell design document | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
 
 ## L0 Foundation
 

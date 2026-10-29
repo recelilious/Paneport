@@ -9,6 +9,7 @@
       "src\\Paneport.UI\\Paneport.UI.csproj",
       "tests\\Paneport.Core.Tests\\Paneport.Core.Tests.csproj",
       "tests\\Paneport.Steam.Tests\\Paneport.Steam.Tests.csproj",
+      "tests\\Paneport.TrimTest\\Paneport.TrimTest.csproj",
       "tests\\Paneport.UI.Tests\\Paneport.UI.Tests.csproj"
     ]
   }

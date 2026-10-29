@@ -1,0 +1,44 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+  A trimmed publish of this app shows the trimming warnings that come from inside our
+  dependencies, which the analyzers of the libraries cannot see (C-0010 section 2, C-0011
+  section 4). TrimmerSingleWarn=false lists every warning instead of one per assembly, and
+  warnings are errors, so any warning fails the publish.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+  </PropertyGroup>
+
+  <!--
+  The runtime identifier is set here, for the machine that builds, and not on the command
+  line: a global one would reach the libraries, whose lock files hold no runtime. The lock file
+  of this app covers every identifier listed, so it is the same on the Windows and Ubuntu
+  runners. A machine with another runtime adds its identifier here in a reviewed change.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64;win-x64</RuntimeIdentifiers>
+    <RuntimeIdentifier>$(NETCoreSdkPortableRuntimeIdentifier)</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Paneport.Core\Paneport.Core.csproj" />
+    <ProjectReference Include="..\..\src\Paneport.Interop\Paneport.Interop.csproj" />
+    <ProjectReference Include="..\..\src\Paneport.Steam\Paneport.Steam.csproj" />
+    <ProjectReference Include="..\..\src\Paneport.UI\Paneport.UI.csproj" />
+  </ItemGroup>
+
+  <!-- Root every type of our libraries, so that the trimmer analyzes all their code paths. -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="Paneport.Core" />
+    <TrimmerRootAssembly Include="Paneport.Interop" />
+    <TrimmerRootAssembly Include="Paneport.Steam" />
+    <TrimmerRootAssembly Include="Paneport.UI" />
+  </ItemGroup>
+</Project>

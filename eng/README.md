@@ -17,6 +17,6 @@ Engineering configuration (C-0004 section 3). Build output never goes here: `bui
 | `gitleaks.toml` | The gitleaks configuration. It extends gitleaks' default rules, and is where a false positive is allowed, with its reason. |
 | `lychee.toml` | The lychee configuration: which files are checked, and how failed requests are retried. |
 
-`toolchain.json` holds one entry per tool under `tools`, keyed by the tool's name. Each entry has the exact `version` and the `source` it is installed from. A tool that CI downloads also has `downloads`, keyed by runtime identifier, each with the download's `url` and `sha256`. A change to a pin is a reviewed change of its own, and every tool is registered under C-0003 before it is pinned. Later stages add tools, such as the Xcode version (M1.1).
+`toolchain.json` holds one entry per tool under `tools`, keyed by the tool's name, and nothing else. Each entry has the exact `version` and the `source` it is installed from. A tool that CI downloads also has `downloads`, keyed by runtime identifier, each with the download's `url` and `sha256`. `tools/CheckToolchain.cs` rejects any other key or field. A change to a pin is a reviewed change of its own, and every tool is registered under C-0003 before it is pinned. Later stages add tools, such as the Xcode version (M1.1).
 
 [solution-and-build.md](../docs/design/solution-and-build.md) explains the build files, and [repository-checks.md](../docs/design/repository-checks.md) the check files and how to change a pin.

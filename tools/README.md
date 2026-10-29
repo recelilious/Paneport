@@ -23,8 +23,8 @@ dotnet run tools/ScanPersonalData.cs
 dotnet run tools/ScanPersonalData.cs -- --self-test
 ```
 
-A tool exits with 0 when its check passes, 1 when it fails, and 2 for a wrong argument or an unreadable configuration file. Findings name the file and the line, never the value they matched.
+A tool exits with 0 when its check passes, 1 when it fails, and 2 for a wrong argument or a file it cannot read. Findings name the file and the line, never the value they matched.
 
-`packages.lock.json` is the lock file that the three tools share. It lists no package, because each tool turns off `PublishAot` with a `#:property` directive and uses nothing beyond the base class library.
+`packages.lock.json` is the lock file that the three tools share. It lists no package, because each tool turns off `PublishAot` with a `#:property` directive and uses nothing beyond the base class library. A tool that ever needs a package gets a lock file of its own, `packages.<Tool>.cs.lock.json`, which NuGet then uses in place of the shared one; `CheckLicenses.cs` requires it.
 
 [repository-checks.md](../docs/design/repository-checks.md) describes every rule, the mapping policy, the pins, the CI jobs, how to run each check locally, and the planted-failure procedure.

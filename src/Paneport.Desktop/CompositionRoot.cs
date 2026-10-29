@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 using Avalonia.Controls;
+using Avalonia.Logging;
 using Paneport.Core;
 using Paneport.Core.Steam;
 using Paneport.Core.ViewModels;
@@ -10,19 +11,24 @@ using Paneport.UI.Views;
 
 namespace Paneport.Desktop;
 
-// Wires the desktop head by hand: the fakes, the shell over them, and the window that hosts the
-// shell's view. The iOS head will do the same with the device implementations.
+// Wires the desktop head by hand: the log, the fakes, the shell over them, and the window that
+// hosts the shell's view. The iOS head will do the same with the device implementations.
 internal static class CompositionRoot
 {
     public static Window CreateMainWindow()
     {
+        var log = new ConsoleLog();
+
+        // Set before any view exists, so that a binding error in a page reaches the terminal.
+        Logger.Sink = new AvaloniaLogForwarder(log);
+
         var services = new AppServices(
             host: new FakeRuntimeHost(),
             library: new SampleLibrary(),
             steam: new SignedOutSteamService(),
             settings: new InMemorySettingsStore(),
             tokens: new InMemoryTokenStore(),
-            log: new ConsoleLog());
+            log: log);
         var shell = new ShellViewModel(services);
 
         var window = new Window

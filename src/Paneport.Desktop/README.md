@@ -10,7 +10,8 @@ The Avalonia desktop head, for working on the Paneport UI from Windows without a
 | File or folder | What it is |
 |---|---|
 | `Program.cs` | The entry point. It creates the desktop application lifetime, so that Paneport.UI holds no desktop-only concept. |
-| `CompositionRoot.cs` | Wires the head by hand: the fakes, the shell over them, and the window titled Paneport that hosts the shell's view. |
+| `CompositionRoot.cs` | Wires the head by hand: the log, the fakes, the shell over them, and the window titled Paneport that hosts the shell's view. |
+| `AvaloniaLogForwarder.cs` | Passes what Avalonia logs at warning level or above, such as a binding that fails at run time, to the head's log. Without it, Avalonia drops those lines. |
 | `Fakes/` | The fake runtime host, the fictional sample library, the in-memory settings and token stores, and a log sink that writes to the terminal. |
 
 Run it from the repository root:
@@ -22,5 +23,5 @@ dotnet run --project src/Paneport.Desktop
 The window opens on the Library page with the sample titles. Diagnostics says that the host is a fake and shows its values.
 
 - **Depends on:** Paneport.Core, Paneport.Steam and Paneport.UI, and the Avalonia.Desktop package.
-- **Build:** a console executable, so that a run from a terminal shows Avalonia's errors and the app's log there.
+- **Build:** a console executable, so that a run from a terminal shows the app's log there, with Avalonia's warnings and errors, and any unhandled exception.
 - **Design:** [app-shell.md](../../docs/design/app-shell.md) lists the sample titles and the fake host's values. [solution-and-build.md](../../docs/design/solution-and-build.md) records its role in the solution.

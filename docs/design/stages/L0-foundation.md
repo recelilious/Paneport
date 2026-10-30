@@ -27,14 +27,14 @@ Back to the [development plan](../development-plan.md).
 | S0.2.4 | Complete CI jobs | Small | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
 | S0.2.5 | Trimmed test app | Small | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
 | S0.2.6 | Repository checks design document | Small | Done | [#5](https://github.com/recelilious/Paneport/pull/5) | 2026-10-29 |
-| M0.3 | Shell skeleton with a fake host | Medium | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
-| S0.3.1 | Domain model | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
-| S0.3.2 | Service interfaces | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
-| S0.3.3 | Navigation and view-model base | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
-| S0.3.4 | Library and Title details pages | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
-| S0.3.5 | Settings and Diagnostics pages | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
-| S0.3.6 | Fake host and fake services | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
-| S0.3.7 | App shell design document | Small | In progress | `feat/m0-3-shell-skeleton` | 2026-10-29 |
+| M0.3 | Shell skeleton with a fake host | Medium | Done | [#8](https://github.com/recelilious/Paneport/pull/8) | 2026-10-30 |
+| S0.3.1 | Domain model | Small | Done | [#8](https://github.com/recelilious/Paneport/pull/8) | 2026-10-30 |
+| S0.3.2 | Service interfaces | Small | Done | [#8](https://github.com/recelilious/Paneport/pull/8) | 2026-10-30 |
+| S0.3.3 | Navigation and view-model base | Small | Done | [#8](https://github.com/recelilious/Paneport/pull/8) | 2026-10-30 |
+| S0.3.4 | Library and Title details pages | Small | Done | [#8](https://github.com/recelilious/Paneport/pull/8) | 2026-10-30 |
+| S0.3.5 | Settings and Diagnostics pages | Small | Done | [#8](https://github.com/recelilious/Paneport/pull/8) | 2026-10-30 |
+| S0.3.6 | Fake host and fake services | Small | Done | [#8](https://github.com/recelilious/Paneport/pull/8) | 2026-10-30 |
+| S0.3.7 | App shell design document | Small | Done | [#8](https://github.com/recelilious/Paneport/pull/8) | 2026-10-30 |
 
 ## L0 Foundation
 
@@ -528,3 +528,7 @@ Out:
   - **Recorded, not fixed.** Leaving Settings does not wait for its save, so a new Settings page can load the older value while that save runs. It cannot happen with the in-memory store; `app-shell.md` section 10 asks M1.3's settings file to make a load wait for a pending save, and leaves to M7.1 whether leaving a page cancels its load.
   - **Verification.** Both new commits build with 0 warnings and pass their tests and the format check on their own. From a clean tree in CI mode, the locked restore changes no lock file, the build reports 0 warnings and 0 errors, the tests pass 143 of 143 (123 in Paneport.Core.Tests, 18 in Paneport.UI.Tests, 2 in Paneport.Steam.Tests) with none skipped, and the format check exits with 0. The trimmed publish of Paneport.Core and Paneport.UI reported no warning. A planted binding error reached the desktop head's terminal as `An error occurred binding Opacity to CurrentPage.Header: {Message} (TextBlock)`; without it the head printed no warning and exited with 0. On a throwaway merge with M0.2's branch at a43e2e5, the personal-data scan found nothing and the license check passed with CommunityToolkit.Mvvm mapped.
   - **Left.** Unchanged.
+- **2026-10-30 (UTC), after M0.2 merged.** Pull request: [#8](https://github.com/recelilious/Paneport/pull/8).
+  - **Done.** recelilious merged #5 and #7 into `main`, and the branch was rebased onto it, keeping both sides of the conflicts in `docs/design/README.md`, `docs/design/solution-and-build.md` and this brief. The commit that adds CommunityToolkit.Mvvm now also maps it in `eng/license-map.json` and adds it to the lock file of `tests/Paneport.TrimTest`. `app-shell.md` section 9 records the trimmed test app's result. M0.3 and S0.3.1 to S0.3.7 are Done; only the merge is left.
+  - **Verification.** On the workstation, from a clean tree in CI mode, every step of the `dotnet` job passes: the toolchain check, the locked restore, which writes no lock file, the build with 0 warnings and 0 errors, the tests with 143 of 143 passing (123, 18 and 2) and none skipped, both format checks, and the trimmed publish of `tests/Paneport.TrimTest` with no warning, so CommunityToolkit.Mvvm brings none. The self-tests of the three tools pass 25, 244 and 53 checks, the personal-data scan finds nothing, and the license check covers every dependency. Each of the 20 commits on the new base passes the locked restore, the build, the tests and the format check on its own. REUSE, gitleaks and lychee run in CI on #8.
+  - **For later sessions.** L0: the shell is ready for acceptance steps 5 to 10, and `app-shell.md` section 6 lists the sample titles and the fake host's values that steps 6 and 9 check. The open questions for M1.3, M2.3, M6.4, M6.5 and M7.1 are in `app-shell.md` section 10.

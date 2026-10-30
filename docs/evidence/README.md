@@ -42,4 +42,4 @@ Every record has a row here. The commit that fills in a record gives its row the
 
 | Record | Stage | Gate | Verdict |
 |---|---|---|---|
-| [2026-10-30-l0-foundation.md](2026-10-30-l0-foundation.md) | L0 Foundation | None | Template; the acceptance run is pending |
+| [2026-10-30-l0-foundation.md](2026-10-30-l0-foundation.md) | L0 Foundation | None | Pass |

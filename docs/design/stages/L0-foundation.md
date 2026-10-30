@@ -10,7 +10,7 @@ Back to the [development plan](../development-plan.md).
 
 | Stage | Title | Level | Status | Branch or PR | Last session |
 |---|---|---|---|---|---|
-| L0 | Foundation | Large | In progress | [#9](https://github.com/recelilious/Paneport/pull/9) | 2026-10-30 |
+| L0 | Foundation | Large | Accepted | [#9](https://github.com/recelilious/Paneport/pull/9) | 2026-10-30 |
 | S0.0.1 | Evidence folder and the L0 record template | Small | Done | [#9](https://github.com/recelilious/Paneport/pull/9) | 2026-10-30 |
 | S0.0.2 | Root README and contributing guide | Small | Done | [#9](https://github.com/recelilious/Paneport/pull/9) | 2026-10-30 |
 | M0.1 | Solution scaffold and repository hygiene | Medium | Done | [#2](https://github.com/recelilious/Paneport/pull/2) | 2026-10-29 |
@@ -120,6 +120,9 @@ Back to the [development plan](../development-plan.md).
   - **Verification.** In an interactive terminal, SDK 10.0.403 ended the build with `Build succeeded in 1.6s`, and the tests with `Test run summary: Passed!` and the `total`, `failed`, `succeeded` and `skipped` lines. The personal-data scan finds nothing, every relative link in the changed files resolves, and the format check passes. CI runs on #9.
   - **Waiting for recelilious.** No file that a stage session reads tells it to put a note for another stage under "Notes from earlier stages", and `stages/README.md` says that a session updates only its own stage's status and session log. Whether plan section 3.3 and `stages/README.md` get that rule is recelilious's decision.
 - **2026-10-30 (UTC), the rule for notes.** recelilious approved writing the rule into the plan. Plan section 3.3 now has it as step 3 of "At the end". A session puts each note for a later stage into that stage's section of its brief, or its parent's section for a Small stage, under "Notes from earlier stages", right before that section's session log. Each note is one line that cites its source, and the session's own log only records that it left the note. Step 2 now speaks of the next session of the same stage. The plan's opening note and `stages/README.md` now allow these notes in other stages' sections. The notes carried in #9 already follow the rule.
+- **2026-10-30 (UTC), acceptance.** recelilious ran acceptance steps 1 to 10 on the workstation at 6693b25 and reported every result as expected. At recelilious's request, Claude checked step 11: on 6693b25, the push run and the pull request run of CI each passed `dotnet (windows-2025)`, `dotnet (ubuntu-24.04)` and `checks`. recelilious skipped the optional step 12.
+  - **Done.** `docs/evidence/2026-10-30-l0-foundation.md` is filled in with a Pass and keeps its name, since the run was on that date. Its row in the evidence index has the verdict, and L0 is Accepted in this commit (plan section 3.3). recelilious did not copy the output of steps 2 and 3, so the record's log lines for them come from Claude's run of the same commands on the same workstation and commit, after a clean.
+  - **Left.** recelilious reviews and merges #9. L0 counts as Accepted once the filled-in record is merged (plan section 2.4).
 
 ## M0.1 Solution scaffold and repository hygiene
 

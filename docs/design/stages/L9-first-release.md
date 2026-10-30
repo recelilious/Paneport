@@ -250,6 +250,10 @@ Every new file carries the SPDX lines of C-0010 section 6 or is covered by `REUS
 - **L10:** the `release` job builds whatever runtime the app uses. After the move to CoreCLR, the notices list the runtime that actually ships.
 - **Every later release:** the same workflow, template and checklist.
 
+**Notes from earlier stages.**
+
+- M0.1 ([L0 brief](L0-foundation.md), session log of 2026-10-29): the third-party notices of SkiaSharp's and HarfBuzzSharp's native-asset packages list about twenty components, among them libmicrohttpd under LGPL-2.1-or-later; confirm which of them the shipped iOS libraries contain (`docs/design/solution-and-build.md` section 10).
+
 **Session log.**
 
 _No sessions yet._

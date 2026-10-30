@@ -207,6 +207,11 @@ Scripts this stage creates: `eng/mac/bootstrap.sh` and the new `CheckToolchain` 
 - M9.1: the runner image pin and the `ios` job steps that the `release` job reuses.
 - L1: the install setup that S1.0.2 completes.
 
+**Notes from earlier stages.**
+
+- M0.1 ([L0 brief](L0-foundation.md), session log of 2026-10-29): Microsoft publishes the iOS workload manifests only for the 10.0.100 band, and whether the 10.0.400-band workload set of the pinned SDK installs them was not tried; confirm it for the Xcode version this stage pins (`docs/design/solution-and-build.md` section 1).
+- M0.2 ([L0 brief](L0-foundation.md), session log of 2026-10-29): the Xcode and macOS runner-image pins in `eng/toolchain.json` each need a register row and a version check, because both checkers read only its `tools` key, reject any other key, and treat every entry as a tool; this stage decides how the runner image is registered and checked.
+
 **Session log.**
 
 _No sessions yet._
@@ -417,6 +422,10 @@ Scripts this stage creates: `eng/mac/sign-adhoc.sh`, `eng/mac/package-ipa.sh`, `
 - M3.1 and L3: Paneport.iOS for the URL opener, and the developer menu for the JIT self-test.
 - M9.1: the `ios` job steps, the signing scripts in `eng/mac/`, the packaging location and `tools/ScanPackage.cs`.
 - M10.2: the Mono build settings and the import name, which move to CoreCLR.
+
+**Notes from earlier stages.**
+
+- M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 holds open questions for this stage: the expected ABI version, the account name beside the refresh token in `ITokenStore`, how Settings shows a failed save, a settings file that orders its saves and loads, and the layout on the phone.
 
 **Session log.**
 

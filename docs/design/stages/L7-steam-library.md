@@ -265,6 +265,10 @@ Scripts this stage creates: the fakes and the synthetic data builders in the tes
 - L7: the pages and flows that the acceptance steps use, and the desktop download procedure.
 - M8.4: downloads of large titles.
 
+**Notes from earlier stages.**
+
+- M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 holds open questions for this stage: the token store's layout, whether leaving a page cancels its load, and a virtualizing Library whose download progress raises change notifications.
+
 **Session log.**
 
 _No sessions yet._

@@ -556,6 +556,10 @@ Out:
 
 **Hands over to.** M6.5 (local title entries, the session configuration, and the iOS paths and bundling of the snapshot), M6.6 (the test title's entry and the layout field), M7.1 and M7.2 (Steam titles), M8.3 (the CI check reuses the models and the schema).
 
+**Notes from earlier stages.**
+
+- M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 asks the schema to use the slug pattern that `TitleId` implements, or to align the two through C-0008.
+
 **Session log.**
 
 _No sessions yet._
@@ -666,6 +670,10 @@ Out:
 - The in-game menu, its button and the HUD draw in the transparent overlay of M2.1. If the overlay fallback of C-0012 section 3 was adopted, the menu and the HUD follow it, as in M6.1's risks.
 
 **Hands over to.** M6.6 (the full flow and the measurement tools), L6 (the acceptance flow), M7.2 (the classifier and the direct launch for Steam titles), M8.2 (the launch flow gains the Dock path), M8.4 (the measurement tools).
+
+**Notes from earlier stages.**
+
+- M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 leaves to this stage whether Wine needs the locale setting in another form, such as `de_DE.UTF-8`, which the session flow then converts.
 
 **Session log.**
 

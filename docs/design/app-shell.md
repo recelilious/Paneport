@@ -2,7 +2,7 @@
 
 | Author | Timestamp (UTC) |
 |---|---|
-| Claude (Anthropic), for the Paneport project | 2026-10-29T18:49Z |
+| Claude (Anthropic), for the Paneport project | 2026-10-30T01:49Z |
 
 Back to the [design index](README.md).
 
@@ -151,7 +151,7 @@ The titles were invented for Paneport and carry no game artwork or other game ma
 ## 9. Trimming and AOT
 
 - Paneport.Core and Paneport.UI set `IsAotCompatible`, so the trimming and AOT analyzers check them, including the code that the MVVM generators write. The build reports no warning.
-- A trimmed, self-contained publish for `win-x64` that rooted Paneport.Core and Paneport.UI with `TrimmerRootAssembly`, with `TrimmerSingleWarn` set to false so that every warning shows, reported no warning from CommunityToolkit.Mvvm, Avalonia or our code. It ran in a scratch copy of the repository, not in CI. M0.2's trimmed test app repeats the check in CI with all four libraries.
+- A trimmed, self-contained publish for `win-x64` that rooted Paneport.Core and Paneport.UI with `TrimmerRootAssembly`, with `TrimmerSingleWarn` set to false so that every warning shows, reported no warning from CommunityToolkit.Mvvm, Avalonia or our code. That ran in a scratch copy of the repository before M0.2 merged. Since then, the trimmed publish of M0.2's `tests/Paneport.TrimTest`, which roots all four libraries and fails on any warning, passes with this stage's code, and the `dotnet` job runs it on every pull request.
 - Views are matched by type and XAML is compiled, so no view or XAML is looked up at run time.
 
 ## 10. Open questions

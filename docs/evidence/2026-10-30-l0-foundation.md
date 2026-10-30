@@ -6,9 +6,15 @@
 
 Back to the [evidence index](README.md).
 
-This record is a template until the acceptance run of the [L0 brief](../design/stages/L0-foundation.md). recelilious runs the steps and fills in every field marked _to fill in_, or reports the results so that Claude fills them in. Steps 1 to 10 run on the Windows 11 workstation, in a terminal at the root of a clone with the L0 integration branch checked out. Steps 11 and 12 run on GitHub. If the run happens on another date than the one in the file name, rename the file to the UTC date of the run (C-0012 section 4).
+This record is a template until the acceptance run of the [L0 brief](../design/stages/L0-foundation.md). recelilious runs the steps and fills in every field marked _to fill in_, or reports the results so that Claude fills them in. Steps 1 to 10 run on the Windows 11 workstation, in a terminal at the root of a clone with the L0 integration branch checked out. Steps 11 and 12 run on GitHub.
 
-Nothing in this record may name a person, a machine, an account or a local path (C-0012 section 4). On Windows the likely leaks are local paths and the user or machine name in the `dotnet` output and in screenshots. Copy only the output lines that the Logs section names, and if you add a screenshot, show only the Paneport window. If the SDK prints in another language, set `DOTNET_CLI_UI_LANGUAGE` to `en` first, so that the copied lines are in English.
+The commit that fills in this record also updates three other places:
+
+- If the run happened on another UTC date than the one in the file name, the file is renamed to that date (C-0012 section 4), and its link in the Records table of the [evidence index](README.md) changes with it. A broken link there fails lychee in the `checks` job.
+- The record's row in that Records table gets the verdict in place of "Template; the acceptance run is pending".
+- With a Pass, L0's row in the status table of the [L0 brief](../design/stages/L0-foundation.md) becomes Accepted, and L0's session log records the run (plan section 3.3). With a Fail, L0 stays In progress, and the session log says which step failed.
+
+The record never holds what C-0012 section 4 forbids, as the [evidence index](README.md) lists it. The tester appears as the project handle, and the links to this repository's CI runs belong in the record. On Windows the likely leaks are local paths, and the Windows user or machine name in the `dotnet` output and in screenshots. Copy only the output lines that the Logs section names. If you add a screenshot, show only the Paneport window: no check reads images. If the SDK prints in another language, set `DOTNET_CLI_UI_LANGUAGE` to `en` first, so that the copied lines are in English.
 
 ## Build and environment
 
@@ -31,7 +37,7 @@ Nothing in this record may name a person, a machine, an account or a local path 
 | Step | Expected | Observed |
 |---|---|---|
 | 1. Run `dotnet --version`. | It prints exactly the SDK version in `global.json`. | _to fill in_ |
-| 2. Run `dotnet build eng/ci.slnf -c Release`. | The build succeeds with 0 warnings and 0 errors. | _to fill in_ |
+| 2. Run `dotnet build eng/ci.slnf -c Release`. | The build succeeds with 0 warnings and 0 errors. In a terminal its last line reads `Build succeeded in` and the time; the SDK adds a count to that line only when there are warnings or errors. | _to fill in_ |
 | 3. Run `dotnet test eng/ci.slnf -c Release`. | Every test passes, and the summary shows no failed test. | _to fill in_ |
 | 4. Open any three `.cs` files under `src/` and `tests/`. | Each starts with the two SPDX lines of C-0010 section 6. | _to fill in_ |
 | 5. Run `dotnet run --project src/Paneport.Desktop`. | Within a few seconds a window titled Paneport opens on the Library page, with navigation to Library, Settings and Diagnostics. | _to fill in_ |
@@ -49,10 +55,10 @@ None. L0 measures nothing on a device.
 
 ## Logs
 
-Only these lines, without the lines around them, which name local paths:
+Only these lines, without the lines around them, which can name local paths:
 
-- Step 2, the end of the build output, the lines `Build succeeded.`, `0 Warning(s)` and `0 Error(s)`: _to fill in_
-- Step 3, the end of the test summary, the lines `total`, `failed`, `succeeded` and `skipped`: _to fill in_
+- Step 2, the last line of the build output, `Build succeeded in` and the time, as a terminal shows it. With `-tl:off`, or with the output redirected to a file, the SDK ends with `Build succeeded.`, `0 Warning(s)` and `0 Error(s)` instead; copy those three lines then. _to fill in_
+- Step 3, the end of the test output: the line `Test run summary: Passed!` and the `total`, `failed`, `succeeded` and `skipped` lines under it. _to fill in_
 - Step 11, the CI run of the pull request's last commit: _to fill in: link_
 - Step 12, the CI run of the scratch pull request: _to fill in: link, or "not run"_
 

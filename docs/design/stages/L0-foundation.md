@@ -10,9 +10,9 @@ Back to the [development plan](../development-plan.md).
 
 | Stage | Title | Level | Status | Branch or PR | Last session |
 |---|---|---|---|---|---|
-| L0 | Foundation | Large | Planned | | |
-| S0.0.1 | Evidence folder and the L0 record template | Small | Planned | | |
-| S0.0.2 | Root README and contributing guide | Small | Planned | | |
+| L0 | Foundation | Large | In progress | [#9](https://github.com/recelilious/Paneport/pull/9) | 2026-10-30 |
+| S0.0.1 | Evidence folder and the L0 record template | Small | Done | [#9](https://github.com/recelilious/Paneport/pull/9) | 2026-10-30 |
+| S0.0.2 | Root README and contributing guide | Small | Done | [#9](https://github.com/recelilious/Paneport/pull/9) | 2026-10-30 |
 | M0.1 | Solution scaffold and repository hygiene | Medium | Done | [#2](https://github.com/recelilious/Paneport/pull/2) | 2026-10-29 |
 | S0.1.1 | Build properties and analyzers | Small | Done | [#2](https://github.com/recelilious/Paneport/pull/2) | 2026-10-29 |
 | S0.1.2 | Central package management and lock files | Small | Done | [#2](https://github.com/recelilious/Paneport/pull/2) | 2026-10-29 |
@@ -105,7 +105,11 @@ Back to the [development plan](../development-plan.md).
 
 **Session log.**
 
-_No sessions yet._
+- **2026-10-30 (UTC), integration session.** Pull request: [#9](https://github.com/recelilious/Paneport/pull/9), branch `feat/l0-foundation` from `main` at e6fb7ce, with M0.1, M0.2 and M0.3 merged and Done.
+  - **Done.** Ran everything together on the workstation; it found nothing to fix. S0.0.1: `docs/evidence/README.md` states the naming rule, what a record holds and never holds, the gate table of C-0012 section 3 with every gate at "No record yet", and the list of records; `docs/evidence/2026-10-30-l0-foundation.md` is the L0 record template, with every field of C-0012 section 4 and one row per acceptance step; `docs/README.md` lists the folder. S0.0.2: the README's status line describes the shell on Windows and the checks in CI, and a quick start gives the prerequisites and the commands to build, test and run the desktop head; `CONTRIBUTING.md` gives the checks to run before a push, the rule for test data and the steps for adding a package. The notes that the session logs of M0.1, M0.2 and M0.3 leave for later stages are now lines under "Notes from earlier stages" in the briefs of M1.1, M1.3, M2.1, M2.3, M4.1, M6.4, M6.5, M7.1 and M9.1, and the L2 brief notes that the gate table exists.
+  - **Verification.** On the workstation, from a clean tree in CI mode, every step of the `dotnet` job passes: the toolchain check, the locked restore, which writes no lock file, the build with 0 warnings and 0 errors, the tests with 143 of 143 passing (123, 18 and 2) and none skipped, both format checks, and the trimmed publish of `tests/Paneport.TrimTest` with no warning, the first with M0.3's code on `main`. The self-tests pass 25, 244 and 53 checks, the scan finds nothing, now also in `docs/evidence/`, and the license check covers 46 packages, 3 tools and 2 actions. The quick start, followed on a fresh clone of the branch, prints SDK 10.0.403, builds with 0 warnings and passes 143 of 143 tests. Driven through UI Automation, the desktop head opens the window titled Paneport with the six sample titles, Title details, Diagnostics with the fake host's values of `app-shell.md` section 6 and Settings, and exits with 0 and nothing on stderr when its window closes. Every relative link in the changed Markdown files resolves, and the README's contracts match the index. The definition of done holds for L0 as a whole: every folder of the C-0004 section 3 tree that exists has a `README.md`; Paneport.Core, Paneport.UI and Paneport.Desktop are designed in `app-shell.md`, and `solution-and-build.md` records that M1.2 designs Paneport.Interop and M2.3 Paneport.Steam with their first code; every dependency has an accepted register row. REUSE, gitleaks and lychee run in `checks` on #9; none of them is installed on the workstation.
+  - **Left.** recelilious runs the acceptance steps on this branch and fills in the record, or reports the results for a continuation session; a run on another date renames the file. L0 stays In progress until recelilious accepts it and the filled-in record is merged; the commit that fills it in with a Pass sets L0 to Accepted (plan section 3.3). S0.0.1 and S0.0.2 are Done in this branch's last commit, since only the merge is left.
+  - **For later sessions.** `main` has no branch protection rule or ruleset; the session suggested that recelilious require `dotnet (windows-2025)`, `dotnet (ubuntu-24.04)` and `checks`. M0.2's proposed forbidden-file rule for the names that `.gitignore` keeps out still needs a contract change and has no stage (`repository-checks.md` section 10).
 
 ## M0.1 Solution scaffold and repository hygiene
 

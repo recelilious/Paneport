@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+# SPDX-License-Identifier: MIT
+
+# lychee configuration (C-0011 section 2). The checks job runs the release that
+# eng/toolchain.json pins from the repository root:
+#
+#   lychee --config eng/lychee.toml --no-progress .
+#   lychee --offline --no-progress --extensions md docs/research
+#
+# docs/design/repository-checks.md explains these settings.
+
+# Links in Markdown files only. Files that git ignores are skipped. Hidden folders are read,
+# so that .github/workflows/README.md is checked, but not the .git folder itself.
+extensions = ["md"]
+hidden = true
+
+# The research notes are a published snapshot with more than a thousand external sources,
+# which rot or turn automated clients away without any change to the repository. Their
+# relative links are checked by the second, offline run instead.
+exclude_path = ['(^|/)\.git/', '(^|/)docs/research/']
+
+# Retry a failed request a few times before declaring a link dead. A request that still times
+# out shows a slow server, not a dead link: it is reported but does not fail the check. A page
+# that is gone or a connection that fails still fails it.
+max_retries = 3
+retry_wait_time = 2
+timeout = 20
+accept_timeouts = true

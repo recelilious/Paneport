@@ -29,8 +29,9 @@ This document records how Paneport's .NET solution is laid out and built: the pr
 | Paneport.Core.Tests | Test executable | Tests of Paneport.Core | Paneport.Core | Dependency direction tests | M0.3 adds tests |
 | Paneport.Steam.Tests | Test executable | Tests of Paneport.Steam | Paneport.Steam, Paneport.Core | Dependency direction tests | M2.3 adds tests |
 | Paneport.UI.Tests | Test executable | Tests of Paneport.UI, headless | Paneport.UI, Paneport.Core | Dependency direction tests, one headless test | M0.3 adds tests |
+| Paneport.TrimTest | Executable | Trimmed publish of the four libraries with their dependencies (C-0011 section 4). Not a test project. | Paneport.Core, Paneport.Steam, Paneport.UI, Paneport.Interop | A program that does nothing | M0.2, in `repository-checks.md` |
 
-Nothing references Paneport.Desktop or Paneport.iOS. A test project references only the project it tests and that project's dependencies, plus registered test libraries. Later stages add Paneport.iOS (M1.1 and M1.3; it may reference Core, Steam, UI and Interop), `tests/Paneport.Interop.Tests` (M1.2), `tests/device` (M1.3; it may also reference Interop) and `tests/Paneport.TrimTest` (M0.2, which is in `eng/ci.slnf`).
+Nothing references Paneport.Desktop or Paneport.iOS. A test project references only the project it tests and that project's dependencies, plus registered test libraries. Paneport.TrimTest checks the four libraries together, so it references each of them. Later stages add Paneport.iOS (M1.1 and M1.3; it may reference Core, Steam, UI and Interop), `tests/Paneport.Interop.Tests` (M1.2) and `tests/device` (M1.3; it may also reference Interop).
 
 Paneport.Desktop creates the desktop application lifetime and its window in `Program.cs`, so Paneport.UI holds no desktop-only concept: the iOS head shows a single main view instead of a window. Paneport.Desktop is a console executable, so that `dotnet run` shows Avalonia's errors in the terminal; a Windows-subsystem executable would detach from it.
 
@@ -148,7 +149,7 @@ Three components send usage data from builds and test runs unless an environment
 
 ## 9. Continuous integration
 
-`.github/workflows/ci.yml` runs on every push and every pull request. Its [README](../../.github/workflows/README.md) lists the jobs. The `dotnet` job runs on `windows-2025` and `ubuntu-24.04`: locked restore, Release build, tests and format check of `eng/ci.slnf`. The `checks` job runs `reuse lint` with the REUSE tool version that `eng/toolchain.json` pins. Actions are pinned to full commit hashes, runner images to explicit versions, and the workflow's token can only read the repository. M0.2 completes both jobs.
+`.github/workflows/ci.yml` runs on every push and every pull request. Its [README](../../.github/workflows/README.md) lists the jobs. The `dotnet` job runs on `windows-2025` and `ubuntu-24.04`: locked restore, Release build, tests and format check of `eng/ci.slnf`. The `checks` job runs `reuse lint` with the REUSE tool version that `eng/toolchain.json` pins. Actions are pinned to full commit hashes, runner images to explicit versions, and the workflow's token can only read the repository. M0.2 completed both jobs; [repository-checks.md](repository-checks.md) describes every step.
 
 `dotnet build`, `dotnet test` and `dotnet format` all accept `eng/ci.slnf`, whose solution is `Paneport.slnx`, so the per-project fallback for the format check was not needed.
 

@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+# SPDX-License-Identifier: MIT
+
+# gitleaks configuration (C-0011 section 2). The checks job runs the release that
+# eng/toolchain.json pins over the whole history:
+#
+#   gitleaks git --config eng/gitleaks.toml --redact --ignore-gitleaks-allow .
+#
+# It uses gitleaks' default rules. A false positive is allowed here, as narrowly as possible
+# and with its reason; inline gitleaks:allow comments are ignored, so every exception is in
+# this file. A real secret is reported to recelilious at once and is never quoted.
+# docs/design/repository-checks.md describes the procedure.
+
+title = "Paneport"
+
+[extend]
+useDefault = true

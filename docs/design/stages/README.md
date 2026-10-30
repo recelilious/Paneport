@@ -16,4 +16,4 @@ One file per Large stage. Each file starts with a status table for every stage i
 | [L9-first-release.md](L9-first-release.md) | L9 First release |
 | [L10-coreclr-migration.md](L10-coreclr-migration.md) | L10 Runtime migration to CoreCLR |
 
-A stage session updates only the status table and the session log of its own stage, so sessions that run in parallel rarely touch the same lines.
+A stage session updates the status table and the session log of its own stage. In other stages' sections it only adds notes for them under **Notes from earlier stages.**, right before their session logs (plan section 3.3). Sessions that run in parallel therefore rarely touch the same lines.

@@ -16,6 +16,7 @@
     "Avalonia.BuildServices": "Avalonia.BuildServices",
     "Avalonia.Fonts.Inter": "Inter font (Avalonia.Fonts.Inter)",
     "Avalonia.Headless.XUnit": "Avalonia.Headless.XUnit",
+    "CommunityToolkit.Mvvm": "CommunityToolkit.Mvvm",
     "HarfBuzzSharp": "HarfBuzzSharp",
     "HarfBuzzSharp.NativeAssets.Linux": "HarfBuzzSharp",
     "HarfBuzzSharp.NativeAssets.macOS": "HarfBuzzSharp",

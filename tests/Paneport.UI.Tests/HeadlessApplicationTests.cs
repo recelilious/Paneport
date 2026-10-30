@@ -13,6 +13,7 @@ public sealed class HeadlessApplicationTests
     [AvaloniaFact]
     public void ApplicationStartsAndShowsAWindow()
     {
+        using var warnings = AvaloniaWarnings.Record();
         var window = new Window { Title = "Paneport" };
 
         window.Show();
@@ -20,5 +21,6 @@ public sealed class HeadlessApplicationTests
         Assert.IsType<App>(Application.Current);
         Assert.True(window.IsVisible);
         window.Close();
+        Assert.Empty(warnings.Entries);
     }
 }

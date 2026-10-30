@@ -1,0 +1,41 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Paneport.Core.ViewModels"
+             x:Class="Paneport.UI.Views.LibraryPage"
+             x:DataType="vm:LibraryViewModel">
+  <ScrollViewer>
+    <ItemsControl Margin="16" ItemsSource="{Binding Titles}">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Spacing="8" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:TitleViewModel">
+          <!-- A button rather than a list selection, so that arrow keys never open a title. -->
+          <Button Classes="title"
+                  Command="{Binding $parent[ItemsControl].((vm:LibraryViewModel)DataContext).OpenTitleCommand}"
+                  CommandParameter="{Binding}"
+                  AutomationProperties.Name="{Binding Name}">
+            <StackPanel Spacing="4">
+              <TextBlock Classes="name" Text="{Binding Name}" TextWrapping="Wrap" />
+              <TextBlock Classes="secondary" Text="{Binding Identity}" />
+              <WrapPanel>
+                <Border Classes="chip" Margin="0,4,8,0">
+                  <TextBlock Text="{Binding InstallStateText}" />
+                </Border>
+                <Border Classes="chip" Margin="0,4,8,0">
+                  <TextBlock Text="{Binding LaunchPathText}" />
+                </Border>
+              </WrapPanel>
+            </StackPanel>
+          </Button>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </ScrollViewer>
+</UserControl>

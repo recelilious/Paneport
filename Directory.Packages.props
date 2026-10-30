@@ -19,6 +19,15 @@ SPDX-License-Identifier: MIT
   </ItemGroup>
 
   <!--
+  The MVVM source generators for the view models (C-0010 section 2). 8.4.1 was the first
+  release whose generators accept partial properties under C# 14 without the preview
+  language version.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+  <!--
   Test libraries. Avalonia.Headless.XUnit 12.1.4 is built against xunit.v3 3.2.2, so
   xunit.v3 moves only together with it.
   -->

@@ -558,7 +558,7 @@ Out:
 
 **Notes from earlier stages.**
 
-- M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 asks the schema to use the slug pattern that `TitleId` implements, or to align the two through C-0008.
+- M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` sections 2 and 10: the title schema must use the slug pattern of `TitleId`, `^[a-z0-9]+(-[a-z0-9]+)*$`, unless recelilious reads C-0008 section 1 differently, in which case the two are aligned through C-0008.
 
 **Session log.**
 

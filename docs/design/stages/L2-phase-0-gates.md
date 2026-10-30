@@ -179,7 +179,7 @@ If a gate fails, its record says Fail and what failed, and L2 becomes Blocked. r
 
 **Notes from earlier stages.**
 
-- L0 ([L0 brief](L0-foundation.md), session log of 2026-10-30): S0.0.1 created `docs/evidence/README.md` with the gate table, every gate at "No record yet", so S2.0.1 records the first verdicts and adds the record template there.
+- L0 ([L0 brief](L0-foundation.md), session log of 2026-10-30): S0.0.1 created `docs/evidence/README.md` with the gate table, every gate at "No record yet" where S2.0.1 names "Not run", and with the fields and forbidden items of C-0012 section 4 as a list. S2.0.1 builds its record template on that file; the verdicts still come from step 30 and integration step 7.
 
 **Session log.**
 

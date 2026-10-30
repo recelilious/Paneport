@@ -340,7 +340,7 @@ Tests that need Valve's client run only on recelilious's own devices. CI uses fa
 ### 7.7 Design documents and evidence
 
 - Every component gets its design document in `docs/design/` before or with its first code (C-0012 section 1 item 8). Each brief names the documents its stage writes.
-- Every Large stage ends with an evidence record (C-0012 section 4). The gate table in `docs/evidence/README.md` is created with the first evidence record (S2.0.1).
+- Every Large stage ends with an evidence record (C-0012 section 4). S0.0.1 created the gate table in `docs/evidence/README.md` together with L0's record, every gate at "No record yet". Each gate's row gets its verdict and a link with that gate's first record (C-0012 section 3).
 
 ## 8. Contract changes the plan expects
 

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [
+      "e41d3729e2ea472bf20f4c18a7835f121d03a7831d35d0a30d818897dfaee6a5"
+    ],
+    "slug": "lantern-garden"
+  },
+  "name": "Lantern Garden (imported)",
+  "drm": {
+    "steamApi": false,
+    "steamStub": false,
+    "steamAppIdFile": false,
+    "ceg": "unknown"
+  },
+  "runtimes": [],
+  "helperPolicy": {
+    "blockedExecutables": []
+  }
+}

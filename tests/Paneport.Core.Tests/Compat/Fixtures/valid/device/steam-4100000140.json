@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000140,
+    "slug": "pocket-orrery"
+  },
+  "executable": {
+    "path": "Orrery/Orrery.exe",
+    "arguments": [
+      "--lang=en"
+    ]
+  },
+  "architecture": "x86",
+  "drm": {
+    "steamApi": false,
+    "steamStub": true
+  },
+  "graphicsApi": [
+    "opengl"
+  ]
+}

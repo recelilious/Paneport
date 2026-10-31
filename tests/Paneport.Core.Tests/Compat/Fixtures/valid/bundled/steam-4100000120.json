@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000120,
+    "slug": "quarry-of-the-nine-kites"
+  },
+  "name": "Quarry of the Nine Kites",
+  "executable": {
+    "path": "Binaries/Win64/Kites.exe",
+    "workingDirectory": "Binaries/Win64",
+    "arguments": [
+      "-windowed",
+      ""
+    ]
+  },
+  "architecture": "x86_64",
+  "drm": {
+    "steamApi": true,
+    "steamStub": false,
+    "steamAppIdFile": true,
+    "ceg": "no"
+  },
+  "launch": "dock",
+  "graphicsApi": [
+    "d3d11",
+    "d3d9"
+  ],
+  "runtimes": [
+    "vcredist-v14-x64"
+  ],
+  "memoryEstimateMiB": 2400,
+  "jitPoolMiB": 640,
+  "translator": {},
+  "graphics": {
+    "renderScale": 0.75,
+    "metalFx": "spatial",
+    "frameRateCap": 30
+  },
+  "environment": {},
+  "helperPolicy": {
+    "blockedExecutables": [
+      "Engine/CrashReporter/Reporter.exe"
+    ]
+  },
+  "prefix": "isolated",
+  "rating": "playable",
+  "reports": [
+    {
+      "date": "2026-11-02",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.1.0",
+      "gameBuild": "12345678",
+      "rating": "playable",
+      "evidence": "docs/evidence/2026-11-02-nine-kites.md",
+      "fpsMedian": 31.5,
+      "fpsLow1": 24,
+      "peakMemoryMiB": 3150,
+      "thermalState": "fair",
+      "notes": "Fictional report of a test fixture."
+    },
+    {
+      "date": "2026-10-20",
+      "device": "iPhone19,2",
+      "iosVersion": "27.0.1 (24A446)",
+      "paneportVersion": "3a44fa2c92a67a2d0c3223bf247361c77937be76",
+      "gameBuild": "12345601",
+      "rating": "boots",
+      "evidence": "docs/evidence/2026-10-20-nine-kites-boot.md"
+    }
+  ]
+}

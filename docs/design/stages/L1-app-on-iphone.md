@@ -225,7 +225,8 @@ Scripts this stage creates: `eng/mac/bootstrap.sh` and the new `CheckToolchain` 
 - **2026-10-31 (UTC), contract acceptance.** recelilious accepted the contract proposal. The acceptance commit on `contract/m1-1-ios-ci` applies C-0003 1.3 and C-0009 1.1 and drops their proposal sections, and the branch is pushed with its pull request, [#12](https://github.com/recelilious/Paneport/pull/12), which merges before #10. `dev-environment.md` no longer lists the pin location as open.
   - **Left.** recelilious merges #12. Then `checks` passes on #10 once it runs again, M1.1 and its small stages are set to Done in the branch's last commit, and recelilious confirms D7 and merges #10.
 - **2026-10-31 (UTC), contract merge.** On recelilious's request, Claude merged #12, which put C-0003 1.3 and C-0009 1.1 on `main` (`6a0acf1`), and rebased this branch onto it. With the two rows in the register, the license check passes; the rest of the verification passed in the first session, and the rebase touched no file of this stage. Only the merge is left, so M1.1 and S1.1.1 to S1.1.5 are set to Done in this commit, as plan section 3.3 asks.
-  - **Left.** recelilious confirms D7, which the `ios` job follows as recorded (only before merging), and merges #10. #11 (M6.4) also adds a row to `docs/design/README.md`; the pull request that merges second rebases.
+  - **D7.** With the measured run time, recelilious confirmed that the `ios` job runs only before merging, which the job already does; the D7 row of plan section 4.2 records it.
+  - **Left.** recelilious merges #10. #11 (M6.4) also adds a row to `docs/design/README.md`; the pull request that merges second rebases.
 
 ## M1.2 Native host skeleton and interface conformance
 

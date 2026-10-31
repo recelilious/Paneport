@@ -1,0 +1,494 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Paneport title entry",
+  "description": "One title of Paneport's compatibility database, a file in compat/titles/ (C-0008). docs/design/compat-db.md maps every field of C-0008 section 2 to its clause here.",
+  "type": "object",
+  "required": ["schemaVersion", "id", "name"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "description": "The version of this schema that the file follows (C-0008 section 2).",
+      "const": 1
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "name": {
+      "description": "The title's display name.",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "executable": {
+      "$ref": "#/$defs/executable"
+    },
+    "architecture": {
+      "description": "The architecture of the program that executable names.",
+      "enum": ["x86_64", "x86"]
+    },
+    "drm": {
+      "$ref": "#/$defs/drm"
+    },
+    "launch": {
+      "description": "The launch path, derived from drm (C-0008 section 5). The conditions under allOf say when an entry may state it.",
+      "enum": ["direct", "dock"]
+    },
+    "graphicsApi": {
+      "description": "The graphics APIs the title uses.",
+      "type": "array",
+      "items": {
+        "enum": ["gdi", "ddraw", "d3d8", "d3d9", "d3d10", "d3d11", "d3d12", "opengl", "vulkan"]
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "runtimes": {
+      "description": "The runtimes the title needs, from the fixed list in $defs/runtime.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/runtime"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "memoryEstimateMiB": {
+      "description": "Expected peak memory that the game adds, in MiB: the process footprint during play minus the footprint just before the game's first process started.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "jitPoolMiB": {
+      "description": "The JIT pool size in MiB. The JIT flow still applies the limit of C-0006 section 4 to the memory limit of the moment.",
+      "type": "integer",
+      "minimum": 256,
+      "maximum": 896
+    },
+    "translator": {
+      "description": "Translator options. Only the keys listed under properties are allowed (C-0008 section 2); the list starts empty.",
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "default": {}
+    },
+    "graphics": {
+      "$ref": "#/$defs/graphics"
+    },
+    "environment": {
+      "description": "Environment variables for the game. Only the names listed under properties are allowed (C-0008 section 2); the list starts empty. It never holds SteamAppId, SteamGameId, SteamAppPath or any other variable that steam_api or a DRM wrapper reads (C-0008 section 5).",
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "default": {}
+    },
+    "helperPolicy": {
+      "$ref": "#/$defs/helperPolicy"
+    },
+    "prefix": {
+      "description": "Whether the title runs in the shared Wine prefix or in one of its own (C-0004 section 4).",
+      "enum": ["shared", "isolated"],
+      "default": "shared"
+    },
+    "rating": {
+      "description": "Computed from the reports, never edited by hand (C-0008 section 3).",
+      "$ref": "#/$defs/rating",
+      "default": "untested"
+    },
+    "reports": {
+      "description": "Test reports (C-0008 section 4).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/report"
+      },
+      "default": []
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "C-0008 section 5: launch is direct only when steamApi and steamStub are false and ceg is no, here in the entry's own drm.",
+      "if": {
+        "required": ["launch"],
+        "properties": {
+          "launch": {
+            "const": "direct"
+          }
+        }
+      },
+      "then": {
+        "required": ["drm"],
+        "properties": {
+          "drm": {
+            "required": ["steamApi", "steamStub", "ceg"],
+            "properties": {
+              "steamApi": {
+                "const": false
+              },
+              "steamStub": {
+                "const": false
+              },
+              "ceg": {
+                "const": "no"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "An entry states dock only when its own drm shows a value that blocks the Direct path, so the stated path is the one the app takes whatever the device's classification adds (docs/design/compat-db.md).",
+      "if": {
+        "required": ["launch"],
+        "properties": {
+          "launch": {
+            "const": "dock"
+          }
+        }
+      },
+      "then": {
+        "required": ["drm"],
+        "properties": {
+          "drm": {
+            "anyOf": [
+              {
+                "required": ["steamApi"],
+                "properties": {
+                  "steamApi": {
+                    "const": true
+                  }
+                }
+              },
+              {
+                "required": ["steamStub"],
+                "properties": {
+                  "steamStub": {
+                    "const": true
+                  }
+                }
+              },
+              {
+                "required": ["ceg"],
+                "properties": {
+                  "ceg": {
+                    "enum": ["yes", "unknown"]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "$comment": "C-0008 section 5: a local title shows no Steam marker and is launched only on the Direct path. Its exeSha256 values hash the program that executable names (C-0008 section 2).",
+      "if": {
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "required": ["exeSha256"]
+          }
+        }
+      },
+      "then": {
+        "required": ["executable"],
+        "properties": {
+          "launch": {
+            "const": "direct"
+          },
+          "drm": {
+            "properties": {
+              "steamApi": {
+                "const": false
+              },
+              "steamStub": {
+                "const": false
+              },
+              "ceg": {
+                "enum": ["no", "unknown"]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "C-0008 section 4: gameBuild is the Steam build ID for a Steam title and the SHA-256 of the program file for a local title.",
+      "if": {
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "required": ["steamAppId"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reports": {
+            "items": {
+              "properties": {
+                "gameBuild": {
+                  "pattern": "^[1-9][0-9]{0,19}$"
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "reports": {
+            "items": {
+              "properties": {
+                "gameBuild": {
+                  "$ref": "#/$defs/sha256"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "id": {
+      "description": "The title's identity. A Steam title has steamAppId and a local title exeSha256, never both. The file is named steam-<steamAppId>.json or local-<slug>.json (C-0008 section 1).",
+      "type": "object",
+      "required": ["slug"],
+      "additionalProperties": false,
+      "properties": {
+        "steamAppId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "exeSha256": {
+          "description": "The SHA-256 of the program that executable names, one per known build.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sha256"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "slug": {
+          "$ref": "#/$defs/slug"
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["steamAppId"]
+        },
+        {
+          "required": ["exeSha256"]
+        }
+      ]
+    },
+    "slug": {
+      "description": "One or more groups of lowercase ASCII letters and digits joined by single hyphens (C-0008 section 1, docs/design/app-shell.md section 2).",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "sha256": {
+      "description": "A SHA-256 value in lowercase hexadecimal.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "relativePath": {
+      "description": "A path relative to the install folder, with forward slashes: no leading or trailing slash, no empty, . or .. segment, no segment that ends in a dot or a space, which Windows trims, and none of the characters that Windows forbids in file names.",
+      "type": "string",
+      "allOf": [
+        {
+          "pattern": "^[^\\\\:*?\"<>|\\u0000-\\u001f]+$"
+        },
+        {
+          "not": {
+            "pattern": "^/|/$|//"
+          }
+        },
+        {
+          "not": {
+            "$comment": "A segment that ends in a dot or a space, which also excludes . and ..",
+            "pattern": "[. ](/|$)"
+          }
+        }
+      ]
+    },
+    "executable": {
+      "description": "The program the Direct path starts (C-0008 section 2).",
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "workingDirectory": {
+          "description": "The working directory: . for the install folder itself, or a relative path.",
+          "anyOf": [
+            {
+              "const": "."
+            },
+            {
+              "$ref": "#/$defs/relativePath"
+            }
+          ]
+        },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "default": []
+        }
+      }
+    },
+    "text": {
+      "description": "A string without the NUL character, which would cut it short where the host passes it on as C text.",
+      "type": "string",
+      "pattern": "^[^\\u0000]*$"
+    },
+    "drm": {
+      "description": "The classification of C-0007 section 5. Absent means not yet classified, and so does each absent member, which the device's classification may fill in (C-0008 section 1). No member has a default, so nothing allows a launch by default.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "steamApi": {
+          "type": "boolean"
+        },
+        "steamStub": {
+          "type": "boolean"
+        },
+        "steamAppIdFile": {
+          "type": "boolean"
+        },
+        "ceg": {
+          "enum": ["yes", "no", "unknown"]
+        }
+      }
+    },
+    "runtime": {
+      "description": "The fixed list of runtime identifiers (C-0008 section 2).",
+      "enum": ["vcredist-v14-x64", "vcredist-v14-x86"]
+    },
+    "graphics": {
+      "description": "Graphics settings (C-0008 section 2).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "renderScale": {
+          "description": "The internal resolution as a fraction of the output.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "default": 1
+        },
+        "metalFx": {
+          "enum": ["off", "spatial"],
+          "default": "off"
+        },
+        "frameRateCap": {
+          "$comment": "It must divide the display's refresh rate, which only the running app knows, so the session checks that.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "helperPolicy": {
+      "description": "Helper programs the session refuses to start, such as crash reporters. Never a program that performs a license or DRM check (C-0008 section 5).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "blockedExecutables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relativePath"
+          },
+          "uniqueItems": true,
+          "default": []
+        }
+      }
+    },
+    "rating": {
+      "enum": ["perfect", "playable", "runs", "boots", "broken", "untested"]
+    },
+    "report": {
+      "description": "One test report (C-0008 section 4).",
+      "type": "object",
+      "required": ["date", "device", "iosVersion", "paneportVersion", "gameBuild", "rating", "evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "description": "The test date in UTC.",
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "device": {
+          "description": "The device model identifier, such as iPhone18,1.",
+          "type": "string",
+          "pattern": "^[A-Za-z]+[0-9]+,[0-9]+$"
+        },
+        "iosVersion": {
+          "description": "The iOS version and build, such as 27.2 (24B119).",
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)? \\([0-9]+[A-Z][0-9]+[a-z]?\\)$"
+        },
+        "paneportVersion": {
+          "description": "A release tag (v and a Semantic Version, C-0009 section 6) or a full commit hash.",
+          "type": "string",
+          "anyOf": [
+            {
+              "pattern": "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+            },
+            {
+              "pattern": "^[0-9a-f]{40}$"
+            }
+          ]
+        },
+        "gameBuild": {
+          "description": "The Steam build ID, or for a local title the SHA-256 of the program file. The conditions under allOf check which.",
+          "type": "string"
+        },
+        "rating": {
+          "description": "The rating this test observed.",
+          "enum": ["perfect", "playable", "runs", "boots", "broken"]
+        },
+        "evidence": {
+          "description": "The path of the evidence record (C-0012 section 4).",
+          "type": "string",
+          "pattern": "^docs/evidence/[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*\\.md$"
+        },
+        "fpsMedian": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "fpsLow1": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "peakMemoryMiB": {
+          "description": "The peak memory footprint of the whole process.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "thermalState": {
+          "description": "The highest thermal state seen, in iOS's terms.",
+          "enum": ["nominal", "fair", "serious", "critical"]
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "if": {
+        "properties": {
+          "rating": {
+            "enum": ["perfect", "playable", "runs"]
+          }
+        }
+      },
+      "then": {
+        "required": ["fpsMedian", "fpsLow1", "peakMemoryMiB"]
+      }
+    },
+    "targetDevices": {
+      "description": "The model identifiers of the target devices of C-0001 section 2, whose reports count for the rating (C-0008 section 3). docs/design/compat-db.md names each device.",
+      "enum": ["iPhone18,1", "iPhone18,2", "iPhone19,2", "iPhone19,3", "iPhone19,7"]
+    }
+  }
+}

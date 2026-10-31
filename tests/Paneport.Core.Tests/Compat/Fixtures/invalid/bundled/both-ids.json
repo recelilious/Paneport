@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000210,
+    "exeSha256": [
+      "8b52d0d5ce2b147dc6ac2f0104359e841f6c24ac3db606004f94c9968445935c"
+    ],
+    "slug": "fixture-title"
+  },
+  "name": "Fixture Title"
+}

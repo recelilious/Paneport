@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000210,
+    "slug": "fixture-title"
+  },
+  "name": "Fixture Title",
+  "reports": [
+    {
+      "date": "2026-11-02",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.1.0",
+      "gameBuild": "12345678",
+      "rating": "boots",
+      "evidence": "docs/evidence/2026-11-02-fixture-title.md",
+      "tester": "fixture"
+    }
+  ]
+}

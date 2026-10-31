@@ -258,6 +258,10 @@ _No sessions yet._
 
 **Hands over to.** The L8 integration session (the first title entries back the gate) and every later title entry and report.
 
+**Notes from earlier stages.**
+
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-10-31): `compat-db.md` section 9 lists where the schema and the app's loader differ: `512.0` is an integer to JSON Schema, `format: date` asserts only in validators that assert formats, and `$` in .NET patterns also matches before a final line break. The models in Paneport.Core and `$defs/targetDevices` are ready for the rating check.
+
 **Session log.**
 
 _No sessions yet._

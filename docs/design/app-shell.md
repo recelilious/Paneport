@@ -156,7 +156,7 @@ The titles were invented for Paneport and carry no game artwork or other game ma
 
 ## 10. Open questions
 
-- **Slug pattern.** Section 2 reads C-0008 section 1 strictly. M6.4's schema implements the same pattern, or the two are aligned through C-0008 if recelilious reads the rule differently.
+- **Slug pattern.** Settled by M6.4: the title schema implements the pattern of section 2 (`compat-db.md` section 2).
 - **Expected ABI version.** The major version the .NET side expects comes with M1.2's headers. M1.3 checks it at startup and shows the compatibility on Diagnostics.
 - **Token store shape.** M1.3 keeps the account name next to the refresh token, and its developer menu writes a test item under its own key, so `ITokenStore` will grow there (M1.3, M7.1).
 - **The token in managed memory.** A .NET string cannot be wiped. C-0005 section 2 makes the host zero its own copy; whether the managed side keeps the token as bytes it can clear is for M2.3 to decide.

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000130,
+    "slug": "saltmarsh-signal-tower"
+  },
+  "name": "Saltmarsh Signal Tower",
+  "executable": {
+    "path": "Signal.exe"
+  },
+  "architecture": "x86_64",
+  "drm": {
+    "ceg": "no"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [
+      "8b52d0d5ce2b147dc6ac2f0104359e841f6c24ac3db606004f94c9968445935c",
+      "e41d3729e2ea472bf20f4c18a7835f121d03a7831d35d0a30d818897dfaee6a5"
+    ],
+    "slug": "lantern-garden"
+  },
+  "name": "Lantern Garden",
+  "executable": {
+    "path": "LanternGarden.exe",
+    "workingDirectory": ".",
+    "arguments": [
+      "--fullscreen"
+    ]
+  },
+  "architecture": "x86_64",
+  "drm": {
+    "steamApi": false,
+    "steamStub": false,
+    "steamAppIdFile": false,
+    "ceg": "no"
+  },
+  "launch": "direct",
+  "graphicsApi": [
+    "d3d11"
+  ],
+  "memoryEstimateMiB": 900,
+  "graphics": {
+    "frameRateCap": 60
+  },
+  "rating": "perfect",
+  "reports": [
+    {
+      "date": "2026-11-03",
+      "device": "iPhone18,2",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.1.0-alpha.2",
+      "gameBuild": "e41d3729e2ea472bf20f4c18a7835f121d03a7831d35d0a30d818897dfaee6a5",
+      "rating": "perfect",
+      "evidence": "docs/evidence/2026-11-03-lantern-garden.md",
+      "fpsMedian": 60,
+      "fpsLow1": 57.5,
+      "peakMemoryMiB": 1240,
+      "thermalState": "nominal"
+    }
+  ]
+}

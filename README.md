@@ -59,7 +59,7 @@ dotnet test eng/ci.slnf -c Release
 dotnet run --project src/Paneport.Desktop
 ```
 
-`eng/ci.slnf` is the solution filter that CI builds and tests. The last command opens a window titled Paneport on the Library page. Builds and test runs send usage data to Microsoft and Avalonia unless `DOTNET_CLI_TELEMETRY_OPTOUT`, `TESTINGPLATFORM_TELEMETRY_OPTOUT` and `AVALONIA_TELEMETRY_OPTOUT` are set to `1` ([solution-and-build.md](docs/design/solution-and-build.md) section 7). The iOS app head needs a macOS build host (C-0009 section 1). [CONTRIBUTING.md](CONTRIBUTING.md) lists the checks to run before a push.
+`eng/ci.slnf` is the solution filter that CI builds and tests. The last command opens a window titled Paneport on the Library page. Builds and test runs send usage data to Microsoft and Avalonia unless `DOTNET_CLI_TELEMETRY_OPTOUT`, `TESTINGPLATFORM_TELEMETRY_OPTOUT` and `AVALONIA_TELEMETRY_OPTOUT` are set to `1` ([solution-and-build.md](docs/design/solution-and-build.md) section 7). The iOS app head needs a macOS build host (C-0009 section 1): a Mac with Apple silicon, or the `ios` CI job, as [dev-environment.md](docs/design/dev-environment.md) describes. [CONTRIBUTING.md](CONTRIBUTING.md) lists the checks to run before a push.
 
 ## Contracts first
 

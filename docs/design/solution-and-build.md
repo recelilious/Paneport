@@ -11,13 +11,13 @@ This document records how Paneport's .NET solution is laid out and built: the pr
 ## 1. Toolchain
 
 - **SDK.** `global.json` pins the .NET SDK to exactly 10.0.403 and sets `rollForward` to `disable`, so no other SDK stands in for it (C-0009 section 2). 10.0.403 was the newest .NET 10 SDK on 2026-10-29: it carries runtime 10.0.14 and C# 14, and Visual Studio 2026 18.11.2 ships it. At the repository root, `dotnet --version` prints the pin, or reports that the SDK is missing.
-- **iOS workload.** Microsoft publishes the iOS workload manifests only for the 10.0.100 feature band. The workload sets of the 10.0.400 band, up to 10.403.0, exist as well and should resolve those manifests, which this stage did not try. M1.1 confirms this against the Xcode version it pins, and may move the SDK pin in a reviewed change.
+- **iOS workload.** The iOS workload comes from the workload set that `eng/toolchain.json` pins, 10.0.403, which installs iOS workload 27.1.10018 for Xcode 27.1; `eng/mac/bootstrap.sh` installs it on a Mac. Microsoft publishes the iOS manifests only for the 10.0.100 feature band, and a workload set of the 10.0.400 band installs them, naming each with its band (`27.1.10018/10.0.100`), as M1.1 confirmed in CI. `global.json` does not pin the workload set: with `sdk.workloadVersion` set, the SDK fails every build on a machine without that workload set, even for projects that use no workload. [dev-environment.md](dev-environment.md) section 2 records how the pins were chosen and how they move.
 - **Test runner.** `global.json` also makes `dotnet test` use Microsoft.Testing.Platform (section 6).
 - **IDE.** Visual Studio 2026, or Rider 2026.1 or later. Visual Studio 2022 cannot target `net10.0`.
 
 ## 2. Projects
 
-`Paneport.slnx` lists every project. `eng/ci.slnf` lists the projects that CI builds and tests: all of them except Paneport.iOS, `tests/device` and `tests/Paneport.Interop.Tests` (C-0011 section 4), none of which exists yet.
+`Paneport.slnx` lists every project. `eng/ci.slnf` lists the projects that CI builds and tests: all of them except Paneport.iOS, `tests/device` and `tests/Paneport.Interop.Tests` (C-0011 section 4). Paneport.iOS exists since M1.1, and the `ios` job builds it; the other two come with M1.2 and M1.3.
 
 | Project | Kind | Role (C-0004 section 2) | May reference in the solution | Holds now | Full design |
 |---|---|---|---|---|---|
@@ -26,12 +26,15 @@ This document records how Paneport's .NET solution is laid out and built: the pr
 | Paneport.UI | Library | Avalonia views, styles and overlay controls shared by both app heads. | Paneport.Core | The application class, the shell's main view and its four pages | M0.3, in `app-shell.md` |
 | Paneport.Interop | Library | Source-generated bindings to the host interface. The only project allowed to use unsafe code. | Nothing | Nothing | M1.2, with its first bindings |
 | Paneport.Desktop | Executable | Desktop head with a fake host, for UI work on Windows. Never shipped. Never writes a Steam sign-in token to disk. | Paneport.Core, Paneport.Steam, Paneport.UI | The composition root, the window titled Paneport and the fakes | M0.3, in `app-shell.md` |
+| Paneport.iOS | iOS app (`net10.0-ios`, `ios-arm64`) | App entry point, UIKit root view controller, game view, overlay, GameController input, keychain token store and background tasks. | Paneport.Core, Paneport.Steam, Paneport.UI, Paneport.Interop | A minimal app with scenes that shows its name; references nothing yet | M1.3, in `ios-app-head.md`; M1.1 records its build in `dev-environment.md` |
 | Paneport.Core.Tests | Test executable | Tests of Paneport.Core | Paneport.Core | Dependency direction tests, and tests of the domain model, interfaces and view models | M0.3, in `app-shell.md` |
 | Paneport.Steam.Tests | Test executable | Tests of Paneport.Steam | Paneport.Steam, Paneport.Core | Dependency direction tests | M2.3 adds tests |
 | Paneport.UI.Tests | Test executable | Tests of Paneport.UI, headless | Paneport.UI, Paneport.Core | Dependency direction tests, and headless tests of the shell and its pages | M0.3, in `app-shell.md` |
 | Paneport.TrimTest | Executable | Trimmed publish of the four libraries with their dependencies (C-0011 section 4). Not a test project. | Paneport.Core, Paneport.Steam, Paneport.UI, Paneport.Interop | A program that does nothing | M0.2, in `repository-checks.md` |
 
-Nothing references Paneport.Desktop or Paneport.iOS. A test project references only the project it tests and that project's dependencies, plus registered test libraries. Paneport.TrimTest checks the four libraries together, so it references each of them. Later stages add Paneport.iOS (M1.1 and M1.3; it may reference Core, Steam, UI and Interop), `tests/Paneport.Interop.Tests` (M1.2) and `tests/device` (M1.3; it may also reference Interop).
+Nothing references Paneport.Desktop or Paneport.iOS. A test project references only the project it tests and that project's dependencies, plus registered test libraries. Paneport.TrimTest checks the four libraries together, so it references each of them. Later stages add `tests/Paneport.Interop.Tests` (M1.2) and `tests/device` (M1.3; it may also reference Interop), and M1.3 gives Paneport.iOS its references.
+
+Paneport.iOS builds only on a Mac with the pinned Xcode and the iOS workload ([dev-environment.md](dev-environment.md)). It sets `RuntimeIdentifier` to `ios-arm64` itself, so that its restore, its lock file and its build agree without a runtime identifier on the command line, and `SupportedOSPlatformVersion` to 26.0 (C-0001 section 2). Its namespace is `Paneport.IOS`: the PascalCase rule of section 4 rejects `iOS` as a namespace part, and .NET spells it `IOS` in identifiers, as in `OperatingSystem.IsIOS`. The project, its folder and its assembly keep the component's name from C-0004 section 2. Its classes are internal, because CA1711 and CA1010 check public types and would reject the UIKit names `AppDelegate` and `SceneDelegate` and the non-generic `IEnumerable` that `UIViewController` implements.
 
 Paneport.Desktop creates the desktop application lifetime in `Program.cs` and its window in `CompositionRoot.cs`, so Paneport.UI holds no desktop-only concept: the iOS head shows a single main view instead of a window. Paneport.Desktop is a console executable, so that `dotnet run` shows Avalonia's errors in the terminal; a Windows-subsystem executable would detach from it.
 
@@ -113,13 +116,24 @@ No rule needed relaxing for the tests so far. If one does, it is relaxed only fo
 | HarfBuzzSharp and HarfBuzzSharp.NativeAssets.Linux, .macOS, .WebAssembly and .Win32 (8.3.1.3) | Avalonia.HarfBuzz | HarfBuzzSharp (1.2) |
 | MicroCom.Runtime (0.11.6) | Avalonia | MicroCom.Runtime (1.2) |
 | Tmds.DBus.Protocol (0.94.1) | Avalonia.FreeDesktop | Tmds.DBus.Protocol (1.2) |
-| Microsoft.NET.ILLink.Tasks (10.0.14), Microsoft.Bcl.AsyncInterfaces (6.0.0), Microsoft.Win32.Registry (5.0.0) | The SDK, for `IsAotCompatible`; xunit.v3 | .NET runtime |
+| Microsoft.NET.ILLink.Tasks (10.0.14), Microsoft.Bcl.AsyncInterfaces (6.0.0), Microsoft.Win32.Registry (5.0.0) | The SDK, for `IsAotCompatible` and for the trimming that every iOS app build runs; xunit.v3 | .NET runtime |
 | xunit.v3, xunit.v3.assert, xunit.v3.common, xunit.v3.core.mtp-v1, xunit.v3.extensibility.core, xunit.v3.mtp-v1, xunit.v3.runner.common, xunit.v3.runner.inproc.console (3.2.2), xunit.analyzers (1.27.0) | The test projects | xunit.v3 |
 | CommunityToolkit.Mvvm (8.4.2) | Paneport.Core, since M0.3; it brings no other package | CommunityToolkit.Mvvm |
 | Microsoft.Testing.Platform, Microsoft.Testing.Platform.MSBuild, Microsoft.Testing.Extensions.TrxReport.Abstractions, Microsoft.Testing.Extensions.Telemetry (1.9.1) | xunit.v3 | Microsoft.Testing.Platform (1.2) |
 | Microsoft.ApplicationInsights (2.23.0) | Microsoft.Testing.Extensions.Telemetry | Application Insights SDK (1.2) |
 
 Avalonia's usual templates add `Avalonia.Fonts.Inter` to the app itself. Paneport.UI does not, so the Inter font reaches only the headless tests, through Avalonia.Headless.
+
+**Paneport.iOS.** Its lock file names the target framework with the iOS SDK version, `net10.0-ios27.1`, and a section for `ios-arm64`; since M1.1 it lists only Microsoft.NET.ILLink.Tasks. A new iOS workload changes that version, so the lock file changes with the workload pin. Restoring the project needs the iOS workload, so its lock file is written on a Mac, or taken from the log of the `ios` job ([dev-environment.md](dev-environment.md) section 5).
+
+**Workload packs.** The iOS workload brings packs that reach no lock file, because the SDK downloads them itself, as it does the runtime packs of the trimmed test app (repository-checks.md section 4). The workload set 10.0.403 installed these in the `ios` job of M1.1, and two rows of the register cover them:
+
+| Packs | Built from | Register row |
+|---|---|---|
+| Microsoft.iOS.Sdk, Microsoft.iOS.Ref, Microsoft.iOS.Runtime and Microsoft.iOS.Templates, for `net10.0` with the iOS SDK 27.1, and the iOS SDK packs of earlier target frameworks that the workload also installs | dotnet/macios | .NET for iOS (dotnet/macios) |
+| Microsoft.NETCore.App.Runtime.Mono for `ios-arm64` and the simulators, Microsoft.NETCore.App.Runtime.AOT.osx-arm64.Cross for the same targets, Microsoft.NET.Runtime.MonoAOTCompiler.Task and Microsoft.NET.Runtime.MonoTargets.Sdk (10.0.14, and 9.0.22 for the earlier target framework) | dotnet/runtime | .NET runtime |
+
+Code from the Mono runtime pack and from the .NET for iOS runtime pack ships in the app (C-0009 section 4); the other packs only build it. M9.1 checks the notices of what ships against the register.
 
 ## 6. Tests
 
@@ -150,7 +164,7 @@ Three components send usage data from builds and test runs unless an environment
 
 ## 9. Continuous integration
 
-`.github/workflows/ci.yml` runs on every push and every pull request. Its [README](../../.github/workflows/README.md) lists the jobs. The `dotnet` job runs on `windows-2025` and `ubuntu-24.04`: locked restore, Release build, tests and format check of `eng/ci.slnf`. The `checks` job runs `reuse lint` with the REUSE tool version that `eng/toolchain.json` pins. Actions are pinned to full commit hashes, runner images to explicit versions, and the workflow's token can only read the repository. M0.2 completed both jobs; [repository-checks.md](repository-checks.md) describes every step.
+`.github/workflows/ci.yml` runs on every push and every pull request. Its [README](../../.github/workflows/README.md) lists the jobs. The `dotnet` job runs on `windows-2025` and `ubuntu-24.04`: locked restore, Release build, tests and format check of `eng/ci.slnf`. The `checks` job runs `reuse lint` with the REUSE tool version that `eng/toolchain.json` pins. Actions are pinned to full commit hashes, runner images to explicit versions, and the workflow's token can only read the repository. M0.2 completed both jobs; [repository-checks.md](repository-checks.md) describes every step. Since M1.1 the `ios` job builds Paneport.iOS on the pinned macOS image, only for a pull request with the `ios-ci` label (D7); [dev-environment.md](dev-environment.md) section 5 describes it.
 
 `dotnet build`, `dotnet test` and `dotnet format` all accept `eng/ci.slnf`, whose solution is `Paneport.slnx`, so the per-project fallback for the format check was not needed.
 

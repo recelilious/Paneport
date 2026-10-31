@@ -16,18 +16,16 @@ Contracts are the binding documents of this project. Contracts come first; imple
 |---|---|---|---|---|
 | [C-0001](C-0001-project-charter.md) | Project charter | Accepted | 1.1 | 2026-10-28 |
 | [C-0002](C-0002-repository-and-commits.md) | Repository and commits | Accepted | 1.1 | 2026-10-28 |
-| [C-0003](C-0003-licensing.md) | Open-source licensing | Accepted | 1.2 | 2026-10-29 |
+| [C-0003](C-0003-licensing.md) | Open-source licensing | Accepted | 1.3 | 2026-10-31 |
 | [C-0004](C-0004-architecture-and-layout.md) | Architecture, components and layout | Accepted | 1.0 | 2026-10-28 |
 | [C-0005](C-0005-native-host-interface.md) | Native runtime host interface | Accepted | 1.0 | 2026-10-28 |
 | [C-0006](C-0006-jit-request-protocol.md) | JIT request protocol | Accepted | 1.0 | 2026-10-28 |
 | [C-0007](C-0007-steam-integration.md) | Steam integration | Accepted | 1.0 | 2026-10-28 |
 | [C-0008](C-0008-compatibility-database.md) | Compatibility database | Accepted | 1.0 | 2026-10-28 |
-| [C-0009](C-0009-build-signing-release.md) | Build, signing and release | Accepted | 1.0 | 2026-10-28 |
+| [C-0009](C-0009-build-signing-release.md) | Build, signing and release | Accepted | 1.1 | 2026-10-31 |
 | [C-0010](C-0010-languages-and-style.md) | Languages and code style | Accepted | 1.0 | 2026-10-28 |
 | [C-0011](C-0011-testing-review-quality.md) | Testing, review and quality tools | Accepted | 1.0 | 2026-10-28 |
 | [C-0012](C-0012-acceptance-process.md) | Acceptance process | Accepted | 1.0 | 2026-10-28 |
-
-C-0003 and C-0009 also carry proposed changes, for versions 1.3 and 1.1, each in its own section. They are not binding until recelilious approves them.
 
 ## Planned contracts
 

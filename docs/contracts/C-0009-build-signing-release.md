@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.0 |
-| Date | 2026-10-28 |
+| Version | 1.1 |
+| Date | 2026-10-31 |
 | Owner | recelilious |
 
 This contract defines the environments, the pinned toolchain, the build stages, the app bundle, signing and installation, and what a release contains.
@@ -25,7 +25,8 @@ Every version below is recorded in the repository, and changing one is a reviewe
 
 | Tool | Where the pin lives |
 |---|---|
-| .NET 10 SDK and the iOS workload set | `global.json` |
+| .NET 10 SDK | `global.json` |
+| The iOS workload set: the workload set version that the iOS workload is installed from, such as `10.0.403` | `eng/toolchain.json`, installed with `dotnet workload install ios --version` and checked against `dotnet workload --version` |
 | The Xcode version that workload set needs | `eng/toolchain.json`, checked against `xcodebuild -version` |
 | llvm-mingw release | `eng/toolchain.json` |
 | CMake, and the LLVM release of clang-format and clang-tidy | `eng/toolchain.json` |
@@ -34,6 +35,8 @@ Every version below is recorded in the repository, and changing one is a reviewe
 | gitleaks, lychee and the REUSE tool | `eng/toolchain.json` |
 | NuGet packages | `Directory.Packages.props` (central package management) with lock files |
 | Fork and upstream revisions | The commits recorded for the submodules in `external/` |
+
+`global.json` does not name the workload set (`sdk.workloadVersion`), because the SDK then fails every build on a machine without that workload set, even for projects that use no workload. The macOS build host installs it from the pin in `eng/toolchain.json`.
 
 The runtime libraries that llvm-mingw links into shipped binaries (the mingw-w64 runtime, libc++, libc++abi, libunwind and compiler-rt) are registered under C-0003 before the first Windows-side build.
 
@@ -105,24 +108,10 @@ The bundle identifier is chosen by recelilious.
   - source archives of this repository and of every fork at exactly the released revisions, with release notes that link to the tag and to each fork revision, so the source of every LGPL component is offered from the same place as the `.ipa` (LGPL-2.1 section 6).
 - Release acceptance follows C-0012 section 5.
 
-## Proposed changes for 1.1
-
-**Not yet accepted.** Version 1.0 above stays binding until recelilious approves these changes. They come from stage M1.1, which found that the place section 2 gives the iOS workload set breaks the builds that do not use it.
-
-The .NET SDK reads one key for a workload set in `global.json`, `sdk.workloadVersion`. With SDK 10.0.403 and `"workloadVersion": "10.0.403"`, every build failed on a machine without that workload set, also for projects that use no workload: `dotnet build` of Paneport.Core stopped with MSB4242, "Workload version 10.0.403, which was specified in global.json, was not found", and so did `dotnet run` of the tools in `tools/`. Only the macOS build host installs the iOS workload, so the pin would break the Windows workstation and the `dotnet` and `checks` jobs, or force each of them to install the workload set first.
-
-1. **Section 2, table.** Replace the row ".NET 10 SDK and the iOS workload set | `global.json`" with these two rows:
-
-   | Tool | Where the pin lives |
-   |---|---|
-   | .NET 10 SDK | `global.json` |
-   | The iOS workload set: the workload set version that the iOS workload is installed from, such as `10.0.403` | `eng/toolchain.json`, installed with `dotnet workload install ios --version` and checked against `dotnet workload --version` |
-
-2. **Section 2.** After the table, add: "`global.json` does not name the workload set (`sdk.workloadVersion`), because the SDK then fails every build on a machine without that workload set, even for projects that use no workload. The macOS build host installs it from the pin in `eng/toolchain.json`."
-
 ## Change log
 
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious |
+| 1.1 | 2026-10-31 | Accepted by recelilious. Section 2 pins the iOS workload set in `eng/toolchain.json` instead of `global.json`, because `sdk.workloadVersion` in `global.json` makes every build fail on a machine without that workload set, even for projects that use no workload, as stage M1.1 found. |

@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.2 |
-| Date | 2026-10-29 |
+| Version | 1.3 |
+| Date | 2026-10-31 |
 | Owner | recelilious |
 
 These are engineering rules for managing licenses, not legal advice. Before a formal public release, have a professional review them if possible.
@@ -65,7 +65,7 @@ For dual-licensed components, choose the less restrictive option. For example, F
 
 ## 6. Component register
 
-Checked on 2026-10-28, and on 2026-10-29 for the rows that version 1.2 added. Licenses are taken from each repository's license file.
+Checked on 2026-10-28, on 2026-10-29 for the rows that version 1.2 added, and on 2026-10-31 for the rows that version 1.3 added. Licenses are taken from each repository's license file.
 
 | Component | Purpose | License | Category |
 |---|---|---|---|
@@ -113,6 +113,8 @@ Checked on 2026-10-28, and on 2026-10-29 for the rows that version 1.2 added. Li
 | lychee | Link checks | MIT OR Apache-2.0 | Tool |
 | actions/checkout | GitHub Action that checks out the repository in CI | MIT | Tool |
 | actions/setup-dotnet | GitHub Action that installs the SDK that `global.json` pins in CI | MIT | Tool |
+| actions/upload-artifact | GitHub Action that uploads what a CI job built, such as the app of the `ios` job | MIT | Tool |
+| GitHub-hosted runner images (actions/runner-images) | The virtual machine images that the CI jobs run on, with the tools installed on them; `eng/toolchain.json` pins the macOS image of the `ios` job (C-0009 section 2) | MIT, for the scripts and documentation that define the images; each installed tool keeps its own license, and Xcode has its own row | Tool |
 
 Media decoding prefers Apple's system frameworks, which avoids GStreamer's GPL plugins and codec patent issues.
 
@@ -206,23 +208,10 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - Application Insights SDK license: <https://github.com/microsoft/ApplicationInsights-dotnet/blob/HEAD/LICENSE>
 - actions/checkout license: <https://github.com/actions/checkout/blob/HEAD/LICENSE>
 - actions/setup-dotnet license: <https://github.com/actions/setup-dotnet/blob/HEAD/LICENSE>
+- actions/upload-artifact license: <https://github.com/actions/upload-artifact/blob/HEAD/LICENSE>
+- GitHub-hosted runner images license: <https://github.com/actions/runner-images/blob/HEAD/LICENSE>
 - MIT-Modern-Variant: <https://spdx.org/licenses/MIT-Modern-Variant.html>
 - OFL-1.1: <https://spdx.org/licenses/OFL-1.1.html>
-
-## Proposed changes for 1.3
-
-**Not yet accepted.** Version 1.2 above stays binding until recelilious approves these changes. They come from stage M1.1: its `ios` CI job brings in two components that the register does not cover yet. Each was checked on 2026-10-31 against its project's license file.
-
-1. **Section 6.** Add these rows:
-
-   | Component | Purpose | License | Category |
-   |---|---|---|---|
-   | actions/upload-artifact | GitHub Action that uploads what a CI job built, such as the app of the `ios` job | MIT | Tool |
-   | GitHub-hosted runner images (actions/runner-images) | The virtual machine images that the CI jobs run on, with the tools installed on them; `eng/toolchain.json` pins the macOS image of the `ios` job (C-0009 section 2) | MIT, for the scripts and documentation that define the images; each installed tool keeps its own license, and Xcode has its own row | Tool |
-
-2. **Section 12.** Add these sources:
-   - actions/upload-artifact license: <https://github.com/actions/upload-artifact/blob/HEAD/LICENSE>
-   - GitHub-hosted runner images license: <https://github.com/actions/runner-images/blob/HEAD/LICENSE>
 
 ## Change log
 
@@ -232,3 +221,4 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 | 1.0 | 2026-10-28 | Accepted by recelilious; translated to English; corrected the FEX-Emu entry in section 10, since FEX-Emu forbids AI-generated contributions |
 | 1.1 | 2026-10-28 | Accepted by recelilious. Adds the Build and CI tool category, LGPL-2.1-only and Apache-2.0 WITH LLVM-exception to section 5. Registers the llvm-mingw runtime libraries, test libraries and CI tools in section 6, and corrects SteamKit2 to LGPL-2.1-only. Creates `LICENSES/` with the first SPDX header and generates third-party license texts into releases (section 4). Releases attach source archives (section 3). Section 9 allows the convention and URL scheme documented in StikJIT's `INTEGRATION.md`. |
 | 1.2 | 2026-10-29 | Accepted by recelilious. Adds MIT-Modern-Variant, and OFL-1.1 for fonts only, to section 5. Registers in section 6 the components that stage M0.1's packages and CI workflow bring in: Avalonia.BuildServices, MicroCom.Runtime, HarfBuzzSharp, ANGLE, Tmds.DBus.Protocol, the Inter font, Microsoft.Testing.Platform, the Application Insights SDK, and the actions/checkout and actions/setup-dotnet actions. The SkiaSharp row names the Skia library and the third-party notices of its native-asset packages. |
+| 1.3 | 2026-10-31 | Accepted by recelilious. Registers in section 6 the two components that stage M1.1's `ios` CI job brings in: the actions/upload-artifact action and the GitHub-hosted runner images, whose macOS image C-0009 section 2 pins in `eng/toolchain.json`. |

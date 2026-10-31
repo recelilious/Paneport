@@ -32,12 +32,12 @@ Back to the [development plan](../development-plan.md).
 | S6.3.3 | File-backed tier | Small | Planned | | |
 | S6.3.4 | Governor policy | Small | Planned | | |
 | S6.3.5 | Pressure and thermal events | Small | Planned | | |
-| M6.4 | Compatibility database core | Medium | In progress | `feat/m6-4-compat-db-core` | 2026-10-31 |
-| S6.4.1 | Title schema | Small | In progress | `feat/m6-4-compat-db-core` | 2026-10-31 |
-| S6.4.2 | Typed model and loader | Small | In progress | `feat/m6-4-compat-db-core` | 2026-10-31 |
-| S6.4.3 | Precedence rules | Small | In progress | `feat/m6-4-compat-db-core` | 2026-10-31 |
-| S6.4.4 | Device layer store | Small | In progress | `feat/m6-4-compat-db-core` | 2026-10-31 |
-| S6.4.5 | Fixtures | Small | In progress | `feat/m6-4-compat-db-core` | 2026-10-31 |
+| M6.4 | Compatibility database core | Medium | Done | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-10-31 |
+| S6.4.1 | Title schema | Small | Done | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-10-31 |
+| S6.4.2 | Typed model and loader | Small | Done | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-10-31 |
+| S6.4.3 | Precedence rules | Small | Done | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-10-31 |
+| S6.4.4 | Device layer store | Small | Done | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-10-31 |
+| S6.4.5 | Fixtures | Small | Done | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-10-31 |
 | M6.5 | Game import and session flow | Medium | Planned | | |
 | S6.5.1 | Import pipeline | Small | Planned | | |
 | S6.5.2 | PE classifier and synthetic PE generator | Small | Planned | | |
@@ -562,7 +562,12 @@ Out:
 
 **Session log.**
 
-_No sessions yet._
+- **2026-10-31 (UTC), first session.** Branch `feat/m6-4-compat-db-core`, pull request [#11](https://github.com/recelilious/Paneport/pull/11). M0.3, the only dependency, was Done, and the brief needs no decision.
+  - **Done.** S6.4.1: `compat/schema/title.schema.json`, with the slug pattern of `TitleId`, as the note above asks, empty allow-lists, and the target devices `iPhone18,1`, `iPhone18,2`, `iPhone19,2`, `iPhone19,3` and `iPhone19,7`, which this session confirmed against ipsw.me, EveryMac and AppleDB; the 18 Pro Max has two identifiers. S6.4.2 to S6.4.4: the model, reader, writer, precedence rules, launch rule, bundled snapshot and device layer store in `src/Paneport.Core/Compat/`, with `ThermalState` in `Hosting/`. S6.4.5: 86 synthetic fixtures, each invalid one listed with the rule it breaks. Paneport.Desktop has `LocalFolders` and copies `compat/` next to the program. `docs/design/compat-db.md` records the design, with the checklist against C-0008 and the rules the code enforces with their tests.
+  - **Decisions in the design, for review.** The device layer's `ceg` is only `unknown`, so only a reviewed entry opens the Direct path, the safe side of M6.5's open question. A reviewed entry states `launch` only when its own `drm` decides it. A reviewed local entry with `steamApi` or `steamStub` true or `ceg` `yes` is rejected. Unknown fields are rejected in both layers. A path segment that ends in a dot or a space is rejected.
+  - **Verification.** On Windows: the locked restore, a build with no warning, 311 tests (168 new), both format checks, the trimmed publish, the personal-data scan (0 findings, now over `compat/` too), and the license and toolchain checks all pass. PowerShell 7.6's `Test-Json` agreed with the loader on every fixture except the two where the code is stricter (`compat-db.md` section 9). `/code-review` found six points; five are fixed, and one, a rename across two stores of one folder on Windows, is a documented limit. REUSE, gitleaks and lychee run only in CI.
+  - **Notes left** for M6.5 (the `ceg` question, an update operation, the iOS paths, the database in the services), M7.1 (the database in the services) and M8.3 (where the schema and the code differ).
+  - **For the next session.** Only the merge is left, so M6.4 and S6.4.1 to S6.4.5 are Done in this commit (plan section 3.3).
 
 ## M6.5 Game import and session flow
 
@@ -674,6 +679,9 @@ Out:
 **Notes from earlier stages.**
 
 - M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 leaves to this stage whether Wine needs the locale setting in another form, such as `de_DE.UTF-8`, which the session flow then converts.
+- M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-10-31): the device layer's `ceg` is only `unknown`, so a local title is refused until a reviewed entry sets `ceg` to `no`. If recelilious lets the user set it, the rule in `TitleEntryRules` and the merge in `CompatPrecedence` change (`compat-db.md` sections 3 and 10).
+- M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-10-31): `DeviceLayerStore` loads, saves and deletes, but has no update; two callers that each load, change and save can lose one change. This stage decides whether to add one, and what it does with a rejected file (`compat-db.md` section 10).
+- M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-10-31): the iOS head opens `CompatDatabase` over `compat/titles` in the bundle and `Library/Application Support/Paneport/compat/`. No head adds the database to `AppServices` yet; the first stage whose page reads it does (`compat-db.md` section 7).
 
 **Session log.**
 

@@ -268,6 +268,7 @@ Scripts this stage creates: the fakes and the synthetic data builders in the tes
 **Notes from earlier stages.**
 
 - M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 holds open questions for this stage: the token store's layout, whether leaving a page cancels its load, and a virtualizing Library whose download progress raises change notifications.
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-10-31): Title details read the rating through `CompatDatabase.LoadAsync`. No head adds the database to `AppServices` yet, so this stage or M6.5, whichever comes first, adds it with the shape its pages need (`compat-db.md` section 7).
 
 **Session log.**
 

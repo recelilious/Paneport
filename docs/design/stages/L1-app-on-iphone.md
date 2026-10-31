@@ -222,6 +222,8 @@ Scripts this stage creates: `eng/mac/bootstrap.sh` and the new `CheckToolchain` 
   - **D7.** Applied with the `ios-ci` label, which this session created in the repository. The first green run of the job took 2 min 39 s, the second 1 min 33 s. recelilious confirms the decision, or changes it, before merging.
   - **Left.** recelilious reviews the contract proposal. Once it is accepted, the contract branch is pushed and merged first; then `checks` passes on #10, M1.1 and its small stages are set to Done in the branch's last commit, and recelilious merges #10.
   - **For later sessions.** Notes left in the briefs of M1.2, M1.3, M4.1 and M9.1. The next iOS workload, 27.2.10000 for Xcode 27.2, is already in the workload set repository; when a workload set ships it, the four pins move together (`dev-environment.md` section 2).
+- **2026-10-31 (UTC), contract acceptance.** recelilious accepted the contract proposal. The acceptance commit on `contract/m1-1-ios-ci` applies C-0003 1.3 and C-0009 1.1 and drops their proposal sections, and the branch is pushed with its pull request, [#12](https://github.com/recelilious/Paneport/pull/12), which merges before #10. `dev-environment.md` no longer lists the pin location as open.
+  - **Left.** recelilious merges #12. Then `checks` passes on #10 once it runs again, M1.1 and its small stages are set to Done in the branch's last commit, and recelilious confirms D7 and merges #10.
 
 ## M1.2 Native host skeleton and interface conformance
 

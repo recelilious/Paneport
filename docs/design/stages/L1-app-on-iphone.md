@@ -13,12 +13,12 @@ Back to the [development plan](../development-plan.md).
 | L1 | Paneport on the iPhone | Large | Planned | | |
 | S1.0.1 | Evidence record template | Small | Planned | | |
 | S1.0.2 | Recorded install route | Small | Planned | | |
-| M1.1 | macOS build environment and the iOS CI job | Medium | Planned | | |
-| S1.1.1 | Toolchain pins | Small | Planned | | |
-| S1.1.2 | Mac bootstrap script | Small | Planned | | |
-| S1.1.3 | Minimal iOS project | Small | Planned | | |
-| S1.1.4 | iOS CI job | Small | Planned | | |
-| S1.1.5 | Development environment design document | Small | Planned | | |
+| M1.1 | macOS build environment and the iOS CI job | Medium | In progress | `build/m1-1-ios-ci` | 2026-10-31 |
+| S1.1.1 | Toolchain pins | Small | In progress | `build/m1-1-ios-ci` | 2026-10-31 |
+| S1.1.2 | Mac bootstrap script | Small | In progress | `build/m1-1-ios-ci` | 2026-10-31 |
+| S1.1.3 | Minimal iOS project | Small | In progress | `build/m1-1-ios-ci` | 2026-10-31 |
+| S1.1.4 | iOS CI job | Small | In progress | `build/m1-1-ios-ci` | 2026-10-31 |
+| S1.1.5 | Development environment design document | Small | In progress | `build/m1-1-ios-ci` | 2026-10-31 |
 | M1.2 | Native host skeleton and interface conformance | Medium | Planned | | |
 | S1.2.1 | Status, errors, pp_free and ABI version | Small | Planned | | |
 | S1.2.2 | Lock-free event queue | Small | Planned | | |

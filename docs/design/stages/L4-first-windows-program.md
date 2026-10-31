@@ -169,6 +169,10 @@ Out: building the forks for real (M4.2, M4.4, M5.2); changes inside a fork beyon
 - M4.4 and M5.2: the same forks and pins for the iOS builds and DXMT.
 - M7.3: the FEX fork, where it builds the WoW64 module.
 
+**Notes from earlier stages.**
+
+- M0.2 ([L0 brief](L0-foundation.md), session log of 2026-10-29): every submodule needs an entry in `eng/license-map.json`, which `tools/CheckLicenses.cs` reads together with `.gitmodules`.
+
 **Session log.**
 
 _No sessions yet._

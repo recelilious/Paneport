@@ -4,7 +4,7 @@
 |---|---|
 | Claude (Anthropic), for the Paneport project | 2026-10-29T00:46Z |
 
-> This plan splits Paneport's development into stages that can each be verified. It is a living document: stage sessions update the status and session log of their own stage. It does not override the [contracts](../contracts/README.md). Where the two differ, the contracts win, and any change the plan needs in a contract goes through the contract process first.
+> This plan splits Paneport's development into stages that can each be verified. It is a living document: stage sessions update the status and session log of their own stage, and leave their notes for later stages in those stages' briefs (section 3.3). It does not override the [contracts](../contracts/README.md). Where the two differ, the contracts win, and any change the plan needs in a contract goes through the contract process first.
 
 ## 1. How to use this plan
 
@@ -108,9 +108,10 @@ During the work:
 At the end:
 
 1. Run the brief's verification and record the results in the pull request.
-2. Update the stage's status and append to its session log: the date in UTC, what was done, what is left, and what the next session must know. When a Medium stage's verification passed and only the merge is left of its Done-when list, set it and its finished Small stages to Done in the branch's last commit. The status then reaches `main` with the merge, so the stages that depend on it can start as soon as recelilious merges. A Large stage stays In progress until recelilious accepts it; the commit that fills in its evidence record with a Pass verdict sets it to Accepted. A stage that is not finished stays In progress, or becomes Blocked with the reason.
-3. Commit following C-0002 and push the stage branch. Open a pull request unless recelilious asks otherwise.
-4. Give recelilious a short summary in Chinese, including the manual checks for a Large stage.
+2. Update the stage's status and append to its session log: the date in UTC, what was done, what is left, and what the next session of this stage must know. When a Medium stage's verification passed and only the merge is left of its Done-when list, set it and its finished Small stages to Done in the branch's last commit. The status then reaches `main` with the merge, so the stages that depend on it can start as soon as recelilious merges. A Large stage stays In progress until recelilious accepts it; the commit that fills in its evidence record with a Pass verdict sets it to Accepted. A stage that is not finished stays In progress, or becomes Blocked with the reason.
+3. Put each note for a later stage into that stage's section of its brief, or into its parent's section for a Small stage, because a session reads only its own stage's brief (section 3.2). The note goes under the **Notes from earlier stages.** heading right before that section's session log, one line per note, and cites its source: the stage and the date of its session log, or the design document and section. Create the heading where a section has none yet. The session's own log only records that it left the note.
+4. Commit following C-0002 and push the stage branch. Open a pull request unless recelilious asks otherwise.
+5. Give recelilious a short summary in Chinese, including the manual checks for a Large stage.
 
 ### 3.4 Branches and commits
 
@@ -340,7 +341,7 @@ Tests that need Valve's client run only on recelilious's own devices. CI uses fa
 ### 7.7 Design documents and evidence
 
 - Every component gets its design document in `docs/design/` before or with its first code (C-0012 section 1 item 8). Each brief names the documents its stage writes.
-- Every Large stage ends with an evidence record (C-0012 section 4). The gate table in `docs/evidence/README.md` is created with the first evidence record (S2.0.1).
+- Every Large stage ends with an evidence record (C-0012 section 4). S0.0.1 created the gate table in `docs/evidence/README.md` together with L0's record, every gate at "No record yet". Each gate's row gets its verdict and a link with that gate's first record (C-0012 section 3).
 
 ## 8. Contract changes the plan expects
 

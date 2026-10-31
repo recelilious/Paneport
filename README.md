@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 > Run Windows programs on iPhone 17 Pro and iPhone 18 Pro, and launch the Windows games in your own Steam library through Steam.
 
-**Status:** contracts and a development plan. There is no runnable code yet.
+**Status:** early development. The Paneport shell runs on Windows with sample data and a fake native host, and CI checks every change. Nothing runs on the iPhone yet. The [development plan](docs/design/development-plan.md) tracks every stage.
 
 ## The name
 
@@ -34,6 +34,32 @@ The UI shell is Avalonia (.NET). [C-0004](docs/contracts/C-0004-architecture-and
 - Developer Mode is enabled, and the app is signed with your own Apple ID and sideloaded.
 - JIT is obtained by attaching a debugger.
 - The app will not be published on the App Store.
+
+## Quick start
+
+The shell also runs on Windows, as a desktop head with sample data and a fake native host, for work on the user interface.
+
+Prerequisites:
+
+- The exact .NET 10 SDK version that [global.json](global.json) names. No other SDK stands in for it, so at the repository root `dotnet --version` prints that version, or reports that it is missing.
+- Git.
+- For an IDE, Visual Studio 2026 or Rider 2026.1 or later. Visual Studio 2022 cannot target .NET 10.
+
+From the root of a clone, build, test, and run the desktop head:
+
+```bash
+dotnet build eng/ci.slnf -c Release
+```
+
+```bash
+dotnet test eng/ci.slnf -c Release
+```
+
+```bash
+dotnet run --project src/Paneport.Desktop
+```
+
+`eng/ci.slnf` is the solution filter that CI builds and tests. The last command opens a window titled Paneport on the Library page. Builds and test runs send usage data to Microsoft and Avalonia unless `DOTNET_CLI_TELEMETRY_OPTOUT`, `TESTINGPLATFORM_TELEMETRY_OPTOUT` and `AVALONIA_TELEMETRY_OPTOUT` are set to `1` ([solution-and-build.md](docs/design/solution-and-build.md) section 7). The iOS app head needs a macOS build host (C-0009 section 1). [CONTRIBUTING.md](CONTRIBUTING.md) lists the checks to run before a push.
 
 ## Contracts first
 

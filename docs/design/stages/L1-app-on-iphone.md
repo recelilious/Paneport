@@ -207,6 +207,11 @@ Scripts this stage creates: `eng/mac/bootstrap.sh` and the new `CheckToolchain` 
 - M9.1: the runner image pin and the `ios` job steps that the `release` job reuses.
 - L1: the install setup that S1.0.2 completes.
 
+**Notes from earlier stages.**
+
+- M0.1 ([L0 brief](L0-foundation.md), session log of 2026-10-29): Microsoft publishes the iOS workload manifests only for the 10.0.100 band, and whether the 10.0.400-band workload set of the pinned SDK installs them was not tried; confirm it for the Xcode version this stage pins (`docs/design/solution-and-build.md` section 1).
+- M0.2 ([L0 brief](L0-foundation.md), session log of 2026-10-29): the Xcode and macOS runner-image pins in `eng/toolchain.json` each need a register row and a version check, because both checkers read only its `tools` key, reject any other key, and treat every entry as a tool; this stage decides how the runner image is registered and checked.
+
 **Session log.**
 
 _No sessions yet._
@@ -307,6 +312,10 @@ Scripts this stage creates: the CTest suite and its assertion header, `eng/mac/c
 - M2.2: the event thread, the log pipeline, the crash record writer, the pattern for test-build exports, CTest and the sanitizer presets.
 - M3.1, M4.3, M4.4, M6.1 and M6.3: the header conventions, the queue, the memory estimator and the presets, each extended with its own functions.
 - M10.1 and M10.2: Paneport.Interop and its tests, which move to CoreCLR.
+
+**Notes from earlier stages.**
+
+- M0.3 (`docs/design/app-shell.md` sections 6 and 10): the desktop head's fake host reports ABI version 1.0 as a stand-in for the first version of the host headers, which this stage sets; the major version that the .NET side expects comes with these headers, and M1.3 checks it at startup.
 
 **Session log.**
 
@@ -417,6 +426,12 @@ Scripts this stage creates: `eng/mac/sign-adhoc.sh`, `eng/mac/package-ipa.sh`, `
 - M3.1 and L3: Paneport.iOS for the URL opener, and the developer menu for the JIT self-test.
 - M9.1: the `ios` job steps, the signing scripts in `eng/mac/`, the packaging location and `tools/ScanPackage.cs`.
 - M10.2: the Mono build settings and the import name, which move to CoreCLR.
+
+**Notes from earlier stages.**
+
+- M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 holds open questions for this stage: the expected ABI version, the account name beside the refresh token in `ITokenStore`, how Settings shows a failed save, a settings file that orders its saves and loads, and the layout on the phone.
+- M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-29): the Steam stub that this stage's composition root uses, `SignedOutSteamService`, is in Paneport.Core, not in the desktop head (`docs/design/app-shell.md` section 3).
+- M0.2 ([L0 brief](L0-foundation.md), session log of 2026-10-29): the trimmed test app reaches only Avalonia and Avalonia.Themes.Fluent, so this stage's iOS head is the first to trim Avalonia.Skia, SkiaSharp, HarfBuzzSharp and Avalonia's iOS backend; the log said M1.1, but M1.1's head has no Avalonia. A trimming warning that they bring goes into the pull request for recelilious to decide (`docs/design/repository-checks.md` section 7).
 
 **Session log.**
 

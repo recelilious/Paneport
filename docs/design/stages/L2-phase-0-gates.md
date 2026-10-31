@@ -177,6 +177,10 @@ If a gate fails, its record says Fail and what failed, and L2 becomes Blocked. r
 | S2.0.1 | Evidence index and record template: the gate table with one row per gate of C-0012 section 3 (phases 0 to 4 and the runtime migration), each with its verdict (Pass, Fail, Waived or Not run) and a link to its latest record; a record template inside the README that lists every field of C-0012 section 4 and what must never appear. Plan section 7.7 creates the table here. | `docs/evidence/README.md` | Review checklist: one row per gate, every field present; the `checks` job passes, including links and the personal-data check (C-0011 section 2). |
 | S2.0.2 | Gate metrics and results summary: samples the memory budget (`pp_memory_get_budget`, C-0005 section 2) and the thermal state for every gate run, and produces a text summary with build, device and gate results for copying into a record, with the personal data of C-0012 section 4 removed (C-0004 section 4). | `tests/device` for the pages; the sampling logic and the scrubber in `src/Paneport.Core` | Unit tests in `tests/Paneport.Core.Tests`: the scrubber removes every kind of item C-0012 section 4 lists from sample text, and the peak and timeline logic works on synthetic samples. The sample values are generated at run time, so the personal-data check finds nothing in the source. |
 
+**Notes from earlier stages.**
+
+- L0 ([L0 brief](L0-foundation.md), session log of 2026-10-30): S0.0.1 created `docs/evidence/README.md` with the gate table, every gate at "No record yet" where S2.0.1 names "Not run", and with the fields and forbidden items of C-0012 section 4 as a list. S2.0.1 builds its record template on that file; the verdicts still come from step 30 and integration step 7.
+
 **Session log.**
 
 _No sessions yet._
@@ -260,6 +264,10 @@ Scripts this stage creates: `tools/CheckOverlayBlend.cs`. The device gate is L2 
 - M6.5: the overlay for the menu and HUD, and the frame statistics.
 - M5.1: the GameView's layer, and the render loop that stops when the display driver attaches.
 - M10.2: the style and the hit-test overrides with their tests, which must pass after the Avalonia upgrade.
+
+**Notes from earlier stages.**
+
+- M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 leaves the shell's safe areas, the on-screen keyboard and the overlay on the phone to device checks from M1.3 and this stage.
 
 **Session log.**
 
@@ -446,6 +454,10 @@ This stage creates no script beyond its tests. The full gate run is L2 steps 16 
 - M8.2: a refresh token that Valve's client can use, and the sign-off and reconnect calls around a Dock session (C-0007 section 4).
 - M9.1: SteamKit2 and its dependencies for the notices.
 - M10.2: the WebSocket setup, the interpreter list and the suppressions, which change on .NET 11.
+
+**Notes from earlier stages.**
+
+- M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 asks this stage whether the managed side keeps the refresh token as bytes that it can clear.
 
 **Session log.**
 

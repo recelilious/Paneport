@@ -209,6 +209,21 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - MIT-Modern-Variant: <https://spdx.org/licenses/MIT-Modern-Variant.html>
 - OFL-1.1: <https://spdx.org/licenses/OFL-1.1.html>
 
+## Proposed changes for 1.3
+
+**Not yet accepted.** Version 1.2 above stays binding until recelilious approves these changes. They come from stage M1.1: its `ios` CI job brings in two components that the register does not cover yet. Each was checked on 2026-10-31 against its project's license file.
+
+1. **Section 6.** Add these rows:
+
+   | Component | Purpose | License | Category |
+   |---|---|---|---|
+   | actions/upload-artifact | GitHub Action that uploads what a CI job built, such as the app of the `ios` job | MIT | Tool |
+   | GitHub-hosted runner images (actions/runner-images) | The virtual machine images that the CI jobs run on, with the tools installed on them; `eng/toolchain.json` pins the macOS image of the `ios` job (C-0009 section 2) | MIT, for the scripts and documentation that define the images; each installed tool keeps its own license, and Xcode has its own row | Tool |
+
+2. **Section 12.** Add these sources:
+   - actions/upload-artifact license: <https://github.com/actions/upload-artifact/blob/HEAD/LICENSE>
+   - GitHub-hosted runner images license: <https://github.com/actions/runner-images/blob/HEAD/LICENSE>
+
 ## Change log
 
 | Version | Date | Notes |

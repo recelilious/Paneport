@@ -39,8 +39,11 @@ public sealed class CompatDatabase
     public async Task<CompatTitle> LoadAsync(TitleId id, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(id);
-        var bundled = await Bundled.LoadAsync(id, cancellationToken).ConfigureAwait(false);
-        var device = await Device.LoadAsync(id, cancellationToken).ConfigureAwait(false);
+        var bundledLoad = Bundled.LoadAsync(id, cancellationToken);
+        var deviceLoad = Device.LoadAsync(id, cancellationToken);
+        await Task.WhenAll(bundledLoad, deviceLoad).ConfigureAwait(false);
+        var bundled = await bundledLoad.ConfigureAwait(false);
+        var device = await deviceLoad.ConfigureAwait(false);
         return new CompatTitle(bundled, device, CompatPrecedence.Merge(id, bundled.Entry, device.Entry));
     }
 }

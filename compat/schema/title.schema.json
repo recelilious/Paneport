@@ -290,7 +290,7 @@
       "pattern": "^[0-9a-f]{64}$"
     },
     "relativePath": {
-      "description": "A path relative to the install folder, with forward slashes: no leading or trailing slash, no empty, . or .. segment, and none of the characters that Windows forbids in file names.",
+      "description": "A path relative to the install folder, with forward slashes: no leading or trailing slash, no empty, . or .. segment, no segment that ends in a dot or a space, which Windows trims, and none of the characters that Windows forbids in file names.",
       "type": "string",
       "allOf": [
         {
@@ -303,7 +303,8 @@
         },
         {
           "not": {
-            "pattern": "(^|/)\\.\\.?(/|$)"
+            "$comment": "A segment that ends in a dot or a space, which also excludes . and ..",
+            "pattern": "[. ](/|$)"
           }
         }
       ]

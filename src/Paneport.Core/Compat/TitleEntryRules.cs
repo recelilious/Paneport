@@ -20,7 +20,8 @@ internal static partial class TitleEntryRules
 
     private const string RelativePathRule =
         "The path is relative to the install folder, with forward slashes: no leading or trailing slash, no empty, "
-        + ". or .. segment, and none of the characters that Windows forbids in file names.";
+        + ". or .. segment, no segment that ends in a dot or a space, and none of the characters that Windows "
+        + "forbids in file names.";
 
     public static void Check(TitleEntry entry, CompatLayer layer, List<CompatProblem> problems)
     {
@@ -110,7 +111,9 @@ internal static partial class TitleEntryRules
 
         foreach (var segment in path.Split('/'))
         {
-            if (segment.Length == 0 || segment is "." or ".." || segment.AsSpan().ContainsAny(s_forbiddenInFileNames))
+            // Windows trims a final dot or space from a name, so such a segment could name another file.
+            if (segment.Length == 0 || segment is "." or ".." || segment[^1] is '.' or ' '
+                || segment.AsSpan().ContainsAny(s_forbiddenInFileNames))
             {
                 return false;
             }

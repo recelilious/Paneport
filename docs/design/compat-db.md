@@ -35,7 +35,7 @@ Every row of C-0008 section 2, and of section 4 for the reports, maps to a claus
 | `id.slug` | `$defs/slug`: `^[a-z0-9]+(-[a-z0-9]+)*$` | `TitleId.IsValidSlug`, the same pattern (app-shell.md section 2) |
 | `name` | string with a character other than white space; required | The same |
 | `executable` | `$defs/executable`: `path` required; for a local title the whole object is required | The same |
-| `executable.path` | `$defs/relativePath`: relative, forward slashes, no empty, `.` or `..` segment, none of `\ : * ? " < > \|` or U+0000 to U+001F | The same rule |
+| `executable.path` | `$defs/relativePath`: relative, forward slashes, no empty, `.` or `..` segment, no segment ending in a dot or a space (Windows trims them), none of `\ : * ? " < > \|` or U+0000 to U+001F | The same rule |
 | `executable.workingDirectory` | `.` for the install folder, or `$defs/relativePath` | The same |
 | `executable.arguments` | array of `$defs/text` (no U+0000); default `[]` | The same |
 | `architecture` | `x86_64` or `x86` | The same names |
@@ -167,7 +167,7 @@ A missing `ceg` counts as unknown, because the device's classification can never
 | Encoding | Bytes that are not UTF-8 (`Json`); a UTF-8 byte-order mark is skipped |
 | Syntax | Anything but one JSON object, comments and trailing commas (`Json`) |
 | Strict scan | `null`, which no field takes (`Type`); a field that appears twice in one object (`DuplicateField`); a field the schema does not define, in any letter case (`UnknownField`); an entry of `translator` or `environment` that is not a string (`Type`) |
-| Schema version | A newer one (`NewerSchemaVersion`), reported alone; missing, or not 1 (`MissingField`, `InvalidValue`) |
+| Schema version | A newer one (`NewerSchemaVersion`), reported alone unless the version itself appears twice; missing, or not 1 (`MissingField`, `InvalidValue`) |
 | Types | A value of the wrong type, including an integer with a fraction or an exponent (`Type`) |
 | Values | Required fields, names on their lists in their exact letter case, ranges, patterns, duplicate items (`MissingField`, `InvalidValue`), allow-lists (`NotAllowed`) |
 | Rules | The identity (`Identity`), the launch rule (`Launch`), the device layer's rules (`DeviceLayer`) |

@@ -33,7 +33,7 @@ internal sealed class TemporaryFolder : IDisposable
         {
             Directory.Delete(Path, recursive: true);
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // A file another process still holds stays behind in the temporary folder.
         }

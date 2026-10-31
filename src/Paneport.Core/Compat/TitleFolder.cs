@@ -66,9 +66,11 @@ internal sealed class TitleFolder(string path, CompatLayer layer)
                 file, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous);
             await using (stream.ConfigureAwait(false))
             {
+                // A file that shrinks while it is read gives the bytes that were there.
                 var buffer = new byte[(int)Math.Min(stream.Length, TitleEntryJson.MaxFileBytes + 1L)];
-                await stream.ReadExactlyAsync(buffer, cancellationToken).ConfigureAwait(false);
-                return buffer;
+                var read = await stream.ReadAtLeastAsync(
+                    buffer, buffer.Length, throwOnEndOfStream: false, cancellationToken).ConfigureAwait(false);
+                return read == buffer.Length ? buffer : buffer[..read];
             }
         }
         catch (FileNotFoundException)

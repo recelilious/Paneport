@@ -58,7 +58,7 @@ public static class TitleEntryJson
         }
 
         // A newer version may add or rename fields, so its other problems mean nothing here.
-        if (scan.SchemaVersion > SchemaVersion)
+        if (scan.SchemaVersion > SchemaVersion && !scan.Problems.Any(problem => problem.Path == "$.schemaVersion"))
         {
             return Reject(
                 CompatRule.NewerSchemaVersion,

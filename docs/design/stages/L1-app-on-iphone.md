@@ -13,12 +13,12 @@ Back to the [development plan](../development-plan.md).
 | L1 | Paneport on the iPhone | Large | Planned | | |
 | S1.0.1 | Evidence record template | Small | Planned | | |
 | S1.0.2 | Recorded install route | Small | Planned | | |
-| M1.1 | macOS build environment and the iOS CI job | Medium | Planned | | |
-| S1.1.1 | Toolchain pins | Small | Planned | | |
-| S1.1.2 | Mac bootstrap script | Small | Planned | | |
-| S1.1.3 | Minimal iOS project | Small | Planned | | |
-| S1.1.4 | iOS CI job | Small | Planned | | |
-| S1.1.5 | Development environment design document | Small | Planned | | |
+| M1.1 | macOS build environment and the iOS CI job | Medium | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
+| S1.1.1 | Toolchain pins | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
+| S1.1.2 | Mac bootstrap script | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
+| S1.1.3 | Minimal iOS project | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
+| S1.1.4 | iOS CI job | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
+| S1.1.5 | Development environment design document | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
 | M1.2 | Native host skeleton and interface conformance | Medium | Planned | | |
 | S1.2.1 | Status, errors, pp_free and ABI version | Small | Planned | | |
 | S1.2.2 | Lock-free event queue | Small | Planned | | |
@@ -214,7 +214,19 @@ Scripts this stage creates: `eng/mac/bootstrap.sh` and the new `CheckToolchain` 
 
 **Session log.**
 
-_No sessions yet._
+- **2026-10-31 (UTC), first session.** Pull request: [#10](https://github.com/recelilious/Paneport/pull/10), a draft until the contract proposal below is accepted.
+  - **Done.** S1.1.1 to S1.1.5. `eng/toolchain.json` pins Xcode 27.1, the iOS workload set 10.0.403 and the runner image `xcode-27`, each mapped to a register row. `tools/CheckToolchain.cs` gains `--xcode` and `--ios-workload`, checks on every run that each pin has a check and that every macOS job runs on the pinned image, and its self-test grows from 25 to 50 cases. `eng/mac/bootstrap.sh`. `src/Paneport.iOS/`, a minimal app with scenes, with its README and lock file, in `Paneport.slnx` but not in `eng/ci.slnf`. The `ios` job. `docs/design/dev-environment.md`, and updates of `solution-and-build.md`, `repository-checks.md`, the READMEs of `eng/`, `src/`, `tools/` and the workflows, the root README, CONTRIBUTING.md and the D7 row of the plan.
+  - **Verification.** On the workstation, the self-tests pass 50, 244 and 53 checks, the scan finds nothing, the toolchain check passes, and the restore, build and format check of `eng/ci.slnf` are unaffected by the iOS project in `Paneport.slnx`. In CI on `a8d0fd2` ([run](https://github.com/recelilious/Paneport/actions/runs/41162701167)), `dotnet` passed on both runners and `ios` passed. In `ios`, the bootstrap installed the workload set 10.0.403, whose iOS manifest is 27.1.10018/10.0.100, and found SDK 10.0.403 and Xcode 27.1 (build 27A9275), each equal to its pin. Run against Xcode 27.0, the bootstrap exited with 1 and named both versions. Paneport.iOS restored from its lock file, built in Release without a warning and passed its format check; the app names `PaneportSceneDelegate`, requires iOS 26.0, holds arm64 code only and is "not signed at all"; the zipped app was uploaded. `checks` passed every step except the license check, which fails only on the two rows that the C-0003 proposal adds; with those rows in the register, the check passes on the workstation.
+  - **Confirmed in this stage.** The pins of the brief hold on 2026-10-31, with one change: the `xcode-27` image now carries SDK 10.0.403 too. GitHub's changelog calls that image generally available, while the image list still marks it as a preview. A workload set of the 10.0.400 band installs the iOS manifests of the 10.0.100 band. The only `global.json` key for a workload set, `sdk.workloadVersion`, makes every build fail on a machine without that workload set, so the pin is in `eng/toolchain.json` (proposal below). `EnableCodeSigning=false` is enough for an unsigned device build (E13), and the app then carries no signature at all. The lock file names `net10.0-ios27.1` and holds only Microsoft.NET.ILLink.Tasks. The naming rule rejects `iOS` in a namespace, so the namespace is `Paneport.IOS`; CA1711 and CA1010 check public types, so the classes that UIKit creates are internal. `plutil` reads the JSON pin file on macOS.
+  - **Contract proposal.** `contract/m1-1-ios-ci`, committed locally and not pushed (C-0012 section 2): C-0003 1.3 registers `actions/upload-artifact` and the GitHub-hosted runner images as tools, and C-0009 1.1 moves the iOS workload set pin from `global.json` to `eng/toolchain.json`.
+  - **D7.** Applied with the `ios-ci` label, which this session created in the repository. The first green run of the job took 2 min 39 s, the second 1 min 33 s. recelilious confirms the decision, or changes it, before merging.
+  - **Left.** recelilious reviews the contract proposal. Once it is accepted, the contract branch is pushed and merged first; then `checks` passes on #10, M1.1 and its small stages are set to Done in the branch's last commit, and recelilious merges #10.
+  - **For later sessions.** Notes left in the briefs of M1.2, M1.3, M4.1 and M9.1. The next iOS workload, 27.2.10000 for Xcode 27.2, is already in the workload set repository; when a workload set ships it, the four pins move together (`dev-environment.md` section 2).
+- **2026-10-31 (UTC), contract acceptance.** recelilious accepted the contract proposal. The acceptance commit on `contract/m1-1-ios-ci` applies C-0003 1.3 and C-0009 1.1 and drops their proposal sections, and the branch is pushed with its pull request, [#12](https://github.com/recelilious/Paneport/pull/12), which merges before #10. `dev-environment.md` no longer lists the pin location as open.
+  - **Left.** recelilious merges #12. Then `checks` passes on #10 once it runs again, M1.1 and its small stages are set to Done in the branch's last commit, and recelilious confirms D7 and merges #10.
+- **2026-10-31 (UTC), contract merge.** On recelilious's request, Claude merged #12, which put C-0003 1.3 and C-0009 1.1 on `main` (`6a0acf1`), and rebased this branch onto it. With the two rows in the register, the license check passes; the rest of the verification passed in the first session, and the rebase touched no file of this stage. Only the merge is left, so M1.1 and S1.1.1 to S1.1.5 are set to Done in this commit, as plan section 3.3 asks.
+  - **D7.** With the measured run time, recelilious confirmed that the `ios` job runs only before merging, which the job already does; the D7 row of plan section 4.2 records it.
+  - **Left.** recelilious merges #10. #11 (M6.4) also adds a row to `docs/design/README.md`; the pull request that merges second rebases.
 
 ## M1.2 Native host skeleton and interface conformance
 
@@ -316,6 +328,8 @@ Scripts this stage creates: the CTest suite and its assertion header, `eng/mac/c
 **Notes from earlier stages.**
 
 - M0.3 (`docs/design/app-shell.md` sections 6 and 10): the desktop head's fake host reports ABI version 1.0 as a stand-in for the first version of the host headers, which this stage sets; the major version that the .NET side expects comes with these headers, and M1.3 checks it at startup.
+- M1.1 (session log of 2026-10-31): every macOS job runs on the image that `macos-runner-image` pins in `eng/toolchain.json`, written as a plain `runs-on` value, because `tools/CheckToolchain.cs` fails on any other macOS label; the `native` job uses `xcode-27` too (`docs/design/repository-checks.md` section 5).
+- M1.1 (session log of 2026-10-31): a new pin such as CMake or LLVM needs a check in `tools/CheckToolchain.cs` under an option that runs where the tool exists, because a pin without one fails every run, and a register row mapped in `eng/license-map.json`; `eng/mac/bootstrap.sh` installs, and the tool compares (`docs/design/dev-environment.md` section 4).
 
 **Session log.**
 
@@ -432,6 +446,10 @@ Scripts this stage creates: `eng/mac/sign-adhoc.sh`, `eng/mac/package-ipa.sh`, `
 - M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 holds open questions for this stage: the expected ABI version, the account name beside the refresh token in `ITokenStore`, how Settings shows a failed save, a settings file that orders its saves and loads, and the layout on the phone.
 - M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-29): the Steam stub that this stage's composition root uses, `SignedOutSteamService`, is in Paneport.Core, not in the desktop head (`docs/design/app-shell.md` section 3).
 - M0.2 ([L0 brief](L0-foundation.md), session log of 2026-10-29): the trimmed test app reaches only Avalonia and Avalonia.Themes.Fluent, so this stage's iOS head is the first to trim Avalonia.Skia, SkiaSharp, HarfBuzzSharp and Avalonia's iOS backend; the log said M1.1, but M1.1's head has no Avalonia. A trimming warning that they bring goes into the pull request for recelilious to decide (`docs/design/repository-checks.md` section 7).
+- M1.1 (session log of 2026-10-31): the namespace of Paneport.iOS is `Paneport.IOS`, and its classes are internal, because the naming rule rejects `iOS` and CA1711 and CA1010 reject the UIKit names on public types (`docs/design/solution-and-build.md` section 2). The bundle identifier is the placeholder `com.example.paneport` in `ApplicationId`, waiting for D3.
+- M1.1 (session log of 2026-10-31): the project sets `EnableCodeSigning` to false, and its build carries no signature at all, not even the linker's, so the ad-hoc signing starts from an unsigned app. The `ios` job checks the bundle in the workflow itself, which `eng/mac/check-app.sh` can take over (`docs/design/repository-checks.md` section 6).
+- M1.1 (session log of 2026-10-31): adding packages changes the lock file of Paneport.iOS, whose target framework names the iOS SDK (`net10.0-ios27.1`); without a Mac, take the new lock file from the log of the `ios` job (`docs/design/dev-environment.md` section 5).
+- M1.1 (session log of 2026-10-31): the `ios` job checks out the pull request's merge commit, as the other jobs do, and names its artifact by the head commit. The build stamp that L1 step 4 shows needs the head commit, so this stage decides how the stamp gets it.
 
 **Session log.**
 

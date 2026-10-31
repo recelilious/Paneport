@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 // Compares the installed toolchain with its pins (C-0009 section 2): the .NET SDK with
-// global.json and, when asked, the CI tools with eng/toolchain.json.
+// global.json, the runner image of the workflows' macOS jobs with eng/toolchain.json, and,
+// when asked, the tools that only some machines have with eng/toolchain.json.
 //
-//   dotnet run tools/CheckToolchain.cs                  check the SDK
-//   dotnet run tools/CheckToolchain.cs -- --ci-tools    check the SDK and every pinned CI tool
-//   dotnet run tools/CheckToolchain.cs -- --self-test   check the parsers on synthetic outputs
+//   dotnet run tools/CheckToolchain.cs                    check the SDK and the runner image
+//   dotnet run tools/CheckToolchain.cs -- --ci-tools      also check the tools of the checks job
+//   dotnet run tools/CheckToolchain.cs -- --xcode         also check Xcode, on a Mac
+//   dotnet run tools/CheckToolchain.cs -- --ios-workload  also check the installed iOS workload set
+//   dotnet run tools/CheckToolchain.cs -- --self-test     check the parsers on synthetic outputs
 //
-// Exit codes: 0 everything matches its pin, 1 something does not, 2 usage or configuration
-// error. docs/design/repository-checks.md describes the pins and how to change one.
+// --ci-tools, --xcode and --ios-workload may be combined. Exit codes: 0 everything matches its
+// pin, 1 something does not, 2 usage or configuration error. docs/design/repository-checks.md
+// describes the pins and how to change one.
 
 #:property PublishAot=false
 
@@ -23,10 +27,8 @@ try
 {
     return args switch
     {
-        [] => ToolchainCheck.Run(ciTools: false),
-        ["--ci-tools"] => ToolchainCheck.Run(ciTools: true),
         ["--self-test"] => SelfTest.Run(),
-        _ => Cli.Usage(),
+        _ => Cli.Options(args) is { } options ? ToolchainCheck.Run(options) : Cli.Usage(),
     };
 }
 catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
@@ -37,9 +39,20 @@ catch (Exception exception) when (exception is InvalidDataException or IOExcepti
 
 internal static class Cli
 {
+    // The options that also check the pins whose tools only some machines have.
+    public static readonly string[] HostOptions = [Probes.CiTools, Probes.Xcode, Probes.IosWorkload];
+
+    // The options given, or null when one is unknown or given twice.
+    public static HashSet<string>? Options(string[] args)
+    {
+        var options = new HashSet<string>(StringComparer.Ordinal);
+        return args.All(arg => HostOptions.Contains(arg) && options.Add(arg)) ? options : null;
+    }
+
     public static int Usage()
     {
-        Console.Error.WriteLine("usage: dotnet run tools/CheckToolchain.cs [-- --ci-tools | --self-test]");
+        Console.Error.WriteLine(
+            "usage: dotnet run tools/CheckToolchain.cs [-- [--ci-tools] [--xcode] [--ios-workload] | --self-test]");
         return 2;
     }
 }
@@ -200,17 +213,35 @@ internal static class Pins
     }
 }
 
-// How to ask each pinned tool for its version, and how to read the answer. A tool pinned in
-// eng/toolchain.json without an entry here fails the check, so no pin goes unchecked.
-internal sealed record VersionProbe(string Command, string[] Arguments, Regex Pattern);
+// How to ask each pinned tool for its version, and how to read the answer. Each tool exists
+// only on some machines, so Option names the option that runs its check; Hint, when there is
+// one, follows a mismatch. A tool pinned in eng/toolchain.json without an entry here or a
+// check of its own, as the runner image has, fails every run, so no pin goes unchecked.
+internal sealed record VersionProbe(string Option, string Command, string[] Arguments, Regex Pattern, string Hint = "");
 
 internal static partial class Probes
 {
+    public const string CiTools = "--ci-tools";
+    public const string Xcode = "--xcode";
+    public const string IosWorkload = "--ios-workload";
+
     public static readonly Dictionary<string, VersionProbe> ByTool = new(StringComparer.Ordinal)
     {
-        ["reuse"] = new("reuse", ["--version"], ReuseVersion()),
-        ["gitleaks"] = new("gitleaks", ["version"], GitleaksVersion()),
-        ["lychee"] = new("lychee", ["--version"], LycheeVersion()),
+        ["reuse"] = new(CiTools, "reuse", ["--version"], ReuseVersion()),
+        ["gitleaks"] = new(CiTools, "gitleaks", ["version"], GitleaksVersion()),
+        ["lychee"] = new(CiTools, "lychee", ["--version"], LycheeVersion()),
+        ["xcode"] = new(
+            Xcode,
+            "xcodebuild",
+            ["-version"],
+            XcodeVersion(),
+            "xcodebuild reports the Xcode that DEVELOPER_DIR or xcode-select selects."),
+        ["ios-workload-set"] = new(
+            IosWorkload,
+            "dotnet",
+            ["workload", "--version"],
+            WorkloadSetVersion(),
+            "eng/mac/bootstrap.sh installs the pinned workload set."),
     };
 
     // "reuse, version 6.2.0", followed by the license notice.
@@ -224,6 +255,21 @@ internal static partial class Probes
     // "lychee 0.24.2".
     [GeneratedRegex(@"\Alychee ([0-9][^\s]*)")]
     private static partial Regex LycheeVersion();
+
+    // "Xcode 27.1", followed by the build version on the next line.
+    [GeneratedRegex(@"\AXcode ([0-9][^\s]*)")]
+    private static partial Regex XcodeVersion();
+
+    // "10.0.403", alone on its line. Without a workload set the SDK prints
+    // "<feature band>-manifests.<hash>", and for a workload set that global.json names but that
+    // is missing it adds "(not installed)"; neither passes.
+    [GeneratedRegex(@"\A([0-9][^\s]*)(\r?\n|\z)")]
+    private static partial Regex WorkloadSetVersion();
+
+    // A row of the table that dotnet workload list prints: the workload ID, the manifest
+    // version and the installation source, as in "ios   27.1.10018/10.0.100   SDK 10.0.400".
+    [GeneratedRegex(@"^[ \t]*ios[ \t]+[0-9]", RegexOptions.Multiline)]
+    public static partial Regex IosWorkloadRow();
 }
 
 internal static class Checks
@@ -284,18 +330,93 @@ internal static class Checks
         }
 
         var installed = match.Groups[1].Value;
+        var hint = probe.Hint.Length > 0 ? $" {probe.Hint}" : string.Empty;
         return installed == pin.Version
             ? []
-            : [$"{pin.Name} {installed} is installed, but {ToolchainJson.FilePath} pins {pin.Version}."];
+            : [$"{pin.Name} {installed} is installed, but {ToolchainJson.FilePath} pins {pin.Version}.{hint}"];
+    }
+
+    // The pins that no option of this tool checks. They fail every run.
+    public static List<string> Unchecked(IEnumerable<ToolPin> pins) => pins
+        .Where(pin => !Probes.ByTool.ContainsKey(pin.Name) && pin.Name != RunnerImage.Tool)
+        .Select(pin => $"{ToolchainJson.FilePath} pins {pin.Name}, but tools/CheckToolchain.cs cannot check it yet.")
+        .ToList();
+
+    // The workload set holds the version of every workload, so the ios workload must also be
+    // installed from it.
+    public static List<string> IosWorkload(CommandRunner run)
+    {
+        var result = run("dotnet", ["workload", "list"]);
+        if (result is null)
+        {
+            return ["dotnet could not be started."];
+        }
+
+        if (result.ExitCode != 0)
+        {
+            return [$"dotnet workload list exited with {result.ExitCode}: {FirstLine(result.Error + result.Output)}"];
+        }
+
+        return Probes.IosWorkloadRow().IsMatch(result.Output)
+            ? []
+            : ["the ios workload is not installed. eng/mac/bootstrap.sh installs it from the pinned workload set."];
     }
 
     private static string FirstLine(string text) =>
         text.Trim().Split('\n').FirstOrDefault(line => line.Trim().Length > 0)?.Trim() ?? "(no output)";
 }
 
+// The macOS jobs of the workflows run on the runner image that eng/toolchain.json pins
+// (C-0009 section 2). GitHub names its macOS images "macos-<version>", and the images that
+// each carry the releases of one Xcode version "xcode-<version>". Only a plain runs-on value
+// counts, so the workflows name a macOS image that way, never through a matrix or an
+// expression, which this check cannot follow.
+internal static partial class RunnerImage
+{
+    public const string Tool = "macos-runner-image";
+    public const string Folder = ".github/workflows";
+
+    public static List<string> Check(ToolPin? pin, IReadOnlyList<(string File, string Text)> workflows)
+    {
+        var labels = workflows
+            .SelectMany(workflow => workflow.Text.Split('\n').Select((line, index) =>
+                (workflow.File, Line: index + 1, Match: RunsOn().Match(line))))
+            .Where(entry => entry.Match.Success)
+            .Select(entry => (entry.File, entry.Line, Label: entry.Match.Groups[1].Value))
+            .ToList();
+
+        var problems = new List<string>();
+        if (pin is not null && !IsMacOS(pin.Version))
+        {
+            problems.Add($"{ToolchainJson.FilePath} pins {Tool} {pin.Version}, which is not a macOS runner image.");
+        }
+
+        foreach (var (file, line, label) in labels.Where(entry => IsMacOS(entry.Label) && entry.Label != pin?.Version))
+        {
+            problems.Add(pin is null
+                ? $"{file} line {line} runs on {label}, but {ToolchainJson.FilePath} pins no {Tool}."
+                : $"{file} line {line} runs on {label}, but {ToolchainJson.FilePath} pins {pin.Version}.");
+        }
+
+        if (pin is not null && !labels.Any(entry => entry.Label == pin.Version))
+        {
+            problems.Add($"{ToolchainJson.FilePath} pins {Tool} {pin.Version}, but no job in {Folder} runs on it.");
+        }
+
+        return problems;
+    }
+
+    private static bool IsMacOS(string label) =>
+        label.StartsWith("macos-", StringComparison.Ordinal) || label.StartsWith("xcode-", StringComparison.Ordinal);
+
+    // "runs-on: xcode-27", with or without quotes, and with an optional comment.
+    [GeneratedRegex(@"^\s*runs-on:\s*[""']?([A-Za-z0-9._-]+)[""']?\s*(#.*)?\r?$")]
+    private static partial Regex RunsOn();
+}
+
 internal static class ToolchainCheck
 {
-    public static int Run(bool ciTools)
+    public static int Run(HashSet<string> options)
     {
         var root = Processes.Run("git", ["rev-parse", "--show-toplevel"], Directory.GetCurrentDirectory());
         if (root is null || root.ExitCode != 0)
@@ -313,20 +434,44 @@ internal static class ToolchainCheck
         failed += Report(
             $".NET SDK {sdk.Version} from {GlobalJson.FilePath}", Checks.Sdk(sdk, runner("dotnet", ["--version"])));
 
-        // The pin file is read on every run, so that a local run finds a broken pin too.
+        // The pin file and the workflows are read on every run, so that a local run finds a
+        // broken pin, a pin without a check and a macOS job on another image too.
         var pins = ToolchainJson.Parse(Read(directory, ToolchainJson.FilePath));
-        if (ciTools)
+        foreach (var problem in Checks.Unchecked(pins))
         {
-            foreach (var tool in pins)
-            {
-                var pin = $"{tool.Name} {tool.Version} from {ToolchainJson.FilePath}";
-                failed += Report(pin, Checks.Tool(tool, runner));
-            }
+            failed += Report("a pin without a check", [problem]);
         }
-        else
+
+        var image = pins.FirstOrDefault(pin => pin.Name == RunnerImage.Tool);
+        failed += Report(
+            $"{RunnerImage.Tool} {image?.Version ?? "(not pinned)"} from {ToolchainJson.FilePath}, "
+                + $"against the macOS jobs in {RunnerImage.Folder}",
+            RunnerImage.Check(image, ReadWorkflows(directory)));
+
+        foreach (var option in Cli.HostOptions)
         {
-            Console.WriteLine(
-                $"  The {pins.Count} CI tools in {ToolchainJson.FilePath} were read, not run; --ci-tools runs them.");
+            var checkedHere = pins.Where(pin => Probes.ByTool.GetValueOrDefault(pin.Name)?.Option == option).ToList();
+            if (!options.Contains(option) && checkedHere.Count > 0)
+            {
+                Console.WriteLine(
+                    $"  Not run: {string.Join(", ", checkedHere.Select(pin => pin.Name))}; {option} checks them.");
+            }
+
+            if (!options.Contains(option))
+            {
+                continue;
+            }
+
+            foreach (var tool in checkedHere)
+            {
+                var label = $"{tool.Name} {tool.Version} from {ToolchainJson.FilePath}";
+                failed += Report(label, Checks.Tool(tool, runner));
+            }
+
+            if (option == Probes.IosWorkload)
+            {
+                failed += Report("the ios workload, from that workload set", Checks.IosWorkload(runner));
+            }
         }
 
         Console.WriteLine(failed == 0 ? "Everything checked matches its pin." : $"{failed} pins do not match.");
@@ -337,6 +482,20 @@ internal static class ToolchainCheck
     {
         var path = Path.Combine(directory, file);
         return File.Exists(path) ? File.ReadAllText(path) : throw new InvalidDataException($"{file} does not exist.");
+    }
+
+    // GitHub reads workflows only from the top of this folder.
+    private static List<(string File, string Text)> ReadWorkflows(string directory)
+    {
+        var folder = Path.Combine(directory, RunnerImage.Folder);
+        return Directory.Exists(folder)
+            ? Directory.EnumerateFiles(folder)
+                .Where(path => path.EndsWith(".yml", StringComparison.Ordinal)
+                    || path.EndsWith(".yaml", StringComparison.Ordinal))
+                .Order(StringComparer.Ordinal)
+                .Select(path => ($"{RunnerImage.Folder}/{Path.GetFileName(path)}", File.ReadAllText(path)))
+                .ToList()
+            : [];
     }
 
     private static int Report(string pin, List<string> problems)
@@ -425,7 +584,10 @@ internal static class SelfTest
                 }
               }
             },
-            "lychee": { "version": "0.24.2", "source": "https://example.com/lychee" }
+            "lychee": { "version": "0.24.2", "source": "https://example.com/lychee" },
+            "xcode": { "version": "27.1", "source": "https://example.com/xcode" },
+            "ios-workload-set": { "version": "10.0.403", "source": "https://example.com/workloads" },
+            "macos-runner-image": { "version": "xcode-27", "source": "https://example.com/images" }
           }
         }
         """;
@@ -437,6 +599,36 @@ internal static class SelfTest
         This program is free software: you can redistribute it and/or modify it under the terms of the
         GNU General Public License as published by the Free Software Foundation, either version 3 of the
         License, or (at your option) any later version.
+        """;
+
+    private const string XcodeOutput =
+        """
+        Xcode 27.1
+        Build version 27A9275
+        """;
+
+    private const string WorkloadList =
+        """
+
+        Installed Workload Id      Manifest Version       Installation Source
+        --------------------------------------------------------------------
+        ios                        27.1.10018/10.0.100    SDK 10.0.400
+
+        Use `dotnet workload search` to find additional workloads to install.
+        """;
+
+    private const string Workflow =
+        """
+        jobs:
+          dotnet:
+            strategy:
+              matrix:
+                os: [windows-2025, ubuntu-24.04]
+            runs-on: ${{ matrix.os }}
+          checks:
+            runs-on: ubuntu-24.04
+          ios:
+            runs-on: xcode-27 # the pinned image
         """;
 
     public static int Run()
@@ -461,7 +653,11 @@ internal static class SelfTest
 
         Console.WriteLine("Pin file:");
         var pins = ToolchainJson.Parse(Pinned);
-        string[] expected = ["reuse 6.2.0", "gitleaks 8.30.1", "lychee 0.24.2"];
+        string[] expected =
+        [
+            "reuse 6.2.0", "gitleaks 8.30.1", "lychee 0.24.2", "xcode 27.1", "ios-workload-set 10.0.403",
+            "macos-runner-image xcode-27",
+        ];
         tally.Expect(
             pins.Select(pin => $"{pin.Name} {pin.Version}").SequenceEqual(expected),
             "every tool and its version are read");
@@ -496,7 +692,10 @@ internal static class SelfTest
             ["lychee"] = new(0, "lychee 0.24.2\n", ""),
         };
         CommandRunner installed = (command, _) => outputs.GetValueOrDefault(command);
-        tally.Expect(pins.All(pin => Checks.Tool(pin, installed).Count == 0), "reuse, gitleaks and lychee match");
+        var ciTools = pins.Where(pin => Probes.ByTool.GetValueOrDefault(pin.Name)?.Option == Probes.CiTools).ToList();
+        tally.Expect(
+            ciTools.Count == 3 && ciTools.All(pin => Checks.Tool(pin, installed).Count == 0),
+            "reuse, gitleaks and lychee match");
         tally.Expect(
             Checks.Tool(pins[1], (_, _) => new CommandResult(0, "v8.30.1", "")).Count == 0,
             "a gitleaks version with a leading v is read");
@@ -513,6 +712,80 @@ internal static class SelfTest
         tally.Expect(
             Checks.Tool(new ToolPin("unchecked-tool", "1.0.0", "https://example.com/", []), installed).Count == 1,
             "a pinned tool without a version check fails");
+        tally.Expect(Checks.Unchecked(pins).Count == 0, "every pin of the fixture has a check");
+        tally.Expect(
+            Checks.Unchecked([new ToolPin("unchecked-tool", "1.0.0", "https://example.com/", [])]).Count == 1,
+            "a pin without a check fails every run, whatever the options");
+
+        Console.WriteLine("Xcode and the iOS workload set:");
+        var xcode = pins.Single(pin => pin.Name == "xcode");
+        var workloadSet = pins.Single(pin => pin.Name == "ios-workload-set");
+        tally.Expect(
+            Checks.Tool(xcode, Output(XcodeOutput)).Count == 0
+                && Checks.Tool(workloadSet, Output("10.0.403\n")).Count == 0
+                && Checks.IosWorkload(Output(WorkloadList)).Count == 0,
+            "the pinned pair passes: Xcode 27.1 and workload set 10.0.403 with the ios workload");
+        tally.Expect(
+            Names(Checks.Tool(xcode, Output("Xcode 27.0\nBuild version 27A266a\n")), "xcode 27.0", "pins 27.1"),
+            "another Xcode fails and names the found and the pinned version");
+        tally.Expect(
+            Names(Checks.Tool(xcode, Output("Xcode 27.1.1\nBuild version 27A9300\n")), "27.1.1", "pins 27.1"),
+            "a later release of the pinned Xcode fails, because the pin is exact");
+        var commandLineToolsOnly = new CommandResult(1, "", "xcode-select: error: tool 'xcodebuild' requires Xcode");
+        tally.Expect(
+            Checks.Tool(xcode, (_, _) => commandLineToolsOnly).Count == 1, "Command Line Tools without Xcode fail");
+        tally.Expect(Checks.Tool(xcode, (_, _) => null).Count == 1, "a Mac without xcodebuild fails");
+        tally.Expect(
+            Names(Checks.Tool(workloadSet, Output("10.0.402.1\n")), "ios-workload-set 10.0.402.1", "pins 10.0.403"),
+            "another workload set fails and names the found and the pinned version");
+        tally.Expect(
+            Checks.Tool(workloadSet, Output("10.0.400-manifests.4c6e1d8a\n")).Count == 1,
+            "the SDK's own manifests without a workload set fail");
+        tally.Expect(
+            Checks.Tool(workloadSet, Output("10.0.403 (not installed)\n")).Count == 1,
+            "a workload set that is named but not installed fails");
+        tally.Expect(
+            Checks.IosWorkload(Output(Edit(WorkloadList, "ios       ", "maui-ios  "))).Count == 1,
+            "a list with maui-ios but not ios fails");
+        tally.Expect(Checks.IosWorkload(Output("\nNo workloads are installed.\n")).Count == 1, "no workload fails");
+        tally.Expect(
+            Checks.IosWorkload((_, _) => new CommandResult(1, "", "error")).Count == 1,
+            "a workload list that fails fails");
+
+        Console.WriteLine("Runner image:");
+        var image = pins.Single(pin => pin.Name == RunnerImage.Tool);
+        tally.Expect(RunnerImage.Check(image, [("ci.yml", Workflow)]).Count == 0, "the pinned macOS image passes");
+        tally.Expect(
+            Names(
+                RunnerImage.Check(image, [("ci.yml", Edit(Workflow, "xcode-27 #", "macos-26 #"))]),
+                "ci.yml line 10 runs on macos-26",
+                "pins xcode-27"),
+            "a job on another macOS image fails, with its file, line and both images");
+        tally.Expect(
+            RunnerImage.Check(image, [("ci.yml", Edit(Workflow, "xcode-27 #", "\"xcode-27\" #"))]).Count == 0,
+            "a quoted runs-on value is read");
+        tally.Expect(
+            RunnerImage.Check(image, [("ci.yml", Edit(Workflow, "runs-on: xcode-27", "x: 1"))]).Count == 1,
+            "a pinned image that no job runs on fails");
+        tally.Expect(
+            RunnerImage.Check(null, [("ci.yml", Workflow)]).Count == 1,
+            "a macOS job without a pinned image fails");
+        tally.Expect(
+            RunnerImage.Check(image with { Version = "ubuntu-24.04" }, [("ci.yml", Workflow)]).Count == 2,
+            "a pin that is no macOS image fails, and so does the macOS job");
+        tally.Expect(
+            RunnerImage.Check(image, [("ci.yml", Workflow), ("other.yml", "jobs:\n  x:\n    runs-on: macos-latest\n")])
+                .Count == 1,
+            "every workflow is read");
+
+        Console.WriteLine("Options:");
+        tally.Expect(Cli.Options([]) is { Count: 0 }, "no option checks the SDK and the runner image only");
+        tally.Expect(
+            Cli.Options(["--xcode", "--ios-workload"]) is { Count: 2 },
+            "--xcode and --ios-workload combine");
+        tally.Expect(Cli.Options(["--xcode", "--xcode"]) is null, "an option given twice is rejected");
+        tally.Expect(Cli.Options(["--self-test", "--xcode"]) is null, "--self-test combines with nothing");
+        tally.Expect(Cli.Options(["--macos"]) is null, "an unknown option is rejected");
 
         Console.WriteLine(tally.Failed == 0
             ? $"Self-test passed: {tally.Total} of {tally.Total} checks as expected."
@@ -521,6 +794,12 @@ internal static class SelfTest
     }
 
     private static string Edit(string text, string from, string to) => text.Replace(from, to, StringComparison.Ordinal);
+
+    private static CommandRunner Output(string output) => (_, _) => new CommandResult(0, output, "");
+
+    // Whether a problem names every part, such as the found and the pinned version.
+    private static bool Names(List<string> problems, params string[] parts) =>
+        problems.Any(problem => parts.All(part => problem.Contains(part, StringComparison.Ordinal)));
 
     private static bool Rejects(Action action)
     {

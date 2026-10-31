@@ -8,6 +8,8 @@ name: CI
 on:
   push:
   pull_request:
+    # labeled: adding the ios-ci label starts the ios job (see that job).
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
@@ -20,7 +22,7 @@ env:
   AVALONIA_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
 
-# In both jobs, every step after the setup runs even when an earlier one failed, so that one
+# In every job, each step after the setup runs even when an earlier one failed, so that one
 # run shows every failure.
 jobs:
   dotnet:
@@ -178,3 +180,161 @@ jobs:
       - name: Check dependency licenses
         if: ${{ !cancelled() }}
         run: dotnet run tools/CheckLicenses.cs
+
+  # D7 (plan section 4.2): the ios job runs only before merging. It runs for a pull request
+  # that carries the ios-ci label: when the label is added, and on every push after that.
+  ios:
+    if: >-
+      github.event_name == 'pull_request'
+      && contains(github.event.pull_request.labels.*.name, 'ios-ci')
+      && (github.event.action != 'labeled' || github.event.label.name == 'ios-ci')
+    # eng/toolchain.json pins this image as macos-runner-image, and tools/CheckToolchain.cs
+    # fails when the two differ.
+    runs-on: xcode-27
+    timeout-minutes: 45
+    concurrency:
+      group: ios-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the SDK that global.json pins
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      # It checks the SDK and Xcode against their pins, installs the iOS workload from the
+      # pinned workload set, and checks that too.
+      - name: Check the toolchain and install the iOS workload (eng/mac/bootstrap.sh)
+        run: eng/mac/bootstrap.sh
+
+      - name: Show the SDK, workload set and Xcode versions
+        if: ${{ !cancelled() }}
+        run: |
+          echo "SDK: $(dotnet --version)"
+          echo "Workload set: $(dotnet workload --version)"
+          dotnet workload list
+          xcodebuild -version
+          echo "Xcode in use: $(xcode-select -p)"
+
+      # The bootstrap must refuse any Xcode but the pinned one. The step runs it against
+      # another Xcode on the image and passes only if it fails and names both versions. It
+      # hides the tool's annotations, because this failure is the expected one.
+      - name: Check that the bootstrap refuses another Xcode (planted mismatch)
+        if: ${{ !cancelled() }}
+        run: |
+          pin=$(plutil -extract tools.xcode.version raw -o - eng/toolchain.json)
+          other=""
+          for app in /Applications/Xcode*.app; do
+            version=$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist" 2>/dev/null || true)
+            if [ -n "$version" ] && [ "$version" != "$pin" ]; then
+              other=$app
+              found=$version
+              break
+            fi
+          done
+          if [ -z "$other" ]; then
+            echo "::error title=Planted mismatch::The image has no Xcode other than $pin to plant."
+            exit 1
+          fi
+          echo "Running the bootstrap against $other (Xcode $found; the pin is $pin)."
+          status=0
+          output=$(DEVELOPER_DIR="$other/Contents/Developer" GITHUB_ACTIONS=false eng/mac/bootstrap.sh 2>&1) || status=$?
+          echo "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "::error title=Planted mismatch::The bootstrap passed with Xcode $found, but the pin is $pin."
+            exit 1
+          fi
+          if ! grep -F -q "xcode $found is installed, but eng/toolchain.json pins $pin." <<< "$output"; then
+            echo "::error title=Planted mismatch::The bootstrap failed without naming Xcode $found and the pin $pin."
+            exit 1
+          fi
+          echo "The bootstrap exited with $status and named both versions, as expected."
+
+      - name: Restore Paneport.iOS from its lock file
+        if: ${{ !cancelled() }}
+        run: dotnet restore src/Paneport.iOS/Paneport.iOS.csproj --locked-mode
+
+      # As in the dotnet job: locked mode writes a missing lock file instead of failing. The
+      # step prints a written lock file, which is how the lock file of a new iOS project is
+      # made without a Mac.
+      - name: Check that no lock file was written
+        if: ${{ !cancelled() }}
+        run: |
+          written=$(git status --porcelain --untracked-files=all -- '*.lock.json')
+          if [ -n "$written" ]; then
+            echo "$written"
+            for file in $(git status --porcelain --untracked-files=all -- '*.lock.json' | cut -c4-); do
+              echo "----- $file"
+              cat "$file"
+            done
+            echo "::error title=Lock files::A lock file was created or changed. Commit each project's lock file (C-0009 section 2)."
+            exit 1
+          fi
+
+      - name: Build Paneport.iOS for ios-arm64 in Release, without signing
+        if: ${{ !cancelled() }}
+        run: dotnet build src/Paneport.iOS/Paneport.iOS.csproj -c Release --no-restore
+
+      - name: Check the formatting of Paneport.iOS
+        if: ${{ !cancelled() }}
+        run: dotnet format src/Paneport.iOS/Paneport.iOS.csproj --verify-no-changes --no-restore
+
+      # The app names the scene delegate of its own Info.plist, supports iOS 26.0 and later
+      # (C-0001 section 2), holds arm64 code only, and carries no signature and no profile
+      # (C-0009 section 5). Apple's linker may give arm64 code an ad-hoc signature of its own,
+      # marked linker-signed, which holds no identity; that one is accepted.
+      - name: Check the app bundle
+        id: app
+        if: ${{ !cancelled() }}
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          app=$(find src/Paneport.iOS/bin/Release -maxdepth 4 -type d -name '*.app' | head -n 1)
+          if [ -z "$app" ]; then
+            echo "::error title=App bundle::The build made no .app bundle."
+            exit 1
+          fi
+          scene_key=UIApplicationSceneManifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication.0.UISceneDelegateClassName
+          expected_scene=$(plutil -extract "$scene_key" raw -o - src/Paneport.iOS/Info.plist)
+          scene=$(plutil -extract "$scene_key" raw -o - "$app/Info.plist" || echo "(none)")
+          minimum=$(plutil -extract MinimumOSVersion raw -o - "$app/Info.plist" || echo "(none)")
+          executable=$(plutil -extract CFBundleExecutable raw -o - "$app/Info.plist")
+          architectures=$(lipo -archs "$app/$executable")
+          signature=$(codesign -dv "$app" 2>&1 || true)
+          echo "App: $app"
+          echo "Scene delegate: $scene"
+          echo "Minimum iOS version: $minimum"
+          lipo -info "$app/$executable"
+          echo "codesign -dv: $signature"
+          problems=0
+          [ "$scene" = "$expected_scene" ] || { echo "::error title=App bundle::The scene delegate is $scene, not $expected_scene."; problems=1; }
+          [ "$minimum" = 26.0 ] || { echo "::error title=App bundle::The minimum iOS version is $minimum, not 26.0."; problems=1; }
+          [ "$architectures" = arm64 ] || { echo "::error title=App bundle::The executable holds $architectures, not arm64 alone."; problems=1; }
+          if grep -F -q "is not signed at all" <<< "$signature"; then
+            echo "Signature: none."
+          elif grep -F -q "linker-signed" <<< "$signature" && grep -F -q "TeamIdentifier=not set" <<< "$signature" \
+              && ! grep -q "^Authority=" <<< "$signature"; then
+            echo "Signature: only the linker's ad-hoc signature, with no identity."
+          else
+            echo "::error title=App bundle::The app carries a signature beyond the linker's own."
+            problems=1
+          fi
+          [ ! -e "$app/embedded.mobileprovision" ] || { echo "::error title=App bundle::The app holds a provisioning profile."; problems=1; }
+          ditto -c -k --keepParent "$app" "$RUNNER_TEMP/$(basename "$app").zip"
+          echo "zip=$RUNNER_TEMP/$(basename "$app").zip" >> "$GITHUB_OUTPUT"
+          echo "commit=${HEAD_SHA:0:12}" >> "$GITHUB_OUTPUT"
+          exit "$problems"
+
+      # The zip keeps the bundle's name and the executable's file mode, which an artifact of
+      # the bare folder would lose.
+      - name: Upload the app
+        if: ${{ !cancelled() && steps.app.outputs.zip != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Paneport.iOS-ios-arm64-${{ steps.app.outputs.commit }}
+          path: ${{ steps.app.outputs.zip }}
+          if-no-files-found: error

@@ -1,0 +1,44 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+  The iOS app head (C-0004 section 2) on Mono, the default runtime of net10.0-ios (C-0010
+  section 1). It builds for devices only, as arm64, with iOS 26.0 as the oldest version it
+  supports (C-0001 section 2). Building it needs a Mac with the pinned Xcode and the iOS
+  workload, which eng/mac/bootstrap.sh installs, so eng/ci.slnf leaves it out (C-0011
+  section 4).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <RuntimeIdentifier>ios-arm64</RuntimeIdentifier>
+    <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
+    <UseMonoRuntime>true</UseMonoRuntime>
+    <!-- The naming rule of C-0010 section 2 wants PascalCase, which .NET spells IOS, as in
+         OperatingSystem.IsIOS. The project and its assembly keep the component's name. -->
+    <RootNamespace>Paneport.IOS</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+  The bundle identifier is a placeholder until recelilious chooses one (D3, plan section 4.2);
+  M1.3 replaces it. C-0009 section 6 sets the version format.
+  -->
+  <PropertyGroup>
+    <ApplicationId>com.example.paneport</ApplicationId>
+    <ApplicationTitle>Paneport</ApplicationTitle>
+    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+  </PropertyGroup>
+
+  <!--
+  Device builds compile everything ahead of time, with the interpreter off (C-0009 section 3).
+  No build signs the app: CI never holds an Apple identity (C-0009 section 5), and the ad-hoc
+  signature comes with M1.3.
+  -->
+  <PropertyGroup>
+    <UseInterpreter>false</UseInterpreter>
+    <EnableCodeSigning>false</EnableCodeSigning>
+  </PropertyGroup>
+</Project>

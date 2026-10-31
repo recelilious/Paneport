@@ -32,12 +32,12 @@ Back to the [development plan](../development-plan.md).
 | S6.3.3 | File-backed tier | Small | Planned | | |
 | S6.3.4 | Governor policy | Small | Planned | | |
 | S6.3.5 | Pressure and thermal events | Small | Planned | | |
-| M6.4 | Compatibility database core | Medium | Planned | | |
-| S6.4.1 | Title schema | Small | Planned | | |
-| S6.4.2 | Typed model and loader | Small | Planned | | |
-| S6.4.3 | Precedence rules | Small | Planned | | |
-| S6.4.4 | Device layer store | Small | Planned | | |
-| S6.4.5 | Fixtures | Small | Planned | | |
+| M6.4 | Compatibility database core | Medium | In progress | `feat/m6-4-compat-db-core` | 2026-10-31 |
+| S6.4.1 | Title schema | Small | In progress | `feat/m6-4-compat-db-core` | 2026-10-31 |
+| S6.4.2 | Typed model and loader | Small | In progress | `feat/m6-4-compat-db-core` | 2026-10-31 |
+| S6.4.3 | Precedence rules | Small | In progress | `feat/m6-4-compat-db-core` | 2026-10-31 |
+| S6.4.4 | Device layer store | Small | In progress | `feat/m6-4-compat-db-core` | 2026-10-31 |
+| S6.4.5 | Fixtures | Small | In progress | `feat/m6-4-compat-db-core` | 2026-10-31 |
 | M6.5 | Game import and session flow | Medium | Planned | | |
 | S6.5.1 | Import pipeline | Small | Planned | | |
 | S6.5.2 | PE classifier and synthetic PE generator | Small | Planned | | |

@@ -316,6 +316,8 @@ Scripts this stage creates: the CTest suite and its assertion header, `eng/mac/c
 **Notes from earlier stages.**
 
 - M0.3 (`docs/design/app-shell.md` sections 6 and 10): the desktop head's fake host reports ABI version 1.0 as a stand-in for the first version of the host headers, which this stage sets; the major version that the .NET side expects comes with these headers, and M1.3 checks it at startup.
+- M1.1 (session log of 2026-10-31): every macOS job runs on the image that `macos-runner-image` pins in `eng/toolchain.json`, written as a plain `runs-on` value, because `tools/CheckToolchain.cs` fails on any other macOS label; the `native` job uses `xcode-27` too (`docs/design/repository-checks.md` section 5).
+- M1.1 (session log of 2026-10-31): a new pin such as CMake or LLVM needs a check in `tools/CheckToolchain.cs` under an option that runs where the tool exists, because a pin without one fails every run, and a register row mapped in `eng/license-map.json`; `eng/mac/bootstrap.sh` installs, and the tool compares (`docs/design/dev-environment.md` section 4).
 
 **Session log.**
 
@@ -432,6 +434,10 @@ Scripts this stage creates: `eng/mac/sign-adhoc.sh`, `eng/mac/package-ipa.sh`, `
 - M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 holds open questions for this stage: the expected ABI version, the account name beside the refresh token in `ITokenStore`, how Settings shows a failed save, a settings file that orders its saves and loads, and the layout on the phone.
 - M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-29): the Steam stub that this stage's composition root uses, `SignedOutSteamService`, is in Paneport.Core, not in the desktop head (`docs/design/app-shell.md` section 3).
 - M0.2 ([L0 brief](L0-foundation.md), session log of 2026-10-29): the trimmed test app reaches only Avalonia and Avalonia.Themes.Fluent, so this stage's iOS head is the first to trim Avalonia.Skia, SkiaSharp, HarfBuzzSharp and Avalonia's iOS backend; the log said M1.1, but M1.1's head has no Avalonia. A trimming warning that they bring goes into the pull request for recelilious to decide (`docs/design/repository-checks.md` section 7).
+- M1.1 (session log of 2026-10-31): the namespace of Paneport.iOS is `Paneport.IOS`, and its classes are internal, because the naming rule rejects `iOS` and CA1711 and CA1010 reject the UIKit names on public types (`docs/design/solution-and-build.md` section 2). The bundle identifier is the placeholder `com.example.paneport` in `ApplicationId`, waiting for D3.
+- M1.1 (session log of 2026-10-31): the project sets `EnableCodeSigning` to false, and its build carries no signature at all, not even the linker's, so the ad-hoc signing starts from an unsigned app. The `ios` job checks the bundle in the workflow itself, which `eng/mac/check-app.sh` can take over (`docs/design/repository-checks.md` section 6).
+- M1.1 (session log of 2026-10-31): adding packages changes the lock file of Paneport.iOS, whose target framework names the iOS SDK (`net10.0-ios27.1`); without a Mac, take the new lock file from the log of the `ios` job (`docs/design/dev-environment.md` section 5).
+- M1.1 (session log of 2026-10-31): the `ios` job checks out the pull request's merge commit, as the other jobs do, and names its artifact by the head commit. The build stamp that L1 step 4 shows needs the head commit, so this stage decides how the stamp gets it.
 
 **Session log.**
 

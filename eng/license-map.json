@@ -49,12 +49,16 @@
   },
   "tools": {
     "gitleaks": "gitleaks (command-line tool)",
+    "ios-workload-set": ".NET for iOS (dotnet/macios)",
     "lychee": "lychee",
-    "reuse": "REUSE tool"
+    "macos-runner-image": "GitHub-hosted runner images (actions/runner-images)",
+    "reuse": "REUSE tool",
+    "xcode": "Xcode"
   },
   "actions": {
     "actions/checkout": "actions/checkout",
-    "actions/setup-dotnet": "actions/setup-dotnet"
+    "actions/setup-dotnet": "actions/setup-dotnet",
+    "actions/upload-artifact": "actions/upload-artifact"
   },
   "submodules": {}
 }

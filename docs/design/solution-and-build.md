@@ -21,12 +21,12 @@ This document records how Paneport's .NET solution is laid out and built: the pr
 
 | Project | Kind | Role (C-0004 section 2) | May reference in the solution | Holds now | Full design |
 |---|---|---|---|---|---|
-| Paneport.Core | Library | Domain model, view models, settings, compatibility database reader, and the interfaces that platform code implements. No platform API. | Nothing | The shell's domain model, service interfaces and view models | M0.3, in `app-shell.md` |
+| Paneport.Core | Library | Domain model, view models, settings, compatibility database reader, and the interfaces that platform code implements. No platform API. | Nothing | The shell's domain model, service interfaces and view models, and the compatibility database core | M0.3, in `app-shell.md`; M6.4, in `compat-db.md` |
 | Paneport.Steam | Library | Steam sign-in, licenses, app information and depot downloads, built on SteamKit2. No UI code. | Paneport.Core | Nothing | M2.3, with its first code |
 | Paneport.UI | Library | Avalonia views, styles and overlay controls shared by both app heads. | Paneport.Core | The application class, the shell's main view and its four pages | M0.3, in `app-shell.md` |
 | Paneport.Interop | Library | Source-generated bindings to the host interface. The only project allowed to use unsafe code. | Nothing | Nothing | M1.2, with its first bindings |
-| Paneport.Desktop | Executable | Desktop head with a fake host, for UI work on Windows. Never shipped. Never writes a Steam sign-in token to disk. | Paneport.Core, Paneport.Steam, Paneport.UI | The composition root, the window titled Paneport and the fakes | M0.3, in `app-shell.md` |
-| Paneport.Core.Tests | Test executable | Tests of Paneport.Core | Paneport.Core | Dependency direction tests, and tests of the domain model, interfaces and view models | M0.3, in `app-shell.md` |
+| Paneport.Desktop | Executable | Desktop head with a fake host, for UI work on Windows. Never shipped. Never writes a Steam sign-in token to disk. | Paneport.Core, Paneport.Steam, Paneport.UI | The composition root, the window titled Paneport, the fakes, and the local folders of the compatibility database | M0.3, in `app-shell.md`; M6.4, in `compat-db.md` |
+| Paneport.Core.Tests | Test executable | Tests of Paneport.Core | Paneport.Core | Dependency direction tests, and tests of the domain model, interfaces and view models and of the compatibility database with its fixtures | M0.3, in `app-shell.md`; M6.4, in `compat-db.md` |
 | Paneport.Steam.Tests | Test executable | Tests of Paneport.Steam | Paneport.Steam, Paneport.Core | Dependency direction tests | M2.3 adds tests |
 | Paneport.UI.Tests | Test executable | Tests of Paneport.UI, headless | Paneport.UI, Paneport.Core | Dependency direction tests, and headless tests of the shell and its pages | M0.3, in `app-shell.md` |
 | Paneport.TrimTest | Executable | Trimmed publish of the four libraries with their dependencies (C-0011 section 4). Not a test project. | Paneport.Core, Paneport.Steam, Paneport.UI, Paneport.Interop | A program that does nothing | M0.2, in `repository-checks.md` |

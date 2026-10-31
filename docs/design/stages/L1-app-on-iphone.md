@@ -13,12 +13,12 @@ Back to the [development plan](../development-plan.md).
 | L1 | Paneport on the iPhone | Large | Planned | | |
 | S1.0.1 | Evidence record template | Small | Planned | | |
 | S1.0.2 | Recorded install route | Small | Planned | | |
-| M1.1 | macOS build environment and the iOS CI job | Medium | In progress | `build/m1-1-ios-ci` | 2026-10-31 |
-| S1.1.1 | Toolchain pins | Small | In progress | `build/m1-1-ios-ci` | 2026-10-31 |
-| S1.1.2 | Mac bootstrap script | Small | In progress | `build/m1-1-ios-ci` | 2026-10-31 |
-| S1.1.3 | Minimal iOS project | Small | In progress | `build/m1-1-ios-ci` | 2026-10-31 |
-| S1.1.4 | iOS CI job | Small | In progress | `build/m1-1-ios-ci` | 2026-10-31 |
-| S1.1.5 | Development environment design document | Small | In progress | `build/m1-1-ios-ci` | 2026-10-31 |
+| M1.1 | macOS build environment and the iOS CI job | Medium | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
+| S1.1.1 | Toolchain pins | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
+| S1.1.2 | Mac bootstrap script | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
+| S1.1.3 | Minimal iOS project | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
+| S1.1.4 | iOS CI job | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
+| S1.1.5 | Development environment design document | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
 | M1.2 | Native host skeleton and interface conformance | Medium | Planned | | |
 | S1.2.1 | Status, errors, pp_free and ABI version | Small | Planned | | |
 | S1.2.2 | Lock-free event queue | Small | Planned | | |
@@ -224,6 +224,8 @@ Scripts this stage creates: `eng/mac/bootstrap.sh` and the new `CheckToolchain` 
   - **For later sessions.** Notes left in the briefs of M1.2, M1.3, M4.1 and M9.1. The next iOS workload, 27.2.10000 for Xcode 27.2, is already in the workload set repository; when a workload set ships it, the four pins move together (`dev-environment.md` section 2).
 - **2026-10-31 (UTC), contract acceptance.** recelilious accepted the contract proposal. The acceptance commit on `contract/m1-1-ios-ci` applies C-0003 1.3 and C-0009 1.1 and drops their proposal sections, and the branch is pushed with its pull request, [#12](https://github.com/recelilious/Paneport/pull/12), which merges before #10. `dev-environment.md` no longer lists the pin location as open.
   - **Left.** recelilious merges #12. Then `checks` passes on #10 once it runs again, M1.1 and its small stages are set to Done in the branch's last commit, and recelilious confirms D7 and merges #10.
+- **2026-10-31 (UTC), contract merge.** On recelilious's request, Claude merged #12, which put C-0003 1.3 and C-0009 1.1 on `main` (`6a0acf1`), and rebased this branch onto it. With the two rows in the register, the license check passes; the rest of the verification passed in the first session, and the rebase touched no file of this stage. Only the merge is left, so M1.1 and S1.1.1 to S1.1.5 are set to Done in this commit, as plan section 3.3 asks.
+  - **Left.** recelilious confirms D7, which the `ios` job follows as recorded (only before merging), and merges #10. #11 (M6.4) also adds a row to `docs/design/README.md`; the pull request that merges second rebases.
 
 ## M1.2 Native host skeleton and interface conformance
 

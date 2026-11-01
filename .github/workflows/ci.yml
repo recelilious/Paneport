@@ -8,8 +8,6 @@ name: CI
 on:
   push:
   pull_request:
-    # labeled: adding the ios-ci label starts the ios job (see that job).
-    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
@@ -181,13 +179,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/CheckLicenses.cs
 
-  # D7 (plan section 4.2): the ios job runs only before merging. It runs for a pull request
-  # that carries the ios-ci label: when the label is added, and on every push after that.
+  # D7 (plan section 4.2): the ios job runs for every pull request, on the merge result that
+  # the pull_request event checks out. A push event skips it: on a branch with a pull request,
+  # the pull_request run of the same push builds that result, and C-0011 section 4 leaves the
+  # job's triggers to recelilious.
   ios:
-    if: >-
-      github.event_name == 'pull_request'
-      && contains(github.event.pull_request.labels.*.name, 'ios-ci')
-      && (github.event.action != 'labeled' || github.event.label.name == 'ios-ci')
+    if: github.event_name == 'pull_request'
     # eng/toolchain.json pins this image as macos-runner-image, and tools/CheckToolchain.cs
     # fails when the two differ.
     runs-on: xcode-27

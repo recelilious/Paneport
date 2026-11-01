@@ -32,10 +32,17 @@ public sealed record EffectiveTitleSettings
     public TitleArchitecture? Architecture { get; init; }
 
     /// <summary>
-    /// Gets the classification, member by member from the bundled entry and then from the device
-    /// layer; null when no layer classifies anything yet.
+    /// Gets the classification, member by member from the bundled entry while it counts (see
+    /// <see cref="ReviewedClassification"/>) and then from the device layer; null when no layer
+    /// classifies anything yet.
     /// </summary>
     public DrmClassification? Drm { get; init; }
+
+    /// <summary>
+    /// Gets whether the bundled entry's classification counts, and why not when it does not, for a
+    /// title's page to show next to a launch decision other than Direct.
+    /// </summary>
+    public required ReviewedClassificationUse ReviewedClassification { get; init; }
 
     /// <summary>Gets what the launch rule of C-0008 section 5 makes of <see cref="Drm"/>.</summary>
     public required LaunchDecision Launch { get; init; }

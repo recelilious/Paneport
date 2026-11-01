@@ -30,10 +30,11 @@ namespace Paneport.Core.Compat;
 /// </para>
 /// <para>
 /// The bundled entry's <c>drm</c> describes the program that was reviewed, so it counts only while
-/// the device runs that program: the device layer names no other <c>executable.path</c>, and for a
-/// local title the device layer has an entry whose <c>exeSha256</c> values are all among the
-/// bundled entry's. Otherwise only the computed classification counts, which gives the Dock path or
-/// a refusal.
+/// the device runs that program. For a Steam title, the device layer names no other
+/// <c>executable.path</c>. For a local title, whose reviewed builds are its <c>exeSha256</c> values,
+/// the device layer has an entry that lists only those, whatever path it names. Otherwise only the
+/// computed classification counts, which gives the Dock path or a refusal, and
+/// <see cref="EffectiveTitleSettings.ReviewedClassification"/> says why.
 /// </para>
 /// </remarks>
 public static class CompatPrecedence
@@ -56,8 +57,8 @@ public static class CompatPrecedence
         CheckBelongs(id, bundled, nameof(bundled));
         CheckBelongs(id, device, nameof(device));
 
-        var reviewedDrm = RunsReviewedProgram(id, bundled, device) ? bundled?.Drm : null;
-        var drm = MergeDrm(reviewedDrm, device?.Drm);
+        var reviewed = UseOfReviewedClassification(id, bundled, device);
+        var drm = MergeDrm(reviewed == ReviewedClassificationUse.Used ? bundled?.Drm : null, device?.Drm);
         var executable = device?.Executable ?? bundled?.Executable;
         return new EffectiveTitleSettings
         {
@@ -66,6 +67,7 @@ public static class CompatPrecedence
             Executable = executable is null ? null : executable with { Arguments = executable.Arguments ?? [] },
             Architecture = device?.Architecture ?? bundled?.Architecture,
             Drm = drm,
+            ReviewedClassification = reviewed,
             Launch = LaunchRule.Decide(id.Source, drm),
             GraphicsApi = device?.GraphicsApi ?? bundled?.GraphicsApi ?? [],
             Runtimes = device?.Runtimes ?? bundled?.Runtimes ?? [],
@@ -86,26 +88,29 @@ public static class CompatPrecedence
         };
     }
 
-    // Whether the device runs the program that the bundled entry was reviewed for. A device executable
-    // with another path, or with none, is another program, and a local title's builds come only from
-    // its device entry.
-    private static bool RunsReviewedProgram(TitleId id, TitleEntry? bundled, TitleEntry? device)
+    // Whether the device runs the program that the bundled entry was reviewed for. For a Steam title
+    // that is the program at the entry's path, so a device executable with another path, or with one
+    // where the entry names none, is another program. A local title's reviewed builds are its hashes,
+    // and only its device entry shows which build the device runs.
+    private static ReviewedClassificationUse UseOfReviewedClassification(
+        TitleId id, TitleEntry? bundled, TitleEntry? device)
     {
-        if (bundled is null)
+        if (bundled?.Drm is null or { SteamApi: null, SteamStub: null, SteamAppIdFile: null, Ceg: null })
         {
-            return false;
+            return ReviewedClassificationUse.None;
         }
 
-        if (device?.Executable is { } executable
-            && (executable.Path is null || executable.Path != bundled.Executable?.Path))
+        if (id.Source == TitleSource.Steam)
         {
-            return false;
+            var reviewedProgram = device?.Executable is not { } executable
+                || (executable.Path is not null && executable.Path == bundled.Executable?.Path);
+            return reviewedProgram ? ReviewedClassificationUse.Used : ReviewedClassificationUse.OtherProgram;
         }
 
-        return id.Source == TitleSource.Steam
-            || (device?.Id.ExeSha256 is { Count: > 0 } builds
-                && bundled.Id.ExeSha256 is { } reviewed
-                && builds.All(reviewed.Contains));
+        var reviewedBuild = device?.Id.ExeSha256 is { Count: > 0 } builds
+            && bundled.Id.ExeSha256 is { } reviewed
+            && builds.All(reviewed.Contains);
+        return reviewedBuild ? ReviewedClassificationUse.Used : ReviewedClassificationUse.UnreviewedBuild;
     }
 
     private static DrmClassification? MergeDrm(DrmClassification? bundled, DrmClassification? device)

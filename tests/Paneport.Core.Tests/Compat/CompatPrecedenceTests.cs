@@ -237,25 +237,46 @@ public sealed class CompatPrecedenceTests
             Drm = new DrmClassification { SteamApi = false, SteamStub = false, Ceg = CegStatus.No },
         };
         var computed = TestEntries.Clean with { SteamStub = true };
-        var launcher = TestEntries.Steam() with { Executable = new ExecutableSpec { Path = "Launcher.exe" }, Drm = computed };
+        var launcher = TestEntries.Steam() with
+        {
+            Executable = new ExecutableSpec { Path = "Launcher.exe" },
+            Drm = computed,
+        };
 
         var settings = CompatPrecedence.Merge(TestEntries.SteamId, bundled, launcher);
 
         Assert.Equal(computed, settings.Drm);
+        Assert.Equal(ReviewedClassificationUse.OtherProgram, settings.ReviewedClassification);
         Assert.Equal(LaunchDecision.Dock, settings.Launch);
 
         // The same path with other arguments is the reviewed program, and so is no device executable.
         // The reviewed values then win over the computed ones.
         var samePath = launcher with { Executable = new ExecutableSpec { Path = "Orchard.exe", Arguments = ["-x"] } };
-        Assert.Equal(LaunchDecision.Direct, CompatPrecedence.Merge(TestEntries.SteamId, bundled, samePath).Launch);
         var noExecutable = launcher with { Executable = null };
-        Assert.Equal(LaunchDecision.Direct, CompatPrecedence.Merge(TestEntries.SteamId, bundled, noExecutable).Launch);
+        foreach (var device in new[] { samePath, noExecutable })
+        {
+            var reviewed = CompatPrecedence.Merge(TestEntries.SteamId, bundled, device);
+            Assert.Equal(ReviewedClassificationUse.Used, reviewed.ReviewedClassification);
+            Assert.Equal(LaunchDecision.Direct, reviewed.Launch);
+        }
 
-        // Another letter case is another path, and a reviewed entry that names no program covers none.
+        // Another letter case is another path, and a reviewed entry that names no program covers none
+        // that the device names.
         var otherCase = launcher with { Executable = new ExecutableSpec { Path = "orchard.exe" } };
-        Assert.Equal(LaunchDecision.Dock, CompatPrecedence.Merge(TestEntries.SteamId, bundled, otherCase).Launch);
         var unnamed = bundled with { Executable = null };
-        Assert.Equal(LaunchDecision.Dock, CompatPrecedence.Merge(TestEntries.SteamId, unnamed, samePath).Launch);
+        foreach (var (reviewedEntry, device) in new[] { (bundled, otherCase), (unnamed, samePath) })
+        {
+            var other = CompatPrecedence.Merge(TestEntries.SteamId, reviewedEntry, device);
+            Assert.Equal(ReviewedClassificationUse.OtherProgram, other.ReviewedClassification);
+            Assert.Equal(LaunchDecision.Dock, other.Launch);
+        }
+
+        // Without a reviewed drm there is nothing to use.
+        foreach (var reviewedEntry in new[] { bundled with { Drm = null }, null })
+        {
+            var none = CompatPrecedence.Merge(TestEntries.SteamId, reviewedEntry, launcher);
+            Assert.Equal(ReviewedClassificationUse.None, none.ReviewedClassification);
+        }
     }
 
     [Fact]
@@ -271,20 +292,30 @@ public sealed class CompatPrecedenceTests
             Drm = new DrmClassification { SteamApi = false, SteamStub = false, Ceg = CegStatus.No },
         };
         var device = TestEntries.Local() with { Drm = TestEntries.Clean };
+        var moved = new ExecutableSpec { Path = "bin/Orchard.exe" };
 
-        Assert.Equal(LaunchDecision.Direct, CompatPrecedence.Merge(TestEntries.LocalId, bundled, device).Launch);
+        // A reviewed build keeps the reviewed classification, with or without a program of its own:
+        // its hash, not its path, shows that it is the reviewed program.
+        foreach (var reviewedBuild in new[] { device, device with { Executable = moved } })
+        {
+            var settings = CompatPrecedence.Merge(TestEntries.LocalId, bundled, reviewedBuild);
+            Assert.Equal(ReviewedClassificationUse.Used, settings.ReviewedClassification);
+            Assert.Equal(LaunchDecision.Direct, settings.Launch);
+        }
 
-        // A build the entry does not list is refused, alone or next to a reviewed one, and so is
-        // another program.
+        // A build the entry does not list is refused, alone, next to a reviewed one, or with a program
+        // of its own.
+        var unreviewedBuild = device with { Id = device.Id with { ExeSha256 = [otherBuild] } };
         foreach (var unreviewed in new[]
         {
-            device with { Id = device.Id with { ExeSha256 = [otherBuild] } },
+            unreviewedBuild,
             device with { Id = device.Id with { ExeSha256 = [TestEntries.LocalHash, otherBuild] } },
-            device with { Executable = new ExecutableSpec { Path = "Tools/Editor.exe" } },
+            unreviewedBuild with { Executable = moved },
         })
         {
             var settings = CompatPrecedence.Merge(TestEntries.LocalId, bundled, unreviewed);
             Assert.Equal(TestEntries.Clean, settings.Drm);
+            Assert.Equal(ReviewedClassificationUse.UnreviewedBuild, settings.ReviewedClassification);
             Assert.Equal(LaunchDecision.Refused, settings.Launch);
         }
 
@@ -292,6 +323,7 @@ public sealed class CompatPrecedenceTests
         // classifier.
         var unclassified = CompatPrecedence.Merge(TestEntries.LocalId, bundled, null);
         Assert.Null(unclassified.Drm);
+        Assert.Equal(ReviewedClassificationUse.UnreviewedBuild, unclassified.ReviewedClassification);
         Assert.Equal(LaunchDecision.Unclassified, unclassified.Launch);
     }
 

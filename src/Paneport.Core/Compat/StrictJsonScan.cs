@@ -11,7 +11,9 @@ namespace Paneport.Core.Compat;
 // through or report only in its own words: null, which no field takes; a field that appears twice;
 // a field the schema does not define; and an entry of translator or environment that is not a
 // string. It also reads the top-level schemaVersion, so that a file of a newer schema is reported
-// as such and not by the fields it adds. Comments and trailing commas are not JSON and fail.
+// as such and not by the fields it adds. Comments and trailing commas are not JSON and fail, and so
+// does a name or string that escapes half of a surrogate pair, such as "\ud800": valid JSON, but no
+// text that a name or a value can hold.
 internal static class StrictJsonScan
 {
     // The objects whose field names the scan knows. Free is anything else, whose type the
@@ -114,6 +116,10 @@ internal static class StrictJsonScan
                     case JsonTokenType.Number when frame.Shape == Shape.Root && frame.ValueName == "schemaVersion":
                         schemaVersion = reader.TryGetInt64(out var version) ? version : null;
                         break;
+                    case JsonTokenType.String when reader.ValueIsEscaped:
+                        // Valid UTF-8 holds no surrogate half, so only an escaped string can hold one.
+                        _ = reader.GetString();
+                        break;
                     default:
                         break;
                 }
@@ -124,6 +130,15 @@ internal static class StrictJsonScan
             // The reader's message holds no value, but the problem uses words of its own, as all do.
             return ScanResult.Failed(
                 new CompatProblem(CompatRule.Json, CompatPath.Root, "The file is not valid JSON."));
+        }
+        catch (InvalidOperationException)
+        {
+            // In this loop only GetString throws this: for an escaped surrogate half without its pair.
+            // The problem names no field, because the field's own name may be the text it cannot decode.
+            return ScanResult.Failed(new CompatProblem(
+                CompatRule.Json,
+                CompatPath.Root,
+                "A name or string escapes half of a UTF-16 surrogate pair without the other half."));
         }
 
         return new ScanResult(null, schemaVersion, problems);

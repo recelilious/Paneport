@@ -166,7 +166,7 @@ A missing `ceg` counts as unknown, because the device's classification can never
 | Size | More than 1 MiB (`Json`) |
 | Encoding | Bytes that are not UTF-8 (`Json`); a UTF-8 byte-order mark is skipped |
 | Syntax | Anything but one JSON object, comments and trailing commas (`Json`) |
-| Strict scan | `null`, which no field takes (`Type`); a field that appears twice in one object (`DuplicateField`); a field the schema does not define, in any letter case (`UnknownField`); an entry of `translator` or `environment` that is not a string (`Type`) |
+| Strict scan | `null`, which no field takes (`Type`); a field that appears twice in one object (`DuplicateField`); a field the schema does not define, in any letter case (`UnknownField`); an entry of `translator` or `environment` that is not a string (`Type`); a name or string that escapes half of a surrogate pair without the other, such as `"\ud800"`, which is valid JSON but no text (`Json`, at `$`, because the name may be the part that cannot be decoded) |
 | Schema version | A newer one (`NewerSchemaVersion`), reported alone unless the version itself appears twice; missing, or not 1 (`MissingField`, `InvalidValue`) |
 | Types | A value of the wrong type, including an integer with a fraction or an exponent (`Type`) |
 | Values | Required fields, names on their lists in their exact letter case, ranges, patterns, duplicate items (`MissingField`, `InvalidValue`), allow-lists (`NotAllowed`) |
@@ -179,7 +179,7 @@ A missing `ceg` counts as unknown, because the device's classification can never
 
 **An older `schemaVersion`** does not exist yet. The change that raises the version also brings the migration of device files and its tests.
 
-**Problems** name the field as a JSON path, such as `$.reports[0].date`, the rule, and what the rule asks for, never the value: a rejected value may be a local path or other personal data, and problems reach logs (C-0010 section 2). A field name that is not a plain name shows as `<name not shown>`, as the personal-data scanner prints such names (repository-checks.md section 3).
+**Problems** name the field as a JSON path, such as `$.reports[0].date`, the rule, and what the rule asks for, never the value: a rejected value may be a local path or other personal data, and problems reach logs (C-0010 section 2). A field name that is not a plain name shows as `<name not shown>`, as the personal-data scanner prints such names (repository-checks.md section 3). A path from the serializer shows its plain names and indices up to the first other segment, and `<name not shown>` in place of the rest, because the end of a name that the serializer puts in brackets cannot be told for sure. Only known names reach the serializer, so this only guards.
 
 **Names and integers.** The document classes keep the names of enumerations as strings and integers as 64-bit numbers, and the reader matches names ordinally and checks ranges itself, because the serializer's own enumeration handling ignores letter case and takes numbers.
 

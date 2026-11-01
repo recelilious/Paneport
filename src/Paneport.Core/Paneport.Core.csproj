@@ -12,4 +12,9 @@ SPDX-License-Identifier: MIT
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>
+
+  <!-- The tests reach a guard that no file can reach: CompatPath's redaction of the serializer's paths. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Paneport.Core.Tests" />
+  </ItemGroup>
 </Project>

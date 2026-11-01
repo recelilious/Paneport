@@ -19,6 +19,7 @@ Tests of [Paneport.Core](../../src/Paneport.Core/README.md).
 | `FakeNavigator.cs` | Not a test. A navigator that records the pages it shows. |
 | `Compat/TitleSchemaTests.cs` | The title schema read as plain JSON: draft 2020-12, the fields of C-0008, no `Steam` variable on the environment allow-list, the target devices of `compat-db.md`, and the lists, defaults and names that the code checks. |
 | `Compat/TitleEntryJsonTests.cs` | Every valid fixture loads, every invalid fixture is rejected for the rule it breaks, and loading, writing and loading again keeps every value. |
+| `Compat/CompatPathTests.cs` | The paths of the serializer's problems show no name that is not plain. No file reaches this guard, so the test calls the internal `CompatPath` directly; Paneport.Core lets this project see its internals for that. |
 | `Compat/CompatPrecedenceTests.cs`, `Compat/LaunchRuleTests.cs` | Each precedence rule of C-0008 section 1 with both exceptions, how the layers merge, and the launch rule for Steam and local titles. |
 | `Compat/DeviceLayerStoreTests.cs`, `Compat/CompatDatabaseTests.cs` | The device layer store in a temporary folder: one file per title named after its id, and an atomic replace that leaves the old file when a write fails. The database over both layers, and every file in `compat/titles/`. |
 | `Compat/Fixtures/` | Not tests. Synthetic title files, valid and invalid, for each layer, with made-up titles and values only (C-0008 section 5). `TitleEntryJsonTests` lists each invalid one with the rule it breaks. |

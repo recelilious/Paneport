@@ -9,7 +9,10 @@ namespace Paneport.Core.Compat;
 /// </summary>
 public enum CompatRule
 {
-    /// <summary>The file is not UTF-8 JSON holding one object, or it is larger than 1 MiB.</summary>
+    /// <summary>
+    /// The file is not UTF-8 JSON holding one object, a name or string in it escapes half of a
+    /// surrogate pair, or it is larger than 1 MiB.
+    /// </summary>
     Json,
 
     /// <summary>A value has the wrong JSON type. No field takes null.</summary>

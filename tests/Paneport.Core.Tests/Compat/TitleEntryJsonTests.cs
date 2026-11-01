@@ -21,6 +21,8 @@ public sealed class TitleEntryJsonTests
         { "not-an-object.json", CompatLayer.Bundled, CompatRule.Json, "$" },
         { "comment.json", CompatLayer.Bundled, CompatRule.Json, "$" },
         { "trailing-comma.json", CompatLayer.Bundled, CompatRule.Json, "$" },
+        { "surrogate-name.json", CompatLayer.Bundled, CompatRule.Json, "$" },
+        { "surrogate-value.json", CompatLayer.Bundled, CompatRule.Json, "$" },
         { "null-value.json", CompatLayer.Bundled, CompatRule.Type, "$.jitPoolMiB" },
         { "wrong-type.json", CompatLayer.Bundled, CompatRule.Type, "$.jitPoolMiB" },
         { "fraction-integer.json", CompatLayer.Bundled, CompatRule.Type, "$.jitPoolMiB" },
@@ -97,6 +99,7 @@ public sealed class TitleEntryJsonTests
         { "ceg-no.json", CompatLayer.Device, CompatRule.DeviceLayer, "$.drm.ceg" },
         { "ceg-yes.json", CompatLayer.Device, CompatRule.DeviceLayer, "$.drm.ceg" },
         { "jit-pool-too-large.json", CompatLayer.Device, CompatRule.InvalidValue, "$.jitPoolMiB" },
+        { "surrogate-name.json", CompatLayer.Device, CompatRule.Json, "$" },
     };
 
     public static TheoryData<CompatLayer, string> ValidFixtures { get; } = new(

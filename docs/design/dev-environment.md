@@ -88,12 +88,12 @@ M1.2 extends the bootstrap with CMake and the LLVM release of clang-format and c
 
 The `ios` job in `.github/workflows/ci.yml` is the macOS build host while there is no local Mac. [The workflows' README](../../.github/workflows/README.md) lists its steps, and [repository-checks.md](repository-checks.md) section 6 describes them.
 
-- **When it runs.** recelilious decided that the job runs only before merging (D7, 2026-10-29). It runs for a pull request that carries the `ios-ci` label: when the label is added, and on every push after that. Add the label once the pull request is otherwise ready; C-0011 section 3 requires the job to pass on the last commit before the merge. A newer push cancels the job's run for the same pull request.
+- **When it runs.** For every pull request, on every push to it (D7, 2026-11-01). C-0011 section 3 requires the job to pass on the last commit before a merge, and a job that runs only with a label would be skipped without it, which GitHub counts as passed. The job builds the merge result that the `pull_request` event checks out, so the `push` event of the same commit skips it; C-0011 section 4 leaves the job's triggers to recelilious, whose choice names pull requests. A push without a pull request, such as the merge commit on `main`, is therefore not built for iOS. A newer push cancels the job's run for the same pull request.
 - **What it checks.** The job first selects the pinned Xcode through `DEVELOPER_DIR`, because the image's default can move past the pin. The bootstrap with the pinned Xcode passes, and the bootstrap against another Xcode on the image fails and names both versions. Paneport.iOS restores from its lock file and builds for `ios-arm64` in Release without signing, its formatting passes, and its app names the scene delegate, requires iOS 26.0, holds arm64 code only, carries no signature beyond the one that Apple's linker may give arm64 code, which holds no identity, and no provisioning profile.
 - **What it leaves.** The app, zipped so that the bundle keeps its name and the executable its file mode, as an artifact named by the pull request's commit, and only when the app passed its checks. CI holds no Apple certificate or profile (C-0009 section 5).
 - **How long it takes.** Its first green run, on 2026-10-31, took 2 min 39 s: 40 s for the bootstrap, which installs the workload, 90 s for the Release build with full ahead-of-time compilation, and the rest for the checks and the upload. M1.2 adds the native host and M1.3 two full builds of the app, so the job will take longer.
 - **A lock file without a Mac.** Restoring Paneport.iOS needs the iOS workload, so its lock file cannot be made on a workstation without it. The job makes it instead, because a locked restore writes a lock file that is missing. A lock file that is there but stale fails the restore with NU1004 and writes nothing, so a change that needs a new one, such as a new package or a new workload pin, goes like this:
-  1. Delete `src/Paneport.iOS/packages.lock.json` in the change, and push it to a pull request with the `ios-ci` label.
+  1. Delete `src/Paneport.iOS/packages.lock.json` in the change, and push it to a pull request.
   2. The job's step "Check that no lock file was written" fails and prints the file that the restore wrote.
   3. Commit exactly that file and push again.
 
@@ -138,7 +138,7 @@ Public material consulted (C-0001 section 6):
 - The `xcode-27` image: <https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md>
 - The `macos-26` image: <https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md>
 - The `xcode-27` image announced as generally available: <https://github.blog/changelog/2026-10-15-xcode-27-runner-image-generally-available>
-- Events that trigger workflows, among them the `labeled` activity of `pull_request`: <https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows>
+- Events that trigger workflows, among them `pull_request` and the merge result it checks out: <https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows>
 - actions/upload-artifact: <https://github.com/actions/upload-artifact>
 - Visual Studio 2022 and `net10.0`: <https://github.com/dotnet/sdk/issues/51678>
 - Pair to Mac: <https://learn.microsoft.com/en-us/dotnet/maui/ios/pair-to-mac>

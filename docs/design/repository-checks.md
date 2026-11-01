@@ -156,7 +156,7 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 
 ## 6. The CI jobs
 
-`.github/workflows/ci.yml` runs on every push and every pull request (C-0011 section 4), except the `ios` job, which runs only before merging (D7). Actions are pinned to full commit hashes, runner images to explicit versions, and the workflow's token can only read the repository. In every job, every step after the setup runs even when an earlier step failed (`if: ${{ !cancelled() }}`), so that one run shows every failure.
+`.github/workflows/ci.yml` runs on every push and every pull request (C-0011 section 4), except the `ios` job, which runs only for pull requests (D7): their `pull_request` run builds the merge result, so the `push` run of the same commit skips it. Actions are pinned to full commit hashes, runner images to explicit versions, and the workflow's token can only read the repository. In every job, every step after the setup runs even when an earlier step failed (`if: ${{ !cancelled() }}`), so that one run shows every failure.
 
 **`dotnet`**, on `windows-2025` and `ubuntu-24.04`:
 
@@ -181,7 +181,7 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 9. lychee, offline, on the relative links of `docs/research/`: `lychee --offline --no-progress --extensions md docs/research`.
 10. The dependency license check.
 
-**`ios`**, on the macOS image that `eng/toolchain.json` pins, only for a pull request with the `ios-ci` label (D7; [dev-environment.md](dev-environment.md) section 5):
+**`ios`**, on the macOS image that `eng/toolchain.json` pins, for every pull request, and not for a push event (D7; [dev-environment.md](dev-environment.md) section 5):
 
 1. Check out, and install the SDK that `global.json` pins.
 2. Select the Xcode that `eng/toolchain.json` pins: set `DEVELOPER_DIR` to `/Applications/Xcode_<pin>.app` for the later steps, and fail when the image has no such folder. The image's default Xcode can move past the pin while the pinned one is still installed. Some of the image's version-named folders are links to other releases, such as a release candidate, so the bootstrap's exact check of the version stays the gate.

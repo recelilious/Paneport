@@ -132,7 +132,7 @@
       }
     },
     {
-      "$comment": "An entry states dock only when its own drm shows a value that blocks the Direct path, so the stated path is the one the app takes whatever the device's classification adds (docs/design/compat-db.md).",
+      "$comment": "C-0008 section 5: launch is dock whenever the entry's own drm does not make it direct. An entry whose drm sets ceg to no and neither steamApi nor steamStub to true could still take the Direct path once the device's classification fills in the other members, so it does not state dock (docs/design/compat-db.md).",
       "if": {
         "required": ["launch"],
         "properties": {
@@ -142,7 +142,6 @@
         }
       },
       "then": {
-        "required": ["drm"],
         "properties": {
           "drm": {
             "anyOf": [
@@ -163,10 +162,12 @@
                 }
               },
               {
-                "required": ["ceg"],
-                "properties": {
-                  "ceg": {
-                    "enum": ["yes", "unknown"]
+                "not": {
+                  "required": ["ceg"],
+                  "properties": {
+                    "ceg": {
+                      "const": "no"
+                    }
                   }
                 }
               }

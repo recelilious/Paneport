@@ -284,6 +284,31 @@ public sealed class TitleEntryJsonTests
         Assert.Throws<ArgumentException>(() => TitleEntryJson.Write(dock, CompatLayer.Device));
     }
 
+    // C-0008 section 5 derives dock from every drm that does not allow direct, and an entry may state
+    // it, except one whose ceg is no while no marker is true: the device could still make that direct.
+    [Theory]
+    [InlineData(false, null, null, null, true)]
+    [InlineData(true, null, null, null, true)]
+    [InlineData(true, false, false, null, true)]
+    [InlineData(true, false, false, CegStatus.Unknown, true)]
+    [InlineData(true, null, null, CegStatus.Yes, true)]
+    [InlineData(true, true, null, CegStatus.No, true)]
+    [InlineData(true, false, true, CegStatus.No, true)]
+    [InlineData(true, null, null, CegStatus.No, false)]
+    [InlineData(true, false, null, CegStatus.No, false)]
+    [InlineData(true, false, false, CegStatus.No, false)]
+    public void EntryStatesDockWhereTheDeviceCannotMakeItDirect(
+        bool hasDrm, bool? steamApi, bool? steamStub, CegStatus? ceg, bool allowed)
+    {
+        var drm = hasDrm ? new DrmClassification { SteamApi = steamApi, SteamStub = steamStub, Ceg = ceg } : null;
+        var entry = TestEntries.Steam() with { Drm = drm, Launch = LaunchPath.Dock };
+
+        var problems = TitleEntryJson.Validate(entry, CompatLayer.Bundled);
+
+        (CompatRule, string)[] expected = allowed ? [] : [(CompatRule.Launch, "$.launch")];
+        Assert.Equal(expected, problems.Select(problem => (problem.Rule, problem.Path)));
+    }
+
     [Fact]
     public void ValidateChecksAnEntryMadeInCode()
     {

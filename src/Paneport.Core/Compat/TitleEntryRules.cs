@@ -258,8 +258,10 @@ internal static partial class TitleEntryRules
         }
     }
 
-    // C-0008 section 5, for a reviewed entry: a stated launch path follows from the entry's own drm,
-    // whatever the device's classification adds, and a local title shows no Steam marker.
+    // C-0008 section 5, for a reviewed entry: a stated direct follows from the entry's own drm,
+    // whatever the device's classification adds. A stated dock is what the rule derives from any
+    // other drm, unless that drm sets ceg to no and no marker to true, which the device's
+    // classification could still turn into direct. A local title shows no Steam marker.
     private static void CheckStatedLaunch(TitleEntry entry, List<CompatProblem> problems)
     {
         if (entry.Launch == LaunchPath.Direct && !LaunchRule.AllowsDirect(entry.Drm))
@@ -270,12 +272,14 @@ internal static partial class TitleEntryRules
                 "An entry that states direct has steamApi and steamStub false and ceg no in its own drm."));
         }
 
-        if (entry.Launch == LaunchPath.Dock && !LaunchRule.BlocksDirect(entry.Drm))
+        if (entry.Launch == LaunchPath.Dock
+            && entry.Drm is { Ceg: CegStatus.No, SteamApi: not true, SteamStub: not true })
         {
             problems.Add(new CompatProblem(
                 CompatRule.Launch,
                 "$.launch",
-                "An entry that states dock shows steamApi or steamStub true, or ceg yes or unknown, in its own drm."));
+                "An entry whose own drm has ceg no states dock only with steamApi or steamStub true there, "
+                + "because the device's classification could otherwise allow the Direct path."));
         }
 
         // Only a well-formed local id counts; an id with both members is reported as such alone.

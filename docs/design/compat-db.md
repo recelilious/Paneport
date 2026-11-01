@@ -101,7 +101,7 @@ Both layers use the fields and types of the schema. Each has rules of its own, w
 | Follows the schema | Yes, as a reviewed file | Its fields and types only; the schema itself is for `compat/titles/` |
 | `name` | Required | Optional; Steam's app information or the import names the title |
 | `executable` for a local title | Required, because `exeSha256` hashes the program it names | Optional; the bundled entry may name the program |
-| `launch` | Allowed when its own `drm` decides it (section 5) | Never: the launch path follows from `drm` |
+| `launch` | Allowed where the device cannot change the path (section 5) | Never: the launch path follows from `drm` |
 | `rating`, `reports` | Allowed | Never: only reviewed entries hold them |
 | `drm.ceg` | `yes`, `no` or `unknown` | Only `unknown` |
 | A local title's Steam marker | Rejected: `steamApi` or `steamStub` true, or `ceg` `yes` (C-0008 section 5) | Allowed: it is the computed classification, and the launch is refused (section 5) |
@@ -153,7 +153,7 @@ C-0008 section 5: "`launch` is `direct` only when `steamApi` and `steamStub` are
 
 A missing `ceg` counts as unknown, because the device's classification can never set it. `steamAppIdFile` is recorded only and decides nothing. `LaunchDecision` has its own `Refused` value, because a local title can take no other path; `Title` and `LaunchPath` of the shell stay as M0.3 made them, and M6.5 shows a refusal as its UI needs.
 
-**A stated `launch`.** A reviewed entry may state `launch`, but only when its own `drm` decides it whatever the device computes: `direct` needs `steamApi` and `steamStub` false and `ceg` `no` in the entry itself, and `dock` needs a member there that blocks the Direct path. An entry that sets only some members leaves `launch` out. The stated path is then always the path the app takes, so a reviewer can trust it. A local title never states `dock`.
+**A stated `launch`.** A reviewed entry may state `launch` where the device's classification cannot change the path. `direct` needs `steamApi` and `steamStub` false and `ceg` `no` in the entry itself. `dock` is what C-0008 section 5 derives from any other `drm`, including none at all, and an entry may state it, except one whose `drm` sets `ceg` to `no` and neither `steamApi` nor `steamStub` to true: the device could fill in the other members with false and make the path Direct. Without a reviewed `ceg` of `no` a title never takes the Direct path (section 4), so a stated `dock` holds once the title is classified; before that, the decision is Unclassified. A local title never states `dock`.
 
 **A local title's markers.** A reviewed local entry is rejected when its `drm` shows a Steam marker: `steamApi` or `steamStub` true, or `ceg` `yes`, CEG being Steam's own DRM. `steamAppIdFile` is not a marker for the rule, which names only the other three. On the device, such values are the classification of an imported folder, and the launch is refused.
 
@@ -219,7 +219,7 @@ Every rule of C-0008 sections 1 and 5 that the loader enforces, and the tests in
 | `drm` has no default that allows a launch | `TitleSchemaTests.NothingThatAllowsALaunchHasADefault` |
 | File names: `steam-<appid>.json`, `local-<slug>.json`, matching the id (section 1) | `DeviceLayerStoreTests`: `EachTitleHasOneFileNamedAfterItsId`, `FileWhoseIdIsAnotherTitlesIsRejected`, `LoadAllReadsTitleFilesAndRejectsOtherNames`; `TitleEntryJsonTests.FileOfAnotherTitleIsRejected` |
 | The slug pattern (section 1) | The fixture `bad-slug.json`; `TitleIdTests` |
-| Launch follows the classification, for Steam and local titles (section 5) | `LaunchRuleTests`; the fixtures `direct-without-ceg.json`, `dock-without-blocker.json`, `local-dock.json`, `launch-unclassified.json` |
+| Launch follows the classification, for Steam and local titles (section 5) | `LaunchRuleTests`; `TitleEntryJsonTests.EntryStatesDockWhereTheDeviceCannotMakeItDirect`; the fixtures `direct-without-ceg.json`, `dock-without-blocker.json`, `local-dock.json`, `launch-unclassified.json` |
 | A local title shows no Steam marker (section 5) | The fixtures `local-steam-api.json`, `local-steam-stub.json`, `local-ceg-yes.json`; `LaunchRuleTests.ClassificationDecidesThePath` for the refusal |
 | The environment allow-list holds no Steam variable (section 5) | `TitleSchemaTests.EnvironmentAllowListHoldsNoSteamVariable`, `ListsMatchTheCode`; the fixture `environment-steam-key.json` |
 | Allow-list of translator options (section 2) | The fixture `translator-key.json`; `TitleSchemaTests.ListsMatchTheCode` |

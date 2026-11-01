@@ -14,7 +14,7 @@ The iOS app head (C-0004 section 2): .NET for iOS on Mono (C-0010 section 1), bu
 | `SceneDelegate.cs` | The delegate of the window scene, registered as `PaneportSceneDelegate`. It gives the scene a window that shows the main view controller. |
 | `MainViewController.cs` | An empty view controller that shows the app's name. |
 | `Info.plist` | The scene manifest, which names the scene delegate, the launch screen, the device family and the orientations. The build adds the bundle identifier, the name, the versions and the minimum iOS version from the project file. |
-| `packages.lock.json` | The lock file. The restore for `ios-arm64` writes it, so it is updated on a Mac, or from the log of the `ios` job. |
+| `packages.lock.json` | The lock file. Only a restore with the iOS workload can write it: on a Mac, or in the `ios` job, which prints it when the file is missing. To renew it without a Mac, follow [dev-environment.md](../../docs/design/dev-environment.md) section 5. |
 
 Building it needs a Mac with Apple silicon, the Xcode that `eng/toolchain.json` pins and the iOS workload, which `eng/mac/bootstrap.sh` checks and installs. From the repository root:
 

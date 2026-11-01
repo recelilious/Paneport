@@ -49,7 +49,7 @@ Paneport.iOS needs the iOS workload for the full format check, which the `ios` j
 dotnet format whitespace src/Paneport.iOS --folder --verify-no-changes
 ```
 
-Build and test as the [quick start](README.md#quick-start) shows. [repository-checks.md](docs/design/repository-checks.md) section 8 lists every check with its local command, among them the dependency licenses, the toolchain pins and the trimmed publish. REUSE and lychee run in the `checks` job of CI. The `ios` job, which builds the iOS app on a macOS runner, runs only for a pull request with the `ios-ci` label: add it once the pull request is otherwise ready to merge ([dev-environment.md](docs/design/dev-environment.md) section 5).
+Build and test as the [quick start](README.md#quick-start) shows. [repository-checks.md](docs/design/repository-checks.md) section 8 lists every check with its local command, among them the dependency licenses, the toolchain pins and the trimmed publish. REUSE and lychee run in the `checks` job of CI. The `ios` job builds the iOS app on a macOS runner for every pull request ([dev-environment.md](docs/design/dev-environment.md) section 5).
 
 ## Tests
 
@@ -58,4 +58,4 @@ Build and test as the [quick start](README.md#quick-start) shows. [repository-ch
 
 ## Packages
 
-Register a new package and everything it brings in under C-0003 first. Then add its version to `Directory.Packages.props`, map it in `eng/license-map.json`, and update the lock files with `dotnet restore eng/ci.slnf --force-evaluate`, because a plain restore keeps stale entries. [solution-and-build.md](docs/design/solution-and-build.md) section 5 describes the steps.
+Register a new package and everything it brings in under C-0003 first. Then add its version to `Directory.Packages.props`, map it in `eng/license-map.json`, and update the lock files with `dotnet restore eng/ci.slnf --force-evaluate`, because a plain restore keeps stale entries. `eng/ci.slnf` leaves out Paneport.iOS, whose lock file is renewed as [dev-environment.md](docs/design/dev-environment.md) section 5 describes. [solution-and-build.md](docs/design/solution-and-build.md) section 5 describes the steps.

@@ -253,7 +253,8 @@ Every new file carries the SPDX lines of C-0010 section 6 or is covered by `REUS
 **Notes from earlier stages.**
 
 - M0.1 ([L0 brief](L0-foundation.md), session log of 2026-10-29): the third-party notices of SkiaSharp's and HarfBuzzSharp's native-asset packages list about twenty components, among them libmicrohttpd under LGPL-2.1-or-later; confirm which of them the shipped iOS libraries contain (`docs/design/solution-and-build.md` section 10).
-- M1.1 ([L1 brief](L1-app-on-iphone.md), session log of 2026-10-31): the `release` job runs on the image that `macos-runner-image` pins, as a plain `runs-on` value, or `tools/CheckToolchain.cs` fails. It can reuse the `ios` job's bootstrap step, and the `ditto` zip that keeps the app's file modes (`docs/design/repository-checks.md` sections 5 and 6).
+- M1.1 ([L1 brief](L1-app-on-iphone.md), session log of 2026-10-31, corrected after the review of 2026-11-01): the `release` job runs on the image that `macos-runner-image` pins, named by a plain `runs-on` label or a one-line matrix list, or `tools/CheckToolchain.cs` fails. It can reuse the `ios` job's steps that select the pinned Xcode and run the bootstrap, and the `ditto` zip that keeps the app's file modes (`docs/design/repository-checks.md` sections 5 and 6).
+- M1.1 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-01): on macOS, SDK 10.0.403 installs workload packs without NuGet signature verification, as the `ios` job's log says ("Skipping NuGet package signature verification.") and the SDK's `WorkloadUtilities.ShouldVerifySignatures` is false off Windows. That includes the Mono and .NET for iOS runtime packs that ship in the app; any further check of those inputs is a proposal for recelilious.
 
 **Session log.**
 

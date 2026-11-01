@@ -342,6 +342,13 @@ internal static class Checks
         .Select(pin => $"{ToolchainJson.FilePath} pins {pin.Name}, but tools/CheckToolchain.cs cannot check it yet.")
         .ToList();
 
+    // The tools that an option checks but that eng/toolchain.json does not pin. Without them the
+    // option would compare nothing and still pass.
+    public static List<string> Missing(IEnumerable<ToolPin> pins, string option) => Probes.ByTool
+        .Where(probe => probe.Value.Option == option && !pins.Any(pin => pin.Name == probe.Key))
+        .Select(probe => $"{ToolchainJson.FilePath} pins no {probe.Key}, so {option} has nothing to compare.")
+        .ToList();
+
     // The workload set holds the version of every workload, so the ios workload must also be
     // installed from it.
     public static List<string> IosWorkload(CommandRunner run)
@@ -368,9 +375,11 @@ internal static class Checks
 
 // The macOS jobs of the workflows run on the runner image that eng/toolchain.json pins
 // (C-0009 section 2). GitHub names its macOS images "macos-<version>", and the images that
-// each carry the releases of one Xcode version "xcode-<version>". Only a plain runs-on value
-// counts, so the workflows name a macOS image that way, never through a matrix or an
-// expression, which this check cannot follow.
+// each carry the releases of one Xcode version "xcode-<version>", and it compares runner
+// labels without regard to case. The check reads two forms of runs-on: a plain label, and
+// ${{ matrix.<key> }} with that key's list written on one line in the same job, as in
+// "os: [windows-2025, ubuntu-24.04]". Every other form fails with its file and line, so that
+// no job escapes the check.
 internal static partial class RunnerImage
 {
     public const string Tool = "macos-runner-image";
@@ -378,27 +387,60 @@ internal static partial class RunnerImage
 
     public static List<string> Check(ToolPin? pin, IReadOnlyList<(string File, string Text)> workflows)
     {
-        var labels = workflows
-            .SelectMany(workflow => workflow.Text.Split('\n').Select((line, index) =>
-                (workflow.File, Line: index + 1, Match: RunsOn().Match(line))))
-            .Where(entry => entry.Match.Success)
-            .Select(entry => (entry.File, entry.Line, Label: entry.Match.Groups[1].Value))
-            .ToList();
-
         var problems = new List<string>();
+        var labels = new List<(string File, int Line, string Label)>();
+        foreach (var (file, text) in workflows)
+        {
+            var lines = text.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+            for (var index = 0; index < lines.Length; index++)
+            {
+                var runsOn = RunsOnKey().Match(lines[index]);
+                if (!runsOn.Success)
+                {
+                    continue;
+                }
+
+                var value = runsOn.Groups["value"].Value;
+                var matrix = MatrixReference().Match(value);
+                if (PlainLabel().Match(value) is { Success: true } plain)
+                {
+                    labels.Add((file, index + 1, plain.Groups["label"].Value));
+                }
+                else if (matrix.Success
+                    && MatrixList(lines, index, runsOn.Groups["indent"].Length, matrix.Groups["key"].Value) is { } list)
+                {
+                    labels.AddRange(list.Labels.Select(label => (file, list.Line, label)));
+                }
+                else if (matrix.Success)
+                {
+                    var key = matrix.Groups["key"].Value;
+                    problems.Add(
+                        $"{file} line {index + 1}: runs-on names matrix.{key}, but its job has no single list "
+                            + $"\"{key}: [...]\" on one line that tools/CheckToolchain.cs can read.");
+                }
+                else
+                {
+                    problems.Add(
+                        $"{file} line {index + 1}: tools/CheckToolchain.cs cannot read this runs-on value. Name "
+                            + "the runner with a plain label, or with ${{ matrix.<key> }} and a one-line list of "
+                            + "the key.");
+                }
+            }
+        }
+
         if (pin is not null && !IsMacOS(pin.Version))
         {
             problems.Add($"{ToolchainJson.FilePath} pins {Tool} {pin.Version}, which is not a macOS runner image.");
         }
 
-        foreach (var (file, line, label) in labels.Where(entry => IsMacOS(entry.Label) && entry.Label != pin?.Version))
+        foreach (var (file, line, label) in labels.Where(entry => IsMacOS(entry.Label) && !Same(entry.Label, pin)))
         {
             problems.Add(pin is null
                 ? $"{file} line {line} runs on {label}, but {ToolchainJson.FilePath} pins no {Tool}."
                 : $"{file} line {line} runs on {label}, but {ToolchainJson.FilePath} pins {pin.Version}.");
         }
 
-        if (pin is not null && !labels.Any(entry => entry.Label == pin.Version))
+        if (pin is not null && !labels.Any(entry => Same(entry.Label, pin)))
         {
             problems.Add($"{ToolchainJson.FilePath} pins {Tool} {pin.Version}, but no job in {Folder} runs on it.");
         }
@@ -406,12 +448,71 @@ internal static partial class RunnerImage
         return problems;
     }
 
-    private static bool IsMacOS(string label) =>
-        label.StartsWith("macos-", StringComparison.Ordinal) || label.StartsWith("xcode-", StringComparison.Ordinal);
+    // The entries of the job's list for a matrix key, with the list's line, or null when the
+    // job does not name that key exactly once, in a list of plain labels on one line. The job
+    // is the nearest line above runs-on that is indented less, and ends before the next line
+    // that is indented no more than the job.
+    private static (int Line, List<string> Labels)? MatrixList(string[] lines, int runsOn, int indent, string key)
+    {
+        var job = Enumerable.Range(0, runsOn).Reverse()
+            .FirstOrDefault(index => IsContent(lines[index]) && Indent(lines[index]) < indent, -1);
+        if (job < 0)
+        {
+            return null;
+        }
 
-    // "runs-on: xcode-27", with or without quotes, and with an optional comment.
-    [GeneratedRegex(@"^\s*runs-on:\s*[""']?([A-Za-z0-9._-]+)[""']?\s*(#.*)?\r?$")]
-    private static partial Regex RunsOn();
+        var found = new List<(int Line, string Value)>();
+        for (var index = job + 1; index < lines.Length; index++)
+        {
+            if (IsContent(lines[index]) && Indent(lines[index]) <= Indent(lines[job]))
+            {
+                break;
+            }
+
+            var text = lines[index].TrimStart();
+            text = text.StartsWith("- ", StringComparison.Ordinal) ? text[2..].TrimStart() : text;
+            if (text.StartsWith($"{key}:", StringComparison.Ordinal))
+            {
+                found.Add((index + 1, text[(key.Length + 1)..].Trim()));
+            }
+        }
+
+        var list = found.Count == 1 ? InlineList().Match(found[0].Value) : Match.Empty;
+        var entries = list.Success
+            ? list.Groups["items"].Value.Split(',').Select(entry => entry.Trim().Trim('"', '\'')).ToList()
+            : [];
+        return entries.Count > 0 && entries.All(entry => PlainEntry().IsMatch(entry)) ? (found[0].Line, entries) : null;
+    }
+
+    private static bool IsContent(string line) => line.Trim().Length > 0 && !line.TrimStart().StartsWith('#');
+
+    private static int Indent(string line) => line.Length - line.TrimStart(' ').Length;
+
+    private static bool IsMacOS(string label) =>
+        label.StartsWith("macos-", StringComparison.OrdinalIgnoreCase)
+            || label.StartsWith("xcode-", StringComparison.OrdinalIgnoreCase);
+
+    private static bool Same(string label, ToolPin? pin) =>
+        string.Equals(label, pin?.Version, StringComparison.OrdinalIgnoreCase);
+
+    // A runs-on key, with the rest of its line.
+    [GeneratedRegex(@"^(?<indent>\s*)runs-on:(?<value>.*)$")]
+    private static partial Regex RunsOnKey();
+
+    // "xcode-27", with or without quotes, and with an optional comment.
+    [GeneratedRegex(@"^\s*(?<q>[""']?)(?<label>[A-Za-z0-9._-]+)\k<q>\s*(#.*)?$")]
+    private static partial Regex PlainLabel();
+
+    // "${{ matrix.os }}", with or without quotes, and with an optional comment.
+    [GeneratedRegex(@"^\s*(?<q>[""']?)\$\{\{\s*matrix\.(?<key>[A-Za-z0-9_-]+)\s*\}\}\k<q>\s*(#.*)?$")]
+    private static partial Regex MatrixReference();
+
+    // "[windows-2025, ubuntu-24.04]", with an optional comment.
+    [GeneratedRegex(@"^\[(?<items>[^\[\]]*)\]\s*(#.*)?$")]
+    private static partial Regex InlineList();
+
+    [GeneratedRegex(@"^[A-Za-z0-9._-]+$")]
+    private static partial Regex PlainEntry();
 }
 
 internal static class ToolchainCheck
@@ -460,6 +561,11 @@ internal static class ToolchainCheck
             if (!options.Contains(option))
             {
                 continue;
+            }
+
+            foreach (var problem in Checks.Missing(pins, option))
+            {
+                failed += Report($"a tool that {option} checks", [problem]);
             }
 
             foreach (var tool in checkedHere)
@@ -754,6 +860,8 @@ internal static class SelfTest
 
         Console.WriteLine("Runner image:");
         var image = pins.Single(pin => pin.Name == RunnerImage.Tool);
+        List<string> withJob(string job) => RunnerImage.Check(image, [("ci.yml", $"{Workflow}\n  extra:\n{job}")]);
+        List<string> edited(string from, string to) => RunnerImage.Check(image, [("ci.yml", Edit(Workflow, from, to))]);
         tally.Expect(RunnerImage.Check(image, [("ci.yml", Workflow)]).Count == 0, "the pinned macOS image passes");
         tally.Expect(
             Names(
@@ -777,6 +885,61 @@ internal static class SelfTest
             RunnerImage.Check(image, [("ci.yml", Workflow), ("other.yml", "jobs:\n  x:\n    runs-on: macos-latest\n")])
                 .Count == 1,
             "every workflow is read");
+        tally.Expect(
+            Names(withJob("    runs-on: [macos-26]"), "line 12", "cannot read"),
+            "a runs-on list in brackets fails");
+        tally.Expect(
+            Names(withJob("    runs-on:\n      - macos-26"), "line 12", "cannot read"),
+            "a runs-on list in block form fails");
+        tally.Expect(
+            Names(withJob("    runs-on:\n      group: big\n      labels: macos-26"), "line 12", "cannot read"),
+            "runs-on with a group and labels fails");
+        tally.Expect(
+            Names(withJob("    runs-on: { labels: [macos-26] }"), "cannot read"),
+            "runs-on as a mapping fails");
+        tally.Expect(
+            Names(withJob("    runs-on: ${{ 'macos-26' }}"), "cannot read"),
+            "runs-on as another expression fails");
+        tally.Expect(
+            Names(withJob("    runs-on: macOS-26"), "runs on macOS-26")
+                && Names(withJob("    runs-on: Xcode-26"), "runs on Xcode-26"),
+            "macOS images are found in any letter case");
+        tally.Expect(
+            edited("runs-on: xcode-27", "runs-on: Xcode-27").Count == 0,
+            "the pinned image in another letter case passes, as GitHub compares labels so");
+        tally.Expect(
+            Names(edited("ubuntu-24.04]", "ubuntu-24.04, macos-26]"), "ci.yml line 5 runs on macos-26"),
+            "a macOS image in the matrix list of runs-on fails, with the list's line");
+        tally.Expect(
+            Names(edited("[windows-2025, ubuntu-24.04]", "[\"windows-2025\", 'macos-26']"), "runs on macos-26"),
+            "quoted entries of a matrix list are read");
+        tally.Expect(
+            Names(withJob("    runs-on: ${{ matrix.platform }}"), "matrix.platform"),
+            "a matrix key without a list in its job fails");
+        tally.Expect(
+            Names(
+                withJob(
+                    "    strategy:\n      matrix:\n        os: [ubuntu-24.04]\n"
+                        + "        include:\n          - os: macos-26\n    runs-on: ${{ matrix.os }}"),
+                "matrix.os"),
+            "a matrix key that the job sets twice, as include does, fails");
+
+        Console.WriteLine("Missing pins:");
+        tally.Expect(
+            Checks.Missing(pins, Probes.Xcode).Count == 0 && Checks.Missing(pins, Probes.IosWorkload).Count == 0,
+            "every tool of --xcode and --ios-workload is pinned in the fixture");
+        var withoutXcode = ToolchainJson.Parse(
+            Edit(Pinned, "\"xcode\": { \"version\": \"27.1\", \"source\": \"https://example.com/xcode\" },", ""));
+        tally.Expect(
+            Names(Checks.Missing(withoutXcode, Probes.Xcode), "pins no xcode", "--xcode"),
+            "--xcode without an Xcode pin fails instead of comparing nothing");
+        var withoutWorkloadSet = ToolchainJson.Parse(Edit(
+            Pinned,
+            "\"ios-workload-set\": { \"version\": \"10.0.403\", \"source\": \"https://example.com/workloads\" },",
+            ""));
+        tally.Expect(
+            Names(Checks.Missing(withoutWorkloadSet, Probes.IosWorkload), "pins no ios-workload-set", "--ios-workload"),
+            "--ios-workload without a workload set pin fails");
 
         Console.WriteLine("Options:");
         tally.Expect(Cli.Options([]) is { Count: 0 }, "no option checks the SDK and the runner image only");

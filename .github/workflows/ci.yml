@@ -8,8 +8,6 @@ name: CI
 on:
   push:
   pull_request:
-    # labeled: adding the ios-ci label starts the ios job (see that job).
-    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
@@ -181,13 +179,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/CheckLicenses.cs
 
-  # D7 (plan section 4.2): the ios job runs only before merging. It runs for a pull request
-  # that carries the ios-ci label: when the label is added, and on every push after that.
+  # D7 (plan section 4.2): the ios job runs for every pull request, on the merge result that
+  # the pull_request event checks out. A push event skips it: on a branch with a pull request,
+  # the pull_request run of the same push builds that result, and C-0011 section 4 leaves the
+  # job's triggers to recelilious.
   ios:
-    if: >-
-      github.event_name == 'pull_request'
-      && contains(github.event.pull_request.labels.*.name, 'ios-ci')
-      && (github.event.action != 'labeled' || github.event.label.name == 'ios-ci')
+    if: github.event_name == 'pull_request'
     # eng/toolchain.json pins this image as macos-runner-image, and tools/CheckToolchain.cs
     # fails when the two differ.
     runs-on: xcode-27
@@ -206,6 +203,19 @@ jobs:
         with:
           global-json-file: global.json
 
+      # The image's default Xcode can move past the pin while the pinned one is still
+      # installed, so every later step uses the pinned one. The image names an Xcode by its
+      # version, and some of those names are links to other releases, such as a release
+      # candidate; the bootstrap's exact check of the version stays the gate.
+      - name: Select the Xcode that eng/toolchain.json pins
+        run: |
+          pin=$(plutil -extract tools.xcode.version raw -o - eng/toolchain.json)
+          if [ ! -d "/Applications/Xcode_$pin.app" ]; then
+            echo "::error title=Xcode::The image has no Xcode $pin."
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=/Applications/Xcode_$pin.app/Contents/Developer" >> "$GITHUB_ENV"
+
       # It checks the SDK and Xcode against their pins, installs the iOS workload from the
       # pinned workload set, and checks that too.
       - name: Check the toolchain and install the iOS workload (eng/mac/bootstrap.sh)
@@ -218,7 +228,7 @@ jobs:
           echo "Workload set: $(dotnet workload --version)"
           dotnet workload list
           xcodebuild -version
-          echo "Xcode in use: $(xcode-select -p)"
+          echo "Xcode in use: ${DEVELOPER_DIR:-$(xcode-select -p)}"
 
       # The bootstrap must refuse any Xcode but the pinned one. The step runs it against
       # another Xcode on the image and passes only if it fails and names both versions. It
@@ -259,8 +269,10 @@ jobs:
         run: dotnet restore src/Paneport.iOS/Paneport.iOS.csproj --locked-mode
 
       # As in the dotnet job: locked mode writes a missing lock file instead of failing. The
-      # step prints a written lock file, which is how the lock file of a new iOS project is
-      # made without a Mac.
+      # step prints a written lock file, which is how the lock file of Paneport.iOS is made
+      # without a Mac (docs/design/dev-environment.md section 5). NuGet ends the file without
+      # a line break, so the step adds one, which keeps the printed file whole and the error
+      # command on a line of its own.
       - name: Check that no lock file was written
         if: ${{ !cancelled() }}
         run: |
@@ -270,6 +282,7 @@ jobs:
             for file in $(git status --porcelain --untracked-files=all -- '*.lock.json' | cut -c4-); do
               echo "----- $file"
               cat "$file"
+              echo
             done
             echo "::error title=Lock files::A lock file was created or changed. Commit each project's lock file (C-0009 section 2)."
             exit 1
@@ -286,7 +299,8 @@ jobs:
       # The app names the scene delegate of its own Info.plist, supports iOS 26.0 and later
       # (C-0001 section 2), holds arm64 code only, and carries no signature and no profile
       # (C-0009 section 5). Apple's linker may give arm64 code an ad-hoc signature of its own,
-      # marked linker-signed, which holds no identity; that one is accepted.
+      # marked linker-signed, which holds no identity; that one is accepted. Only an app that
+      # passes every check is zipped and uploaded.
       - name: Check the app bundle
         id: app
         if: ${{ !cancelled() }}
@@ -316,18 +330,18 @@ jobs:
           [ "$architectures" = arm64 ] || { echo "::error title=App bundle::The executable holds $architectures, not arm64 alone."; problems=1; }
           if grep -F -q "is not signed at all" <<< "$signature"; then
             echo "Signature: none."
-          elif grep -F -q "linker-signed" <<< "$signature" && grep -F -q "TeamIdentifier=not set" <<< "$signature" \
-              && ! grep -q "^Authority=" <<< "$signature"; then
+          elif grep -F -q "linker-signed" <<< "$signature" && grep -F -q "Signature=adhoc" <<< "$signature" \
+              && grep -F -q "TeamIdentifier=not set" <<< "$signature"; then
             echo "Signature: only the linker's ad-hoc signature, with no identity."
           else
             echo "::error title=App bundle::The app carries a signature beyond the linker's own."
             problems=1
           fi
           [ ! -e "$app/embedded.mobileprovision" ] || { echo "::error title=App bundle::The app holds a provisioning profile."; problems=1; }
+          [ "$problems" -eq 0 ] || exit 1
           ditto -c -k --keepParent "$app" "$RUNNER_TEMP/$(basename "$app").zip"
           echo "zip=$RUNNER_TEMP/$(basename "$app").zip" >> "$GITHUB_OUTPUT"
           echo "commit=${HEAD_SHA:0:12}" >> "$GITHUB_OUTPUT"
-          exit "$problems"
 
       # The zip keeps the bundle's name and the executable's file mode, which an artifact of
       # the bare folder would lose.

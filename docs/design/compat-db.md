@@ -132,12 +132,12 @@ The model keeps a list that a file leaves out apart from an empty one, so that t
 
 **Exception 1.** "A `drm` value set in the bundled entry always wins over a computed one." Each member counts as a value of its own. A reviewed entry can set `ceg` by hand while the classifier computes `steamApi`, `steamStub` and `steamAppIdFile`, which is how the entries of S6.6.5 and S7.0.3 work.
 
-**The reviewed program.** The reviewed values describe the program that was reviewed, so they count only while the device runs that program. recelilious chose this on 2026-11-01, and M6.4 proposes it as C-0008 1.1 and C-0007 1.1, which bind once recelilious accepts them. The device runs the reviewed program when:
+**The reviewed program.** The reviewed values describe the program that was reviewed, so they count only while the device runs that program. recelilious chose this on 2026-11-01, and M6.4 proposes it as C-0008 1.1 and C-0007 1.1, which bind once recelilious accepts them (section 10). The device runs the reviewed program when:
 
-- the device layer names no `executable.path` other than the bundled entry's. Another path, the same path in another letter case, or any path where the bundled entry names none, is another program. Other arguments or another working directory for the same path are not.
-- for a local title, the device layer also has an entry whose `exeSha256` values are all among the bundled entry's. A build that the entry does not list is another program, and without a device entry nothing shows which build the device runs.
+- for a Steam title, the device layer names no `executable.path` other than the bundled entry's. Another path, the same path in another letter case, or any path where the bundled entry names none, is another program: a reviewed entry that names no program has reviewed none in particular. Other arguments or another working directory for the same path are not another program.
+- for a local title, the device layer has an entry whose `exeSha256` values are all among the bundled entry's, whatever path that entry names. The hashes are what the entry reviewed, one per build (C-0008 section 2), so a reviewed build moved to another folder keeps the reviewed classification, and a build that the entry does not list does not. Without a device entry nothing shows which build the device runs. The rule trusts the device entry's hash, so the code that writes it hashes the program that the device runs (M6.5).
 
-Otherwise only the computed classification counts. Its `ceg` is only `unknown` (section 3), so the title takes the Dock path or is refused, whatever the reviewed entry says. Without this rule, a device `executable` such as a launcher whose computed `steamStub` is true, or an unreviewed build of a local title, took the reviewed `drm` along and could take the Direct path. Only `drm` follows this rule; the other reviewed settings still apply (section 10).
+Otherwise only the computed classification counts. Its `ceg` is only `unknown` (section 3), so the title takes the Dock path or is refused, whatever the reviewed entry says. `EffectiveTitleSettings.ReviewedClassification` says which case applies: `Used`, `OtherProgram`, `UnreviewedBuild`, or `None` when no bundled entry sets a `drm` member, so that a title's page can say why the title is not Direct. Without this rule, a device `executable` such as a launcher whose computed `steamStub` is true, or an unreviewed build of a local title, took the reviewed `drm` along and could take the Direct path. Only `drm` follows this rule; the other reviewed settings still apply (section 10).
 
 **Exception 2.** "The device layer can never turn `launch` into `direct` for a title whose `drm` requires the Dock path." The structure enforces it:
 
@@ -262,6 +262,7 @@ A local run of PowerShell 7.6's `Test-Json`, which validates draft 2020-12, acce
 - **The database in the services.** M6.5 and M7.1 add the database to the services the heads provide, with the shape their pages need (section 7).
 - **Frame-rate cap.** The session that applies the graphics settings checks that `frameRateCap` divides the display's refresh rate (M6.6, S6.6.3).
 - **Another program's rating.** Where the device runs another program than the reviewed one, only `drm` stops counting (section 4); the rating, the reports and the other reviewed settings still come from the bundled entry. M6.5 and M7.1 decide whether the title's page says that they belong to another program.
+- **The pending contract change.** The rule for the reviewed program (section 4) follows the proposal for C-0008 1.1 and C-0007 1.1, which M6.4 committed on a contract branch that recelilious reviews before it is pushed (C-0012 section 2). Until recelilious accepts it, versions 1.0 say that a reviewed `drm` value always wins, and they bind. If the accepted wording differs, the code follows it.
 
 ## 11. Sources
 

@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.0 |
-| Date | 2026-10-28 |
+| Version | 1.1 |
+| Date | 2026-11-01 |
 | Owner | recelilious |
 
 This contract defines where per-title settings and test results live, their format, and the rules for changing them.
@@ -18,7 +18,7 @@ This contract defines where per-title settings and test results live, their form
 - Every `*.json` title file is validated against a JSON Schema (draft 2020-12) in `compat/schema/title.schema.json`. The schema implements section 2 and never contradicts it. The folder's `README.md` is not a title file.
 - The app bundles a snapshot of `compat/` at build time.
 - On the device the app keeps its own layer, one JSON file per title in `Library/Application Support/Paneport/compat/` (C-0004 section 4). It holds the classification computed under C-0007 section 5 and the user's own overrides. It never leaves the device.
-- **Precedence.** The effective settings are the schema defaults, then the bundled entry, then the device layer, with two exceptions: a `drm` value set in the bundled entry always wins over a computed one, and the device layer can never turn `launch` into `direct` for a title whose `drm` requires the Dock path (section 5).
+- **Precedence.** The effective settings are the schema defaults, then the bundled entry, then the device layer, with two exceptions: a `drm` value set in the bundled entry wins over a computed one while the device runs the reviewed program, and the device layer can never turn `launch` into `direct` for a title whose `drm` requires the Dock path (section 5). For a Steam title, the device runs the reviewed program when the device layer names no `executable.path` other than the bundled entry's; a path where the bundled entry names none is another program. For a `local-` title, it does when the device layer holds an entry for the title whose `exeSha256` values are all among the bundled entry's, whatever path that entry names. Otherwise only the computed classification counts, so the title takes the Dock path, or the app refuses to launch a `local-` title.
 - A title with no entry runs with the schema defaults and shows as `untested`.
 
 ## 2. Fields
@@ -98,15 +98,10 @@ The CI check rejects a file whose `rating` differs from this result (C-0011).
 
 The data is released under the repository's MIT license, as recelilious decided on 2026-10-28. JSON files cannot carry a license header, so `REUSE.toml` at the repository root declares their license (C-0010 section 6).
 
-## Proposed changes for 1.1
-
-**Not yet accepted.** Version 1.0 above stays binding until recelilious approves these changes. They come from stage M6.4. Its review found that the first exception of section 1 lets the reviewed classification open the Direct path for a program that nobody reviewed. The device layer may name another `executable`, such as a launcher whose computed `steamStub` is true. A `local-` title's device file pairs with the bundled entry by its slug alone, so a build whose hash the bundled entry does not list takes on the reviewed `drm` as well. On 2026-11-01 recelilious chose that the reviewed `drm` counts only while the device runs the reviewed program.
-
-1. **Section 1.** Replace the item that starts with "**Precedence.**" with: "**Precedence.** The effective settings are the schema defaults, then the bundled entry, then the device layer, with two exceptions: a `drm` value set in the bundled entry wins over a computed one while the device runs the reviewed program, and the device layer can never turn `launch` into `direct` for a title whose `drm` requires the Dock path (section 5). For a Steam title, the device runs the reviewed program when the device layer names no `executable.path` other than the bundled entry's; a path where the bundled entry names none is another program. For a `local-` title, it does when the device layer holds an entry for the title whose `exeSha256` values are all among the bundled entry's, whatever path that entry names. Otherwise only the computed classification counts, so the title takes the Dock path, or the app refuses to launch a `local-` title."
-
 ## Change log
 
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious |
+| 1.1 | 2026-11-01 | Accepted by recelilious. Section 1: a `drm` value set in the bundled entry wins over a computed one only while the device runs the reviewed program, because stage M6.4 found that a device `executable` such as a launcher, or a `local-` build whose hash the bundled entry does not list, could otherwise take the Direct path with the reviewed classification. |

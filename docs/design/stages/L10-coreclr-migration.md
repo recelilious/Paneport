@@ -400,6 +400,10 @@ Out:
 - Stages that are not Done at the merge: M9.1 and L9 get the release workflow on .NET 11, with the .NET runtime and .NET for iOS still in the notices (C-0009 section 4); M6.3 gets the shell's footprint on CoreCLR from the migration document; M7.1 and M8.2 get SteamKit2 under CoreCLR, with its sign-in and download times. Where such a stage is already Done and a figure changed, the session log proposes a follow-up.
 - A later stage: the move away from .NET 11, a standard-term release that the research lists as supported until 2028-11-09 (`avalonia_ui_layer.md` section 2.2).
 
+**Notes from earlier stages.**
+
+- M1.1 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-01): since C-0009 1.1 the iOS workload set is pinned in `eng/toolchain.json` as `ios-workload-set`, not in `global.json`, so S10.2.1 moves that pin; `sdk.workloadVersion` in `global.json` would bring back MSB4242 on every machine without the workload set (`docs/design/dev-environment.md` section 2).
+
 **Session log.**
 
 _No sessions yet._

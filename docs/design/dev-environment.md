@@ -43,7 +43,7 @@ C-0009 section 2 pins every tool of the iOS build. The pins form one chain: the 
 
 1. Find the newest workload set for the SDK pin, and the iOS workload it names: its NuGet package, or the dotnet/macios release that names the workload set.
 2. Read the Xcode version that the iOS workload requires in its release notes, and find a runner image that carries it.
-3. Update `eng/toolchain.json`, the `runs-on` value of the `ios` job, and the SDK pin if it moves. The lock file of Paneport.iOS names the iOS SDK version in its target framework (`net10.0-ios27.1`), so it changes with the workload: take the new one from the log of the `ios` job, as section 5 says.
+3. Update `eng/toolchain.json`, the `runs-on` value of the `ios` job, and the SDK pin if it moves. The lock file of Paneport.iOS names the iOS SDK version in its target framework (`net10.0-ios27.1`), so it changes with the workload: renew it as section 5 says.
 4. Register any new tool under C-0003 first.
 
 The next move is already visible: on 2026-10-30 the workload set repository took iOS 27.2.10000, for Xcode 27.2, into the next workload set.
@@ -53,22 +53,27 @@ The next move is already visible: on 2026-10-30 the workload set repository took
 - **SDK.** The version that `global.json` pins, from <https://dotnet.microsoft.com/download/dotnet/10.0>. `dotnet --version` at the repository root prints it.
 - **IDE.** Visual Studio 2026, or Rider 2026.1 or later. Visual Studio 2022 17.14 cannot target `net10.0` (NETSDK1233, [dotnet/sdk#51678](https://github.com/dotnet/sdk/issues/51678)).
 - **What builds here.** Everything in `eng/ci.slnf`: the libraries, the desktop head, the tests and the trimmed test app, and the tools. [solution-and-build.md](solution-and-build.md) and [CONTRIBUTING.md](../../CONTRIBUTING.md) list the commands.
-- **Paneport.iOS.** It does not build on Windows alone, because Mono's ahead-of-time compiler for iOS and Apple's linker run only on macOS ([avalonia_ui_layer.md](../research/avalonia_ui_layer.md) section 2.2). An IDE without the iOS workload cannot load it from `Paneport.slnx`; `eng/ci.slnf` leaves it out, so the command-line builds are unaffected. Installing the iOS workload on Windows lets the IDE load it, and is the workstation owner's choice.
+- **Paneport.iOS.** It does not build on Windows alone, because Mono's ahead-of-time compiler for iOS and Apple's linker run only on macOS ([avalonia_ui_layer.md](../research/avalonia_ui_layer.md) section 2.2). Without the iOS workload:
+  - Always name `eng/ci.slnf` in `dotnet build`, `dotnet test`, `dotnet restore` and `dotnet format`. A bare command at the repository root picks up `Paneport.slnx`, which holds Paneport.iOS, and fails with NETSDK1147.
+  - Open `eng/ci.slnf` in an IDE rather than `Paneport.slnx`, which it cannot fully load.
+  - Do not run the `dotnet workload restore` that the SDK then suggests: it installs workloads without regard to the pinned workload set.
+
+  Installing the iOS workload on Windows lets the IDE load the project. It is the workstation owner's choice, and it is done with the pinned workload set, as the bootstrap does on a Mac.
 - **Pair to Mac.** With a Mac on the network, Visual Studio 2026 builds the iOS project on it over SSH ([Pair to Mac](https://learn.microsoft.com/en-us/dotnet/maui/ios/pair-to-mac)). From the command line the same works with `dotnet build` or `dotnet publish` and the properties `ServerAddress`, `ServerUser`, `TcpPort` and `_DotNetRootRemoteDirectory` ([publishing from the command line](https://learn.microsoft.com/en-us/dotnet/maui/ios/deployment/publish-cli); [avalonia_ui_layer.md](../research/avalonia_ui_layer.md) section 3.2). The Mac needs the setup of section 4. Without a Mac, CI builds the app (section 5).
 
 ## 4. A local Mac
 
 A Mac with Apple silicon and macOS 26.6 or later, which Xcode 27.1 requires.
 
-1. Install Xcode 27.1 and select it: `sudo xcode-select --switch /Applications/Xcode_27.1.app`, or set `DEVELOPER_DIR` for one shell. Start Xcode once to accept its license and install its components.
-2. Install the SDK that `global.json` pins. If it lives in a folder that only an administrator can write, such as the one the official installer uses, the bootstrap cannot install the workload into it; the script then says so, and the owner runs the workload command it names. An SDK installed for the user, as `dotnet-install.sh` does, avoids that.
+1. Install Xcode 27.1 and select it: `sudo xcode-select --switch /Applications/Xcode.app`, or set `DEVELOPER_DIR` for one shell. A local Mac usually holds Xcode at `/Applications/Xcode.app`; the version-named folders such as `/Applications/Xcode_27.1.app` are how GitHub's runner images keep several releases side by side. Start Xcode once to accept its license and install its components.
+2. Install the SDK that `global.json` pins. If it lives in a folder that only an administrator can write, such as the one the official installer uses, the bootstrap cannot install the workload into it; the script then says so and prints the exact command, with `--version` and `--configfile`, for the owner to run. An SDK installed for the user, as `dotnet-install.sh` does, avoids that.
 3. From the repository root, run the bootstrap:
 
    ```bash
    eng/mac/bootstrap.sh
    ```
 
-   It stops unless the Mac has Apple silicon, checks the SDK and Xcode against their pins with `tools/CheckToolchain.cs -- --xcode`, installs the iOS workload from the pinned workload set with the package source of `eng/nuget.config`, and checks the installed workload set with `--xcode --ios-workload`. Every comparison happens in the tool, so the pins are read in one place. On any mismatch it exits non-zero after naming both versions and saying what to do. It never touches certificates, provisioning profiles or pairing files, and it changes no system setting.
+   It stops unless the Mac has Apple silicon, checks the SDK and Xcode against their pins with `tools/CheckToolchain.cs -- --xcode`, installs the iOS workload from the pinned workload set with the package source of `eng/nuget.config`, and checks the installed workload set with `--xcode --ios-workload`. Every comparison happens in the tool, so the pins are read in one place. On any mismatch it exits non-zero after naming both versions and saying what to do. It never touches certificates, provisioning profiles or pairing files, and it changes no system setting. `dotnet workload install --version` does change that SDK installation: it switches it to workload-set update mode and pins its install command to the workload set ([workload sets](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-workload-sets)). For an SDK in a folder that an administrator owns, that holds for every user of the Mac.
 4. Build the app:
 
    ```bash
@@ -84,10 +89,15 @@ M1.2 extends the bootstrap with CMake and the LLVM release of clang-format and c
 The `ios` job in `.github/workflows/ci.yml` is the macOS build host while there is no local Mac. [The workflows' README](../../.github/workflows/README.md) lists its steps, and [repository-checks.md](repository-checks.md) section 6 describes them.
 
 - **When it runs.** recelilious decided that the job runs only before merging (D7, 2026-10-29). It runs for a pull request that carries the `ios-ci` label: when the label is added, and on every push after that. Add the label once the pull request is otherwise ready; C-0011 section 3 requires the job to pass on the last commit before the merge. A newer push cancels the job's run for the same pull request.
-- **What it checks.** The bootstrap with the pinned Xcode passes, and the bootstrap against another Xcode on the image fails and names both versions. Paneport.iOS restores from its lock file and builds for `ios-arm64` in Release without signing, its formatting passes, and its app names the scene delegate, requires iOS 26.0, holds arm64 code only, carries no signature beyond the one that Apple's linker may give arm64 code, which holds no identity, and no provisioning profile.
-- **What it leaves.** The app, zipped so that the bundle keeps its name and the executable its file mode, as an artifact named by the pull request's commit. CI holds no Apple certificate or profile (C-0009 section 5).
+- **What it checks.** The job first selects the pinned Xcode through `DEVELOPER_DIR`, because the image's default can move past the pin. The bootstrap with the pinned Xcode passes, and the bootstrap against another Xcode on the image fails and names both versions. Paneport.iOS restores from its lock file and builds for `ios-arm64` in Release without signing, its formatting passes, and its app names the scene delegate, requires iOS 26.0, holds arm64 code only, carries no signature beyond the one that Apple's linker may give arm64 code, which holds no identity, and no provisioning profile.
+- **What it leaves.** The app, zipped so that the bundle keeps its name and the executable its file mode, as an artifact named by the pull request's commit, and only when the app passed its checks. CI holds no Apple certificate or profile (C-0009 section 5).
 - **How long it takes.** Its first green run, on 2026-10-31, took 2 min 39 s: 40 s for the bootstrap, which installs the workload, 90 s for the Release build with full ahead-of-time compilation, and the rest for the checks and the upload. M1.2 adds the native host and M1.3 two full builds of the app, so the job will take longer.
-- **A lock file without a Mac.** Restoring Paneport.iOS needs the iOS workload, so its lock file cannot be made on a workstation without it. When a change needs a new lock file, the job's step "Check that no lock file was written" fails and prints the file that the restore wrote; commit that file. The lock file of M1.1 was made that way.
+- **A lock file without a Mac.** Restoring Paneport.iOS needs the iOS workload, so its lock file cannot be made on a workstation without it. The job makes it instead, because a locked restore writes a lock file that is missing. A lock file that is there but stale fails the restore with NU1004 and writes nothing, so a change that needs a new one, such as a new package or a new workload pin, goes like this:
+  1. Delete `src/Paneport.iOS/packages.lock.json` in the change, and push it to a pull request with the `ios-ci` label.
+  2. The job's step "Check that no lock file was written" fails and prints the file that the restore wrote.
+  3. Commit exactly that file and push again.
+
+  On the commit without the file, the `checks` job fails once as well, because the license check rejects a project without a lock file. The lock file of M1.1 was made this way.
 - **Cost.** macOS runners are free while the repository is public (C-0011 section 4).
 
 ## 6. The iPhone

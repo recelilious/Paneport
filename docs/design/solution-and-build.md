@@ -124,7 +124,7 @@ No rule needed relaxing for the tests so far. If one does, it is relaxed only fo
 
 Avalonia's usual templates add `Avalonia.Fonts.Inter` to the app itself. Paneport.UI does not, so the Inter font reaches only the headless tests, through Avalonia.Headless.
 
-**Paneport.iOS.** Its lock file names the target framework with the iOS SDK version, `net10.0-ios27.1`, and a section for `ios-arm64`; since M1.1 it lists only Microsoft.NET.ILLink.Tasks. A new iOS workload changes that version, so the lock file changes with the workload pin. Restoring the project needs the iOS workload, so its lock file is written on a Mac, or taken from the log of the `ios` job ([dev-environment.md](dev-environment.md) section 5).
+**Paneport.iOS.** Its lock file names the target framework with the iOS SDK version, `net10.0-ios27.1`, and a section for `ios-arm64`; since M1.1 it lists only Microsoft.NET.ILLink.Tasks. A new iOS workload changes that version, so the lock file changes with the workload pin. Restoring the project needs the iOS workload, so its lock file is written on a Mac, or renewed through the `ios` job: delete the file in the change, and commit the one that the job prints ([dev-environment.md](dev-environment.md) section 5). A stale lock file makes the locked restore fail with NU1004 instead of writing a new one.
 
 **Workload packs.** The iOS workload brings packs that reach no lock file, because the SDK downloads them itself, as it does the runtime packs of the trimmed test app (repository-checks.md section 4). The workload set 10.0.403 installed these in the `ios` job of M1.1, and two rows of the register cover them:
 
@@ -134,6 +134,8 @@ Avalonia's usual templates add `Avalonia.Fonts.Inter` to the app itself. Panepor
 | Microsoft.NETCore.App.Runtime.Mono for `ios-arm64` and the simulators, Microsoft.NETCore.App.Runtime.AOT.osx-arm64.Cross for the same targets, Microsoft.NET.Runtime.MonoAOTCompiler.Task and Microsoft.NET.Runtime.MonoTargets.Sdk (10.0.14, and 9.0.22 for the earlier target framework) | dotnet/runtime | .NET runtime |
 
 Code from the Mono runtime pack and from the .NET for iOS runtime pack ships in the app (C-0009 section 4); the other packs only build it. M9.1 checks the notices of what ships against the register.
+
+The `ios-workload-set` pin maps to the ".NET for iOS (dotnet/macios)" row, because it stands for the iOS workload that the set selects. The pinned package itself is Microsoft.NET.Workloads.10.0.400, under MIT from dotnet/workload-versions, and installing it also adds the manifests of the other workloads it names, such as Android and MAUI. Neither the set nor those manifests build or ship anything here; only the packs above do.
 
 ## 6. Tests
 

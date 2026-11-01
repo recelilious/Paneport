@@ -58,4 +58,4 @@ Build and test as the [quick start](README.md#quick-start) shows. [repository-ch
 
 ## Packages
 
-Register a new package and everything it brings in under C-0003 first. Then add its version to `Directory.Packages.props`, map it in `eng/license-map.json`, and update the lock files with `dotnet restore eng/ci.slnf --force-evaluate`, because a plain restore keeps stale entries. [solution-and-build.md](docs/design/solution-and-build.md) section 5 describes the steps.
+Register a new package and everything it brings in under C-0003 first. Then add its version to `Directory.Packages.props`, map it in `eng/license-map.json`, and update the lock files with `dotnet restore eng/ci.slnf --force-evaluate`, because a plain restore keeps stale entries. `eng/ci.slnf` leaves out Paneport.iOS, whose lock file is renewed as [dev-environment.md](docs/design/dev-environment.md) section 5 describes. [solution-and-build.md](docs/design/solution-and-build.md) section 5 describes the steps.

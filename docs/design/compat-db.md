@@ -32,8 +32,8 @@ Every row of C-0008 section 2, and of section 4 for the reports, maps to a claus
 | `id` | `$defs/id`: required; `oneOf` `steamAppId` or `exeSha256`; `slug` required | The same; and the file name must match the id |
 | `id.steamAppId` | integer from 1 to 4294967295 | The same range |
 | `id.exeSha256` | array of `$defs/sha256` (64 lowercase hex digits), at least one, unique | The same |
-| `id.slug` | `$defs/slug`: `^[a-z0-9]+(-[a-z0-9]+)*$` | `TitleId.IsValidSlug`, the same pattern (app-shell.md section 2) |
-| `name` | string with a character other than white space; required | The same |
+| `id.slug` | `$defs/slug`: `^[a-z0-9]+(-[a-z0-9]+)*$`, at most 64 characters | `TitleId.IsValidSlug`, the same pattern and length (app-shell.md section 2) |
+| `name` | string with a character other than white space, where U+0085 and U+FEFF count as white space (section 9); required | The same; and text without an unpaired surrogate (section 6) |
 | `executable` | `$defs/executable`: `path` required; for a local title the whole object is required | The same |
 | `executable.path` | `$defs/relativePath`: relative, forward slashes, no empty, `.` or `..` segment, no segment ending in a dot or a space (Windows trims them), none of `\ : * ? " < > \|` or U+0000 to U+001F | The same rule |
 | `executable.workingDirectory` | `.` for the install folder, or `$defs/relativePath` | The same |
@@ -45,12 +45,12 @@ Every row of C-0008 section 2, and of section 4 for the reports, maps to a claus
 | `launch` | `direct` or `dock`, with the conditions under `allOf` (section 5) | The same |
 | `graphicsApi` | unique items of `gdi`, `ddraw`, `d3d8`, `d3d9`, `d3d10`, `d3d11`, `d3d12`, `opengl`, `vulkan`; default `[]` | The same |
 | `runtimes` | unique items of `$defs/runtime`, the fixed list `vcredist-v14-x64`, `vcredist-v14-x86`; default `[]` | `CompatLists.RuntimeIds` |
-| `memoryEstimateMiB` | integer, at least 1 | The same |
+| `memoryEstimateMiB` | integer from 1 to 2147483647 | The same |
 | `jitPoolMiB` | integer from 256 to 896 | The same; the JIT flow still applies C-0006 section 4 |
 | `translator` | object whose keys are the `properties` listed, none so far; default `{}` | `CompatLists.TranslatorKeys`; values are strings without U+0000 |
 | `graphics.renderScale` | number greater than 0 and at most 1; default 1 | The same |
 | `graphics.metalFx` | `off` or `spatial`; default `off` | The same names |
-| `graphics.frameRateCap` | integer, at least 1 | The same. That it divides the display's refresh rate is for the session to check, which knows the display. |
+| `graphics.frameRateCap` | integer from 1 to 2147483647 | The same. That it divides the display's refresh rate is for the session to check, which knows the display. |
 | `environment` | object whose keys are the `properties` listed, none so far; default `{}` | `CompatLists.EnvironmentKeys`; values are strings without U+0000 |
 | `helperPolicy.blockedExecutables` | unique items of `$defs/relativePath`; default `[]` | The same |
 | `prefix` | `shared` or `isolated`; default `shared` | The same names |
@@ -64,14 +64,14 @@ Every row of C-0008 section 2, and of section 4 for the reports, maps to a claus
 | `reports[].rating` | one of the five observed ratings, never `untested` | The same |
 | `reports[].evidence` | `docs/evidence/YYYY-MM-DD-<topic>.md` (C-0012 section 4) | The same |
 | `reports[].fpsMedian`, `fpsLow1` | numbers greater than 0, required for `runs` or better | The same |
-| `reports[].peakMemoryMiB` | integer, at least 1, required for `runs` or better | The same |
+| `reports[].peakMemoryMiB` | integer from 1 to 2147483647, required for `runs` or better | The same |
 | `reports[].thermalState` | `nominal`, `fair`, `serious` or `critical`, iOS's thermal states | The same names |
 | `reports[].notes` | string | Nothing more |
 | Any other field | `additionalProperties: false` on every object | Rejected (section 6) |
 
 Sizes are in MiB, and the field names say so.
 
-**The slug.** C-0008 section 1 allows "lowercase letters, digits and single hyphens". The schema reads this as app-shell.md section 2 does: one or more groups of lowercase ASCII letters and digits joined by single hyphens, with no leading, trailing or double hyphen. Every title has a slug, so the pattern applies to a Steam title's slug too.
+**The slug.** C-0008 section 1 allows "lowercase letters, digits and single hyphens". The schema reads this as app-shell.md section 2 does: one or more groups of lowercase ASCII letters and digits joined by single hyphens, with no leading, trailing or double hyphen. Every title has a slug, so the pattern applies to a Steam title's slug too. The slug is at most 64 characters long, as `TitleId.MaxSlugLength` says: it becomes the file names `local-<slug>.json` and `local-<slug>.json.tmp` (section 7), which NTFS and APFS limit to 255 units. The temporary file's name holds 15 characters besides the slug, so with a slug of more than 240 characters every save would fail.
 
 **The allow-lists** start empty, as the brief asks, so `translator` and `environment` hold only `{}` for now. A stage that needs an entry adds it to the schema's `properties` and to `CompatLists` in one change (C-0008 section 5). The environment allow-list never holds `SteamAppId`, `SteamGameId`, `SteamAppPath` or any other variable that `steam_api` or a DRM wrapper reads; a test rejects any name that starts with `Steam` in any letter case, because Windows reads environment names that way. Translator values are strings, like those of the environment; each allowed option may narrow its value in the schema.
 
@@ -183,6 +183,8 @@ A missing `ceg` counts as unknown, because the device's classification can never
 
 **Names and integers.** The document classes keep the names of enumerations as strings and integers as 64-bit numbers, and the reader matches names ordinally and checks ranges itself, because the serializer's own enumeration handling ignores letter case and takes numbers.
 
+**Text.** A string that the app passes on as text, such as `name`, a path, an argument, a value of `translator` or `environment`, or a report's `notes`, has no surrogate without its pair (`InvalidValue`). The writer would replace such a surrogate with U+FFFD, so the file would hold another value than the one checked. A file that is read never holds one, because the scan rejects its escape, so only an entry made in code can break this rule.
+
 **Writing.** `TitleEntryJson.Write` checks the entry against its layer's rules and throws `ArgumentException` naming the first problem. It writes the schema's field order, two-space indents and LF line endings on every platform (C-0002 section 7), leaves out the fields the entry does not set, writes map keys in ordinal order and ends with a line break. Reading a valid file, writing it and reading it again keeps every value.
 
 ## 7. Storage
@@ -234,6 +236,9 @@ Not enforced in code, and checked in review or by M8.3, as C-0008 section 5 says
 - **Integers with a fraction.** JSON Schema counts `512.0` as an integer; the reader does not. Entries write integers without a fraction, and the test over `compat/titles/` catches one in CI.
 - **Dates.** `format: date` asserts a calendar date only in validators that assert formats; the pattern checks the shape. The reader checks the calendar.
 - **`$` in patterns.** The schema writes ECMA-262 patterns, where `$` matches only at the end. In .NET, `$` also matches before a final line break, so the code's patterns end in `\z`. M8.3 checks how its validator treats `$`.
+- **White space in patterns.** ECMA-262's `\s` counts U+FEFF and not U+0085, and .NET's `\s` and `char.IsWhiteSpace` count U+0085 and not U+FEFF; in the Basic Multilingual Plane they differ in nothing else. The pattern of `name`, `[^\s\u0085﻿]`, names both, so it reads the same in either dialect, and the code counts both as white space. A validator built on .NET, such as PowerShell's `Test-Json`, uses .NET's dialect.
+- **Numbers.** The reader reads a number with a fraction as a `double`, so a `renderScale` of `1.0000000000000001` reads as 1 and passes, while a validator that compares decimal numbers rejects it as more than 1. Integers are read exactly.
+- **Surrogate halves.** JSON allows a string that escapes half of a surrogate pair, such as `"\ud800"`, and a validator may accept it; the reader rejects the file (section 6).
 - **Device files** follow the device layer's rules in code, not the schema, which requires `name`.
 
 A local run of PowerShell 7.6's `Test-Json`, which validates draft 2020-12, accepted every valid bundled fixture and rejected every invalid one except `fraction-integer.json` and `report-bad-date.json`, as expected from the first two points. That run is not part of CI; M8.3 adds the schema check.

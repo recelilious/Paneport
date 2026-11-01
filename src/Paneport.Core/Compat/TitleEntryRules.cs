@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 using System.Buffers;
+using System.Text;
 using System.Text.RegularExpressions;
 using Paneport.Core.Library;
 
@@ -34,9 +35,13 @@ internal static partial class TitleEntryRules
                 problems.Add(Missing("$.name", "A reviewed entry names its title."));
             }
         }
-        else if (string.IsNullOrWhiteSpace(entry.Name))
+        else if (IsBlank(entry.Name))
         {
             problems.Add(Invalid("$.name", "The name holds a character other than white space."));
+        }
+        else
+        {
+            CheckText(entry.Name, "$.name", problems);
         }
 
         if (entry.Executable is { } executable)
@@ -75,7 +80,7 @@ internal static partial class TitleEntryRules
         var blocked = entry.HelperPolicy?.BlockedExecutables;
         CheckList(blocked, "$.helperPolicy.blockedExecutables", problems, (program, path) =>
         {
-            if (!IsRelativePath(program))
+            if (CheckText(program, path, problems) && !IsRelativePath(program))
             {
                 problems.Add(Invalid(path, RelativePathRule));
             }
@@ -153,21 +158,24 @@ internal static partial class TitleEntryRules
         if (!TitleId.IsValidSlug(id.Slug))
         {
             problems.Add(Invalid(
-                "$.id.slug", "A slug is lowercase ASCII letters and digits joined by single hyphens."));
+                "$.id.slug",
+                "A slug is lowercase ASCII letters and digits joined by single hyphens, at most 64 characters long."));
         }
     }
 
     private static void CheckExecutable(ExecutableSpec executable, List<CompatProblem> problems)
     {
-        if (!IsRelativePath(executable.Path))
+        if (CheckText(executable.Path, "$.executable.path", problems) && !IsRelativePath(executable.Path))
         {
             problems.Add(Invalid("$.executable.path", RelativePathRule));
         }
 
-        if (executable.WorkingDirectory is { } directory && directory != "." && !IsRelativePath(directory))
+        const string WorkingDirectory = "$.executable.workingDirectory";
+        if (executable.WorkingDirectory is { } directory && CheckText(directory, WorkingDirectory, problems)
+            && directory != "." && !IsRelativePath(directory))
         {
             problems.Add(Invalid(
-                "$.executable.workingDirectory",
+                WorkingDirectory,
                 "The working directory is . for the install folder, or a relative path. " + RelativePathRule));
         }
 
@@ -176,10 +184,14 @@ internal static partial class TitleEntryRules
         {
             for (var i = 0; i < arguments.Count; i++)
             {
+                var path = CompatPath.Index("$.executable.arguments", i);
                 if (arguments[i] is null || arguments[i].Contains('\0', StringComparison.Ordinal))
                 {
-                    problems.Add(Invalid(
-                        CompatPath.Index("$.executable.arguments", i), "An argument holds no NUL character."));
+                    problems.Add(Invalid(path, "An argument holds no NUL character."));
+                }
+                else
+                {
+                    CheckText(arguments[i], path, problems);
                 }
             }
         }
@@ -237,6 +249,7 @@ internal static partial class TitleEntryRules
         CheckFrameRate(report.FpsLow1, path + ".fpsLow1", problems);
         CheckRange(report.PeakMemoryMiB, IntRange.PeakMemoryMiB, path + ".peakMemoryMiB", problems);
         CheckNamed(report.ThermalState, CompatNames.ThermalState, path + ".thermalState", problems);
+        CheckText(report.Notes, path + ".notes", problems);
 
         if (report.Rating is CompatRating.Perfect or CompatRating.Playable or CompatRating.Runs)
         {
@@ -418,7 +431,36 @@ internal static partial class TitleEntryRules
             {
                 problems.Add(Invalid(keyPath, "The value is a string without a NUL character."));
             }
+            else
+            {
+                CheckText(value, keyPath, problems);
+            }
         }
+    }
+
+    // Only white space, as the schema's pattern [^\s\u0085﻿] reads in either dialect of regular
+    // expression: char.IsWhiteSpace, like .NET's \s, counts U+0085, and ECMA-262's \s counts U+FEFF.
+    private static bool IsBlank(string text) =>
+        text.All(character => char.IsWhiteSpace(character) || character == (char)0xFEFF);
+
+    // Text that a file can hold, where every surrogate is half of a pair. The writer would replace an
+    // unpaired one with U+FFFD, and the file would hold another value than the one checked. A file
+    // that is read holds none, so only an entry made in code can break this.
+    private static bool CheckText(string? text, string path, List<CompatProblem> problems)
+    {
+        var rest = text.AsSpan();
+        while (!rest.IsEmpty)
+        {
+            if (Rune.DecodeFromUtf16(rest, out _, out var length) != OperationStatus.Done)
+            {
+                problems.Add(Invalid(path, "The text holds a UTF-16 surrogate without its pair."));
+                return false;
+            }
+
+            rest = rest[length..];
+        }
+
+        return true;
     }
 
     private static CompatProblem Invalid(string path, string message) => new(CompatRule.InvalidValue, path, message);

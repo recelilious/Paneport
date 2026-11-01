@@ -40,10 +40,13 @@ public sealed class TitleEntryJsonTests
         { "missing-slug.json", CompatLayer.Bundled, CompatRule.MissingField, "$.id.slug" },
         { "missing-name.json", CompatLayer.Bundled, CompatRule.MissingField, "$.name" },
         { "blank-name.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.name" },
+        { "blank-name-bom.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.name" },
+        { "blank-name-nel.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.name" },
         { "both-ids.json", CompatLayer.Bundled, CompatRule.Identity, "$.id" },
         { "neither-id.json", CompatLayer.Bundled, CompatRule.Identity, "$.id" },
         { "steam-app-id-zero.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.id.steamAppId" },
         { "bad-slug.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.id.slug" },
+        { "long-slug.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.id.slug" },
         { "uppercase-hash.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.id.exeSha256[0]" },
         { "duplicate-hash.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.id.exeSha256[1]" },
         { "absolute-path.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.executable.path" },
@@ -61,6 +64,7 @@ public sealed class TitleEntryJsonTests
         { "duplicate-graphics-api.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.graphicsApi[1]" },
         { "unknown-runtime.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.runtimes[0]" },
         { "memory-estimate-zero.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.memoryEstimateMiB" },
+        { "memory-estimate-too-large.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.memoryEstimateMiB" },
         { "jit-pool-too-small.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.jitPoolMiB" },
         { "jit-pool-too-large.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.jitPoolMiB" },
         { "translator-key.json", CompatLayer.Bundled, CompatRule.NotAllowed, "$.translator.Multiblock" },
@@ -330,6 +334,48 @@ public sealed class TitleEntryJsonTests
                 (CompatRule.NotAllowed, "$.environment.WINEDEBUG"),
             ],
             TitleEntryJson.Validate(entry, CompatLayer.Device).Select(problem => (problem.Rule, problem.Path)));
+    }
+
+    [Fact]
+    public void TextWithAnUnpairedSurrogateIsRejected()
+    {
+        // The writer would put U+FFFD in its place, so the file would hold another value than the one
+        // checked. A high half at the end, a high half before another character, and a low half alone.
+        var high = (char)0xD800;
+        var low = (char)0xDC00;
+        var report = new TestReport
+        {
+            Date = new DateOnly(2026, 11, 2),
+            Device = "iPhone18,1",
+            IosVersion = "27.2 (24B119)",
+            PaneportVersion = "v0.1.0",
+            GameBuild = "12345678",
+            Rating = CompatRating.Boots,
+            Evidence = "docs/evidence/2026-11-02-copper-orchard.md",
+            Notes = "Starts " + low,
+        };
+        var entry = TestEntries.Steam(name: "Copper Orchard " + high) with
+        {
+            Executable = new ExecutableSpec
+            {
+                Path = "Orchard" + high + ".exe",
+                WorkingDirectory = "bin" + low,
+                Arguments = ["-windowed", "-" + high],
+            },
+            HelperPolicy = new HelperPolicy { BlockedExecutables = ["Crash" + low + ".exe"] },
+            Reports = [report],
+        };
+
+        var problems = TitleEntryJson.Validate(entry, CompatLayer.Bundled);
+
+        Assert.Equal(
+            [
+                "$.name", "$.executable.path", "$.executable.workingDirectory", "$.executable.arguments[1]",
+                "$.helperPolicy.blockedExecutables[0]", "$.reports[0].notes",
+            ],
+            problems.Select(problem => problem.Path));
+        Assert.All(problems, problem => Assert.Equal(CompatRule.InvalidValue, problem.Rule));
+        Assert.Throws<ArgumentException>(() => TitleEntryJson.Write(entry, CompatLayer.Bundled));
     }
 
     private static string FolderOf(CompatLayer layer) => layer == CompatLayer.Bundled ? "bundled" : "device";

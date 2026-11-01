@@ -99,6 +99,28 @@ public sealed partial class TitleSchemaTests
     }
 
     [Fact]
+    public void RangesMatchTheCode()
+    {
+        // The model keeps these integers in an int, or a uint for the app ID, and the code checks the
+        // same bounds. The slug's length is TitleId's.
+        (JsonNode Clause, IntRange Range)[] integers =
+        [
+            (Definition("id")["properties"]!["steamAppId"]!, IntRange.SteamAppId),
+            (Properties["memoryEstimateMiB"]!, IntRange.MemoryEstimateMiB),
+            (Properties["jitPoolMiB"]!, IntRange.JitPoolMiB),
+            (Definition("graphics")["properties"]!["frameRateCap"]!, IntRange.FrameRateCap),
+            (Definition("report")["properties"]!["peakMemoryMiB"]!, IntRange.PeakMemoryMiB),
+        ];
+
+        Assert.All(integers, integer =>
+        {
+            Assert.Equal(integer.Range.Minimum, (long)integer.Clause["minimum"]!);
+            Assert.Equal(integer.Range.Maximum, (long)integer.Clause["maximum"]!);
+        });
+        Assert.Equal(TitleId.MaxSlugLength, (int)Definition("slug")["maxLength"]!);
+    }
+
+    [Fact]
     public void TargetDevicesMatchTheDesignDocument()
     {
         // The rows of the target device table in docs/design/compat-db.md, up to the next heading.

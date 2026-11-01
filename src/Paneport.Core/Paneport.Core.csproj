@@ -13,7 +13,10 @@ SPDX-License-Identifier: MIT
     <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>
 
-  <!-- The tests reach a guard that no file can reach: CompatPath's redaction of the serializer's paths. -->
+  <!--
+  The tests check two internals directly: CompatPath's redaction of the serializer's paths, which no
+  file reaches, and the bounds of IntRange, which the title schema must match.
+  -->
   <ItemGroup>
     <InternalsVisibleTo Include="Paneport.Core.Tests" />
   </ItemGroup>

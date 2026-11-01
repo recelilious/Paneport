@@ -14,9 +14,9 @@
       "$ref": "#/$defs/id"
     },
     "name": {
-      "description": "The title's display name.",
+      "description": "The title's display name, with a character other than white space. U+0085 and U+FEFF count as white space in either dialect of regular expression.",
       "type": "string",
-      "pattern": "\\S"
+      "pattern": "[^\\s\\u0085\\ufeff]"
     },
     "executable": {
       "$ref": "#/$defs/executable"
@@ -53,7 +53,8 @@
     "memoryEstimateMiB": {
       "description": "Expected peak memory that the game adds, in MiB: the process footprint during play minus the footprint just before the game's first process started.",
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "maximum": 2147483647
     },
     "jitPoolMiB": {
       "description": "The JIT pool size in MiB. The JIT flow still applies the limit of C-0006 section 4 to the memory limit of the moment.",
@@ -281,8 +282,9 @@
       ]
     },
     "slug": {
-      "description": "One or more groups of lowercase ASCII letters and digits joined by single hyphens (C-0008 section 1, docs/design/app-shell.md section 2).",
+      "description": "One or more groups of lowercase ASCII letters and digits joined by single hyphens, at most 64 characters, since the slug becomes a file name (C-0008 section 1, docs/design/app-shell.md section 2).",
       "type": "string",
+      "maxLength": 64,
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
     },
     "sha256": {
@@ -386,7 +388,8 @@
         "frameRateCap": {
           "$comment": "It must divide the display's refresh rate, which only the running app knows, so the session checks that.",
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 2147483647
         }
       }
     },
@@ -466,7 +469,8 @@
         "peakMemoryMiB": {
           "description": "The peak memory footprint of the whole process.",
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 2147483647
         },
         "thermalState": {
           "description": "The highest thermal state seen, in iOS's terms.",

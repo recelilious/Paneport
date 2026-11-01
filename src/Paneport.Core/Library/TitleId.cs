@@ -12,11 +12,18 @@ namespace Paneport.Core.Library;
 /// </summary>
 /// <remarks>
 /// A slug is one or more groups of lowercase ASCII letters and digits joined by single hyphens,
-/// so it never starts or ends with a hyphen. An app ID is never 0 and is written without leading
-/// zeros, so that each title has exactly one identity text.
+/// so it never starts or ends with a hyphen, and it is at most <see cref="MaxSlugLength"/>
+/// characters long. An app ID is never 0 and is written without leading zeros, so that each title
+/// has exactly one identity text.
 /// </remarks>
 public sealed record TitleId
 {
+    /// <summary>
+    /// The most characters a slug holds, so that the file names it gives, such as a compatibility
+    /// file and its temporary file, stay far below the 255 units that NTFS and APFS allow.
+    /// </summary>
+    public const int MaxSlugLength = 64;
+
     private const string SteamPrefix = "steam-";
     private const string LocalPrefix = "local-";
 
@@ -55,7 +62,8 @@ public sealed record TitleId
         if (!IsValidSlug(slug))
         {
             throw new ArgumentException(
-                "A slug is lowercase ASCII letters and digits joined by single hyphens.", nameof(slug));
+                "A slug is lowercase ASCII letters and digits joined by single hyphens, at most 64 characters long.",
+                nameof(slug));
         }
 
         return new TitleId(TitleSource.Local, null, slug);
@@ -65,11 +73,11 @@ public sealed record TitleId
     /// <param name="slug">The text to check.</param>
     /// <returns>
     /// True when the text is one or more groups of lowercase ASCII letters and digits joined by
-    /// single hyphens.
+    /// single hyphens, at most <see cref="MaxSlugLength"/> characters long.
     /// </returns>
     public static bool IsValidSlug([NotNullWhen(true)] string? slug)
     {
-        if (string.IsNullOrEmpty(slug))
+        if (string.IsNullOrEmpty(slug) || slug.Length > MaxSlugLength)
         {
             return false;
         }

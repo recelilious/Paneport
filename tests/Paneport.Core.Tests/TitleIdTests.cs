@@ -61,6 +61,19 @@ public sealed class TitleIdTests
     }
 
     [Fact]
+    public void SlugIsAtMost64CharactersLong()
+    {
+        // The slug becomes a file name, with a temporary file's name next to it, so it stays short.
+        var longest = new string('a', TitleId.MaxSlugLength);
+
+        Assert.Equal(64, TitleId.MaxSlugLength);
+        Assert.True(TitleId.IsValidSlug(longest));
+        Assert.False(TitleId.IsValidSlug(longest + "a"));
+        Assert.False(TitleId.TryParse("local-" + longest + "a", out _));
+        Assert.Throws<ArgumentException>(() => TitleId.Local(longest + "a"));
+    }
+
+    [Fact]
     public void NullIsNoSlug()
     {
         Assert.False(TitleId.IsValidSlug(null));

@@ -83,8 +83,26 @@ public sealed class DeviceLayerStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task FailedReplaceDeletesTheTemporaryFile()
+    {
+        // A folder that is not empty where the title's file belongs: the temporary file is written, and
+        // moving it over the folder fails.
+        var file = _folder.FileOf("steam-4100000310.json");
+        Directory.CreateDirectory(file);
+        File.WriteAllText(Path.Combine(file, "README.md"), "Not a title file.");
+
+        var failure = await Record.ExceptionAsync(() => _store.SaveAsync(TestEntries.Steam(), Token));
+
+        Assert.True(failure is IOException or UnauthorizedAccessException, failure?.GetType().Name);
+        Assert.False(File.Exists(file + ".tmp"));
+        Assert.True(File.Exists(Path.Combine(file, "README.md")));
+    }
+
+    [Fact]
     public async Task CancelledSaveLeavesTheOldFile()
     {
+        // The token is cancelled before the save starts. FailedReplaceDeletesTheTemporaryFile covers
+        // the cleanup after a temporary file exists, which a later cancellation takes as well.
         await _store.SaveAsync(TestEntries.Steam(name: "Old name"), Token);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(

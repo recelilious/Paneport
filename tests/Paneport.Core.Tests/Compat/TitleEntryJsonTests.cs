@@ -54,6 +54,7 @@ public sealed class TitleEntryJsonTests
         { "backslash-path.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.executable.path" },
         { "drive-path.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.executable.path" },
         { "trailing-dot-path.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.executable.path" },
+        { "trailing-space-path.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.executable.path" },
         { "bad-working-directory.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.executable.workingDirectory" },
         { "nul-argument.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.executable.arguments[0]" },
         { "missing-executable-path.json", CompatLayer.Bundled, CompatRule.MissingField, "$.executable.path" },

@@ -48,8 +48,9 @@ workload_set=$(plutil -extract tools.ios-workload-set.version raw -o - eng/toolc
     || fail "eng/toolchain.json has no ios-workload-set pin that plutil can read."
 say "installing the ios workload from workload set $workload_set"
 dotnet workload install ios --version "$workload_set" --configfile eng/nuget.config \
-    || fail "dotnet workload install failed; see the lines above. If the .NET installation is not writable \
-by this user, install the workload as its owner with the same command, then run this script again."
+    || fail "dotnet workload install failed; see the lines above. If this user cannot write to the .NET \
+installation, its owner runs this command, and then this script runs again: \
+dotnet workload install ios --version $workload_set --configfile $repo/eng/nuget.config"
 
 say "checking the installed workload set against its pin"
 dotnet run tools/CheckToolchain.cs -- --xcode --ios-workload \

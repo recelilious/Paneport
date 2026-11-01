@@ -20,7 +20,8 @@ This document records how the repository rules of C-0011 section 2 are checked: 
 | Personal data and forbidden files | `tools/ScanPersonalData.cs` | `checks`: personal data and forbidden files | `eng/personal-data-allow-list.json` |
 | Links in Markdown | lychee | `checks`: lychee | `eng/lychee.toml` |
 | Dependency licenses | `tools/CheckLicenses.cs` | `checks`: dependency licenses | `eng/license-map.json` |
-| Toolchain pins (C-0009 section 2) | `tools/CheckToolchain.cs` | `dotnet`: the SDK; `checks`: the SDK and the CI tools | `global.json`, `eng/toolchain.json` |
+| Toolchain pins (C-0009 section 2) | `tools/CheckToolchain.cs` | `dotnet`: the SDK and the runner image; `checks`: also the CI tools; `ios`: also Xcode and the iOS workload set, through `eng/mac/bootstrap.sh` | `global.json`, `eng/toolchain.json`, `.github/workflows/` |
+| C# formatting of Paneport.iOS | `dotnet format` | `ios`: Check the formatting of Paneport.iOS | `.editorconfig` |
 
 The native checks (`clang-format`, `clang-tidy`) come with the `native` job in M1.2, and the compatibility data check with M8.3.
 
@@ -120,15 +121,18 @@ Each needs the checker taught to read it, in a reviewed change, before it is use
 
 **Adding a dependency.** Register it under C-0003 first (a contract change that recelilious approves), then add the package, tool, action or submodule, then map it in `eng/license-map.json`, then run `dotnet run tools/CheckLicenses.cs`. The pull request lists every new name with its row.
 
-**Not covered.** The tools that the runner image provides (Bash, curl, jq, pipx, tar) are part of the pinned image, not of the repository. The Python packages that pipx installs together with the REUSE tool are not pinned (section 10). A submodule commit without a `.gitmodules` entry is not read; git cannot clone such a submodule. A line of a `run:` script that starts with `uses:`, `container:` or `image:` is read as that key. The packs that the SDK downloads by itself, such as the runtime and host packs of the self-contained trimmed app (`Microsoft.NETCore.App.Runtime.<rid>`), reach no lock file and are not read; they come with the pinned SDK. The workload packs of M1.1's iOS head arrive the same way, so M1.1 checks that the register covers such packs.
+**Not covered.** The tools that the runner image provides (Bash, curl, jq, pipx, tar) are part of the pinned image, not of the repository. The Python packages that pipx installs together with the REUSE tool are not pinned (section 10). A submodule commit without a `.gitmodules` entry is not read; git cannot clone such a submodule. A line of a `run:` script that starts with `uses:`, `container:` or `image:` is read as that key. The packs that the SDK downloads by itself, such as the runtime and host packs of the self-contained trimmed app (`Microsoft.NETCore.App.Runtime.<rid>`), reach no lock file and are not read; they come with the pinned SDK. The workload packs of the iOS head arrive the same way, from the pinned workload set; M1.1 listed them, and the rows ".NET for iOS (dotnet/macios)" and ".NET runtime" cover them (solution-and-build.md section 5).
 
 ## 5. Toolchain pins
 
 `tools/CheckToolchain.cs` compares the installed toolchain with its pins (C-0009 section 2).
 
 - **SDK.** It reads `sdk.version` and `sdk.rollForward` from `global.json`, runs `dotnet --version` at the repository root, and fails unless the two versions are equal and `rollForward` is `disable`.
-- **CI tools.** It reads `eng/toolchain.json` on every run, so that a local run finds a broken pin file too. With `--ci-tools` it also asks each pinned tool for its version and compares the answer with the pin: `reuse --version`, `gitleaks version` and `lychee --version`. A tool that is pinned but has no version check in the tool fails the check, so no pin goes unchecked. M1.1 adds the Xcode check against `xcodebuild -version`.
-- **Pin file.** The file holds only `tools`. Each tool under it has `version` and `source`, an https address. A tool that CI downloads also has `downloads`, keyed by runtime identifier, each with exactly the download's `url` and its `sha256`. The checker rejects any other field, a short or upper-case SHA-256 and a plain http address. Both this checker and the license checker read only `tools` and reject any other key, because a pin elsewhere would escape them. The Xcode and runner-image pins of C-0009 section 2 come with M1.1, which teaches both checkers to read them.
+- **Every run.** It reads `eng/toolchain.json` on every run, so that a local run finds a broken pin file too, and fails on a pin that none of its options checks, so no pin goes unchecked. It also reads the workflows in `.github/workflows/` and fails when a job runs on a macOS image other than the one that `macos-runner-image` pins, when a macOS job exists but no image is pinned, when the pin names no macOS image, or when no job runs on it. A macOS image is a plain `runs-on` value that starts with `macos-` or `xcode-`; the workflows name macOS images that way, never through a matrix or an expression, which the check cannot follow. The `dotnet` and `checks` jobs therefore catch a change of the image on either side.
+- **CI tools.** With `--ci-tools` it also asks each tool of the `checks` job for its version and compares the answer with the pin: `reuse --version`, `gitleaks version` and `lychee --version`.
+- **Xcode.** With `--xcode` it compares the first line of `xcodebuild -version`, such as `Xcode 27.1`, with the `xcode` pin, exactly. xcodebuild reports the Xcode that `DEVELOPER_DIR` or `xcode-select` selects, and a mismatch names both versions.
+- **iOS workload set.** With `--ios-workload` it compares `dotnet workload --version` with the `ios-workload-set` pin, and requires an `ios` row in `dotnet workload list`. Without a workload set the SDK prints a version such as `10.0.400-manifests.<hash>`, and for a missing workload set that `global.json` names it adds "(not installed)"; neither passes. `eng/mac/bootstrap.sh` runs `--xcode` before it installs the workload and `--xcode --ios-workload` after, and the options combine with `--ci-tools` too.
+- **Pin file.** The file holds only `tools`. Each tool under it has `version` and `source`, an https address. A tool that CI downloads also has `downloads`, keyed by runtime identifier, each with exactly the download's `url` and its `sha256`. The checker rejects any other field, a short or upper-case SHA-256 and a plain http address. Both this checker and the license checker read only `tools` and reject any other key, because a pin elsewhere would escape them. So Xcode, the iOS workload set and the runner image are tools there too, each with a register row and a check. The runner image's `version` is the label that `runs-on` takes, because GitHub updates the image under a label every week; the Xcode and SDK checks confirm what the image carries.
 
 | Tool | Version | Pinned in | Installed from | Downloads pinned |
 |---|---|---|---|---|
@@ -136,8 +140,11 @@ Each needs the checker taught to read it, in a reviewed change, before it is use
 | REUSE tool | 6.2.0 | `eng/toolchain.json` | PyPI, through pipx | None |
 | gitleaks | 8.30.1 | `eng/toolchain.json` | Its GitHub release | `linux-x64` (CI) and `win-x64` (workstation) |
 | lychee | 0.24.2 | `eng/toolchain.json` | Its GitHub release `lychee-v0.24.2` | `linux-x64` (CI) and `win-x64` (workstation) |
+| Xcode | 27.1 | `eng/toolchain.json` (`xcode`) | The runner image in CI; Apple on a local Mac | None |
+| iOS workload set | 10.0.403 | `eng/toolchain.json` (`ios-workload-set`) | NuGet, through `dotnet workload install` in `eng/mac/bootstrap.sh` | None |
+| macOS runner image | `xcode-27` | `eng/toolchain.json` (`macos-runner-image`) | GitHub | None |
 
-gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-01, were the newest releases on 2026-10-29. Their licenses (MIT, and MIT OR Apache-2.0) match their register rows.
+gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-01, were the newest releases on 2026-10-29. Their licenses (MIT, and MIT OR Apache-2.0) match their register rows. [dev-environment.md](dev-environment.md) section 2 records how the Xcode, workload set and image pins were chosen, why the workload set is not in `global.json`, and how the four pins of the iOS build move together.
 
 **Changing a pin.** A pin changes in a reviewed change of its own (C-0009 section 2).
 
@@ -148,7 +155,7 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 
 ## 6. The CI jobs
 
-`.github/workflows/ci.yml` runs on every push and every pull request (C-0011 section 4). Actions are pinned to full commit hashes, runner images to explicit versions, and the workflow's token can only read the repository. In both jobs, every step after the setup runs even when an earlier step failed (`if: ${{ !cancelled() }}`), so that one run shows every failure.
+`.github/workflows/ci.yml` runs on every push and every pull request (C-0011 section 4), except the `ios` job, which runs only before merging (D7). Actions are pinned to full commit hashes, runner images to explicit versions, and the workflow's token can only read the repository. In every job, every step after the setup runs even when an earlier step failed (`if: ${{ !cancelled() }}`), so that one run shows every failure.
 
 **`dotnet`**, on `windows-2025` and `ubuntu-24.04`:
 
@@ -172,6 +179,17 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 8. lychee, online, on every Markdown file outside `docs/research/`: `lychee --config eng/lychee.toml --no-progress .`.
 9. lychee, offline, on the relative links of `docs/research/`: `lychee --offline --no-progress --extensions md docs/research`.
 10. The dependency license check.
+
+**`ios`**, on the macOS image that `eng/toolchain.json` pins, only for a pull request with the `ios-ci` label (D7; [dev-environment.md](dev-environment.md) section 5):
+
+1. Check out, and install the SDK that `global.json` pins.
+2. Run `eng/mac/bootstrap.sh`: it checks the SDK and Xcode, installs the iOS workload from the pinned workload set, and checks the installed workload set.
+3. Print the SDK, the workload set with `dotnet workload list`, and the Xcode in use.
+4. The planted mismatch: run the bootstrap again against another Xcode on the image, found by the `CFBundleShortVersionString` of each `/Applications/Xcode*.app`. The step passes only if the bootstrap fails and its output names the found and the pinned version, and fails when the image has no other Xcode. It runs the bootstrap with `GITHUB_ACTIONS=false`, so that the expected failure leaves no error annotation on the pull request.
+5. Restore Paneport.iOS from its lock file, and fail if a lock file was written, printing the file (dev-environment.md section 5).
+6. Build Paneport.iOS for `ios-arm64` in Release, without signing, and check its formatting with `dotnet format`, which needs the workload.
+7. Check the app: the scene delegate of its Info.plist equals the one in `src/Paneport.iOS/Info.plist`, `MinimumOSVersion` is 26.0, `lipo` finds arm64 code only, `codesign -dv` finds no signature, or only the linker's ad-hoc signature without an identity, and there is no `embedded.mobileprovision`.
+8. Zip the app with `ditto`, which keeps the bundle's name and the executable's file mode, and upload it with `actions/upload-artifact`, named by the pull request's commit.
 
 **gitleaks.** It runs from the pinned release, not as the gitleaks GitHub Action (C-0011 section 2). `--redact` replaces every secret in its output and report, which is the option the L0 brief asked to confirm. `--ignore-gitleaks-allow` ignores inline `gitleaks:allow` comments, so that every exception lives in `eng/gitleaks.toml`, which extends gitleaks' default rules and adds nothing yet. gitleaks also skips every finding that a `.gitleaksignore` file lists: version 8.30.1 loads that file from the scanned folder whatever its options say, as its `cmd/root.go` shows (section 11). The step therefore fails when the repository has one, which would be a new root file under C-0004 section 3 anyway. The step prints each finding's file, line, rule and commit from the JSON report, and an annotation, because gitleaks' own verbose output would also print the author and e-mail address of each commit. A false positive goes into `eng/gitleaks.toml` with its reason, as narrowly as possible; a real secret is reported to recelilious at once and is never quoted.
 
@@ -197,8 +215,9 @@ From the repository root, with the SDK that `global.json` pins. Setting `DOTNET_
 | Personal data and forbidden files | `dotnet run tools/ScanPersonalData.cs` |
 | Dependency licenses | `dotnet run tools/CheckLicenses.cs` |
 | SDK pin | `dotnet run tools/CheckToolchain.cs` |
+| Xcode and iOS workload set | `eng/mac/bootstrap.sh` on a Mac, which runs `dotnet run tools/CheckToolchain.cs -- --xcode --ios-workload` after installing the workload; `bash -n eng/mac/bootstrap.sh` checks its syntax anywhere |
 | CI tool pins | `dotnet run tools/CheckToolchain.cs -- --ci-tools`, where the CI tools are installed |
-| Formatting | `dotnet format eng/ci.slnf --verify-no-changes` and `dotnet format whitespace tools --folder --verify-no-changes` |
+| Formatting | `dotnet format eng/ci.slnf --verify-no-changes`, `dotnet format whitespace tools --folder --verify-no-changes` and, for Paneport.iOS without the iOS workload, `dotnet format whitespace src/Paneport.iOS --folder --verify-no-changes`; the `ios` job checks its full style |
 | Trimmed publish | `dotnet build eng/ci.slnf -c Release`, then `dotnet publish tests/Paneport.TrimTest/Paneport.TrimTest.csproj -c Release --no-build` |
 | Secrets | `gitleaks git --config eng/gitleaks.toml --redact --ignore-gitleaks-allow .`, once the pinned release is installed. The repository has no `.gitleaksignore`, which gitleaks would honor. |
 | Links | `lychee --config eng/lychee.toml --no-progress .` and `lychee --offline --no-progress --extensions md docs/research`, once the pinned release is installed. Before a research note is published, `lychee --no-progress <note>` also checks its external sources. |
@@ -221,6 +240,8 @@ Each check is shown to fail once, on a draft pull request from a scratch branch 
 | A reflection call in Paneport.Core that the trimming analyzers reject | Build in `dotnet` |
 
 A run passes when each planted change fails its step and that step's output names the file. The planted build error also fails the test step and the trimmed publish, which need the build. The forbidden-file rule is checked by its self-test only. The pull request of the stage links the run.
+
+The `ios` job plants its own failure on every run: it runs the bootstrap against another Xcode on the image and passes only if the bootstrap fails and names both versions (section 6). A change to `eng/mac/bootstrap.sh` or to the Xcode check is therefore tested by every run of the job.
 
 ## 10. Open items
 

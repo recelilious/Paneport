@@ -7,6 +7,7 @@ SPDX-License-Identifier: MIT
     <Project Path="src/Paneport.Core/Paneport.Core.csproj" />
     <Project Path="src/Paneport.Desktop/Paneport.Desktop.csproj" />
     <Project Path="src/Paneport.Interop/Paneport.Interop.csproj" />
+    <Project Path="src/Paneport.iOS/Paneport.iOS.csproj" />
     <Project Path="src/Paneport.Steam/Paneport.Steam.csproj" />
     <Project Path="src/Paneport.UI/Paneport.UI.csproj" />
   </Folder>

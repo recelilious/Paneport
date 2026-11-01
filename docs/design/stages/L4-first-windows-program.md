@@ -172,6 +172,7 @@ Out: building the forks for real (M4.2, M4.4, M5.2); changes inside a fork beyon
 **Notes from earlier stages.**
 
 - M0.2 ([L0 brief](L0-foundation.md), session log of 2026-10-29): every submodule needs an entry in `eng/license-map.json`, which `tools/CheckLicenses.cs` reads together with `.gitmodules`.
+- M1.1 ([L1 brief](L1-app-on-iphone.md), session log of 2026-10-31): each tool pinned in `eng/toolchain.json` needs a check in `tools/CheckToolchain.cs` under an option that runs where the tool exists, because a pin without one fails every run, and a register row mapped in `eng/license-map.json` (`docs/design/repository-checks.md` section 5). `eng/mac/bootstrap.sh` installs the Mac's tools and leaves every comparison to that tool.
 
 **Session log.**
 

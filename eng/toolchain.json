@@ -31,6 +31,18 @@
           "sha256": "32975d1493ee1a975d6bb41e4fb56fe419cb442ded628bb772ba2e614acfacad"
         }
       }
+    },
+    "xcode": {
+      "version": "27.1",
+      "source": "https://developer.apple.com/documentation/xcode-release-notes/xcode-27_1-release-notes"
+    },
+    "ios-workload-set": {
+      "version": "10.0.403",
+      "source": "https://www.nuget.org/packages/Microsoft.NET.Workloads.10.0.400/10.403.0"
+    },
+    "macos-runner-image": {
+      "version": "xcode-27",
+      "source": "https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md"
     }
   }
 }

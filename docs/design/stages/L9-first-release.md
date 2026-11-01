@@ -253,6 +253,7 @@ Every new file carries the SPDX lines of C-0010 section 6 or is covered by `REUS
 **Notes from earlier stages.**
 
 - M0.1 ([L0 brief](L0-foundation.md), session log of 2026-10-29): the third-party notices of SkiaSharp's and HarfBuzzSharp's native-asset packages list about twenty components, among them libmicrohttpd under LGPL-2.1-or-later; confirm which of them the shipped iOS libraries contain (`docs/design/solution-and-build.md` section 10).
+- M1.1 ([L1 brief](L1-app-on-iphone.md), session log of 2026-10-31): the `release` job runs on the image that `macos-runner-image` pins, as a plain `runs-on` value, or `tools/CheckToolchain.cs` fails. It can reuse the `ios` job's bootstrap step, and the `ditto` zip that keeps the app's file modes (`docs/design/repository-checks.md` sections 5 and 6).
 
 **Session log.**
 

@@ -43,7 +43,13 @@ dotnet format eng/ci.slnf --verify-no-changes
 dotnet format whitespace tools --folder --verify-no-changes
 ```
 
-Build and test as the [quick start](README.md#quick-start) shows. [repository-checks.md](docs/design/repository-checks.md) section 8 lists every check with its local command, among them the dependency licenses, the toolchain pins and the trimmed publish. REUSE and lychee run in the `checks` job of CI.
+Paneport.iOS needs the iOS workload for the full format check, which the `ios` job runs. Without the workload, check its whitespace:
+
+```bash
+dotnet format whitespace src/Paneport.iOS --folder --verify-no-changes
+```
+
+Build and test as the [quick start](README.md#quick-start) shows. [repository-checks.md](docs/design/repository-checks.md) section 8 lists every check with its local command, among them the dependency licenses, the toolchain pins and the trimmed publish. REUSE and lychee run in the `checks` job of CI. The `ios` job, which builds the iOS app on a macOS runner, runs only for a pull request with the `ios-ci` label: add it once the pull request is otherwise ready to merge ([dev-environment.md](docs/design/dev-environment.md) section 5).
 
 ## Tests
 

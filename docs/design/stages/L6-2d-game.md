@@ -32,12 +32,12 @@ Back to the [development plan](../development-plan.md).
 | S6.3.3 | File-backed tier | Small | Planned | | |
 | S6.3.4 | Governor policy | Small | Planned | | |
 | S6.3.5 | Pressure and thermal events | Small | Planned | | |
-| M6.4 | Compatibility database core | Medium | In progress | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-11-01 |
-| S6.4.1 | Title schema | Small | In progress | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-11-01 |
-| S6.4.2 | Typed model and loader | Small | In progress | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-11-01 |
-| S6.4.3 | Precedence rules | Small | In progress | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-11-01 |
-| S6.4.4 | Device layer store | Small | In progress | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-11-01 |
-| S6.4.5 | Fixtures | Small | In progress | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-11-01 |
+| M6.4 | Compatibility database core | Medium | Done | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-11-01 |
+| S6.4.1 | Title schema | Small | Done | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-11-01 |
+| S6.4.2 | Typed model and loader | Small | Done | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-11-01 |
+| S6.4.3 | Precedence rules | Small | Done | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-11-01 |
+| S6.4.4 | Device layer store | Small | Done | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-11-01 |
+| S6.4.5 | Fixtures | Small | Done | [#11](https://github.com/recelilious/Paneport/pull/11) | 2026-11-01 |
 | M6.5 | Game import and session flow | Medium | Planned | | |
 | S6.5.1 | Import pipeline | Small | Planned | | |
 | S6.5.2 | PE classifier and synthetic PE generator | Small | Planned | | |
@@ -580,6 +580,8 @@ Out:
   - **Verification.** On Windows: the locked restore, a build with no warning, 352 tests (2 new), both format checks, the trimmed publish with no warning, the personal-data scan (0 findings), and the license and toolchain checks all pass. REUSE, gitleaks and lychee run only in CI.
   - **Notes left** for M6.5 and M7.2 (the reviewed program).
   - **Left.** recelilious reviews the contract proposal. Once it is accepted, the contract branch is pushed and merged first; then M6.4 and S6.4.1 to S6.4.5 are set to Done in this branch's last commit, and recelilious merges #11, which stays a draft until then.
+- **2026-11-01 (UTC), contract acceptance.** recelilious accepted the contract proposal. The acceptance commit on `contract/m6-4-reviewed-program` applies C-0007 1.1 and C-0008 1.1 and drops their proposal sections, and the branch is pushed with its pull request, [#14](https://github.com/recelilious/Paneport/pull/14), which merges before #11. `compat-db.md` now quotes the accepted rule and no longer lists the contract change as open, and the notes for M6.5 and M7.2 cite C-0008 1.1.
+  - **For the next session.** The verification above still holds, and this commit changes only text. Only the merges are left, #14 first and then #11, so M6.4 and S6.4.1 to S6.4.5 are Done in this commit (plan section 3.3).
 
 ## M6.5 Game import and session flow
 
@@ -696,7 +698,7 @@ Out:
 - M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-10-31): the iOS head opens `CompatDatabase` over `compat/titles` in the bundle and `Library/Application Support/Paneport/compat/`. No head adds the database to `AppServices` yet; the first stage whose page reads it does (`compat-db.md` section 7).
 - M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-11-01): the classifier stores true for a marker it cannot rule out, such as SteamStub on a main program it cannot parse, because `drm` holds only booleans and a missing member means not yet classified. `LaunchRule` then refuses the local title, as S6.5.3 expects, and a title is Unclassified only until the classifier has run (`compat-db.md` sections 3 and 5).
 - M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-11-01): a slug is at most 64 characters (`TitleId.MaxSlugLength`), so a slug derived from a folder or program name is cut to fit (`compat-db.md` section 2).
-- M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-11-01): a reviewed `drm` counts only while the device runs the reviewed program, as C-0008 1.1 proposes. An import whose hash matches no reviewed build must not inherit a bundled classification: the device entry lists in `exeSha256` the hash of the program the device runs, and the merge then uses only the computed classification and refuses the title. Show the reason, which `EffectiveTitleSettings.ReviewedClassification` gives as `UnreviewedBuild` (`compat-db.md` section 4).
+- M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-11-01): a reviewed `drm` counts only while the device runs the reviewed program (C-0008 1.1 section 1). An import whose hash matches no reviewed build must not inherit a bundled classification: the device entry lists in `exeSha256` the hash of the program the device runs, and the merge then uses only the computed classification and refuses the title. Show the reason, which `EffectiveTitleSettings.ReviewedClassification` gives as `UnreviewedBuild` (`compat-db.md` section 4).
 
 **Session log.**
 

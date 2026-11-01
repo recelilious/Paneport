@@ -228,9 +228,9 @@ public sealed class CompatPrecedenceTests
     [Fact]
     public void ReviewedDrmCoversOnlyTheReviewedProgram()
     {
-        // The reviewed drm counts only while the device runs the reviewed program (C-0008 section 1,
-        // as proposed for 1.1). A device executable with another path, here a launcher with
-        // SteamStub, is another program, and only its computed classification counts.
+        // The reviewed drm counts only while the device runs the reviewed program (C-0008 section 1).
+        // A device executable with another path, here a launcher with SteamStub, is another program,
+        // and only its computed classification counts.
         var bundled = TestEntries.Steam() with
         {
             Executable = new ExecutableSpec { Path = "Orchard.exe" },

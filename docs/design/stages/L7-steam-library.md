@@ -372,6 +372,7 @@ All of it runs without the iPhone. Real titles are classified only on the device
 **Notes from earlier stages.**
 
 - M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-11-01): the scan stores true for a marker it cannot rule out, such as the Steam API in a program file it cannot parse, or SteamStub when no entry names a main program, because `drm` holds only booleans and a missing member means not yet classified. The title then takes the Dock path, and the decision's reasons can still say that the marker was not ruled out (`compat-db.md` sections 3 and 5).
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-11-01): a reviewed `drm` counts only while the device runs the reviewed program, as C-0008 1.1 proposes. A device `executable` whose path differs from the bundled entry's drops the reviewed classification, so the title takes the Dock path; overriding the program never leads to the Direct path (`compat-db.md` section 4).
 
 **Session log.**
 

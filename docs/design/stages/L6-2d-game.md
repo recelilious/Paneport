@@ -574,6 +574,12 @@ Out:
   - **Waiting for recelilious.** The device can run another program than the reviewed one while the reviewed `drm` still opens the Direct path: a device `executable` such as a launcher whose computed `steamStub` is true, or a local device entry whose `exeSha256` is not in the reviewed list, still takes Direct. The code follows "a `drm` value set in the bundled entry always wins" of C-0008 section 1 literally. The proposed rule applies the reviewed `drm` only while the device runs the reviewed program, and otherwise the device's classification alone. It needs recelilious's decision and probably a change to C-0008.
   - **Notes left** for M6.5 (uncertain markers, the slug's length), M7.2 (uncertain markers) and L7 (the `ceg` question of S7.0.3).
   - **For the next session.** M6.4 and S6.4.1 to S6.4.5 are In progress again until the question above is answered. The commit that settles it sets them to Done (plan section 3.3).
+- **2026-11-01 (UTC), the reviewed program.** recelilious chose the proposed rule: the reviewed `drm` counts only while the device runs the reviewed program.
+  - **Contract proposal.** `contract/m6-4-reviewed-program`, committed locally and not pushed (C-0012 section 2): C-0008 1.1 limits the first exception of section 1 to the reviewed program, and C-0007 1.1 says the same in section 5.
+  - **Done.** `CompatPrecedence.Merge` takes the bundled `drm` only where the device layer names no other `executable.path` and, for a local title, has an entry whose `exeSha256` values are all reviewed; otherwise only the computed classification counts, which gives the Dock path or a refusal. Two tests cover the Steam and the local case, and both fail without the rule. `compat-db.md` sections 4, 8 and 10 describe the rule.
+  - **Verification.** On Windows: the locked restore, a build with no warning, 352 tests (2 new), both format checks, the trimmed publish with no warning, the personal-data scan (0 findings), and the license and toolchain checks all pass. REUSE, gitleaks and lychee run only in CI.
+  - **Notes left** for M6.5 and M7.2 (the reviewed program).
+  - **Left.** recelilious reviews the contract proposal. Once it is accepted, the contract branch is pushed and merged first; then M6.4 and S6.4.1 to S6.4.5 are set to Done in this branch's last commit, and recelilious merges #11, which stays a draft until then.
 
 ## M6.5 Game import and session flow
 
@@ -690,6 +696,7 @@ Out:
 - M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-10-31): the iOS head opens `CompatDatabase` over `compat/titles` in the bundle and `Library/Application Support/Paneport/compat/`. No head adds the database to `AppServices` yet; the first stage whose page reads it does (`compat-db.md` section 7).
 - M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-11-01): the classifier stores true for a marker it cannot rule out, such as SteamStub on a main program it cannot parse, because `drm` holds only booleans and a missing member means not yet classified. `LaunchRule` then refuses the local title, as S6.5.3 expects, and a title is Unclassified only until the classifier has run (`compat-db.md` sections 3 and 5).
 - M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-11-01): a slug is at most 64 characters (`TitleId.MaxSlugLength`), so a slug derived from a folder or program name is cut to fit (`compat-db.md` section 2).
+- M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-11-01): a reviewed `drm` counts only while the device runs the reviewed program, as C-0008 1.1 proposes. The device entry of a local title lists in `exeSha256` the hash of the program it runs; only a build that the bundled entry lists, with no other `executable.path`, keeps the reviewed classification, and any other build is refused (`compat-db.md` section 4).
 
 **Session log.**
 

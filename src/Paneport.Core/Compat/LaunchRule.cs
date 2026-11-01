@@ -19,6 +19,8 @@ public static class LaunchRule
     /// <see cref="LaunchDecision.Unclassified"/> while <c>steamApi</c> or <c>steamStub</c> is
     /// missing and nothing that blocks the Direct path shows yet; otherwise the path the rule allows.
     /// A missing <c>ceg</c> counts as unknown, because the device's classification can never set it.
+    /// The classifier records true for a marker it cannot rule out (<see cref="DrmClassification"/>),
+    /// so a title is Unclassified only until the classifier has run.
     /// </returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="source"/> is not defined.</exception>
     public static LaunchDecision Decide(TitleSource source, DrmClassification? drm)

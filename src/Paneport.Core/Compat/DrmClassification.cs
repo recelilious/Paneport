@@ -8,9 +8,16 @@ namespace Paneport.Core.Compat;
 /// describes a title; nothing in it skips, satisfies or replaces a Steam or DRM check.
 /// </summary>
 /// <remarks>
-/// A null member is not classified yet. Each member is a value of its own: a reviewed entry may
-/// set some members by hand, such as <see cref="Ceg"/>, while the device's classification fills
-/// in the others (C-0008 section 1).
+/// <para>
+/// A null member is not classified yet. The classifier records true for a marker that it cannot
+/// rule out, such as a SteamStub signal on a main program it cannot parse, so that an uncertain
+/// classification takes the Dock path, or is refused for a local title (C-0007 section 5). Null
+/// never stands for uncertain.
+/// </para>
+/// <para>
+/// Each member is a value of its own: a reviewed entry may set some members by hand, such as
+/// <see cref="Ceg"/>, while the device's classification fills in the others (C-0008 section 1).
+/// </para>
 /// </remarks>
 public sealed record DrmClassification
 {

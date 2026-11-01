@@ -16,7 +16,9 @@ namespace Paneport.Core.Compat;
 /// <para>
 /// A value the higher layer sets replaces the lower layer's. Lists, and <c>executable</c> as a
 /// whole, are replaced; the members of <c>graphics</c> and <c>helperPolicy</c> are replaced one by
-/// one; the keys of <c>translator</c> and <c>environment</c> are replaced key by key.
+/// one; the keys of <c>translator</c> and <c>environment</c> are replaced key by key. Their
+/// allow-lists are enforced where an entry is read or written (<see cref="TitleEntryJson"/>), not in
+/// the merge, which takes checked entries as <see cref="CompatDatabase"/> passes them.
 /// </para>
 /// <para>
 /// The device layer never decides the launch path: <c>launch</c> follows from the merged

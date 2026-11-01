@@ -36,6 +36,13 @@ public sealed class CompatDatabase
     /// Both files and the effective settings. A title with no entry runs with the schema defaults and
     /// shows as untested (C-0008 section 1).
     /// </returns>
+    /// <exception cref="IOException">
+    /// A file cannot be read. Its message can hold a local path, so a caller logs only its type.
+    /// </exception>
+    /// <exception cref="UnauthorizedAccessException">
+    /// A file cannot be opened, such as when a folder has its name. Its message can hold a local path,
+    /// so a caller logs only its type.
+    /// </exception>
     public async Task<CompatTitle> LoadAsync(TitleId id, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(id);

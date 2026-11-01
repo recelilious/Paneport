@@ -29,6 +29,13 @@ public sealed class BundledSnapshot
     /// <param name="id">The title's identity.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>The entry, the rules its file breaks, or <see cref="TitleEntryStatus.Missing"/>.</returns>
+    /// <exception cref="IOException">
+    /// The file cannot be read. Its message can hold a local path, so a caller logs only its type.
+    /// </exception>
+    /// <exception cref="UnauthorizedAccessException">
+    /// The file cannot be opened, such as when a folder has its name. Its message can hold a local
+    /// path, so a caller logs only its type.
+    /// </exception>
     public Task<TitleEntryResult> LoadAsync(TitleId id, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(id);
@@ -38,6 +45,14 @@ public sealed class BundledSnapshot
     /// <summary>Reads every title file of the snapshot, such as for matching a local title by its hash.</summary>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>Each <c>*.json</c> file with what reading it gave, in ordinal order of the names.</returns>
+    /// <exception cref="IOException">
+    /// The folder or a file cannot be read. Its message can hold a local path, so a caller logs only
+    /// its type.
+    /// </exception>
+    /// <exception cref="UnauthorizedAccessException">
+    /// The folder or a file cannot be opened. Its message can hold a local path, so a caller logs only
+    /// its type.
+    /// </exception>
     public Task<IReadOnlyList<CompatFile>> LoadAllAsync(CancellationToken cancellationToken) =>
         _folder.LoadAllAsync(cancellationToken);
 }

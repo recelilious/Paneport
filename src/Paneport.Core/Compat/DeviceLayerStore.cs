@@ -42,6 +42,13 @@ public sealed class DeviceLayerStore : IDisposable
     /// <param name="id">The title's identity.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>The entry, the rules its file breaks, or <see cref="TitleEntryStatus.Missing"/>.</returns>
+    /// <exception cref="IOException">
+    /// The file cannot be read. Its message can hold a local path, so a caller logs only its type.
+    /// </exception>
+    /// <exception cref="UnauthorizedAccessException">
+    /// The file cannot be opened, such as when a folder has its name. Its message can hold a local
+    /// path, so a caller logs only its type.
+    /// </exception>
     /// <remarks>A rejected file stays in place until a save replaces it.</remarks>
     public async Task<TitleEntryResult> LoadAsync(TitleId id, CancellationToken cancellationToken)
     {
@@ -60,6 +67,14 @@ public sealed class DeviceLayerStore : IDisposable
     /// <summary>Reads every title file of the device layer.</summary>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>Each <c>*.json</c> file with what reading it gave, in ordinal order of the names.</returns>
+    /// <exception cref="IOException">
+    /// The folder or a file cannot be read. Its message can hold a local path, so a caller logs only
+    /// its type.
+    /// </exception>
+    /// <exception cref="UnauthorizedAccessException">
+    /// The folder or a file cannot be opened. Its message can hold a local path, so a caller logs only
+    /// its type.
+    /// </exception>
     public async Task<IReadOnlyList<CompatFile>> LoadAllAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -80,6 +95,14 @@ public sealed class DeviceLayerStore : IDisposable
     /// </param>
     /// <returns>A task that completes once the file is replaced.</returns>
     /// <exception cref="ArgumentException">The entry breaks a rule of the device layer.</exception>
+    /// <exception cref="IOException">
+    /// The file cannot be written or replaced; the old file stays. Its message can hold a local path,
+    /// so a caller logs only its type.
+    /// </exception>
+    /// <exception cref="UnauthorizedAccessException">
+    /// The file cannot be written or replaced, such as when a folder has its name; the old file stays.
+    /// Its message can hold a local path, so a caller logs only its type.
+    /// </exception>
     public async Task SaveAsync(TitleEntry entry, CancellationToken cancellationToken)
     {
         var bytes = TitleEntryJson.Write(entry, CompatLayer.Device);
@@ -95,7 +118,9 @@ public sealed class DeviceLayerStore : IDisposable
             {
                 await stream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
 
-                // The bytes reach the disk before the rename, so a crash leaves the old file or the new one.
+                // The bytes are flushed before the move, so an app crash leaves the old file or the new one.
+                // On iOS the flush is fsync, not F_FULLFSYNC, so a power loss can still lose a recent save
+                // (compat-db.md section 7).
                 stream.Flush(flushToDisk: true);
             }
 
@@ -117,6 +142,13 @@ public sealed class DeviceLayerStore : IDisposable
     /// <param name="id">The title's identity.</param>
     /// <param name="cancellationToken">Cancels the deletion before it starts.</param>
     /// <returns>True when a file was deleted; false when the layer had none for the title.</returns>
+    /// <exception cref="IOException">
+    /// The file cannot be deleted. Its message can hold a local path, so a caller logs only its type.
+    /// </exception>
+    /// <exception cref="UnauthorizedAccessException">
+    /// The file cannot be deleted, such as when a folder has its name. Its message can hold a local
+    /// path, so a caller logs only its type.
+    /// </exception>
     public async Task<bool> DeleteAsync(TitleId id, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(id);

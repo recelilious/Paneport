@@ -98,7 +98,7 @@ Both layers use the fields and types of the schema. Each has rules of its own, w
 
 | Rule | Bundled entry | Device entry |
 |---|---|---|
-| Follows the schema | Yes, as a reviewed file | Its fields and types only; the schema itself is for `compat/titles/` |
+| Follows the schema | Yes, as a reviewed file | Its fields, types and value rules, but not what the schema requires of a reviewed file, such as `name`; the schema itself is for `compat/titles/` |
 | `name` | Required | Optional; Steam's app information or the import names the title |
 | `executable` for a local title | Required, because `exeSha256` hashes the program it names | Optional; the bundled entry may name the program |
 | `launch` | Allowed where the device cannot change the path (section 5) | Never: the launch path follows from `drm` |
@@ -110,6 +110,8 @@ Both layers use the fields and types of the schema. Each has rules of its own, w
 
 **Only the classifier writes `drm`.** A file cannot tell a computed value from an override, so the code that saves device entries keeps to this rule. The user's overrides are the other fields.
 
+**An uncertain marker is recorded as true.** C-0008 section 2 gives `steamApi` and `steamStub` only the values true and false, and a missing member means that the title is not classified yet. C-0007 section 5 sends a title whose classification is uncertain to the Dock path, and the app refuses a local title that shows any Steam marker. So the classifier records true for a marker that it cannot rule out, such as a SteamStub signal on a main program it cannot parse (M6.5) or the Steam API in a program file it cannot read (M7.2). The title then takes the Dock path or is refused, and once classified it is never Unclassified (section 5). The classifier's own result can still tell a marker it found from one it could not rule out, for the reasons the UI shows; the device file holds true for both. Recording that difference in the file would need a new value and a change to C-0008.
+
 ## 4. Precedence and merging
 
 `CompatPrecedence.Merge` gives the effective settings: the schema defaults, then the bundled entry, then the device layer (C-0008 section 1). It takes entries that passed their layer's checks.
@@ -117,11 +119,11 @@ Both layers use the fields and types of the schema. Each has rules of its own, w
 | Field | How the layers merge |
 |---|---|
 | Scalars: `name`, `architecture`, `memoryEstimateMiB`, `jitPoolMiB`, `prefix` | The device layer's value when it has one, else the bundled entry's, else the schema default or none |
-| `executable` | Replaced as a whole, because the working directory and the arguments belong to the program they were set for. The effective arguments are never null. |
+| `executable` | Replaced as a whole: a device `executable` replaces the reviewed program together with its working directory and arguments, because they belong to the program they were set for. The effective arguments are never null. |
 | `graphics` | Member by member, so that a user's render scale keeps the reviewed frame-rate cap |
 | `helperPolicy` | Member by member; its one member is a list |
-| `translator`, `environment` | Key by key: the device layer's keys replace the bundled entry's, and the others stay. A key cannot be removed, only given another allowed value. |
-| Lists: `graphicsApi`, `runtimes`, `arguments`, `blockedExecutables` | Replaced as a whole. An empty list in the device layer replaces the bundled list; a list left out keeps it. |
+| `translator`, `environment` | Key by key: the device layer's keys replace the bundled entry's, and the others stay. A key cannot be removed, only given another allowed value. The allow-lists are enforced where an entry is read or written, not in the merge. |
+| Lists: `graphicsApi`, `runtimes`, `blockedExecutables` | Replaced as a whole. An empty list in the device layer replaces the bundled list; a list left out keeps it. `arguments` go with their `executable`. |
 | `drm` | Member by member, with the bundled entry first: exception 1 (below) |
 | `launch` | Never merged. `LaunchRule` derives it from the merged `drm` (section 5). |
 | `rating`, `reports` | The bundled entry's only, else `untested` and none |
@@ -151,7 +153,7 @@ C-0008 section 5: "`launch` is `direct` only when `steamApi` and `steamStub` are
 | `steamApi` and `steamStub` false, `ceg` `no` | Direct | Direct |
 | `steamApi` and `steamStub` false, `ceg` missing | Dock | Refused |
 
-A missing `ceg` counts as unknown, because the device's classification can never set it. `steamAppIdFile` is recorded only and decides nothing. `LaunchDecision` has its own `Refused` value, because a local title can take no other path; `Title` and `LaunchPath` of the shell stay as M0.3 made them, and M6.5 shows a refusal as its UI needs.
+Unclassified means only that the classifier has not run yet. It records true for a marker that it cannot rule out (section 3), so a classified title is Direct, Dock or Refused, and a reviewed `ceg` of `no` with an undecided marker still gives Dock or a refusal. A missing `ceg` counts as unknown, because the device's classification can never set it. `steamAppIdFile` is recorded only and decides nothing. `LaunchDecision` has its own `Refused` value, because a local title can take no other path; `Title` and `LaunchPath` of the shell stay as M0.3 made them, and M6.5 shows a refusal as its UI needs.
 
 **A stated `launch`.** A reviewed entry may state `launch` where the device's classification cannot change the path. `direct` needs `steamApi` and `steamStub` false and `ceg` `no` in the entry itself. `dock` is what C-0008 section 5 derives from any other `drm`, including none at all, and an entry may state it, except one whose `drm` sets `ceg` to `no` and neither `steamApi` nor `steamStub` to true: the device could fill in the other members with false and make the path Direct. Without a reviewed `ceg` of `no` a title never takes the Direct path (section 4), so a stated `dock` holds once the title is classified; before that, the decision is Unclassified. A local title never states `dock`.
 
@@ -193,7 +195,9 @@ A missing `ceg` counts as unknown, because the device's classification can never
 
 **Device layer.** `DeviceLayerStore` keeps one file per title in `Library/Application Support/Paneport/compat/`, named `steam-<appid>.json` or `local-<slug>.json` like the repository's files (C-0008 section 1).
 
-- **Atomic replace.** A save writes the file's bytes to `<name>.tmp` in the same folder, flushes them to the disk, and moves the temporary file over the old one. A crash leaves the old file or the new one. A save that fails or is cancelled before the move leaves the old file and deletes the temporary one.
+- **Atomic replace.** A save writes the file's bytes to `<name>.tmp` in the same folder, flushes them to the disk, and moves the temporary file over the old one. An app crash leaves the old file or the new one. A save that fails or is cancelled before the move leaves the old file and deletes the temporary one.
+- **Power loss.** On iOS, .NET's `Flush(flushToDisk: true)` is `fsync`, not `F_FULLFSYNC`, which .NET uses only on macOS (section 11), and the folder is not synced after the move. A save made just before a power loss may therefore be lost, or leave a file that the reader rejects, after which the title falls back as section 6 describes and is classified again.
+- **Errors.** A file or folder that cannot be read, written or deleted throws `IOException` or `UnauthorizedAccessException`, as the file system reports it. Their messages can hold a local path, so callers log only the exception's type (app-shell.md section 3).
 - **One operation at a time.** The store runs its operations one by one, so two saves never share the temporary file and a load waits for a pending save. One store serves a folder.
 - **Rejected files** stay until a save replaces them. Deleting a title deletes its file (M6.5).
 - **Backup.** The folder is backed up (C-0004 section 4), so the store sets no exclusion.
@@ -241,7 +245,7 @@ Not enforced in code, and checked in review or by M8.3, as C-0008 section 5 says
 - **Surrogate halves.** JSON allows a string that escapes half of a surrogate pair, such as `"\ud800"`, and a validator may accept it; the reader rejects the file (section 6).
 - **Device files** follow the device layer's rules in code, not the schema, which requires `name`.
 
-A local run of PowerShell 7.6's `Test-Json`, which validates draft 2020-12, accepted every valid bundled fixture and rejected every invalid one except `fraction-integer.json` and `report-bad-date.json`, as expected from the first two points. That run is not part of CI; M8.3 adds the schema check.
+A local run of PowerShell 7.6's `Test-Json`, which validates draft 2020-12, accepted every valid bundled fixture and rejected every invalid bundled one except `fraction-integer.json` and `report-bad-date.json`, as expected from the first two points. It rejects the device fixtures, valid or not, because the schema requires `name`, as the last point says. That run is not part of CI; M8.3 adds the schema check.
 
 ## 10. Open questions
 
@@ -264,6 +268,7 @@ Public material consulted (C-0001 section 6):
 - `JsonElement.DeepEquals`: <https://learn.microsoft.com/en-us/dotnet/api/system.text.json.jsonelement.deepequals>
 - Regular expression anchors in .NET, `$` and `\z`: <https://learn.microsoft.com/en-us/dotnet/standard/base-types/anchors-in-regular-expressions>
 - `File.Move` with overwrite: <https://learn.microsoft.com/en-us/dotnet/api/system.io.file.move>
+- .NET's `SystemNative_FSync`, which uses `F_FULLFSYNC` only when built for macOS and `fsync` elsewhere, iOS included: <https://github.com/dotnet/runtime/blob/release/10.0/src/native/libs/System.Native/pal_io.c>
 - Naming files on Windows, the reserved characters: <https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file>
 - iOS thermal states, `ProcessInfo.ThermalState`: <https://developer.apple.com/documentation/foundation/processinfo/thermalstate>
 - Semantic Versioning 2.0.0: <https://semver.org/spec/v2.0.0.html>

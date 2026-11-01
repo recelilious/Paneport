@@ -100,6 +100,12 @@ recelilious accepted the first two tiers below on 2026-10-28. This section recor
 | 2 | A protocol client (SteamKit2) for sign-in and downloads | Accepted | Steam Subscriber Agreement sections 2.G(ii), 4.B and 4.C on their face. The research found no legal action against such clients up to 2026-10-27. |
 | 3 | steam_api emulation, SteamStub or CEG removal, program patching | Forbidden | Circumvention under DMCA section 1201. |
 
+## Proposed changes for 1.1
+
+**Not yet accepted.** Version 1.0 above stays binding until recelilious approves these changes. They come from stage M6.4 and go with the proposed changes for C-0008 1.1: a value set in the reviewed entry describes the program that was reviewed, so it does not decide the launch path of another program that the device runs.
+
+1. **Section 5, rules for the classifier.** Replace "A value set in the reviewed repository entry always wins over the computed one." with "A value set in the reviewed repository entry wins over the computed one while the device runs the program that the entry was reviewed for (C-0008 section 1)."
+
 ## Change log
 
 | Version | Date | Notes |

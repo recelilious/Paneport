@@ -225,6 +225,76 @@ public sealed class CompatPrecedenceTests
         Assert.Equal(LaunchDecision.Direct, settings.Launch);
     }
 
+    [Fact]
+    public void ReviewedDrmCoversOnlyTheReviewedProgram()
+    {
+        // The reviewed drm counts only while the device runs the reviewed program (C-0008 section 1,
+        // as proposed for 1.1). A device executable with another path, here a launcher with
+        // SteamStub, is another program, and only its computed classification counts.
+        var bundled = TestEntries.Steam() with
+        {
+            Executable = new ExecutableSpec { Path = "Orchard.exe" },
+            Drm = new DrmClassification { SteamApi = false, SteamStub = false, Ceg = CegStatus.No },
+        };
+        var computed = TestEntries.Clean with { SteamStub = true };
+        var launcher = TestEntries.Steam() with { Executable = new ExecutableSpec { Path = "Launcher.exe" }, Drm = computed };
+
+        var settings = CompatPrecedence.Merge(TestEntries.SteamId, bundled, launcher);
+
+        Assert.Equal(computed, settings.Drm);
+        Assert.Equal(LaunchDecision.Dock, settings.Launch);
+
+        // The same path with other arguments is the reviewed program, and so is no device executable.
+        // The reviewed values then win over the computed ones.
+        var samePath = launcher with { Executable = new ExecutableSpec { Path = "Orchard.exe", Arguments = ["-x"] } };
+        Assert.Equal(LaunchDecision.Direct, CompatPrecedence.Merge(TestEntries.SteamId, bundled, samePath).Launch);
+        var noExecutable = launcher with { Executable = null };
+        Assert.Equal(LaunchDecision.Direct, CompatPrecedence.Merge(TestEntries.SteamId, bundled, noExecutable).Launch);
+
+        // Another letter case is another path, and a reviewed entry that names no program covers none.
+        var otherCase = launcher with { Executable = new ExecutableSpec { Path = "orchard.exe" } };
+        Assert.Equal(LaunchDecision.Dock, CompatPrecedence.Merge(TestEntries.SteamId, bundled, otherCase).Launch);
+        var unnamed = bundled with { Executable = null };
+        Assert.Equal(LaunchDecision.Dock, CompatPrecedence.Merge(TestEntries.SteamId, unnamed, samePath).Launch);
+    }
+
+    [Fact]
+    public void ReviewedDrmCoversOnlyTheReviewedBuildsOfALocalTitle()
+    {
+        // A local title's device entry pairs with the bundled entry by its slug; the reviewed drm counts
+        // only for builds whose hash the bundled entry lists.
+        var otherBuild = new string('c', 64);
+        var secondBuild = new string('d', 64);
+        var bundled = TestEntries.Local() with
+        {
+            Id = TestEntries.Local().Id with { ExeSha256 = [TestEntries.LocalHash, secondBuild] },
+            Drm = new DrmClassification { SteamApi = false, SteamStub = false, Ceg = CegStatus.No },
+        };
+        var device = TestEntries.Local() with { Drm = TestEntries.Clean };
+
+        Assert.Equal(LaunchDecision.Direct, CompatPrecedence.Merge(TestEntries.LocalId, bundled, device).Launch);
+
+        // A build the entry does not list is refused, alone or next to a reviewed one, and so is
+        // another program.
+        foreach (var unreviewed in new[]
+        {
+            device with { Id = device.Id with { ExeSha256 = [otherBuild] } },
+            device with { Id = device.Id with { ExeSha256 = [TestEntries.LocalHash, otherBuild] } },
+            device with { Executable = new ExecutableSpec { Path = "Tools/Editor.exe" } },
+        })
+        {
+            var settings = CompatPrecedence.Merge(TestEntries.LocalId, bundled, unreviewed);
+            Assert.Equal(TestEntries.Clean, settings.Drm);
+            Assert.Equal(LaunchDecision.Refused, settings.Launch);
+        }
+
+        // Without a device entry nothing shows which build the device runs, so the title waits for the
+        // classifier.
+        var unclassified = CompatPrecedence.Merge(TestEntries.LocalId, bundled, null);
+        Assert.Null(unclassified.Drm);
+        Assert.Equal(LaunchDecision.Unclassified, unclassified.Launch);
+    }
+
     [Theory]
     [InlineData(TitleSource.Steam, LaunchDecision.Dock)]
     [InlineData(TitleSource.Local, LaunchDecision.Refused)]

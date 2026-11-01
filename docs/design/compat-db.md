@@ -132,10 +132,17 @@ The model keeps a list that a file leaves out apart from an empty one, so that t
 
 **Exception 1.** "A `drm` value set in the bundled entry always wins over a computed one." Each member counts as a value of its own. A reviewed entry can set `ceg` by hand while the classifier computes `steamApi`, `steamStub` and `steamAppIdFile`, which is how the entries of S6.6.5 and S7.0.3 work.
 
+**The reviewed program.** The reviewed values describe the program that was reviewed, so they count only while the device runs that program. recelilious chose this on 2026-11-01, and M6.4 proposes it as C-0008 1.1 and C-0007 1.1, which bind once recelilious accepts them. The device runs the reviewed program when:
+
+- the device layer names no `executable.path` other than the bundled entry's. Another path, the same path in another letter case, or any path where the bundled entry names none, is another program. Other arguments or another working directory for the same path are not.
+- for a local title, the device layer also has an entry whose `exeSha256` values are all among the bundled entry's. A build that the entry does not list is another program, and without a device entry nothing shows which build the device runs.
+
+Otherwise only the computed classification counts. Its `ceg` is only `unknown` (section 3), so the title takes the Dock path or is refused, whatever the reviewed entry says. Without this rule, a device `executable` such as a launcher whose computed `steamStub` is true, or an unreviewed build of a local title, took the reviewed `drm` along and could take the Direct path. Only `drm` follows this rule; the other reviewed settings still apply (section 10).
+
 **Exception 2.** "The device layer can never turn `launch` into `direct` for a title whose `drm` requires the Dock path." The structure enforces it:
 
 - the device layer never holds `launch`, and the merge never reads it;
-- the bundled entry's `drm` members win over the device layer's;
+- the bundled entry's `drm` members win over the device layer's, and where the device runs another program none of them counts, `ceg` `no` included;
 - the device layer's `ceg` is only `unknown`, and the merge takes nothing else from it, even from an entry that skipped its checks.
 
 The Direct path needs `ceg` `no`, which only a reviewed entry can give. A title whose reviewed classification blocks the Direct path keeps it blocked, whatever the device computes.
@@ -219,7 +226,7 @@ Every rule of C-0008 sections 1 and 5 that the loader enforces, and the tests in
 | Rule | Tests |
 |---|---|
 | Effective settings: defaults, then bundled, then device (section 1) | `CompatPrecedenceTests`: `TitleWithNoEntryRunsWithTheSchemaDefaultsAndShowsUntested`, `BundledEntryOverridesTheDefaults`, `DeviceLayerOverridesTheBundledEntry`; `CompatDatabaseTests.LoadsBothLayersAndMergesThem` |
-| Exception 1: a bundled `drm` value wins over a computed one | `CompatPrecedenceTests.DrmValueOfTheBundledEntryWinsOverTheComputedOne`, `ReviewedCegAndComputedMembersTogetherGiveTheDirectPath` |
+| Exception 1: a bundled `drm` value wins over a computed one, while the device runs the reviewed program | `CompatPrecedenceTests`: `DrmValueOfTheBundledEntryWinsOverTheComputedOne`, `ReviewedCegAndComputedMembersTogetherGiveTheDirectPath`, `ReviewedDrmCoversOnlyTheReviewedProgram`, `ReviewedDrmCoversOnlyTheReviewedBuildsOfALocalTitle` |
 | Exception 2: the device layer never turns the launch path into Direct | `CompatPrecedenceTests.DeviceLayerCannotTurnTheLaunchPathIntoDirect`; the device fixtures `launch.json`, `ceg-no.json`, `ceg-yes.json` |
 | A title with no entry runs with the defaults and shows as untested | `CompatPrecedenceTests.TitleWithNoEntryRunsWithTheSchemaDefaultsAndShowsUntested`, `CompatDatabaseTests.TitleWithNoEntryShowsAsUntested`, `TitleSchemaTests.DefaultsMatchWhatTheMergeGivesWithoutEntries` |
 | `drm` has no default that allows a launch | `TitleSchemaTests.NothingThatAllowsALaunchHasADefault` |
@@ -254,6 +261,7 @@ A local run of PowerShell 7.6's `Test-Json`, which validates draft 2020-12, acce
 - **Migration.** The first change that raises `schemaVersion` migrates device files (section 6).
 - **The database in the services.** M6.5 and M7.1 add the database to the services the heads provide, with the shape their pages need (section 7).
 - **Frame-rate cap.** The session that applies the graphics settings checks that `frameRateCap` divides the display's refresh rate (M6.6, S6.6.3).
+- **Another program's rating.** Where the device runs another program than the reviewed one, only `drm` stops counting (section 4); the rating, the reports and the other reviewed settings still come from the bundled entry. M6.5 and M7.1 decide whether the title's page says that they belong to another program.
 
 ## 11. Sources
 

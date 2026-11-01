@@ -9,8 +9,9 @@ namespace Paneport.Core.Compat;
 /// <summary>
 /// The precedence rules of C-0008 section 1: the effective settings are the schema defaults, then
 /// the bundled entry, then the device layer, with two exceptions. A <c>drm</c> value set in the
-/// bundled entry wins over a computed one, and the device layer can never turn the launch path into
-/// Direct for a title whose classification requires the Dock path.
+/// bundled entry wins over a computed one while the device runs the reviewed program, and the device
+/// layer can never turn the launch path into Direct for a title whose classification requires the
+/// Dock path.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -26,6 +27,13 @@ namespace Paneport.Core.Compat;
 /// only <c>unknown</c> from the device layer's <c>ceg</c>, whatever an unchecked entry holds. A
 /// title can therefore take the Direct path only when a reviewed entry sets <c>ceg</c> to
 /// <c>no</c>.
+/// </para>
+/// <para>
+/// The bundled entry's <c>drm</c> describes the program that was reviewed, so it counts only while
+/// the device runs that program: the device layer names no other <c>executable.path</c>, and for a
+/// local title the device layer has an entry whose <c>exeSha256</c> values are all among the
+/// bundled entry's. Otherwise only the computed classification counts, which gives the Dock path or
+/// a refusal.
 /// </para>
 /// </remarks>
 public static class CompatPrecedence
@@ -48,7 +56,8 @@ public static class CompatPrecedence
         CheckBelongs(id, bundled, nameof(bundled));
         CheckBelongs(id, device, nameof(device));
 
-        var drm = MergeDrm(bundled?.Drm, device?.Drm);
+        var reviewedDrm = RunsReviewedProgram(id, bundled, device) ? bundled?.Drm : null;
+        var drm = MergeDrm(reviewedDrm, device?.Drm);
         var executable = device?.Executable ?? bundled?.Executable;
         return new EffectiveTitleSettings
         {
@@ -75,6 +84,28 @@ public static class CompatPrecedence
             Rating = bundled?.Rating ?? CompatRating.Untested,
             Reports = bundled?.Reports ?? [],
         };
+    }
+
+    // Whether the device runs the program that the bundled entry was reviewed for. A device executable
+    // with another path, or with none, is another program, and a local title's builds come only from
+    // its device entry.
+    private static bool RunsReviewedProgram(TitleId id, TitleEntry? bundled, TitleEntry? device)
+    {
+        if (bundled is null)
+        {
+            return false;
+        }
+
+        if (device?.Executable is { } executable
+            && (executable.Path is null || executable.Path != bundled.Executable?.Path))
+        {
+            return false;
+        }
+
+        return id.Source == TitleSource.Steam
+            || (device?.Id.ExeSha256 is { Count: > 0 } builds
+                && bundled.Id.ExeSha256 is { } reviewed
+                && builds.All(reviewed.Contains));
     }
 
     private static DrmClassification? MergeDrm(DrmClassification? bundled, DrmClassification? device)

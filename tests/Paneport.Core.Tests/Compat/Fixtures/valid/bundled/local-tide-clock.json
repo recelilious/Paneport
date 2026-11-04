@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [
+      "f8a104a1548b1dbdeff5692100175b0e42d5da611561ce761079e30c6c55c0b6"
+    ],
+    "slug": "tide-clock"
+  },
+  "name": "Tide Clock",
+  "executable": {
+    "path": "bin/TideClock.exe"
+  }
+}

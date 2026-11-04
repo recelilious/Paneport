@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000210,
+    "slug": "fixture-title"
+  },
+  "name": "Fixture Title",
+  "graphicsApi": [
+    "d3d11",
+    "d3d11"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [
+      "8b52d0d5ce2b147dc6ac2f0104359e841f6c24ac3db606004f94c9968445935c"
+    ],
+    "slug": "fixture-title"
+  },
+  "name": "Fixture Title",
+  "executable": {
+    "path": "Fixture.exe"
+  },
+  "reports": [
+    {
+      "date": "2026-11-02",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.1.0",
+      "gameBuild": "12345678",
+      "rating": "boots",
+      "evidence": "docs/evidence/2026-11-02-fixture-title.md"
+    }
+  ]
+}

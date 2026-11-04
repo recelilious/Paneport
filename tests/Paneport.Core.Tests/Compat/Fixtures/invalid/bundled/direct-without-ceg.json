@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000210,
+    "slug": "fixture-title"
+  },
+  "name": "Fixture Title",
+  "drm": {
+    "steamApi": false,
+    "steamStub": false
+  },
+  "launch": "direct"
+}

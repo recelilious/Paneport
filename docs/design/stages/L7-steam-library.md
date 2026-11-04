@@ -140,6 +140,10 @@ The L7 session starts when M7.1, M7.2 and M7.3 are Done and D6 and D10 are recor
 | S7.0.3 | Compatibility entries for the test titles | `compat/titles/` | Entries for both D6 titles (`steam-<appid>.json`, or `local-<slug>.json` for an imported copy) validate against `compat/schema/title.schema.json` with M6.4's loader, and each file name matches its `id`. `executable`, `architecture` and `ceg` come from recelilious's own checks and nothing else (C-0008 section 5). Whether the schema lets an entry set `ceg` while the other `drm` values come from the device classification is to be confirmed against M6.4's schema; if it does not, the other values come from the classification the device showed (C-0007 section 5). The `checks` job passes. |
 | S7.0.4 | 32-bit Direct3D 11 path | `external/Paneport-dxmt` on `paneport/L7`, `tests/win32/`, `tests/runtime/` | Runs only if D6 picks a 32-bit Direct3D title. The i686 build of the Direct3D 11 triangle passes the same pixel check on the macOS harness as the x86-64 build (M5.2), with DXMT's 32-bit PE modules in `wine/i386-windows/` (C-0009 section 4). Whether DXMT builds for i386 is to be confirmed in this stage. If the work outgrows part of a session, it becomes a new stage and D6 picks a fixed-base title instead. If D6 picks a fixed-base title, this stage is Dropped with that reason. |
 
+**Notes from earlier stages.**
+
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-10-31): the schema lets an entry set only `ceg` while the device's classification fills in the other `drm` members (`compat-db.md` section 4, exception 1), which answers the question in S7.0.3.
+
 **Session log.**
 
 _No sessions yet._
@@ -268,6 +272,7 @@ Scripts this stage creates: the fakes and the synthetic data builders in the tes
 **Notes from earlier stages.**
 
 - M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 holds open questions for this stage: the token store's layout, whether leaving a page cancels its load, and a virtualizing Library whose download progress raises change notifications.
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-10-31): Title details read the rating through `CompatDatabase.LoadAsync`. No head adds the database to `AppServices` yet, so this stage or M6.5, whichever comes first, adds it with the shape its pages need (`compat-db.md` section 7).
 
 **Session log.**
 
@@ -363,6 +368,11 @@ All of it runs without the iPhone. Real titles are classified only on the device
 - L7: Direct launch for the acceptance steps.
 - M8.2: Dock-path titles and their classification, including `ceg` for titles whose executables Valve's client prepares (C-0007 section 5), and the launch entry point that M8.2 connects to the Dock host.
 - M8.3: the same launch rules in the CI compatibility check, since tools may depend on Paneport.Core (C-0004 section 2).
+
+**Notes from earlier stages.**
+
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-11-01): the scan stores true for a marker it cannot rule out, such as the Steam API in a program file it cannot parse, or SteamStub when no entry names a main program, because `drm` holds only booleans and a missing member means not yet classified. The title then takes the Dock path, and the decision's reasons can still say that the marker was not ruled out (`compat-db.md` sections 3 and 5).
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-11-01): a reviewed `drm` counts only while the device runs the reviewed program (C-0008 1.1 section 1). A device `executable` whose path differs from the bundled entry's, or that names a program where the bundled entry names none, drops the reviewed classification, so the title takes the Dock path; overriding the program never leads to the Direct path. The decision's reasons include it, which `EffectiveTitleSettings.ReviewedClassification` gives as `OtherProgram` (`compat-db.md` section 4).
 
 **Session log.**
 

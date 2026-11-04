@@ -44,7 +44,7 @@ flowchart LR
 
 Rules that the types enforce:
 
-- **Slugs.** C-0008 section 1 allows "lowercase letters, digits and single hyphens". The shell reads this as one or more groups of lowercase ASCII letters and digits joined by single hyphens, the pattern `^[a-z0-9]+(-[a-z0-9]+)*$`: no leading, trailing or double hyphen, and no letter outside ASCII, since the slug becomes a file name. M6.4's title schema must use the same pattern (section 10).
+- **Slugs.** C-0008 section 1 allows "lowercase letters, digits and single hyphens". The shell reads this as one or more groups of lowercase ASCII letters and digits joined by single hyphens, the pattern `^[a-z0-9]+(-[a-z0-9]+)*$`: no leading, trailing or double hyphen, and no letter outside ASCII, since the slug becomes a file name. For the same reason a slug is at most 64 characters long (`TitleId.MaxSlugLength`), which keeps the compatibility file's name and its temporary file's name far below the 255 units that NTFS and APFS allow (M6.4, `compat-db.md` section 2). M6.4's title schema must use the same pattern (section 10).
 - **App IDs.** An app ID is never 0 and is written without leading zeros, so that each title has exactly one identity text and one compat file name. Parsing rejects anything else, including any character other than an ASCII digit. That covers a trailing NUL character, which the .NET integer parser would otherwise skip.
 - **Local titles never take the Dock path.** A title not obtained through Steam can start only directly, and the app refuses to launch one that shows a Steam marker (C-0007 section 5, C-0008 section 5). `Title` rejects a local title with the Dock path.
 - **Download progress** is a fraction from 0 to 1. The shell shows it as a whole percentage, rounded down once the binary error of the product is rounded off (0.29 gives 29%, not 28%), and an unfinished download never shows 100%.
@@ -156,7 +156,7 @@ The titles were invented for Paneport and carry no game artwork or other game ma
 
 ## 10. Open questions
 
-- **Slug pattern.** Section 2 reads C-0008 section 1 strictly. M6.4's schema implements the same pattern, or the two are aligned through C-0008 if recelilious reads the rule differently.
+- **Slug pattern.** Settled by M6.4: the title schema implements the pattern of section 2 (`compat-db.md` section 2).
 - **Expected ABI version.** The major version the .NET side expects comes with M1.2's headers. M1.3 checks it at startup and shows the compatibility on Diagnostics.
 - **Token store shape.** M1.3 keeps the account name next to the refresh token, and its developer menu writes a test item under its own key, so `ITokenStore` will grow there (M1.3, M7.1).
 - **The token in managed memory.** A .NET string cannot be wiped. C-0005 section 2 makes the host zero its own copy; whether the managed side keeps the token as bytes it can clear is for M2.3 to decide.

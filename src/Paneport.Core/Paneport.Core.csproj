@@ -12,4 +12,12 @@ SPDX-License-Identifier: MIT
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>
+
+  <!--
+  The tests check two internals directly: CompatPath's redaction of the serializer's paths, which no
+  file reaches, and the bounds of IntRange, which the title schema must match.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Paneport.Core.Tests" />
+  </ItemGroup>
 </Project>

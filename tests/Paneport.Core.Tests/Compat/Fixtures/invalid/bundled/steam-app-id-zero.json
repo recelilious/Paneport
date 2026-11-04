@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 0,
+    "slug": "fixture-title"
+  },
+  "name": "Fixture Title"
+}

@@ -10,7 +10,8 @@ The domain model, the view models, the settings, the compatibility database read
 | Folder or file | What it holds |
 |---|---|
 | `Library/` | Titles: their identity, install state and launch path, and the library service interface |
-| `Hosting/` | The runtime host interface, the host ABI version and the memory budget |
+| `Compat/` | The compatibility database core (C-0008): the typed model of title entries, the reader and writer of title files, the precedence rules and the launch rule, the bundled snapshot, the device layer store, and the database over both |
+| `Hosting/` | The runtime host interface, the host ABI version, the memory budget and iOS's thermal states |
 | `Steam/` | The Steam service interface and the signed-out stub that the heads use until M2.3 |
 | `Settings/` | The app settings, the locales on offer and the settings store interface |
 | `Security/` | The secret value type, whose text form is redacted, and the token store interface |
@@ -21,4 +22,4 @@ The domain model, the view models, the settings, the compatibility database read
 - **Depends on:** nothing else in the solution, and the CommunityToolkit.Mvvm package.
 - **Build:** a library with `IsAotCompatible`, so the trimming and AOT analyzers check it, and with an XML documentation file, so a public API without a documentation comment fails the build (C-0010 sections 2 and 5).
 - **Tests:** [Paneport.Core.Tests](../../tests/Paneport.Core.Tests/README.md).
-- **Design:** [app-shell.md](../../docs/design/app-shell.md). [solution-and-build.md](../../docs/design/solution-and-build.md) records its role in the solution.
+- **Design:** [app-shell.md](../../docs/design/app-shell.md), and [compat-db.md](../../docs/design/compat-db.md) for `Compat/`. [solution-and-build.md](../../docs/design/solution-and-build.md) records its role in the solution.

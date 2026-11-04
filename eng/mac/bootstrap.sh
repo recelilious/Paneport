@@ -43,14 +43,21 @@ dotnet run tools/CheckToolchain.cs -- --xcode \
     || fail "the SDK or Xcode does not match its pin; the lines above name both versions. Install the pinned \
 version, or select the pinned Xcode with xcode-select or DEVELOPER_DIR, then run this script again."
 
-# The packs come only from the package source that eng/nuget.config pins.
+# The packs come only from the package source that eng/nuget.config pins. The SDK refuses a
+# plain install in a folder this user cannot write before it looks at what is installed, so a
+# workload that the folder's owner has installed is recognized first.
 workload_set=$(plutil -extract tools.ios-workload-set.version raw -o - eng/toolchain.json) \
     || fail "eng/toolchain.json has no ios-workload-set pin that plutil can read."
-say "installing the ios workload from workload set $workload_set"
-dotnet workload install ios --version "$workload_set" --configfile eng/nuget.config \
-    || fail "dotnet workload install failed; see the lines above. If this user cannot write to the .NET \
-installation, its owner runs this command, and then this script runs again: \
-dotnet workload install ios --version $workload_set --configfile $repo/eng/nuget.config"
+if dotnet run tools/CheckToolchain.cs -- --ios-workload >/dev/null 2>&1; then
+    say "the ios workload from workload set $workload_set is already installed"
+else
+    say "installing the ios workload from workload set $workload_set"
+    install_command=$(printf 'dotnet workload install ios --version %q --configfile %q' \
+        "$workload_set" "$repo/eng/nuget.config")
+    dotnet workload install ios --version "$workload_set" --configfile eng/nuget.config \
+        || fail "dotnet workload install failed; see the lines above. If this user cannot write to the .NET \
+installation, its owner runs this command, and then this script runs again: $install_command"
+fi
 
 say "checking the installed workload set against its pin"
 dotnet run tools/CheckToolchain.cs -- --xcode --ios-workload \

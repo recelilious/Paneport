@@ -258,6 +258,18 @@ public sealed class CompatPrecedenceTests
     }
 
     [Fact]
+    public void ReviewedSteamProgramNeedsNoDeviceEntry()
+    {
+        // A device layer without an entry names no other program, so a reviewed entry that names the
+        // program and sets every member that the launch rule reads gives the Direct path on its own.
+        var settings = CompatPrecedence.Merge(TestEntries.SteamId, Reviewed(TestEntries.SteamId, s_allowsDirect), null);
+
+        Assert.Equal(ReviewedClassificationUse.Used, settings.ReviewedClassification);
+        Assert.Equal("Orchard.exe", settings.Executable!.Path);
+        Assert.Equal(LaunchDecision.Direct, settings.Launch);
+    }
+
+    [Fact]
     public void ReviewedDrmCoversOnlyTheReviewedProgram()
     {
         // The reviewed drm counts only while the device runs the reviewed program (C-0008 section 1).
@@ -359,6 +371,111 @@ public sealed class CompatPrecedenceTests
         Assert.Equal(LaunchDecision.Unclassified, unclassified.Launch);
     }
 
+    [Fact]
+    public void LocalDeviceEntryThatListsNoBuildRunsNoReviewedBuild()
+    {
+        // A local device entry shows the build that the device runs by its exeSha256 values. An empty
+        // list, or none, breaks the device layer's rules, and the merge still finds no reviewed build.
+        var bundled = Reviewed(TestEntries.LocalId, s_allowsDirect);
+        var device = TestEntries.Local() with { Drm = TestEntries.Clean };
+        foreach (var builds in new IReadOnlyList<string>?[] { [], null })
+        {
+            var unlisted = device with { Id = device.Id with { ExeSha256 = builds } };
+            Assert.NotEmpty(TitleEntryJson.Validate(unlisted, CompatLayer.Device));
+
+            var settings = CompatPrecedence.Merge(TestEntries.LocalId, bundled, unlisted);
+
+            Assert.Equal(TestEntries.Clean, settings.Drm);
+            Assert.Equal(ReviewedClassificationUse.UnreviewedBuild, settings.ReviewedClassification);
+            Assert.Equal(LaunchDecision.Refused, settings.Launch);
+        }
+    }
+
+    [Theory]
+    [InlineData(TitleSource.Steam)]
+    [InlineData(TitleSource.Local)]
+    public void AnotherProgramWithoutAComputedClassificationWaitsForTheClassifier(TitleSource source)
+    {
+        // A device entry for another program or an unreviewed build, saved before the classifier has
+        // run, holds no drm. The reviewed drm still does not count, so the title is Unclassified, not
+        // Direct.
+        var id = source == TitleSource.Steam ? TestEntries.SteamId : TestEntries.LocalId;
+
+        var settings = CompatPrecedence.Merge(id, Reviewed(id, s_allowsDirect), AnotherProgram(source));
+
+        Assert.Null(settings.Drm);
+        Assert.Equal(NotTheReviewedProgram(source), settings.ReviewedClassification);
+        Assert.Equal(LaunchDecision.Unclassified, settings.Launch);
+    }
+
+    [Theory]
+    [InlineData(TitleSource.Steam, LaunchDecision.Dock)]
+    [InlineData(TitleSource.Local, LaunchDecision.Refused)]
+    public void ReviewedBlockersKeepTheDirectPathClosedForAnotherProgram(TitleSource source, LaunchDecision closed)
+    {
+        // Where the reviewed drm does not count, only the computed classification does, and its ceg is
+        // never no. A title whose reviewed classification blocks the Direct path therefore stays
+        // blocked, even with an unchecked device entry that claims ceg no.
+        var id = source == TitleSource.Steam ? TestEntries.SteamId : TestEntries.LocalId;
+        foreach (var blocker in new[]
+        {
+            new DrmClassification { SteamApi = true, Ceg = CegStatus.No },
+            new DrmClassification { SteamStub = true, Ceg = CegStatus.No },
+            new DrmClassification { Ceg = CegStatus.Unknown },
+            new DrmClassification { Ceg = CegStatus.Yes },
+        })
+        {
+            foreach (var computed in new[] { TestEntries.Clean, TestEntries.Clean with { Ceg = CegStatus.No } })
+            {
+                var device = AnotherProgram(source) with { Drm = computed };
+
+                var settings = CompatPrecedence.Merge(id, Reviewed(id, blocker), device);
+
+                Assert.Equal(NotTheReviewedProgram(source), settings.ReviewedClassification);
+                Assert.Equal(closed, settings.Launch);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(TitleSource.Steam)]
+    [InlineData(TitleSource.Local)]
+    public void OnlyDrmDependsOnTheReviewedProgram(TitleSource source)
+    {
+        // Where the device runs another program or an unreviewed build, every reviewed setting but drm
+        // still applies (docs/design/compat-db.md section 10).
+        var id = source == TitleSource.Steam ? TestEntries.SteamId : TestEntries.LocalId;
+        var report = new TestReport
+        {
+            Date = new DateOnly(2026, 11, 2),
+            Device = "iPhone18,1",
+            IosVersion = "27.2 (24B119)",
+            PaneportVersion = "v0.1.0",
+            GameBuild = "12345678",
+            Rating = CompatRating.Boots,
+            Evidence = "docs/evidence/2026-11-02-copper-orchard.md",
+        };
+        var bundled = Reviewed(id, s_allowsDirect) with
+        {
+            Prefix = PrefixMode.Isolated,
+            Rating = CompatRating.Boots,
+            Reports = [report],
+        };
+        var device = AnotherProgram(source) with { Drm = TestEntries.Clean };
+
+        var settings = CompatPrecedence.Merge(id, bundled, device);
+
+        Assert.Equal(NotTheReviewedProgram(source), settings.ReviewedClassification);
+        Assert.Equal(TestEntries.Clean, settings.Drm);
+        Assert.Equal("Copper Orchard", settings.Name);
+        Assert.Equal(PrefixMode.Isolated, settings.Prefix);
+        Assert.Equal(CompatRating.Boots, settings.Rating);
+        Assert.Equal([report], settings.Reports);
+
+        // A device executable replaces the reviewed one as a whole; a device entry without one keeps it.
+        Assert.Equal(source == TitleSource.Steam ? "Launcher.exe" : "Orchard.exe", settings.Executable!.Path);
+    }
+
     [Theory]
     [InlineData(TitleSource.Steam, LaunchDecision.Dock)]
     [InlineData(TitleSource.Local, LaunchDecision.Refused)]
@@ -403,4 +520,18 @@ public sealed class CompatPrecedenceTests
     // A reviewed entry that names the program Orchard.exe, as TestEntries.Local() does, with its drm.
     private static TitleEntry Reviewed(TitleId id, DrmClassification? drm) =>
         TestEntries.ForId(id) with { Executable = new ExecutableSpec { Path = "Orchard.exe" }, Drm = drm };
+
+    // A device entry with no classification yet for another program than the reviewed one: a launcher
+    // for the Steam title, and a build that the reviewed entry does not list for the local title.
+    private static TitleEntry AnotherProgram(TitleSource source) => source == TitleSource.Steam
+        ? TestEntries.Steam(name: null) with { Executable = new ExecutableSpec { Path = "Launcher.exe" } }
+        : TestEntries.Local(name: null) with
+        {
+            Id = TestEntries.Local().Id with { ExeSha256 = [new string('c', 64)] },
+            Executable = null,
+        };
+
+    private static ReviewedClassificationUse NotTheReviewedProgram(TitleSource source) => source == TitleSource.Steam
+        ? ReviewedClassificationUse.OtherProgram
+        : ReviewedClassificationUse.UnreviewedBuild;
 }

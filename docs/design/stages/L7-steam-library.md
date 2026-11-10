@@ -143,6 +143,10 @@ The L7 session starts when M7.1, M7.2 and M7.3 are Done and D6 and D10 are recor
 **Notes from earlier stages.**
 
 - M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-10-31): the schema lets an entry set only `ceg` while the device's classification fills in the other `drm` members (`compat-db.md` section 4, exception 1), which answers the question in S7.0.3.
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-11-10): an entry's reviewed `drm` counts only while the device runs the reviewed program (C-0008 1.1 section 1). For an entry of S7.0.3:
+  - a `local-` entry lists in `exeSha256`, a field that S7.0.3 does not name, the hash of the copy on the device; otherwise the title gets `UnreviewedBuild` and is refused once classified;
+  - a `steam-` entry names `executable`, because without a program the title takes the Dock path even when its classification allows the Direct path, and a device `executable` where the entry names none is another program;
+  - a `steam-` entry sets only `ceg`, unless it has a reason to set another member, because a reviewed `steamApi` or `steamStub` would also cover a program that an update puts at the same path (`compat-db.md` sections 4 and 5).
 
 **Session log.**
 
@@ -273,6 +277,7 @@ Scripts this stage creates: the fakes and the synthetic data builders in the tes
 
 - M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 holds open questions for this stage: the token store's layout, whether leaving a page cancels its load, and a virtualizing Library whose download progress raises change notifications.
 - M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-10-31): Title details read the rating through `CompatDatabase.LoadAsync`. No head adds the database to `AppServices` yet, so this stage or M6.5, whichever comes first, adds it with the shape its pages need (`compat-db.md` section 7).
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-11-10): where the device runs another program than the reviewed one, `EffectiveTitleSettings.ReviewedClassification` is `OtherProgram` and only `drm` stops counting; the rating, the reports and the other reviewed settings still come from the bundled entry (C-0008 1.1 section 1). This stage decides whether Title details say that they belong to another program (`compat-db.md` section 10).
 
 **Session log.**
 
@@ -301,7 +306,7 @@ In:
 - `steam_appid.txt`: recorded when the game ships one, never created (C-0007 section 5).
 - CEG: it cannot be read from files and is set by hand in the reviewed entry (C-0007 section 5). The computed classification leaves it `unknown`.
 - When the scan runs: after an install finishes, after every update, and before a launch when no current result exists.
-- Storing the result (S7.2.3) in the device layer through M6.4's store, one file per title in `Library/Application Support/Paneport/compat/` (C-0008 section 1). A `drm` value set in the bundled entry wins over a computed one, and the device layer never turns `launch` into `direct` for a title whose `drm` requires the Dock path (C-0008 section 1).
+- Storing the result (S7.2.3) in the device layer through M6.4's store, one file per title in `Library/Application Support/Paneport/compat/` (C-0008 section 1). A `drm` value set in the bundled entry wins over a computed one while the device runs the reviewed program, and the device layer never turns `launch` into `direct` for a title whose `drm` requires the Dock path (C-0008 section 1).
 - The launch decision (S7.2.3): Direct only when `steamApi` and `steamStub` are false and `ceg` is `no`; otherwise Dock (C-0008 section 5). A title with a pending update does not start (C-0007 section 4). The decision carries its reasons for the UI.
 - Direct launch (S7.2.4): the effective entry's `executable.path`, `workingDirectory` and `arguments` (C-0008 section 2), handed to M6.5's session flow. How the library folder appears inside the Wine session is to be confirmed in this stage, building on M6.5's mapping for imported titles.
 - Dock-path titles show "needs the Dock path, not available yet" and offer no Launch button until L8. The title details page shows the classification and its reasons.
@@ -344,7 +349,7 @@ Out:
    - a clean folder with a reviewed `ceg` of `no` gives Direct, and the same folder with no entry, or with `ceg` `unknown`, gives Dock;
    - a bundled `drm` value that overrides a computed one, and a device-layer override that tries to make a Dock title Direct and is refused (C-0008 section 1);
    - a pending update that refuses the launch;
-   - classification that runs again after an update adds `steam_api.dll`, which moves the title to Dock;
+   - classification that runs again after an update adds `steam_api.dll`, which moves a title whose reviewed entry sets only `ceg` to Dock; a reviewed `steamApi` of false would still win at the same path (`compat-db.md` section 4);
    - a Direct launch request with the entry's program and arguments and none of the forbidden environment variables (C-0008 section 5).
 2. The `dotnet`, `ios` and `checks` jobs pass on the last commit (C-0011 section 3).
 
@@ -359,7 +364,7 @@ All of it runs without the iPhone. Real titles are classified only on the device
 **Risks and fallbacks.**
 
 - Direct launch needs a reviewed entry with `ceg` set to `no`, because CEG cannot be read from files (C-0007 section 5). Until M8.2, a Steam title without such an entry cannot start at all. Widening this needs changes to C-0007 section 5 and C-0008 section 5, so this stage does not try.
-- M6.5's SteamStub detector is tested only with synthetic files, and the research says the publicly reported signature is unverified. Any misreading errs toward the Dock path or shows up in L7's device run, and a reviewed `drm` value then wins over the computed one.
+- M6.5's SteamStub detector is tested only with synthetic files, and the research says the publicly reported signature is unverified. Any misreading errs toward the Dock path or shows up in L7's device run, and a reviewed `drm` value then wins over the computed one while the device runs the reviewed program (C-0008 section 1). Such a value also wins after an update that really adds SteamStub to the program at that path, so the entry sets it only with the device run as its reason, and only for the member that was misread (`compat-db.md` section 4).
 - Large install folders: the scan reads only headers and import tables. L7 notes its time on the device.
 - A game may need a working directory other than its program's folder. The entry's `workingDirectory` covers it.
 
@@ -372,7 +377,10 @@ All of it runs without the iPhone. Real titles are classified only on the device
 **Notes from earlier stages.**
 
 - M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-11-01): the scan stores true for a marker it cannot rule out, such as the Steam API in a program file it cannot parse, or SteamStub when no entry names a main program, because `drm` holds only booleans and a missing member means not yet classified. The title then takes the Dock path, and the decision's reasons can still say that the marker was not ruled out (`compat-db.md` sections 3 and 5).
-- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-11-01): a reviewed `drm` counts only while the device runs the reviewed program (C-0008 1.1 section 1). A device `executable` whose path differs from the bundled entry's, or that names a program where the bundled entry names none, drops the reviewed classification, so the title takes the Dock path; overriding the program never leads to the Direct path. The decision's reasons include it, which `EffectiveTitleSettings.ReviewedClassification` gives as `OtherProgram` (`compat-db.md` section 4).
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-11-01): a reviewed `drm` counts only while the device runs the reviewed program (C-0008 1.1 section 1). A device `executable` whose path differs from the bundled entry's, or that names a program where the bundled entry names none, drops the reviewed classification, so once classified the title takes the Dock path; overriding the program never leads to the Direct path. The decision's reasons include it, which `EffectiveTitleSettings.ReviewedClassification` gives as `OtherProgram` (`compat-db.md` section 4).
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-11-10): the Direct path starts the program that an entry names (C-0007 section 5), so where no layer names an `executable`, the merge gives the Dock path even when the classification allows the Direct path. `ReviewedClassification` can still be `Used` then; the decision's reasons tell this case by the missing `EffectiveTitleSettings.Executable` (`compat-db.md` section 5).
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-11-10): C-0008 section 5 forbids `arguments` that skip a launcher or an ownership check, and review checks that only in `compat/titles/`, never in a device file. A device `executable` with the reviewed path and other arguments keeps the reviewed classification (C-0008 1.1 section 1). The app therefore takes no device `arguments` from free text without a check; if this stage lets the user set arguments, its design document says how that check works (`compat-db.md` section 8).
+- M6.4 ([L6 brief](L6-2d-game.md#m64-compatibility-database-core), session log of 2026-11-10): a Steam title is judged by its path, so a reviewed `steamApi` or `steamStub` of false also wins after an update that adds that marker to the program at the same path, and only an entry that sets just `ceg` lets the scan after the update move the title to Dock (`compat-db.md` section 4). The tests of the update case use such an entry.
 
 **Session log.**
 

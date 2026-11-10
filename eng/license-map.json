@@ -68,5 +68,9 @@
     "actions/setup-dotnet": "actions/setup-dotnet",
     "actions/upload-artifact": "actions/upload-artifact"
   },
-  "submodules": {}
+  "submodules": {
+    "external/Paneport-FEX": "FEX-Emu",
+    "external/Paneport-dxmt": "DXMT",
+    "external/Paneport-wine": "Wine"
+  }
 }

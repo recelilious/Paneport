@@ -53,6 +53,8 @@ public static class LaunchRule
         drm is not null
         && (drm.SteamApi == true || drm.SteamStub == true || drm.Ceg is CegStatus.Yes or CegStatus.Unknown);
 
-    private static LaunchDecision Closed(TitleSource source) =>
+    // The decision where the Direct path is closed: a Steam title takes the Dock path, and a local
+    // title, which can take no other path, is refused.
+    internal static LaunchDecision Closed(TitleSource source) =>
         source == TitleSource.Steam ? LaunchDecision.Dock : LaunchDecision.Refused;
 }

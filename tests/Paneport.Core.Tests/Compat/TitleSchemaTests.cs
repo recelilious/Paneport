@@ -210,12 +210,13 @@ public sealed partial class TitleSchemaTests
     public void LaunchPathsAgree() => AssertAgree(
         Strings(Properties["launch"]!["enum"]),
         value => $$"""
-            "launch": "{{value}}",
+            "launch": "{{value}}", "executable": { "path": "Orchard.exe" },
             "drm": { "steamApi": {{(value == "dock" ? "true" : "false")}}, "steamStub": false, "ceg": "no" }
             """,
         Enum.GetValues<LaunchPath>().Select(value => TestEntries.Steam() with
         {
             Launch = value,
+            Executable = new ExecutableSpec { Path = "Orchard.exe" },
             Drm = new() { SteamApi = value == LaunchPath.Dock, SteamStub = false, Ceg = CegStatus.No },
         }),
         written => (string?)written["launch"]);

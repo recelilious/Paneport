@@ -11,6 +11,14 @@ namespace Paneport.Core.Tests.Compat;
 // and how objects, lists and maps merge (docs/design/compat-db.md section 4).
 public sealed class CompatPrecedenceTests
 {
+    // A reviewed classification that allows the Direct path on its own.
+    private static readonly DrmClassification s_allowsDirect = new()
+    {
+        SteamApi = false,
+        SteamStub = false,
+        Ceg = CegStatus.No,
+    };
+
     [Theory]
     [InlineData(TitleSource.Steam)]
     [InlineData(TitleSource.Local)]
@@ -210,9 +218,10 @@ public sealed class CompatPrecedenceTests
     [InlineData(TitleSource.Local)]
     public void ReviewedCegAndComputedMembersTogetherGiveTheDirectPath(TitleSource source)
     {
-        // The reviewed entry sets only ceg by hand (C-0007 section 5); the device computes the rest.
+        // The reviewed entry sets only ceg by hand (C-0007 section 5) and names the program that the
+        // Direct path starts; the device computes the rest.
         var id = source == TitleSource.Steam ? TestEntries.SteamId : TestEntries.LocalId;
-        var bundled = TestEntries.ForId(id) with { Drm = new DrmClassification { Ceg = CegStatus.No } };
+        var bundled = Reviewed(id, new DrmClassification { Ceg = CegStatus.No });
         var device = TestEntries.ForId(id) with { Drm = TestEntries.Clean };
 
         Assert.Equal(LaunchDecision.Unclassified, CompatPrecedence.Merge(id, bundled, null).Launch);
@@ -223,6 +232,29 @@ public sealed class CompatPrecedenceTests
             new DrmClassification { SteamApi = false, SteamStub = false, SteamAppIdFile = false, Ceg = CegStatus.No },
             settings.Drm);
         Assert.Equal(LaunchDecision.Direct, settings.Launch);
+    }
+
+    [Theory]
+    [InlineData(TitleSource.Steam, LaunchDecision.Dock)]
+    [InlineData(TitleSource.Local, LaunchDecision.Refused)]
+    public void DirectPathNeedsAProgramToStart(TitleSource source, LaunchDecision closed)
+    {
+        // The Direct path starts the program that an entry names (C-0007 section 5). Where no layer
+        // names one, a classification that allows the Direct path gives the closed path instead. A
+        // local entry without a program breaks its layer's rules; the merge does not rely on them.
+        var id = source == TitleSource.Steam ? TestEntries.SteamId : TestEntries.LocalId;
+        var unnamed = Reviewed(id, s_allowsDirect) with { Executable = null };
+        var device = TestEntries.ForId(id) with { Executable = null, Drm = TestEntries.Clean };
+
+        var settings = CompatPrecedence.Merge(id, unnamed, device);
+
+        Assert.Null(settings.Executable);
+        Assert.Equal(ReviewedClassificationUse.Used, settings.ReviewedClassification);
+        Assert.Equal(LaunchDecision.Direct, LaunchRule.Decide(source, settings.Drm));
+        Assert.Equal(closed, settings.Launch);
+
+        // The same classification with the reviewed program gives the Direct path.
+        Assert.Equal(LaunchDecision.Direct, CompatPrecedence.Merge(id, Reviewed(id, s_allowsDirect), device).Launch);
     }
 
     [Fact]
@@ -367,4 +399,8 @@ public sealed class CompatPrecedenceTests
         Assert.Throws<ArgumentException>(() => CompatPrecedence.Merge(TestEntries.LocalId, TestEntries.Steam(), null));
         Assert.Throws<ArgumentException>(() => CompatPrecedence.Merge(TestEntries.SteamId, null, TestEntries.Local()));
     }
+
+    // A reviewed entry that names the program Orchard.exe, as TestEntries.Local() does, with its drm.
+    private static TitleEntry Reviewed(TitleId id, DrmClassification? drm) =>
+        TestEntries.ForId(id) with { Executable = new ExecutableSpec { Path = "Orchard.exe" }, Drm = drm };
 }

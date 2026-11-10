@@ -5,6 +5,9 @@
     "slug": "fixture-title"
   },
   "name": "Fixture Title",
+  "executable": {
+    "path": "Fixture.exe"
+  },
   "drm": {
     "steamApi": false,
     "steamStub": false

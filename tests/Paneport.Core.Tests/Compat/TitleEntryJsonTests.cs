@@ -80,6 +80,7 @@ public sealed class TitleEntryJsonTests
         { "bad-rating.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.rating" },
         { "launch-unclassified.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.launch" },
         { "direct-without-ceg.json", CompatLayer.Bundled, CompatRule.Launch, "$.launch" },
+        { "direct-without-executable.json", CompatLayer.Bundled, CompatRule.Launch, "$.launch" },
         { "dock-without-blocker.json", CompatLayer.Bundled, CompatRule.Launch, "$.launch" },
         { "local-steam-api.json", CompatLayer.Bundled, CompatRule.Launch, "$.drm.steamApi" },
         { "local-steam-stub.json", CompatLayer.Bundled, CompatRule.Launch, "$.drm.steamStub" },

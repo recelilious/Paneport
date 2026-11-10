@@ -103,7 +103,7 @@
   },
   "allOf": [
     {
-      "$comment": "C-0008 section 5: launch is direct only when steamApi and steamStub are false and ceg is no, here in the entry's own drm.",
+      "$comment": "C-0008 section 5: launch is direct only when steamApi and steamStub are false and ceg is no, here in the entry's own drm. The Direct path starts the program that executable names (C-0007 section 5), so the entry names it.",
       "if": {
         "required": ["launch"],
         "properties": {
@@ -113,7 +113,7 @@
         }
       },
       "then": {
-        "required": ["drm"],
+        "required": ["drm", "executable"],
         "properties": {
           "drm": {
             "required": ["steamApi", "steamStub", "ceg"],

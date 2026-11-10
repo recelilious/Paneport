@@ -21,14 +21,14 @@
       "hidden": true,
       "inherits": ["paneport-base"],
       "description": "The host's test builds for macOS on Apple silicon.",
-      "toolchainFile": "${fileDir}/macos.cmake"
+      "toolchainFile": "${sourceDir}/../../eng/cmake/macos.cmake"
     },
     {
       "name": "paneport-ios",
       "hidden": true,
       "inherits": ["paneport-base"],
       "description": "The host for arm64-apple-ios.",
-      "toolchainFile": "${fileDir}/ios.cmake"
+      "toolchainFile": "${sourceDir}/../../eng/cmake/ios.cmake"
     }
   ]
 }

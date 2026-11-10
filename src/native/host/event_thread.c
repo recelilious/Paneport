@@ -176,22 +176,32 @@ static void receive_event(const pp_event_t *event) {
     (void)pthread_mutex_unlock(&s_thread.callback_mutex);
 }
 
-// Logs the first overflow of each queue once. Later refusals are only counted, so that a
-// flood does not turn into a flood of notices.
+// Logs the first overflow of one queue once; later refusals are only counted, so that a flood
+// does not turn into a flood of notices. While no log callback is set and the buffer for early
+// lines is full, the notice would be dropped with the lines, so it waits: the flag stays clear,
+// and the first drain after a callback is set delivers it.
+static void report_overflow_of(const pp_queue_t *queue, bool *reported, const char *text) {
+    if (*reported || pp_queue_overflow_count(queue) == 0U) {
+        return;
+    }
+
+    (void)pthread_mutex_lock(&s_thread.callback_mutex);
+    if (s_thread.log_callback != NULL || s_thread.pending_count < PP_PENDING_LOG_LINES) {
+        *reported = true;
+        pp_log_entry_t notice;
+        make_notice(&notice, text);
+        handle_line(&notice);
+    }
+    (void)pthread_mutex_unlock(&s_thread.callback_mutex);
+}
+
 static void report_overflow(void) {
-    pp_log_entry_t notice;
-    if (!s_thread.events_overflow_reported && pp_queue_overflow_count(&s_thread.events) > 0U) {
-        s_thread.events_overflow_reported = true;
-        make_notice(&notice, "The host event queue was full, so events were dropped. Later "
-                             "drops are counted, not logged.");
-        receive_line(&notice);
-    }
-    if (!s_thread.logs_overflow_reported && pp_queue_overflow_count(&s_thread.logs) > 0U) {
-        s_thread.logs_overflow_reported = true;
-        make_notice(&notice, "The host log queue was full, so log lines were dropped. Later "
-                             "drops are counted, not logged.");
-        receive_line(&notice);
-    }
+    report_overflow_of(&s_thread.events, &s_thread.events_overflow_reported,
+                       "The host event queue was full, so events were dropped. Later drops are "
+                       "counted, not logged.");
+    report_overflow_of(&s_thread.logs, &s_thread.logs_overflow_reported,
+                       "The host log queue was full, so log lines were dropped. Later drops are "
+                       "counted, not logged.");
 }
 
 static void drain(void) {
@@ -266,7 +276,16 @@ pp_status_t pp_event_thread_start(void) {
 }
 
 void pp_event_thread_stop(void) {
+    // Refuse new posts, then wait for the posts in progress before the thread stops. A producer
+    // that saw accepting still true may be inside its push; once posting is 0, every post that
+    // returned PP_OK has published its entry, so the final drain delivers it, and no slot is left
+    // claimed but unpublished in front of others. A post that starts now sees accepting false
+    // and never touches a queue.
     atomic_store(&s_thread.accepting, false);
+    while (atomic_load(&s_thread.posting) != 0U) {
+        (void)sched_yield();
+    }
+
     atomic_store(&s_thread.stop_requested, true);
     wake_thread();
     (void)pthread_join(s_thread.thread, NULL);
@@ -281,12 +300,30 @@ void pp_event_thread_stop(void) {
     s_thread.pending_dropped = 0U;
     (void)pthread_mutex_unlock(&s_thread.callback_mutex);
 
-    // A producer that saw accepting still true may be inside its push.
-    while (atomic_load(&s_thread.posting) != 0U) {
-        (void)sched_yield();
-    }
     pp_queue_destroy(&s_thread.logs);
     pp_queue_destroy(&s_thread.events);
+}
+
+#ifdef PANEPORT_TEST_BUILD
+// The hook of the test builds, and its argument: set once by a test, before the posts it holds.
+static _Atomic(pp_post_hook_t) s_post_hook;
+static _Atomic(void *) s_post_hook_argument;
+
+void pp_event_thread_set_post_hook(pp_post_hook_t hook, void *argument) {
+    atomic_store(&s_post_hook_argument, argument);
+    atomic_store(&s_post_hook, hook);
+}
+#endif
+
+// Lets a test hold a post between its check that the thread runs and its push. Nothing in the
+// shipped builds.
+static void run_post_hook(void) {
+#ifdef PANEPORT_TEST_BUILD
+    const pp_post_hook_t hook = atomic_load(&s_post_hook);
+    if (hook != NULL) {
+        hook(atomic_load(&s_post_hook_argument));
+    }
+#endif
 }
 
 static pp_status_t post(pp_queue_t *queue, const void *entry) {
@@ -294,10 +331,13 @@ static pp_status_t post(pp_queue_t *queue, const void *entry) {
     pp_status_t status = PP_OK;
     if (!atomic_load(&s_thread.accepting)) {
         status = PP_E_NOT_INITIALIZED;
-    } else if (!pp_queue_push(queue, entry)) {
-        status = PP_E_BUSY;
     } else {
-        wake_if_sleeping();
+        run_post_hook();
+        if (!pp_queue_push(queue, entry)) {
+            status = PP_E_BUSY;
+        } else {
+            wake_if_sleeping();
+        }
     }
     (void)atomic_fetch_sub(&s_thread.posting, 1U);
     return status;

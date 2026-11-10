@@ -55,4 +55,13 @@ void pp_event_thread_set_log_callback(pp_log_callback_t callback, void *user_dat
 // where pthread_self reads a register.
 bool pp_event_thread_is_current(void);
 
+#ifdef PANEPORT_TEST_BUILD
+// A function that a post calls between its check that the thread runs and its push.
+typedef void (*pp_post_hook_t)(void *argument);
+
+// Test builds only: makes every later post call hook with argument there, or no hook for NULL,
+// so that a test can hold a post while the host stops (tests/native/test_event_thread.c).
+void pp_event_thread_set_post_hook(pp_post_hook_t hook, void *argument);
+#endif
+
 #endif // PANEPORT_HOST_EVENT_THREAD_H

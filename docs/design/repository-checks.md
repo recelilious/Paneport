@@ -155,14 +155,14 @@ Each needs the checker taught to read it, in a reviewed change, before it is use
 | CMake | 4.4.5 | `eng/toolchain.json` (`cmake`) | Its GitHub release `v4.4.5`, through `eng/mac/bootstrap.sh` | `osx-arm64`: `cmake-4.4.5-macos-universal.tar.gz` |
 | clang-format and clang-tidy | 23.1.5 | `eng/toolchain.json` (`llvm`) | The LLVM release `llvmorg-23.1.5`, through `eng/mac/bootstrap.sh` | `osx-arm64`: `LLVM-23.1.5-macOS-ARM64.tar.xz` |
 
-gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-01, were the newest releases on 2026-10-29. CMake 4.4.5, released on 2026-10-27, and LLVM 23.1.5, released on 2026-11-03, were the newest releases on 2026-11-10; CMake 4.5.0 was a release candidate then. Of the LLVM archive, the bootstrap unpacks only clang-format, clang-tidy, the libraries in `lib/` and clang's headers in `lib/clang/<version>/include`, which clang-tidy reads; on the first CI run, its download and unpacking took 2 min 14 s, and CMake's 4 s. Their licenses (MIT, and MIT OR Apache-2.0) match their register rows. [dev-environment.md](dev-environment.md) section 2 records how the Xcode, workload set and image pins were chosen, why the workload set is not in `global.json`, and how the four pins of the iOS build move together.
+gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-01, were the newest releases on 2026-10-29. Their licenses (MIT, and MIT OR Apache-2.0) match their register rows. CMake 4.4.5, released on 2026-10-27, and LLVM 23.1.5, released on 2026-11-03, were the newest releases on 2026-11-10; CMake 4.5.0 was a release candidate then. Of the LLVM archive, the bootstrap unpacks only clang-format, clang-tidy, the libraries in `lib/` and clang's headers in `lib/clang/<version>/include`, which clang-tidy reads; on the first CI run, its download and unpacking took 2 min 14 s, and CMake's 4 s. Their licenses, BSD-3-Clause for CMake and Apache-2.0 WITH LLVM-exception for the LLVM release of clang-format and clang-tidy, match their register rows. [dev-environment.md](dev-environment.md) section 2 records how the Xcode, workload set and image pins were chosen, why the workload set is not in `global.json`, and how the four pins of the iOS build move together.
 
 **Changing a pin.** A pin changes in a reviewed change of its own (C-0009 section 2).
 
 1. A new tool is registered under C-0003 first and mapped in `eng/license-map.json`.
 2. Update `version`, `source` and every download's `url` and `sha256`. Take each SHA-256 from two independent places and check that they agree: GitHub's digest of the release asset (`gh api repos/<owner>/<repo>/releases/tags/<tag>`, field `digest`) and the checksum file or attestation that the project publishes with the release (`gitleaks_<version>_checksums.txt`; lychee's `<asset>.sha256`; CMake's `cmake-<version>-SHA-256.txt`; for LLVM, the `subject` digest inside the payload of `<asset>.jsonl`). The values above were taken that way.
 3. If the tool's version output changed, update its version check in `tools/CheckToolchain.cs` and its self-test.
-4. Push, and confirm that `checks` installs the tool and that the toolchain step passes.
+4. Push, and confirm that the job that installs the tool passes its toolchain step: `checks` for the CI tools, the bootstrap step of `native` for CMake and LLVM, and the bootstrap step of `ios` for CMake.
 
 ## 6. The CI jobs
 
@@ -211,7 +211,7 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 3. Check the format of the native code with `eng/mac/check-native-style.sh format`.
 4. The planted format error: copy `src/native/host/memory_budget.c` into `build/planted/`, which git ignores, with extra spaces in one line, and pass only if the format check fails on the copy. The copy finds the root `.clang-format` above it.
 5. Configure, build and run the CTest suite with the preset `asan-ubsan`, then with `tsan`. A sanitizer report stops its test, which fails.
-6. Configure the preset `ios-device-test` for its compile database, and run `eng/mac/check-native-style.sh tidy` on the databases of `asan-ubsan` and `ios-device-test`, so that the code of both platforms is analyzed.
+6. Configure the presets `ios-device-test` and `ios-device` for their compile databases, and run `eng/mac/check-native-style.sh tidy` on the databases of `asan-ubsan`, `ios-device-test` and `ios-device`, so that the code of both platforms is analyzed, in the test builds and in the build that ships.
 7. Build the host test library with the preset `macos-test`.
 8. Restore `tests/Paneport.Interop.Tests` from its lock file, fail if a lock file was written, build it, and check its formatting.
 9. Run it with `PANEPORT_HOST_LIBRARY` naming the library of step 7, with a skipped test counted as a failure.

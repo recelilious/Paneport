@@ -14,8 +14,8 @@ Tests of [Paneport.Interop](../../src/Paneport.Interop/README.md), which run on 
 | `AssemblySettings.cs` | Not a test: the fixture for the whole assembly, and one test at a time, because the tests share the host |
 | `DependencyDirectionTests.cs` | Paneport.Interop references no other project, and this project only Paneport.Interop (C-0004 section 2) |
 | `AbiVersionTests.cs` | The host implements the version of the bindings, and versions decode as major and minor |
-| `LayoutConformanceTests.cs` | The interface conformance test of C-0005 section 5, with the planted wrong definition of `WrongMemoryBudget.cs`, which it reports by struct and member |
-| `BindingTests.cs` | Every binding against the library: the memory budget, errors with their status and message, the main-thread rule, events and log lines on the event thread, an exception in a handler caught and reported, host memory freed with `pp_free`, and a test crash record |
+| `LayoutConformanceTests.cs` | The interface conformance test of C-0005 section 5, with the planted wrong definition of `WrongMemoryBudget.cs`, which it reports by struct and member, and a check that the hand-written list of `ManagedLayouts` holds every `Native*` struct and field of the bindings |
+| `BindingTests.cs` | Every binding against the library: the memory budget, errors with their status and message, the main-thread rule, events and log lines on the event thread, not on the test's thread or the stand-in main thread, an exception in a handler caught and reported, host memory freed with `pp_free`, and a test crash record |
 
 Run them on a Mac from the repository root, once the library is built:
 

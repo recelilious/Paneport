@@ -37,14 +37,18 @@ set(calls "")
 set(refused "")
 foreach(line IN LISTS lines)
     # GNU nm prints a type letter before the name, such as U or w; Apple's nm the name alone.
+    # string(REGEX REPLACE) would apply "^" again after each match, so a match with one group
+    # takes exactly one prefix away.
     string(STRIP "${line}" symbol)
-    string(REGEX REPLACE "^[A-Za-z] +" "" symbol "${symbol}")
+    if(symbol MATCHES "^[A-Za-z] +(.+)$")
+        set(symbol "${CMAKE_MATCH_1}")
+    endif()
     if(symbol STREQUAL "")
         continue()
     endif()
-    # Apple's toolchain puts an underscore in front of every C name.
-    if(STRIP_UNDERSCORE)
-        string(REGEX REPLACE "^_" "" symbol "${symbol}")
+    # Apple's toolchain puts one underscore in front of every C name.
+    if(STRIP_UNDERSCORE AND symbol MATCHES "^_(.+)$")
+        set(symbol "${CMAKE_MATCH_1}")
     endif()
     # The sanitizers' own symbols, such as __asan_report_load8 or __start_asan_globals.
     if(symbol MATCHES "^__[a-z_]*(asan|ubsan|tsan|sanitizer)")

@@ -44,7 +44,8 @@ paneport_native_test(test_main_thread LIBRARY paneport_host_shipped CASES
     main_functions_need_the_main_thread first_init_on_another_thread_fails)
 
 # Every public header, each alone in a C17 source and a C++20 source, and a C++20 source that
-# fails to compile when a header loses its extern "C" guards (C-0005 section 5).
+# calls the host, so the program fails to link when a header loses its extern "C" guards
+# (C-0005 section 5).
 file(GLOB PANEPORT_PUBLIC_HEADERS CONFIGURE_DEPENDS
     "${PANEPORT_REPOSITORY_ROOT}/src/native/include/paneport/*.h")
 set(header_sources)
@@ -63,6 +64,7 @@ int paneport_header_${header_name}_${extension}(void) { return PP_OK; }
 endforeach()
 add_executable(test_headers test_headers.c test_headers_linkage.cpp ${header_sources})
 target_include_directories(test_headers PRIVATE "${PANEPORT_REPOSITORY_ROOT}/src/native/include")
+target_link_libraries(test_headers PRIVATE paneport_host)
 add_test(NAME test_headers.c17_and_cxx20 COMMAND test_headers)
 
 # The crash record writer calls only async-signal-safe functions (docs/design/native-host.md

@@ -112,7 +112,8 @@ static void message_cut(void) {
 
 enum { TEST_PROGRAM_COUNTER = 0x1DEADBEE };
 
-static char s_folder[256];
+// What the signal handler hands back to the test. A handler receives no argument of the test,
+// so these four are the documented singletons of this test (C-0010 section 3).
 static volatile sig_atomic_t s_handled;
 static atomic_int s_write_status;
 static atomic_int s_seen_code;
@@ -148,8 +149,9 @@ static void *raise_on_thread(void *argument) {
 
 // The writer, called in a signal handler on a test thread, leaves a whole record.
 static void written_in_signal_handler(void) {
-    pp_make_folder(s_folder, sizeof s_folder);
-    pp_start_host(s_folder);
+    char folder[256];
+    pp_make_folder(folder, sizeof folder);
+    pp_start_host(folder);
 
     struct sigaction action;
     memset(&action, 0, sizeof action);
@@ -164,7 +166,7 @@ static void written_in_signal_handler(void) {
     PP_CHECK_EQUAL(atomic_load(&s_write_status), PP_OK);
 
     unsigned char record[128];
-    read_record(s_folder, record);
+    read_record(folder, record);
     check_header(record);
     const int64_t seconds = (int64_t)read_le(record, 8U, 8U);
     PP_CHECK(seconds >= (int64_t)before && seconds <= (int64_t)after);
@@ -179,22 +181,23 @@ static void written_in_signal_handler(void) {
 
     // The temporary file is renamed, never left behind.
     char temporary[512];
-    PP_CHECK(snprintf(temporary, sizeof temporary, "%s/crash-record.tmp", s_folder) > 0);
+    PP_CHECK(snprintf(temporary, sizeof temporary, "%s/crash-record.tmp", folder) > 0);
     PP_CHECK(access(temporary, F_OK) != 0);
 
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
-    remove_folder(s_folder);
+    remove_folder(folder);
 }
 
 // A record that a test writes carries the test flag, and a newer record replaces an older one.
 static void test_record_flag(void) {
-    pp_make_folder(s_folder, sizeof s_folder);
-    pp_start_host(s_folder);
+    char folder[256];
+    pp_make_folder(folder, sizeof folder);
+    pp_start_host(folder);
 
     PP_CHECK_EQUAL(pp_test_write_crash_record("first record"), PP_OK);
     PP_CHECK_EQUAL(pp_test_write_crash_record("a test record"), PP_OK);
     unsigned char record[128];
-    read_record(s_folder, record);
+    read_record(folder, record);
     check_header(record);
     PP_CHECK_EQUAL(record[48], 1U);
     PP_CHECK_EQUAL(read_le(record, 20U, 4U), 0U);
@@ -203,7 +206,7 @@ static void test_record_flag(void) {
     PP_CHECK_EQUAL(pp_test_write_crash_record(NULL), PP_E_INVALID_ARGUMENT);
 
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
-    remove_folder(s_folder);
+    remove_folder(folder);
 }
 
 int main(int argc, char **argv) {

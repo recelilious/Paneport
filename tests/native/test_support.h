@@ -88,17 +88,36 @@ static inline bool pp_read_number(const char *text, const char *prefix, unsigned
     return true;
 }
 
-// The numbers 0 to 15, whose addresses tell test threads apart.
-static const uint32_t k_thread_numbers[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+// What a test thread receives: the state that its test shares, and its own number. Tests keep
+// their state in such contexts rather than in file-scope variables (C-0010 section 3).
+typedef struct pp_thread_argument_t {
+    void *context;
+    uint32_t number;
+} pp_thread_argument_t;
 
-// Starts a thread that receives the address of its number in k_thread_numbers.
-static inline pthread_t pp_start_numbered_thread(void *(*function)(void *), uint32_t number) {
-    PP_CHECK(number < 16U);
-    return pp_start_thread(function, (void *)&k_thread_numbers[number]);
+// Starts count threads, each with the context and its number in arguments[i], which must
+// outlive them.
+static inline void pp_start_threads(pthread_t *threads, pp_thread_argument_t *arguments,
+                                    size_t count, void *(*function)(void *), void *context) {
+    for (size_t index = 0; index < count; index++) {
+        arguments[index].context = context;
+        arguments[index].number = (uint32_t)index;
+        threads[index] = pp_start_thread(function, &arguments[index]);
+    }
 }
 
-static inline uint32_t pp_thread_number(const void *argument) {
-    return *(const uint32_t *)argument;
+static inline void pp_join_threads(const pthread_t *threads, size_t count) {
+    for (size_t index = 0; index < count; index++) {
+        pp_join_thread(threads[index]);
+    }
+}
+
+// Waits up to a minute for a flag to turn true.
+static inline void pp_wait_for_flag(_Atomic(bool) *flag) {
+    for (int round = 0; round < 60000 && !atomic_load(flag); round++) {
+        pp_sleep_milliseconds(1);
+    }
+    PP_CHECK(atomic_load(flag));
 }
 
 // Removes a file of a folder, if it exists.

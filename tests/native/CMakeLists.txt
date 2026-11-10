@@ -5,12 +5,18 @@
 # folder when PANEPORT_TESTS is on, as the asan-ubsan and tsan presets set it.
 
 # One test program per small stage. Each case runs in a process of its own, because pp_init
-# runs once per process, and CTest names it <program>.<case>.
+# runs once per process, and CTest names it <program>.<case>. A program links the test build
+# of the host, or the host that LIBRARY names.
 function(paneport_native_test name)
-    cmake_parse_arguments(PARSE_ARGV 1 TEST "" "" "CASES")
+    cmake_parse_arguments(PARSE_ARGV 1 TEST "" "LIBRARY" "CASES")
+    if(NOT TEST_LIBRARY)
+        set(TEST_LIBRARY paneport_host)
+    endif()
     add_executable(${name} ${name}.c)
-    target_link_libraries(${name} PRIVATE paneport_host)
-    target_include_directories(${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(${name} PRIVATE ${TEST_LIBRARY})
+    target_include_directories(${name} PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${PANEPORT_REPOSITORY_ROOT}/src/native/host")
     foreach(test_case IN LISTS TEST_CASES)
         add_test(NAME ${name}.${test_case} COMMAND ${name} ${test_case})
         set_tests_properties(${name}.${test_case} PROPERTIES TIMEOUT 300)
@@ -22,16 +28,23 @@ paneport_native_test(test_status CASES
 paneport_native_test(test_event_queue CASES
     full_queue_refuses many_producers)
 paneport_native_test(test_event_thread CASES
-    events_reach_event_thread none_after_shutdown second_init_fails wrong_thread
-    replaced_callback_finished)
+    events_reach_event_thread none_after_shutdown post_in_progress_is_delivered
+    event_overflow_logged_once second_init_fails wrong_thread replaced_callback_finished)
 paneport_native_test(test_log CASES
-    lines_whole_and_ordered early_lines_arrive overlong_line_cut overflow_logged_once)
+    lines_whole_and_ordered early_lines_arrive overlong_line_cut overflow_logged_once
+    overflow_notice_waits_for_a_callback)
 paneport_native_test(test_memory_budget CASES
     limit_is_sum game_mode_level smaller_struct_size invalid_arguments)
 paneport_native_test(test_crash_record CASES
     encode_layout message_cut written_in_signal_handler test_record_flag)
 
-# Every public header, each alone in a C17 source and a C++20 source (C-0005 section 5).
+# The main-thread rule of the shipped builds, on the host that src/native/CMakeLists.txt builds
+# without the test exports and without PANEPORT_TEST_BUILD.
+paneport_native_test(test_main_thread LIBRARY paneport_host_shipped CASES
+    main_functions_need_the_main_thread first_init_on_another_thread_fails)
+
+# Every public header, each alone in a C17 source and a C++20 source, and a C++20 source that
+# fails to compile when a header loses its extern "C" guards (C-0005 section 5).
 file(GLOB PANEPORT_PUBLIC_HEADERS CONFIGURE_DEPENDS
     "${PANEPORT_REPOSITORY_ROOT}/src/native/include/paneport/*.h")
 set(header_sources)
@@ -48,6 +61,20 @@ int paneport_header_${header_name}_${extension}(void) { return PP_OK; }
         list(APPEND header_sources "${source}")
     endforeach()
 endforeach()
-add_executable(test_headers test_headers.c ${header_sources})
+add_executable(test_headers test_headers.c test_headers_linkage.cpp ${header_sources})
 target_include_directories(test_headers PRIVATE "${PANEPORT_REPOSITORY_ROOT}/src/native/include")
 add_test(NAME test_headers.c17_and_cxx20 COMMAND test_headers)
+
+# The crash record writer calls only async-signal-safe functions (docs/design/native-host.md
+# section 8). The check reads the writer's object with nm.
+if(APPLE)
+    set(strip_underscore ON)
+else()
+    set(strip_underscore OFF)
+endif()
+add_test(NAME crash_record_writer.async_signal_safe_calls
+    COMMAND "${CMAKE_COMMAND}"
+        "-DNM=${CMAKE_NM}"
+        "-DOBJECTS=$<TARGET_OBJECTS:paneport_host_objects>"
+        "-DSTRIP_UNDERSCORE=${strip_underscore}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_writer_calls.cmake")

@@ -75,40 +75,45 @@ static void full_queue_refuses(void) {
 
 enum { PRODUCERS = 8, ENTRIES_PER_PRODUCER = 125000, CAPACITY = 1024 };
 
-static pp_queue_t s_queue;
-static _Atomic(uint64_t) s_refused;
+// The state that the producers share with the consumer.
+typedef struct producers_t {
+    pp_queue_t queue;
+    _Atomic(uint64_t) refused;
+} producers_t;
 
 static void *produce(void *argument) {
-    const uint32_t producer = pp_thread_number(argument);
+    const pp_thread_argument_t *thread = argument;
+    producers_t *producers = thread->context;
     uint64_t refused = 0U;
     for (uint32_t sequence = 0; sequence < (uint32_t)ENTRIES_PER_PRODUCER; sequence++) {
-        const test_entry_t entry = entry_of(producer, sequence);
-        while (!pp_queue_push(&s_queue, &entry)) {
+        const test_entry_t entry = entry_of(thread->number, sequence);
+        while (!pp_queue_push(&producers->queue, &entry)) {
             refused++;
             (void)sched_yield();
         }
     }
-    (void)atomic_fetch_add(&s_refused, refused);
+    (void)atomic_fetch_add(&producers->refused, refused);
     return NULL;
 }
 
 // Eight producers and one consumer move 1,000,000 entries: each arrives once, intact and in
 // order per producer, and the overflow count equals the pushes the full queue refused.
 static void many_producers(void) {
-    PP_CHECK_EQUAL(pp_queue_init(&s_queue, (uint32_t)CAPACITY, (uint32_t)sizeof(test_entry_t)),
-                   PP_OK);
+    producers_t producers;
+    atomic_init(&producers.refused, 0U);
+    PP_CHECK_EQUAL(
+        pp_queue_init(&producers.queue, (uint32_t)CAPACITY, (uint32_t)sizeof(test_entry_t)), PP_OK);
 
-    pthread_t producers[PRODUCERS];
-    for (uint32_t producer = 0; producer < (uint32_t)PRODUCERS; producer++) {
-        producers[producer] = pp_start_numbered_thread(produce, producer);
-    }
+    pthread_t threads[PRODUCERS];
+    pp_thread_argument_t arguments[PRODUCERS];
+    pp_start_threads(threads, arguments, (size_t)PRODUCERS, produce, &producers);
 
     uint32_t next[PRODUCERS] = {0};
     uint64_t received = 0U;
     const uint64_t expected = (uint64_t)PRODUCERS * (uint64_t)ENTRIES_PER_PRODUCER;
     test_entry_t entry;
     while (received < expected) {
-        if (!pp_queue_pop(&s_queue, &entry)) {
+        if (!pp_queue_pop(&producers.queue, &entry)) {
             (void)sched_yield();
             continue;
         }
@@ -119,13 +124,13 @@ static void many_producers(void) {
         received++;
     }
 
+    pp_join_threads(threads, (size_t)PRODUCERS);
     for (size_t producer = 0; producer < (size_t)PRODUCERS; producer++) {
-        pp_join_thread(producers[producer]);
         PP_CHECK_EQUAL(next[producer], ENTRIES_PER_PRODUCER);
     }
-    PP_CHECK(!pp_queue_pop(&s_queue, &entry));
-    PP_CHECK_EQUAL(pp_queue_overflow_count(&s_queue), atomic_load(&s_refused));
-    pp_queue_destroy(&s_queue);
+    PP_CHECK(!pp_queue_pop(&producers.queue, &entry));
+    PP_CHECK_EQUAL(pp_queue_overflow_count(&producers.queue), atomic_load(&producers.refused));
+    pp_queue_destroy(&producers.queue);
 }
 
 int main(int argc, char **argv) {

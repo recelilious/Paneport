@@ -48,8 +48,10 @@
     "xunit.v3.runner.inproc.console": "xunit.v3"
   },
   "tools": {
+    "cmake": "CMake",
     "gitleaks": "gitleaks (command-line tool)",
     "ios-workload-set": ".NET for iOS (dotnet/macios)",
+    "llvm": "clang-format, clang-tidy",
     "lychee": "lychee",
     "macos-runner-image": "GitHub-hosted runner images (actions/runner-images)",
     "reuse": "REUSE tool",

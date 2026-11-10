@@ -9,11 +9,13 @@
 //   dotnet run tools/CheckToolchain.cs -- --ci-tools      also check the tools of the checks job
 //   dotnet run tools/CheckToolchain.cs -- --xcode         also check Xcode, on a Mac
 //   dotnet run tools/CheckToolchain.cs -- --ios-workload  also check the installed iOS workload set
+//   dotnet run tools/CheckToolchain.cs -- --cmake         also check CMake
+//   dotnet run tools/CheckToolchain.cs -- --llvm          also check clang-format and clang-tidy
 //   dotnet run tools/CheckToolchain.cs -- --self-test     check the parsers on synthetic outputs
 //
-// --ci-tools, --xcode and --ios-workload may be combined. Exit codes: 0 everything matches its
-// pin, 1 something does not, 2 usage or configuration error. docs/design/repository-checks.md
-// describes the pins and how to change one.
+// --ci-tools, --xcode, --ios-workload, --cmake and --llvm may be combined. Exit codes: 0
+// everything matches its pin, 1 something does not, 2 usage or configuration error.
+// docs/design/repository-checks.md describes the pins and how to change one.
 
 #:property PublishAot=false
 
@@ -40,7 +42,8 @@ catch (Exception exception) when (exception is InvalidDataException or IOExcepti
 internal static class Cli
 {
     // The options that also check the pins whose tools only some machines have.
-    public static readonly string[] HostOptions = [Probes.CiTools, Probes.Xcode, Probes.IosWorkload];
+    public static readonly string[] HostOptions =
+        [Probes.CiTools, Probes.Xcode, Probes.IosWorkload, Probes.Cmake, Probes.Llvm];
 
     // The options given, or null when one is unknown or given twice.
     public static HashSet<string>? Options(string[] args)
@@ -52,7 +55,8 @@ internal static class Cli
     public static int Usage()
     {
         Console.Error.WriteLine(
-            "usage: dotnet run tools/CheckToolchain.cs [-- [--ci-tools] [--xcode] [--ios-workload] | --self-test]");
+            "usage: dotnet run tools/CheckToolchain.cs "
+                + "[-- [--ci-tools] [--xcode] [--ios-workload] [--cmake] [--llvm] | --self-test]");
         return 2;
     }
 }
@@ -215,15 +219,27 @@ internal static class Pins
 
 // How to ask each pinned tool for its version, and how to read the answer. Each tool exists
 // only on some machines, so Option names the option that runs its check; Hint, when there is
-// one, follows a mismatch. A tool pinned in eng/toolchain.json without an entry here or a
-// check of its own, as the runner image has, fails every run, so no pin goes unchecked.
-internal sealed record VersionProbe(string Option, string Command, string[] Arguments, Regex Pattern, string Hint = "");
+// one, follows a mismatch. Label names the program in a mismatch when it differs from the pin,
+// as clang-format does for the llvm pin. A tool pinned in eng/toolchain.json without an entry
+// here or a check of its own, as the runner image has, fails every run, so no pin goes
+// unchecked.
+internal sealed record VersionProbe(
+    string Option, string Command, string[] Arguments, Regex Pattern, string Hint = "", string Label = "");
 
 internal static partial class Probes
 {
     public const string CiTools = "--ci-tools";
     public const string Xcode = "--xcode";
     public const string IosWorkload = "--ios-workload";
+    public const string Cmake = "--cmake";
+    public const string Llvm = "--llvm";
+
+    private const string DownloadHint =
+        "eng/mac/bootstrap.sh installs the pinned release outside the repository and puts it first on the PATH.";
+
+    // The second program of the llvm pin, which --llvm checks after clang-format.
+    public static readonly VersionProbe ClangTidy =
+        new(Llvm, "clang-tidy", ["--version"], ClangTidyVersion(), DownloadHint, "clang-tidy");
 
     public static readonly Dictionary<string, VersionProbe> ByTool = new(StringComparer.Ordinal)
     {
@@ -242,6 +258,8 @@ internal static partial class Probes
             ["workload", "--version"],
             WorkloadSetVersion(),
             "eng/mac/bootstrap.sh installs the pinned workload set."),
+        ["cmake"] = new(Cmake, "cmake", ["--version"], CmakeVersion(), DownloadHint),
+        ["llvm"] = new(Llvm, "clang-format", ["--version"], ClangFormatVersion(), DownloadHint, "clang-format"),
     };
 
     // "reuse, version 6.2.0", followed by the license notice.
@@ -270,6 +288,20 @@ internal static partial class Probes
     // version and the installation source, as in "ios   27.1.10018/10.0.100   SDK 10.0.400".
     [GeneratedRegex(@"^[ \t]*ios[ \t]+[0-9]", RegexOptions.Multiline)]
     public static partial Regex IosWorkloadRow();
+
+    // "cmake version 4.4.5", followed by Kitware's line.
+    [GeneratedRegex(@"\Acmake version ([0-9][^\s]*)")]
+    private static partial Regex CmakeVersion();
+
+    // "clang-format version 23.1.5 (https://github.com/llvm/llvm-project <commit>)", or with a
+    // packager's word in front, such as "Homebrew clang-format version 23.1.5".
+    [GeneratedRegex(@"\A(?:[^\s]+ )?clang-format version ([0-9][^\s]*)")]
+    private static partial Regex ClangFormatVersion();
+
+    // "LLVM (http://llvm.org/):", then "  LLVM version 23.1.5" on a line of its own, or with a
+    // packager's word in front of "LLVM".
+    [GeneratedRegex(@"^[ \t]*(?:[^\s]+ )?LLVM version ([0-9][^\s]*)", RegexOptions.Multiline)]
+    private static partial Regex ClangTidyVersion();
 }
 
 internal static class Checks
@@ -304,18 +336,20 @@ internal static class Checks
         return problems;
     }
 
-    public static List<string> Tool(ToolPin pin, CommandRunner run)
-    {
-        if (!Probes.ByTool.TryGetValue(pin.Name, out var probe))
-        {
-            return [$"{ToolchainJson.FilePath} pins {pin.Name}, but tools/CheckToolchain.cs cannot check it yet."];
-        }
+    public static List<string> Tool(ToolPin pin, CommandRunner run) => Probes.ByTool.TryGetValue(pin.Name, out var probe)
+        ? Version(pin, probe, run)
+        : [$"{ToolchainJson.FilePath} pins {pin.Name}, but tools/CheckToolchain.cs cannot check it yet."];
 
+    // Compares the version that one program reports with a pin. A mismatch names the program,
+    // both versions and, when the program is not named like the pin, the pin too.
+    public static List<string> Version(ToolPin pin, VersionProbe probe, CommandRunner run)
+    {
         var command = $"{probe.Command} {string.Join(' ', probe.Arguments)}";
         var result = run(probe.Command, probe.Arguments);
         if (result is null)
         {
-            return [$"{pin.Name} is not installed, or not on the PATH."];
+            var missing = probe.Label.Length > 0 ? $"{probe.Label}, from the {pin.Name} pin," : pin.Name;
+            return [$"{missing} is not installed, or not on the PATH."];
         }
 
         if (result.ExitCode != 0)
@@ -331,9 +365,11 @@ internal static class Checks
 
         var installed = match.Groups[1].Value;
         var hint = probe.Hint.Length > 0 ? $" {probe.Hint}" : string.Empty;
+        var program = probe.Label.Length > 0 ? probe.Label : pin.Name;
+        var pinned = program == pin.Name ? pin.Version : $"{pin.Name} {pin.Version}";
         return installed == pin.Version
             ? []
-            : [$"{pin.Name} {installed} is installed, but {ToolchainJson.FilePath} pins {pin.Version}.{hint}"];
+            : [$"{program} {installed} is installed, but {ToolchainJson.FilePath} pins {pinned}.{hint}"];
     }
 
     // The pins that no option of this tool checks. They fail every run.
@@ -690,6 +726,12 @@ internal static class ToolchainCheck
             {
                 failed += Report("the ios workload, from that workload set", Checks.IosWorkload(runner));
             }
+
+            if (option == Probes.Llvm && checkedHere.FirstOrDefault(pin => pin.Name == "llvm") is { } llvm)
+            {
+                failed += Report(
+                    $"clang-tidy from llvm {llvm.Version}", Checks.Version(llvm, Probes.ClangTidy, runner));
+            }
         }
 
         Console.WriteLine(failed == 0 ? "Everything checked matches its pin." : $"{failed} pins do not match.");
@@ -805,9 +847,43 @@ internal static class SelfTest
             "lychee": { "version": "0.24.2", "source": "https://example.com/lychee" },
             "xcode": { "version": "27.1", "source": "https://example.com/xcode" },
             "ios-workload-set": { "version": "10.0.403", "source": "https://example.com/workloads" },
-            "macos-runner-image": { "version": "xcode-27", "source": "https://example.com/images" }
+            "macos-runner-image": { "version": "xcode-27", "source": "https://example.com/images" },
+            "cmake": {
+              "version": "4.4.5",
+              "source": "https://example.com/cmake",
+              "downloads": {
+                "osx-arm64": {
+                  "url": "https://example.com/cmake.tar.gz",
+                  "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+                }
+              }
+            },
+            "llvm": {
+              "version": "23.1.5",
+              "source": "https://example.com/llvm",
+              "downloads": {
+                "osx-arm64": {
+                  "url": "https://example.com/llvm.tar.xz",
+                  "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+                }
+              }
+            }
           }
         }
+        """;
+
+    private const string CmakeOutput =
+        """
+        cmake version 4.4.5
+
+        CMake suite maintained and supported by Kitware (kitware.com/cmake).
+        """;
+
+    private const string ClangTidyOutput =
+        """
+        LLVM (http://llvm.org/):
+          LLVM version 23.1.5
+          Optimized build.
         """;
 
     private const string ReuseOutput =
@@ -874,7 +950,7 @@ internal static class SelfTest
         string[] expected =
         [
             "reuse 6.2.0", "gitleaks 8.30.1", "lychee 0.24.2", "xcode 27.1", "ios-workload-set 10.0.403",
-            "macos-runner-image xcode-27",
+            "macos-runner-image xcode-27", "cmake 4.4.5", "llvm 23.1.5",
         ];
         tally.Expect(
             pins.Select(pin => $"{pin.Name} {pin.Version}").SequenceEqual(expected),
@@ -969,6 +1045,48 @@ internal static class SelfTest
         tally.Expect(
             Checks.IosWorkload((_, _) => new CommandResult(1, "", "error")).Count == 1,
             "a workload list that fails fails");
+
+        Console.WriteLine("CMake and the LLVM release:");
+        var cmake = pins.Single(pin => pin.Name == "cmake");
+        var llvm = pins.Single(pin => pin.Name == "llvm");
+        tally.Expect(
+            cmake.Downloads.Single().Runtime == "osx-arm64" && llvm.Downloads.Single().Runtime == "osx-arm64",
+            "the macOS downloads of CMake and LLVM are read");
+        var clangFormatOutput =
+            "clang-format version 23.1.5 (https://github.com/llvm/llvm-project 0123456789abcdef)\n";
+        tally.Expect(
+            Checks.Tool(cmake, Output(CmakeOutput)).Count == 0
+                && Checks.Tool(llvm, Output(clangFormatOutput)).Count == 0
+                && Checks.Version(llvm, Probes.ClangTidy, Output(ClangTidyOutput)).Count == 0,
+            "the pinned CMake, clang-format and clang-tidy pass");
+        tally.Expect(
+            Names(Checks.Tool(cmake, Output("cmake version 4.4.4\n")), "cmake 4.4.4 is installed", "pins 4.4.5."),
+            "another CMake fails and names the found and the pinned version");
+        tally.Expect(
+            Names(
+                Checks.Tool(llvm, Output("clang-format version 22.1.8 (https://github.com/llvm/llvm-project x)\n")),
+                "clang-format 22.1.8 is installed",
+                "pins llvm 23.1.5."),
+            "another clang-format fails and names the program, the pin and both versions");
+        tally.Expect(
+            Checks.Tool(llvm, Output("Homebrew clang-format version 23.1.5\n")).Count == 0
+                && Checks.Version(
+                    llvm, Probes.ClangTidy, Output("Homebrew LLVM version 23.1.5\n  Optimized build.\n")).Count == 0,
+            "a packager's word in front of the version is read");
+        tally.Expect(
+            Names(
+                Checks.Version(llvm, Probes.ClangTidy, Output(Edit(ClangTidyOutput, "23.1.5", "23.1.4"))),
+                "clang-tidy 23.1.4 is installed",
+                "pins llvm 23.1.5."),
+            "a clang-tidy from another release fails, even when clang-format matches");
+        tally.Expect(
+            Checks.Version(
+                llvm, Probes.ClangTidy, (_, _) => new CommandResult(134, "", "dyld: Library not loaded")).Count == 1
+                && Names(Checks.Version(llvm, Probes.ClangTidy, (_, _) => null), "clang-tidy, from the llvm pin"),
+            "a clang-tidy that cannot start, or is missing, fails");
+        tally.Expect(
+            Checks.Tool(cmake, Output("cmake3 version 3.28.3\n")).Count == 1,
+            "output without the version line fails");
 
         Console.WriteLine("Runner image:");
         var image = pins.Single(pin => pin.Name == RunnerImage.Tool);
@@ -1140,12 +1258,23 @@ internal static class SelfTest
         tally.Expect(
             Names(Checks.Missing(withoutWorkloadSet, Probes.IosWorkload), "pins no ios-workload-set", "--ios-workload"),
             "--ios-workload without a workload set pin fails");
+        var withoutNative = pins.Where(pin => pin.Name is not ("cmake" or "llvm")).ToList();
+        tally.Expect(
+            Names(Checks.Missing(withoutNative, Probes.Cmake), "pins no cmake", "--cmake")
+                && Names(Checks.Missing(withoutNative, Probes.Llvm), "pins no llvm", "--llvm")
+                && Checks.Missing(pins, Probes.Cmake).Count == 0
+                && Checks.Missing(pins, Probes.Llvm).Count == 0,
+            "--cmake and --llvm without their pins fail");
 
         Console.WriteLine("Options:");
         tally.Expect(Cli.Options([]) is { Count: 0 }, "no option checks the SDK and the runner image only");
         tally.Expect(
             Cli.Options(["--xcode", "--ios-workload"]) is { Count: 2 },
             "--xcode and --ios-workload combine");
+        tally.Expect(
+            Cli.Options(["--xcode", "--cmake", "--llvm"]) is { Count: 3 }
+                && Cli.Options(["--xcode", "--ios-workload", "--cmake"]) is { Count: 3 },
+            "--cmake and --llvm combine with the others, as the bootstrap gives them");
         tally.Expect(Cli.Options(["--xcode", "--xcode"]) is null, "an option given twice is rejected");
         tally.Expect(Cli.Options(["--self-test", "--xcode"]) is null, "--self-test combines with nothing");
         tally.Expect(Cli.Options(["--macos"]) is null, "an unknown option is rejected");

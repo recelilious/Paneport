@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using System.Reflection;
 using Xunit;
 
 namespace Paneport.Interop.Tests;
@@ -13,6 +14,22 @@ public sealed class LayoutConformanceTests
     public void EveryStructMatchesTheHost()
     {
         Assert.Empty(LayoutConformance.Check());
+    }
+
+    // ManagedLayouts is a list written by hand. Every blittable struct of the bindings, named
+    // Native*, must be in it with every field, or the comparison would miss it.
+    [Fact]
+    public void TheBindingsListEveryNativeStructAndField()
+    {
+        var structs = typeof(NativeHost).Assembly.GetTypes()
+            .Where(type => type.IsValueType && !type.IsEnum && type.Name.StartsWith("Native", StringComparison.Ordinal))
+            .ToList();
+        var layouts = LayoutConformance.ManagedLayouts();
+
+        Assert.Equal(structs.Count, layouts.Count);
+        Assert.Equal(
+            structs.Sum(type => type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).Length),
+            layouts.Sum(layout => layout.Members.Count));
     }
 
     [Fact]

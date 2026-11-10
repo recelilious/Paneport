@@ -68,25 +68,27 @@ public sealed class BindingTests(HostFixture host)
     }
 
     [Fact]
-    public void LogLinesReachTheHandler()
+    public void LogLinesReachTheHandlerOnTheEventThread()
     {
         const string Text = "a line from the binding tests";
-        using var lines = new BlockingCollection<HostLogLine>();
-        host.Main.Run(() => NativeHost.SetLogHandler(lines.Add));
+        using var lines = new BlockingCollection<(HostLogLine Line, int Thread)>();
+        host.Main.Run(() => NativeHost.SetLogHandler(line => lines.Add((line, Environment.CurrentManagedThreadId))));
         try
         {
             HostTestExports.Log(HostLogLevel.Warning, Text);
 
             // The host's own lines may come first, such as the one it logged when it started.
-            HostLogLine line;
+            (HostLogLine Line, int Thread) item;
             do
             {
-                Assert.True(lines.TryTake(out line, WaitMilliseconds, TestContext.Current.CancellationToken));
+                Assert.True(lines.TryTake(out item, WaitMilliseconds, TestContext.Current.CancellationToken));
             }
-            while (line.Text != Text);
+            while (item.Line.Text != Text);
 
-            Assert.Equal(HostLogLevel.Warning, line.Level);
-            Assert.NotEqual(0UL, line.ThreadId);
+            Assert.Equal(HostLogLevel.Warning, item.Line.Level);
+            Assert.NotEqual(0UL, item.Line.ThreadId);
+            Assert.NotEqual(Environment.CurrentManagedThreadId, item.Thread);
+            Assert.NotEqual(host.Main.ManagedThreadId, item.Thread);
         }
         finally
         {

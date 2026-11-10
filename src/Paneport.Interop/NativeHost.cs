@@ -48,8 +48,8 @@ public static unsafe class NativeHost
     /// these bindings. Main thread only; it runs once per process.
     /// </summary>
     /// <param name="crashRecordFolder">
-    /// The folder for crash records, which must exist, such as <c>Library/Caches/Paneport/</c>;
-    /// or null for none.
+    /// The absolute path of the folder for crash records, which must exist, such as the
+    /// <c>Library/Caches/Paneport/</c> folder of the app container; or null for none.
     /// </param>
     /// <exception cref="HostAbiMismatchException">The host implements another major version.</exception>
     /// <exception cref="HostException">The host refused to start.</exception>
@@ -98,9 +98,21 @@ public static unsafe class NativeHost
     public static void SetEventHandler(Action<HostEvent>? handler)
     {
         var handle = handler is null ? default : GCHandle.Alloc(handler);
-        var status = handler is null
-            ? NativeMethods.SetEventCallback(null, null)
-            : NativeMethods.SetEventCallback(&OnEvent, (void*)GCHandle.ToIntPtr(handle));
+        int status;
+        try
+        {
+            status = handler is null
+                ? NativeMethods.SetEventCallback(null, null)
+                : NativeMethods.SetEventCallback(&OnEvent, (void*)GCHandle.ToIntPtr(handle));
+        }
+        catch
+        {
+            // The call never reached the host, as when the library is missing: nothing holds
+            // the new handle.
+            Release(ref handle);
+            throw;
+        }
+
         Replace(ref s_eventHandler, handle, status);
     }
 
@@ -114,9 +126,20 @@ public static unsafe class NativeHost
     public static void SetLogHandler(Action<HostLogLine>? handler)
     {
         var handle = handler is null ? default : GCHandle.Alloc(handler);
-        var status = handler is null
-            ? NativeMethods.SetLogCallback(null, null)
-            : NativeMethods.SetLogCallback(&OnLogLine, (void*)GCHandle.ToIntPtr(handle));
+        int status;
+        try
+        {
+            status = handler is null
+                ? NativeMethods.SetLogCallback(null, null)
+                : NativeMethods.SetLogCallback(&OnLogLine, (void*)GCHandle.ToIntPtr(handle));
+        }
+        catch
+        {
+            // The call never reached the host: nothing holds the new handle.
+            Release(ref handle);
+            throw;
+        }
+
         Replace(ref s_logHandler, handle, status);
     }
 

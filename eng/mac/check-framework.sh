@@ -90,6 +90,19 @@ expected_test_only=$(declared "$headers"/testing.h)
 [ -n "$expected_release" ] && [ -n "$expected_test_only" ] \
     || problem "no PP_EXPORT declaration was found in $headers."
 expected_test=$(printf '%s\n%s\n' "$expected_release" "$expected_test_only" | sort -u)
+
+# The test exports live in paneport/testing.h alone, and it holds nothing else.
+for function in $expected_release; do
+    case "$function" in
+        pp_test_*) problem "$function is declared outside paneport/testing.h, where the test exports belong." ;;
+    esac
+done
+for function in $expected_test_only; do
+    case "$function" in
+        pp_test_*) ;;
+        *) problem "paneport/testing.h declares $function, which is not a pp_test_ function." ;;
+    esac
+done
 other_headers=$(cd "$headers" && ls -- *.h | grep -v -x -e common.h -e host.h -e memory.h -e testing.h -e paneport.h || true)
 [ -z "$other_headers" ] \
     || problem "add the headers $other_headers to eng/mac/check-framework.sh, which lists the headers of each build."

@@ -252,14 +252,15 @@ jobs:
           cmake --build --preset tsan --parallel
           ctest --preset tsan
 
-      # clang-tidy reads the compile databases of a macOS build and of an iOS build, so that it
-      # sees the code of both platforms. The iOS preset is only configured here; the ios job
-      # builds it.
+      # clang-tidy reads the compile databases of a macOS test build and of both iOS builds, so
+      # that it sees the code of both platforms, of the test builds and of the framework that the
+      # main app ships. The iOS presets are only configured here; the ios job builds them.
       - name: Analyze the native code (clang-tidy)
         if: ${{ !cancelled() }}
         run: |
-          (cd src/native && cmake --preset ios-device-test)
-          eng/mac/check-native-style.sh tidy build/native/asan-ubsan build/native/ios-device-test
+          (cd src/native && cmake --preset ios-device-test && cmake --preset ios-device)
+          eng/mac/check-native-style.sh tidy \
+            build/native/asan-ubsan build/native/ios-device-test build/native/ios-device
 
       - name: Build the host test library (preset macos-test)
         if: ${{ !cancelled() }}

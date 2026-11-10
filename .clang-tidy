@@ -28,8 +28,9 @@
 # - readability-function-cognitive-complexity.IgnoreMacros: every check of the native tests
 #   is a macro with a branch inside, which would count as complexity of the test.
 #
-# clang-tidy runs on the compile databases of the asan-ubsan and ios-device-test presets,
-# which Apple's clang wrote; .github/workflows/ci.yml lists the run, and
+# clang-tidy runs on the compile databases of the asan-ubsan, ios-device-test and ios-device
+# presets, which Apple's clang wrote, so it sees both the test builds and the framework that
+# the main app ships; .github/workflows/ci.yml lists the run, and
 # docs/design/native-host.md section 11 what to do when the pinned LLVM release disagrees
 # with Apple's clang about a flag.
 Checks: >

@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+# SPDX-License-Identifier: MIT
+
+# The static checks of our own C, Objective-C and C++ code (C-0010 section 3, C-0011
+# section 2), for src/, tests/ and tools/ only; the forks under external/ keep their upstream
+# configuration (C-0010 section 4). Every finding is an error. Each family below is on as a
+# whole, and every check that is off says why:
+#
+# - bugprone-easily-swappable-parameters: C interfaces pass several values of one type, such
+#   as the two readings of the memory stub; names and comments carry their order.
+# - clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling: it asks for the
+#   bounds-checked functions of C11 Annex K, such as memcpy_s, which Apple's C library does
+#   not provide.
+# - misc-include-cleaner: it maps a symbol to the header that declares it, and Apple's SDK
+#   declares many in internal headers, such as pthread_t in sys/_pthread/_pthread_t.h.
+# - readability-identifier-length: tests use short names such as the loop index of a table.
+# - readability-magic-numbers: the tests check documented values, such as the byte offsets
+#   of the crash record, and the host names its own limits in macros.
+#
+# Two options narrow a check, each for the same kind of reason:
+#
+# - bugprone-sizeof-expression.WarnOnSizeOfPointerToAggregate: the layout table of the test
+#   builds records the size of every member, pointers to structs among them.
+# - readability-function-cognitive-complexity.IgnoreMacros: every check of the native tests
+#   is a macro with a branch inside, which would count as complexity of the test.
+#
+# clang-tidy runs on the compile databases of the asan-ubsan and ios-device-test presets,
+# which Apple's clang wrote; .github/workflows/ci.yml lists the run, and
+# docs/design/native-host.md section 11 what to do when the pinned LLVM release disagrees
+# with Apple's clang about a flag.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  cert-*,
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  concurrency-*,
+  misc-*,
+  -misc-include-cleaner,
+  performance-*,
+  portability-*,
+  readability-*,
+  -readability-identifier-length,
+  -readability-magic-numbers
+CheckOptions:
+  bugprone-sizeof-expression.WarnOnSizeOfPointerToAggregate: false
+  readability-function-cognitive-complexity.IgnoreMacros: true
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*/(src|tests)/native/.*'
+SystemHeaders: false

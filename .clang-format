@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+# SPDX-License-Identifier: MIT
+
+# The format of our own C, Objective-C and C++ code (C-0010 section 3): LLVM style with
+# four-space indentation and a 100-column limit. It applies to src/, tests/ and tools/ only;
+# the forks under external/ keep their upstream configuration (C-0010 section 4).
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 100

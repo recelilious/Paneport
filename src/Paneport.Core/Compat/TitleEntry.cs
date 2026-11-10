@@ -39,8 +39,10 @@ public sealed record TitleEntry
 
     /// <summary>
     /// Gets the launch path that a bundled entry states, which must follow from its own
-    /// <see cref="Drm"/> (C-0008 section 5). Only <see cref="LaunchPath.Direct"/> and
-    /// <see cref="LaunchPath.Dock"/> are values of the field, and the device layer never holds it.
+    /// <see cref="Drm"/> (C-0008 section 5); an entry that states <see cref="LaunchPath.Direct"/>
+    /// also names the <see cref="Executable"/> that the path starts. Only
+    /// <see cref="LaunchPath.Direct"/> and <see cref="LaunchPath.Dock"/> are values of the field, and
+    /// the device layer never holds it.
     /// </summary>
     public LaunchPath? Launch { get; init; }
 

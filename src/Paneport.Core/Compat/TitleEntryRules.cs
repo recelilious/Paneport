@@ -272,17 +272,19 @@ internal static partial class TitleEntryRules
     }
 
     // C-0008 section 5, for a reviewed entry: a stated direct follows from the entry's own drm,
-    // whatever the device's classification adds. A stated dock is what the rule derives from any
-    // other drm, unless that drm sets ceg to no and no marker to true, which the device's
-    // classification could still turn into direct. A local title shows no Steam marker.
+    // whatever the device's classification adds, and the entry names the program that the Direct
+    // path starts (C-0007 section 5). A stated dock is what the rule derives from any other drm,
+    // unless that drm sets ceg to no and no marker to true, which the device's classification could
+    // still turn into direct. A local title shows no Steam marker.
     private static void CheckStatedLaunch(TitleEntry entry, List<CompatProblem> problems)
     {
-        if (entry.Launch == LaunchPath.Direct && !LaunchRule.AllowsDirect(entry.Drm))
+        if (entry.Launch == LaunchPath.Direct && !(LaunchRule.AllowsDirect(entry.Drm) && entry.Executable is not null))
         {
             problems.Add(new CompatProblem(
                 CompatRule.Launch,
                 "$.launch",
-                "An entry that states direct has steamApi and steamStub false and ceg no in its own drm."));
+                "An entry that states direct names its executable and has steamApi and steamStub false and ceg no "
+                + "in its own drm."));
         }
 
         if (entry.Launch == LaunchPath.Dock
@@ -438,9 +440,11 @@ internal static partial class TitleEntryRules
         }
     }
 
-    // Only white space, as the schema's pattern [^\s\u0085﻿] reads in either dialect of regular
-    // expression: char.IsWhiteSpace, like .NET's \s, counts U+0085, and ECMA-262's \s counts U+FEFF.
-    private static bool IsBlank(string text) =>
+    // Only white space, as the schema's name pattern reads in each dialect of regular expression.
+    // char.IsWhiteSpace counts the units of .NET's \s, U+0085 among them, and the code adds U+FEFF,
+    // which only ECMA-262's \s counts. The pattern names both, and every other unit outside ASCII
+    // that .NET's ECMAScript option leaves out of \s (docs/design/compat-db.md section 9).
+    internal static bool IsBlank(string text) =>
         text.All(character => char.IsWhiteSpace(character) || character == (char)0xFEFF);
 
     // Text that a file can hold, where every surrogate is half of a pair. The writer would replace an

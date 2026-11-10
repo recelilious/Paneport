@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [],
+    "slug": "fixture-title"
+  },
+  "name": "Fixture Title",
+  "executable": {
+    "path": "Fixture.exe"
+  }
+}

@@ -24,7 +24,7 @@ public sealed record EffectiveTitleSettings
 
     /// <summary>
     /// Gets the program that the Direct path starts, if a layer names one. Its arguments are never
-    /// null here.
+    /// null here. Without it, the title never takes the Direct path.
     /// </summary>
     public ExecutableSpec? Executable { get; init; }
 
@@ -44,7 +44,12 @@ public sealed record EffectiveTitleSettings
     /// </summary>
     public required ReviewedClassificationUse ReviewedClassification { get; init; }
 
-    /// <summary>Gets what the launch rule of C-0008 section 5 makes of <see cref="Drm"/>.</summary>
+    /// <summary>
+    /// Gets what the launch rule of C-0008 section 5 makes of <see cref="Drm"/>, except that the
+    /// Direct path needs a program to start (C-0007 section 5): without an <see cref="Executable"/>,
+    /// a classification that allows the Direct path gives the Dock path, or a refusal for a local
+    /// title.
+    /// </summary>
     public required LaunchDecision Launch { get; init; }
 
     /// <summary>Gets the graphics APIs the title uses.</summary>

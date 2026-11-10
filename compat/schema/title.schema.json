@@ -14,9 +14,9 @@
       "$ref": "#/$defs/id"
     },
     "name": {
-      "description": "The title's display name, with a character other than white space. U+0085 and U+FEFF count as white space in either dialect of regular expression.",
+      "description": "The title's display name, with a character other than white space. Besides \\s, the pattern names each white-space unit outside ASCII, because one dialect of regular expression or another leaves it out of \\s; ECMA-262, .NET and .NET's ECMAScript option then read it alike (docs/design/compat-db.md section 9).",
       "type": "string",
-      "pattern": "[^\\s\\u0085\\ufeff]"
+      "pattern": "[^\\s\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]"
     },
     "executable": {
       "$ref": "#/$defs/executable"
@@ -103,7 +103,7 @@
   },
   "allOf": [
     {
-      "$comment": "C-0008 section 5: launch is direct only when steamApi and steamStub are false and ceg is no, here in the entry's own drm.",
+      "$comment": "C-0008 section 5: launch is direct only when steamApi and steamStub are false and ceg is no, here in the entry's own drm. The Direct path starts the program that executable names (C-0007 section 5), so the entry names it.",
       "if": {
         "required": ["launch"],
         "properties": {
@@ -113,7 +113,7 @@
         }
       },
       "then": {
-        "required": ["drm"],
+        "required": ["drm", "executable"],
         "properties": {
           "drm": {
             "required": ["steamApi", "steamStub", "ceg"],

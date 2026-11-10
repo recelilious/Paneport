@@ -47,6 +47,7 @@ public sealed class TitleEntryJsonTests
         { "steam-app-id-zero.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.id.steamAppId" },
         { "bad-slug.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.id.slug" },
         { "long-slug.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.id.slug" },
+        { "empty-hash-list.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.id.exeSha256" },
         { "uppercase-hash.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.id.exeSha256[0]" },
         { "duplicate-hash.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.id.exeSha256[1]" },
         { "absolute-path.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.executable.path" },
@@ -80,6 +81,7 @@ public sealed class TitleEntryJsonTests
         { "bad-rating.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.rating" },
         { "launch-unclassified.json", CompatLayer.Bundled, CompatRule.InvalidValue, "$.launch" },
         { "direct-without-ceg.json", CompatLayer.Bundled, CompatRule.Launch, "$.launch" },
+        { "direct-without-executable.json", CompatLayer.Bundled, CompatRule.Launch, "$.launch" },
         { "dock-without-blocker.json", CompatLayer.Bundled, CompatRule.Launch, "$.launch" },
         { "local-steam-api.json", CompatLayer.Bundled, CompatRule.Launch, "$.drm.steamApi" },
         { "local-steam-stub.json", CompatLayer.Bundled, CompatRule.Launch, "$.drm.steamStub" },
@@ -104,6 +106,7 @@ public sealed class TitleEntryJsonTests
         { "ceg-no.json", CompatLayer.Device, CompatRule.DeviceLayer, "$.drm.ceg" },
         { "ceg-yes.json", CompatLayer.Device, CompatRule.DeviceLayer, "$.drm.ceg" },
         { "jit-pool-too-large.json", CompatLayer.Device, CompatRule.InvalidValue, "$.jitPoolMiB" },
+        { "empty-hash-list.json", CompatLayer.Device, CompatRule.InvalidValue, "$.id.exeSha256" },
         { "surrogate-name.json", CompatLayer.Device, CompatRule.Json, "$" },
     };
 

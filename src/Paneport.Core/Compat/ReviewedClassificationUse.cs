@@ -9,8 +9,8 @@ namespace Paneport.Core.Compat;
 /// </summary>
 /// <remarks>
 /// Where it does not count, only the computed classification does. Its <c>ceg</c> is never
-/// <c>no</c>, so the title takes the Dock path or is refused, and a title's page can say why. The
-/// default value is <see cref="None"/>.
+/// <c>no</c>, so once classified the title takes the Dock path or is refused, and a title's page
+/// can say why. The default value is <see cref="None"/>.
 /// </remarks>
 public enum ReviewedClassificationUse
 {

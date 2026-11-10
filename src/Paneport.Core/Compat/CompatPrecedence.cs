@@ -33,8 +33,13 @@ namespace Paneport.Core.Compat;
 /// the device runs that program. For a Steam title, the device layer names no other
 /// <c>executable.path</c>. For a local title, whose reviewed builds are its <c>exeSha256</c> values,
 /// the device layer has an entry that lists only those, whatever path it names. Otherwise only the
-/// computed classification counts, which gives the Dock path or a refusal, and
-/// <see cref="EffectiveTitleSettings.ReviewedClassification"/> says why.
+/// computed classification counts, which gives the Dock path or a refusal once the title is
+/// classified, and <see cref="EffectiveTitleSettings.ReviewedClassification"/> says why.
+/// </para>
+/// <para>
+/// The Direct path starts the program that an entry names (C-0007 section 5). Where no layer names
+/// one, the Direct path has nothing to start, so the title takes the Dock path or is refused even
+/// when its classification allows the Direct path.
 /// </para>
 /// </remarks>
 public static class CompatPrecedence
@@ -60,6 +65,7 @@ public static class CompatPrecedence
         var reviewed = UseOfReviewedClassification(id, bundled, device);
         var drm = MergeDrm(reviewed == ReviewedClassificationUse.Used ? bundled?.Drm : null, device?.Drm);
         var executable = device?.Executable ?? bundled?.Executable;
+        var launch = LaunchRule.Decide(id.Source, drm);
         return new EffectiveTitleSettings
         {
             Id = id,
@@ -68,7 +74,7 @@ public static class CompatPrecedence
             Architecture = device?.Architecture ?? bundled?.Architecture,
             Drm = drm,
             ReviewedClassification = reviewed,
-            Launch = LaunchRule.Decide(id.Source, drm),
+            Launch = launch == LaunchDecision.Direct && executable is null ? LaunchRule.Closed(id.Source) : launch,
             GraphicsApi = device?.GraphicsApi ?? bundled?.GraphicsApi ?? [],
             Runtimes = device?.Runtimes ?? bundled?.Runtimes ?? [],
             MemoryEstimateMiB = device?.MemoryEstimateMiB ?? bundled?.MemoryEstimateMiB,
@@ -90,8 +96,9 @@ public static class CompatPrecedence
 
     // Whether the device runs the program that the bundled entry was reviewed for. For a Steam title
     // that is the program at the entry's path, so a device executable with another path, or with one
-    // where the entry names none, is another program. A local title's reviewed builds are its hashes,
-    // and only its device entry shows which build the device runs.
+    // where the entry names none, is another program. Where neither names one, the reviewed values
+    // still count, but the Direct path has nothing to start (Merge). A local title's reviewed builds
+    // are its hashes, and only its device entry shows which build the device runs.
     private static ReviewedClassificationUse UseOfReviewedClassification(
         TitleId id, TitleEntry? bundled, TitleEntry? device)
     {

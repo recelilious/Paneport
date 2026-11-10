@@ -146,8 +146,8 @@ public sealed class DeviceLayerStore : IDisposable
     /// The file cannot be deleted. Its message can hold a local path, so a caller logs only its type.
     /// </exception>
     /// <exception cref="UnauthorizedAccessException">
-    /// The file cannot be deleted, such as when a folder has its name. Its message can hold a local
-    /// path, so a caller logs only its type.
+    /// The app may not delete the file, such as a read-only file on Windows. Its message can hold a
+    /// local path, so a caller logs only its type.
     /// </exception>
     public async Task<bool> DeleteAsync(TitleId id, CancellationToken cancellationToken)
     {

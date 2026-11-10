@@ -179,19 +179,20 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/CheckLicenses.cs
 
-  # D7 (plan section 4.2): the ios job runs for every pull request, on the merge result that
-  # the pull_request event checks out. A push event skips it: on a branch with a pull request,
-  # the pull_request run of the same push builds that result, and C-0011 section 4 leaves the
-  # job's triggers to recelilious.
+  # D7 (plan section 4.2), recelilious's decision: the ios job runs for every pull request, on
+  # the merge result that the pull_request event checks out, and for every push to main, which
+  # catches two pull requests that pass alone and break together, and direct commits. Other
+  # branch pushes skip it, because the pull request's run covers them. Only a pull request
+  # cancels its own earlier run; every push to main is built.
   ios:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     # eng/toolchain.json pins this image as macos-runner-image, and tools/CheckToolchain.cs
     # fails when the two differ.
     runs-on: xcode-27
     timeout-minutes: 45
     concurrency:
-      group: ios-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
+      group: ios-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -206,7 +207,8 @@ jobs:
       # The image's default Xcode can move past the pin while the pinned one is still
       # installed, so every later step uses the pinned one. The image names an Xcode by its
       # version, and some of those names are links to other releases, such as a release
-      # candidate; the bootstrap's exact check of the version stays the gate.
+      # candidate. The bootstrap's check compares only the version number, so this step rejects
+      # a folder that resolves to a release candidate or a beta.
       - name: Select the Xcode that eng/toolchain.json pins
         run: |
           pin=$(plutil -extract tools.xcode.version raw -o - eng/toolchain.json)
@@ -214,12 +216,31 @@ jobs:
             echo "::error title=Xcode::The image has no Xcode $pin."
             exit 1
           fi
+          resolved=$(cd "/Applications/Xcode_$pin.app" && pwd -P)
+          case "$(printf '%s' "$resolved" | tr '[:upper:]' '[:lower:]')" in
+            *release_candidate*|*beta*|*_rc*)
+              echo "::error title=Xcode::Xcode $pin on the image is $resolved, not a final release."
+              exit 1
+              ;;
+          esac
           echo "DEVELOPER_DIR=/Applications/Xcode_$pin.app/Contents/Developer" >> "$GITHUB_ENV"
 
       # It checks the SDK and Xcode against their pins, installs the iOS workload from the
       # pinned workload set, and checks that too.
       - name: Check the toolchain and install the iOS workload (eng/mac/bootstrap.sh)
         run: eng/mac/bootstrap.sh
+
+      # A second run must find the workload in place and skip the install, as it must after the
+      # owner of an SDK folder that this user cannot write has installed the workload.
+      - name: Check that the bootstrap skips a workload that is installed
+        if: ${{ !cancelled() }}
+        run: |
+          output=$(eng/mac/bootstrap.sh 2>&1)
+          echo "$output"
+          if ! grep -F -q "is already installed" <<< "$output"; then
+            echo "::error title=Bootstrap::A second run of the bootstrap did not find the installed workload."
+            exit 1
+          fi
 
       - name: Show the SDK, workload set and Xcode versions
         if: ${{ !cancelled() }}
@@ -300,12 +321,13 @@ jobs:
       # (C-0001 section 2), holds arm64 code only, and carries no signature and no profile
       # (C-0009 section 5). Apple's linker may give arm64 code an ad-hoc signature of its own,
       # marked linker-signed, which holds no identity; that one is accepted. Only an app that
-      # passes every check is zipped and uploaded.
+      # passes every check is zipped, and the upload also needs every earlier step to have
+      # passed. A push has no pull request, so its own commit names the artifact.
       - name: Check the app bundle
         id: app
         if: ${{ !cancelled() }}
         env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           app=$(find src/Paneport.iOS/bin/Release -maxdepth 4 -type d -name '*.app' | head -n 1)
           if [ -z "$app" ]; then
@@ -346,7 +368,7 @@ jobs:
       # The zip keeps the bundle's name and the executable's file mode, which an artifact of
       # the bare folder would lose.
       - name: Upload the app
-        if: ${{ !cancelled() && steps.app.outputs.zip != '' }}
+        if: ${{ success() && steps.app.outputs.zip != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Paneport.iOS-ios-arm64-${{ steps.app.outputs.commit }}

@@ -376,10 +376,18 @@ internal static class Checks
 // The macOS jobs of the workflows run on the runner image that eng/toolchain.json pins
 // (C-0009 section 2). GitHub names its macOS images "macos-<version>", and the images that
 // each carry the releases of one Xcode version "xcode-<version>", and it compares runner
-// labels without regard to case. The check reads two forms of runs-on: a plain label, and
-// ${{ matrix.<key> }} with that key's list written on one line in the same job, as in
-// "os: [windows-2025, ubuntu-24.04]". Every other form fails with its file and line, so that
-// no job escapes the check.
+// labels without regard to case. The check reads a workflow by its indentation, and only in
+// these spellings, each key on a line of its own:
+//   - one top-level "jobs:" key, with each job below it as a plain "<id>:" key;
+//   - in each job, a "runs-on:" key whose value is a plain label, with or without quotes, or
+//     ${{ matrix.<key> }};
+//   - for the matrix form, the job's own "strategy:" key and the "matrix:" key below it, whose
+//     every line is a one-line list of plain entries, "<key>: [a, b]", none of them "include".
+// A job that calls a workflow of this repository ("uses: ./...") has no runner of its own, and
+// the called workflow is read like any other. Everything else fails with its file and line:
+// another spelling of these keys, a job without a runs-on key that the check can read, and a
+// job that calls a workflow outside this repository, whose runner the check cannot see. Lines
+// inside a job's steps are never read as its runner.
 internal static partial class RunnerImage
 {
     public const string Tool = "macos-runner-image";
@@ -392,39 +400,18 @@ internal static partial class RunnerImage
         foreach (var (file, text) in workflows)
         {
             var lines = text.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
-            for (var index = 0; index < lines.Length; index++)
+            var jobs = Enumerable.Range(0, lines.Length).Where(index => JobsKey().IsMatch(lines[index])).ToList();
+            if (jobs.Count != 1)
             {
-                var runsOn = RunsOnKey().Match(lines[index]);
-                if (!runsOn.Success)
-                {
-                    continue;
-                }
+                problems.Add(
+                    $"{file}: tools/CheckToolchain.cs cannot read its jobs. Write one plain \"jobs:\" key, on a line "
+                        + "of its own, with the jobs below it.");
+                continue;
+            }
 
-                var value = runsOn.Groups["value"].Value;
-                var matrix = MatrixReference().Match(value);
-                if (PlainLabel().Match(value) is { Success: true } plain)
-                {
-                    labels.Add((file, index + 1, plain.Groups["label"].Value));
-                }
-                else if (matrix.Success
-                    && MatrixList(lines, index, runsOn.Groups["indent"].Length, matrix.Groups["key"].Value) is { } list)
-                {
-                    labels.AddRange(list.Labels.Select(label => (file, list.Line, label)));
-                }
-                else if (matrix.Success)
-                {
-                    var key = matrix.Groups["key"].Value;
-                    problems.Add(
-                        $"{file} line {index + 1}: runs-on names matrix.{key}, but its job has no single list "
-                            + $"\"{key}: [...]\" on one line that tools/CheckToolchain.cs can read.");
-                }
-                else
-                {
-                    problems.Add(
-                        $"{file} line {index + 1}: tools/CheckToolchain.cs cannot read this runs-on value. Name "
-                            + "the runner with a plain label, or with ${{ matrix.<key> }} and a one-line list of "
-                            + "the key.");
-                }
+            foreach (var job in Children(lines, jobs[0]))
+            {
+                ReadJob(file, lines, job, labels, problems);
             }
         }
 
@@ -448,40 +435,145 @@ internal static partial class RunnerImage
         return problems;
     }
 
-    // The entries of the job's list for a matrix key, with the list's line, or null when the
-    // job does not name that key exactly once, in a list of plain labels on one line. The job
-    // is the nearest line above runs-on that is indented less, and ends before the next line
-    // that is indented no more than the job.
-    private static (int Line, List<string> Labels)? MatrixList(string[] lines, int runsOn, int indent, string key)
+    // Reads the runner of one job, or reports why it cannot.
+    private static void ReadJob(
+        string file, string[] lines, int job, List<(string File, int Line, string Label)> labels, List<string> problems)
     {
-        var job = Enumerable.Range(0, runsOn).Reverse()
-            .FirstOrDefault(index => IsContent(lines[index]) && Indent(lines[index]) < indent, -1);
-        if (job < 0)
+        if (!BlockKey().IsMatch(lines[job]))
         {
-            return null;
+            problems.Add(
+                $"{file} line {job + 1}: tools/CheckToolchain.cs cannot read this job. Write it as a plain "
+                    + "\"<id>:\" key, on a line of its own, with its keys below it.");
+            return;
         }
 
-        var found = new List<(int Line, string Value)>();
-        for (var index = job + 1; index < lines.Length; index++)
+        var children = Children(lines, job);
+        var other = children.Where(child => AnyRunsOn().IsMatch(lines[child]) && !RunsOnKey().IsMatch(lines[child]));
+        foreach (var child in other)
         {
-            if (IsContent(lines[index]) && Indent(lines[index]) <= Indent(lines[job]))
+            problems.Add(
+                $"{file} line {child + 1}: tools/CheckToolchain.cs cannot read this runs-on key. Spell it "
+                    + "\"runs-on:\", on a line of its own.");
+        }
+
+        foreach (var child in children.Where(child => RunsOnKey().IsMatch(lines[child])))
+        {
+            ReadRunsOn(file, lines, job, child, labels, problems);
+        }
+
+        if (children.Any(child => AnyRunsOn().IsMatch(lines[child])))
+        {
+            return;
+        }
+
+        var uses = children.Select(child => (Line: child, Match: UsesKey().Match(lines[child])))
+            .FirstOrDefault(entry => entry.Match.Success);
+        var local = uses.Match?.Groups["path"].Value.StartsWith("./", StringComparison.Ordinal) == true;
+        if (uses.Match is { Success: true } && local)
+        {
+            return;
+        }
+
+        problems.Add(uses.Match is { Success: true }
+            ? $"{file} line {uses.Line + 1}: this job calls a workflow outside this repository, whose runner "
+                + "tools/CheckToolchain.cs cannot read."
+            : $"{file} line {job + 1}: tools/CheckToolchain.cs cannot read the runner of this job. Give it a "
+                + "\"runs-on:\" key, on a line of its own.");
+    }
+
+    private static void ReadRunsOn(
+        string file,
+        string[] lines,
+        int job,
+        int runsOn,
+        List<(string File, int Line, string Label)> labels,
+        List<string> problems)
+    {
+        var value = RunsOnKey().Match(lines[runsOn]).Groups["value"].Value;
+        var matrix = MatrixReference().Match(value);
+        if (PlainLabel().Match(value) is { Success: true } plain)
+        {
+            labels.Add((file, runsOn + 1, plain.Groups["label"].Value));
+        }
+        else if (matrix.Success && MatrixList(lines, job, matrix.Groups["key"].Value) is { } list)
+        {
+            labels.AddRange(list.Labels.Select(label => (file, list.Line, label)));
+        }
+        else if (matrix.Success)
+        {
+            var key = matrix.Groups["key"].Value;
+            problems.Add(
+                $"{file} line {runsOn + 1}: runs-on names matrix.{key}, but tools/CheckToolchain.cs cannot read the "
+                    + $"job's list \"{key}: [...]\". Write it on one line, below the job's own \"strategy:\" and "
+                    + "\"matrix:\" keys, which hold only such lists and no \"include\".");
+        }
+        else
+        {
+            problems.Add(
+                $"{file} line {runsOn + 1}: tools/CheckToolchain.cs cannot read this runs-on value. Name "
+                    + "the runner with a plain label, or with ${{ matrix.<key> }} and a one-line list of "
+                    + "the key.");
+        }
+    }
+
+    // The entries of the job's list for a matrix key, with the list's line, or null. The list is a
+    // direct child of the job's own "strategy:" and "matrix:" keys, and every line below
+    // "matrix:" is such a list of plain entries, so that no include can add a runner.
+    private static (int Line, List<string> Labels)? MatrixList(string[] lines, int job, string key)
+    {
+        var strategy = Child(lines, job, "strategy");
+        var matrix = strategy < 0 ? -1 : Child(lines, strategy, "matrix");
+        var block = matrix < 0 ? [] : Block(lines, matrix);
+        var rows = block.Select(index => (Line: index, Match: OneLineList().Match(lines[index]))).ToList();
+        var readable = rows.Count > 0 && rows.All(row =>
+            row.Match.Success
+                && Indent(lines[row.Line]) == Indent(lines[block[0]])
+                && row.Match.Groups["key"].Value != "include"
+                && Entries(row.Match).All(entry => PlainEntry().IsMatch(entry)));
+        var found = readable ? rows.Where(row => row.Match.Groups["key"].Value == key).ToList() : [];
+        return found.Count == 1 ? (found[0].Line + 1, Entries(found[0].Match)) : null;
+    }
+
+    private static List<string> Entries(Match list) =>
+        list.Groups["items"].Value.Split(',').Select(entry => entry.Trim().Trim('"', '\'')).ToList();
+
+    // The line of a key's only direct child that is a plain "<name>:" key with nothing after it,
+    // or -1.
+    private static int Child(string[] lines, int parent, string name)
+    {
+        var found = Children(lines, parent)
+            .Where(child => BlockKey().Match(lines[child]) is { Success: true } key && key.Groups["key"].Value == name)
+            .ToList();
+        return found.Count == 1 ? found[0] : -1;
+    }
+
+    // The content lines below a key that are indented more than it.
+    private static List<int> Block(string[] lines, int parent)
+    {
+        var block = new List<int>();
+        for (var index = parent + 1; index < lines.Length; index++)
+        {
+            if (!IsContent(lines[index]))
+            {
+                continue;
+            }
+
+            if (Indent(lines[index]) <= Indent(lines[parent]))
             {
                 break;
             }
 
-            var text = lines[index].TrimStart();
-            text = text.StartsWith("- ", StringComparison.Ordinal) ? text[2..].TrimStart() : text;
-            if (text.StartsWith($"{key}:", StringComparison.Ordinal))
-            {
-                found.Add((index + 1, text[(key.Length + 1)..].Trim()));
-            }
+            block.Add(index);
         }
 
-        var list = found.Count == 1 ? InlineList().Match(found[0].Value) : Match.Empty;
-        var entries = list.Success
-            ? list.Groups["items"].Value.Split(',').Select(entry => entry.Trim().Trim('"', '\'')).ToList()
-            : [];
-        return entries.Count > 0 && entries.All(entry => PlainEntry().IsMatch(entry)) ? (found[0].Line, entries) : null;
+        return block;
+    }
+
+    // The direct children of a key: the lines of its block that are indented like the first one.
+    private static List<int> Children(string[] lines, int parent)
+    {
+        var block = Block(lines, parent);
+        return block.Where(index => Indent(lines[index]) == Indent(lines[block[0]])).ToList();
     }
 
     private static bool IsContent(string line) => line.Trim().Length > 0 && !line.TrimStart().StartsWith('#');
@@ -495,21 +587,41 @@ internal static partial class RunnerImage
     private static bool Same(string label, ToolPin? pin) =>
         string.Equals(label, pin?.Version, StringComparison.OrdinalIgnoreCase);
 
-    // A runs-on key, with the rest of its line.
-    [GeneratedRegex(@"^(?<indent>\s*)runs-on:(?<value>.*)$")]
+    // The patterns below accept spaces and tabs but never a carriage return, so a file with
+    // Windows line endings is read only because Check removes them.
+
+    // "jobs:", at the top level.
+    [GeneratedRegex(@"^jobs:[ \t]*(#.*)?$")]
+    private static partial Regex JobsKey();
+
+    // "strategy:", with nothing after it but a comment.
+    [GeneratedRegex(@"^[ \t]*(?<key>[A-Za-z0-9_-]+):[ \t]*(#.*)?$")]
+    private static partial Regex BlockKey();
+
+    // "runs-on:" spelled so, with the rest of its line.
+    [GeneratedRegex(@"^[ \t]*runs-on:(?:[ \t]+(?<value>.*))?$")]
     private static partial Regex RunsOnKey();
 
+    // runs-on as a key in any spelling: quoted, with a space before the colon, as a complex
+    // key, or in a flow mapping.
+    [GeneratedRegex(@"(^|[{,])[ \t]*(\?[ \t]+)?[""']?runs-on[""']?[ \t]*(:|#|$)")]
+    private static partial Regex AnyRunsOn();
+
+    // "uses: ./.github/workflows/build.yml", with or without quotes.
+    [GeneratedRegex(@"^[ \t]*uses:[ \t]+(?<q>[""']?)(?<path>[^""'\s#]+)\k<q>[ \t]*(#.*)?$")]
+    private static partial Regex UsesKey();
+
     // "xcode-27", with or without quotes, and with an optional comment.
-    [GeneratedRegex(@"^\s*(?<q>[""']?)(?<label>[A-Za-z0-9._-]+)\k<q>\s*(#.*)?$")]
+    [GeneratedRegex(@"^(?<q>[""']?)(?<label>[A-Za-z0-9._-]+)\k<q>[ \t]*(#.*)?$")]
     private static partial Regex PlainLabel();
 
     // "${{ matrix.os }}", with or without quotes, and with an optional comment.
-    [GeneratedRegex(@"^\s*(?<q>[""']?)\$\{\{\s*matrix\.(?<key>[A-Za-z0-9_-]+)\s*\}\}\k<q>\s*(#.*)?$")]
+    [GeneratedRegex(@"^(?<q>[""']?)\$\{\{[ \t]*matrix\.(?<key>[A-Za-z0-9_-]+)[ \t]*\}\}\k<q>[ \t]*(#.*)?$")]
     private static partial Regex MatrixReference();
 
-    // "[windows-2025, ubuntu-24.04]", with an optional comment.
-    [GeneratedRegex(@"^\[(?<items>[^\[\]]*)\]\s*(#.*)?$")]
-    private static partial Regex InlineList();
+    // "os: [windows-2025, ubuntu-24.04]", with an optional comment.
+    [GeneratedRegex(@"^[ \t]*(?<key>[A-Za-z0-9_-]+):[ \t]+\[(?<items>[^\[\]]*)\][ \t]*(#.*)?$")]
+    private static partial Regex OneLineList();
 
     [GeneratedRegex(@"^[A-Za-z0-9._-]+$")]
     private static partial Regex PlainEntry();
@@ -596,8 +708,8 @@ internal static class ToolchainCheck
         var folder = Path.Combine(directory, RunnerImage.Folder);
         return Directory.Exists(folder)
             ? Directory.EnumerateFiles(folder)
-                .Where(path => path.EndsWith(".yml", StringComparison.Ordinal)
-                    || path.EndsWith(".yaml", StringComparison.Ordinal))
+                .Where(path => path.EndsWith(".yml", StringComparison.OrdinalIgnoreCase)
+                    || path.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase))
                 .Order(StringComparer.Ordinal)
                 .Select(path => ($"{RunnerImage.Folder}/{Path.GetFileName(path)}", File.ReadAllText(path)))
                 .ToList()
@@ -873,7 +985,7 @@ internal static class SelfTest
             RunnerImage.Check(image, [("ci.yml", Edit(Workflow, "xcode-27 #", "\"xcode-27\" #"))]).Count == 0,
             "a quoted runs-on value is read");
         tally.Expect(
-            RunnerImage.Check(image, [("ci.yml", Edit(Workflow, "runs-on: xcode-27", "x: 1"))]).Count == 1,
+            RunnerImage.Check(image, [("ci.yml", Edit(Workflow, "xcode-27 #", "ubuntu-24.04 #"))]).Count == 1,
             "a pinned image that no job runs on fails");
         tally.Expect(
             RunnerImage.Check(null, [("ci.yml", Workflow)]).Count == 1,
@@ -923,6 +1035,94 @@ internal static class SelfTest
                         + "        include:\n          - os: macos-26\n    runs-on: ${{ matrix.os }}"),
                 "matrix.os"),
             "a matrix key that the job sets twice, as include does, fails");
+
+        Console.WriteLine("Matrix lists:");
+        List<string> withMatrix(string rows) =>
+            withJob($"    strategy:\n      matrix:\n{rows}\n    runs-on: ${{{{ matrix.os }}}}");
+        tally.Expect(
+            withMatrix("        os: [ubuntu-24.04]").Count == 0
+                && withJob(
+                    "    strategy:\n      fail-fast: false\n      matrix:\n        # one runner\n"
+                        + "        os: [ubuntu-24.04] # Linux\n    runs-on: ${{ matrix.os }}").Count == 0,
+            "a one-line list below the job's own strategy and matrix keys is read, with comments");
+        tally.Expect(
+            Names(withMatrix("        os: [ubuntu-24.04]\n        include: [{ os: macos-26 }]"), "matrix.os"),
+            "an include on one line fails");
+        tally.Expect(
+            Names(withMatrix("        os: [ubuntu-24.04]\n        include:\n          - { os: macos-26 }"), "matrix.os")
+                && Names(
+                    withMatrix("        os: [ubuntu-24.04]\n        include:\n          - { name: mac, os: macos-26 }"),
+                    "matrix.os"),
+            "an include of flow mappings fails");
+        tally.Expect(
+            Names(withMatrix("        os: [ubuntu-24.04]\n        include: ${{ fromJSON(inputs.more) }}"), "matrix.os"),
+            "an include from an expression fails");
+        tally.Expect(
+            Names(withMatrix("        os: [ubuntu-24.04]\n        include:\n          - \"os\": macos-26"), "matrix.os")
+                && Names(
+                    withMatrix("        os: [ubuntu-24.04]\n        include:\n          - os : macos-26"), "matrix.os"),
+            "an include with the key quoted or before a space fails");
+        tally.Expect(
+            Names(withMatrix("        sets:\n          os: [macos-26]"), "matrix.os"),
+            "a list deeper than the matrix key fails");
+        tally.Expect(
+            Names(
+                withJob(
+                    "    strategy:\n      matrix: { os: [macos-26] }\n    runs-on: ${{ matrix.os }}\n"
+                        + "    steps:\n      - run: |\n          os: [ubuntu-24.04]"),
+                "matrix.os")
+                && Names(
+                    withJob(
+                        "    strategy:\n      matrix: ${{ fromJSON(inputs.matrix) }}\n    runs-on: ${{ matrix.os }}\n"
+                            + "    steps:\n      - run: |\n          os: [ubuntu-24.04]"),
+                    "matrix.os"),
+            "a matrix in flow form or from an expression fails, whatever a script line says");
+
+        Console.WriteLine("Keys and jobs:");
+        List<string> withOther(string text) => RunnerImage.Check(image, [("ci.yml", Workflow), ("other.yml", text)]);
+        tally.Expect(
+            Names(withJob("    \"runs-on\": macos-26"), "line 12", "cannot read")
+                && Names(withJob("    'runs-on': macos-26"), "line 12", "cannot read")
+                && Names(withJob("    runs-on : macos-26"), "line 12", "cannot read"),
+            "runs-on quoted or before a space fails, with its line");
+        tally.Expect(
+            Names(withJob("    ? runs-on\n    : macos-26"), "line 12", "cannot read"),
+            "runs-on as a complex key fails");
+        tally.Expect(
+            Names(
+                RunnerImage.Check(
+                    image, [("ci.yml", $"{Workflow}\n  extra: {{ runs-on: macos-26, steps: [ {{ run: echo }} ] }}")]),
+                "line 11",
+                "cannot read"),
+            "a job written as a flow mapping fails");
+        tally.Expect(
+            Names(withJob("    <<: *mac\n    steps:\n      - run: echo"), "line 11", "cannot read"),
+            "a job without a runs-on key that the check can read fails");
+        tally.Expect(
+            Names(
+                withJob("    uses: an-org/a-repo/.github/workflows/build.yml@v1"), "line 12", "outside this repository")
+                && withJob("    uses: ./.github/workflows/build.yml").Count == 0,
+            "a job that calls a workflow of another repository fails, and one of this repository passes");
+        tally.Expect(
+            RunnerImage.Check(
+                image,
+                [("ci.yml", Edit(Workflow, "xcode-27 #", "ubuntu-24.04 #")
+                    + "\n  extra:\n    runs-on: ubuntu-24.04\n    steps:\n"
+                    + "      - run: |\n          runs-on: xcode-27")])
+                .Count == 1,
+            "a script line is never read as a runner");
+        tally.Expect(
+            Names(withOther("\"jobs\":\n  x:\n    runs-on: macos-26"), "other.yml", "cannot read its jobs")
+                && Names(withOther("jobs: { x: { runs-on: macos-26 } }"), "other.yml", "cannot read its jobs"),
+            "jobs in another spelling fail");
+        static string crlf(string text) => text.Replace("\n", "\r\n", StringComparison.Ordinal);
+        tally.Expect(
+            RunnerImage.Check(image, [("ci.yml", crlf(Workflow))]).Count == 0
+                && Names(
+                    RunnerImage.Check(image, [("ci.yml", crlf($"{Workflow}\n  extra:\n    runs-on: [macos-26]"))]),
+                    "line 12",
+                    "cannot read"),
+            "Windows line endings are read like Unix ones");
 
         Console.WriteLine("Missing pins:");
         tally.Expect(

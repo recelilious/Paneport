@@ -20,6 +20,6 @@ The CTest suite of the native host (C-0011 section 1). The presets `asan-ubsan` 
 | `test_memory_budget.c` | S1.2.5: the limit as a sum, the Game Mode level, and a smaller `struct_size` |
 | `test_crash_record.c` | S1.2.6: the documented bytes, the message cut, a record written in a signal handler, and the test flag |
 | `check_writer_calls.cmake` | S1.2.6: lists the undefined symbols of the crash record writer's object with `nm`, and fails on a call that is not async-signal-safe |
-| `test_headers.c`, `test_headers_linkage.cpp` | The header test of C-0005 section 5: one C17 and one C++20 source per header that CMake generates, all headers together, and a C++20 source that fails to compile when a header loses its `extern "C"` guards |
+| `test_headers.c`, `test_headers_linkage.cpp` | The header test of C-0005 section 5: one C17 and one C++20 source per header that CMake generates, all headers together, and a C++20 source that calls the host, so the program fails to link when a header loses its `extern "C"` guards |
 
 Each case runs in a process of its own, because `pp_init` runs once per process. A test keeps its state in a context that it passes to its callbacks and threads, not in file-scope variables; only the outputs of the signal handler in `test_crash_record.c`, which receives no argument, are static, as that test's documented singletons (C-0010 section 3). The tests keep no personal data, and make their temporary folders at run time.

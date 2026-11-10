@@ -179,6 +179,126 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/CheckLicenses.cs
 
+  # The native host (C-0011 section 4): its format and analysis checks, its CTest suite with
+  # both sanitizer presets, and the binding tests of Paneport.Interop against the host's test
+  # library. Like dotnet and checks, it runs on every push and every pull request.
+  native:
+    # eng/toolchain.json pins this image as macos-runner-image, and tools/CheckToolchain.cs
+    # fails when the two differ.
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the SDK that global.json pins
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Select the Xcode that eng/toolchain.json pins (eng/mac/select-xcode.sh)
+        run: eng/mac/select-xcode.sh
+
+      # It checks the SDK and Xcode against their pins, installs CMake and the LLVM release of
+      # clang-format and clang-tidy from their pinned downloads, checks them, and puts them
+      # first on the PATH of the later steps.
+      - name: Check the toolchain and install CMake and LLVM (eng/mac/bootstrap.sh --native)
+        run: eng/mac/bootstrap.sh --native
+
+      - name: Show the Xcode, CMake, clang-format and clang-tidy versions
+        if: ${{ !cancelled() }}
+        run: |
+          xcodebuild -version
+          cmake --version | head -n 1
+          clang-format --version
+          clang-tidy --version
+
+      - name: Check the format of the native code (clang-format)
+        if: ${{ !cancelled() }}
+        run: eng/mac/check-native-style.sh format
+
+      # S1.2.9: a format error in an uncommitted scratch copy fails the check. The copy lives in
+      # build/, which git ignores, so clang-format finds the root .clang-format above it.
+      - name: Check that a format error fails the check (planted)
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p build/planted
+          sed 's/^static bool fits(/static  bool   fits(/' src/native/host/memory_budget.c > build/planted/memory_budget.c
+          if cmp -s src/native/host/memory_budget.c build/planted/memory_budget.c; then
+            echo "::error title=Planted format error::The planted change did not apply."
+            exit 1
+          fi
+          if eng/mac/check-native-style.sh format build/planted/memory_budget.c; then
+            echo "::error title=Planted format error::The format check passed a misformatted file."
+            exit 1
+          fi
+          echo "The format check failed on the planted error, as expected."
+
+      - name: Build and test with AddressSanitizer and UndefinedBehaviorSanitizer (preset asan-ubsan)
+        if: ${{ !cancelled() }}
+        working-directory: src/native
+        run: |
+          cmake --preset asan-ubsan
+          cmake --build --preset asan-ubsan --parallel
+          ctest --preset asan-ubsan
+
+      - name: Build and test with ThreadSanitizer (preset tsan)
+        if: ${{ !cancelled() }}
+        working-directory: src/native
+        run: |
+          cmake --preset tsan
+          cmake --build --preset tsan --parallel
+          ctest --preset tsan
+
+      # clang-tidy reads the compile databases of a macOS build and of an iOS build, so that it
+      # sees the code of both platforms. The iOS preset is only configured here; the ios job
+      # builds it.
+      - name: Analyze the native code (clang-tidy)
+        if: ${{ !cancelled() }}
+        run: |
+          (cd src/native && cmake --preset ios-device-test)
+          eng/mac/check-native-style.sh tidy build/native/asan-ubsan build/native/ios-device-test
+
+      - name: Build the host test library (preset macos-test)
+        if: ${{ !cancelled() }}
+        working-directory: src/native
+        run: |
+          cmake --preset macos-test
+          cmake --build --preset macos-test --parallel
+
+      - name: Restore tests/Paneport.Interop.Tests from its lock file
+        if: ${{ !cancelled() }}
+        run: dotnet restore tests/Paneport.Interop.Tests/Paneport.Interop.Tests.csproj --locked-mode
+
+      # As in the dotnet job: locked mode writes a missing lock file instead of failing.
+      - name: Check that no lock file was written
+        if: ${{ !cancelled() }}
+        run: |
+          written=$(git status --porcelain --untracked-files=all -- '*.lock.json')
+          if [ -n "$written" ]; then
+            echo "$written"
+            echo "::error title=Lock files::A lock file was created or changed. Commit each project's lock file (C-0009 section 2)."
+            exit 1
+          fi
+
+      - name: Build tests/Paneport.Interop.Tests
+        if: ${{ !cancelled() }}
+        run: dotnet build tests/Paneport.Interop.Tests/Paneport.Interop.Tests.csproj -c Release --no-restore
+
+      - name: Check the formatting of tests/Paneport.Interop.Tests
+        if: ${{ !cancelled() }}
+        run: dotnet format tests/Paneport.Interop.Tests/Paneport.Interop.Tests.csproj --verify-no-changes --no-restore
+
+      # The tests load the host test library from PANEPORT_HOST_LIBRARY and fail without it,
+      # and a skipped test counts as a failure.
+      - name: Run tests/Paneport.Interop.Tests against the host test library
+        if: ${{ !cancelled() }}
+        env:
+          PANEPORT_HOST_LIBRARY: ${{ github.workspace }}/build/native/macos-test/libpaneport_host.dylib
+        run: dotnet test tests/Paneport.Interop.Tests/Paneport.Interop.Tests.csproj -c Release --no-build --fail-skips on
+
   # D7 (plan section 4.2), recelilious's decision: the ios job runs for every pull request, on
   # the merge result that the pull_request event checks out, and for every push to main, which
   # catches two pull requests that pass alone and break together, and direct commits. Other
@@ -205,44 +325,29 @@ jobs:
           global-json-file: global.json
 
       # The image's default Xcode can move past the pin while the pinned one is still
-      # installed, so every later step uses the pinned one. The image names an Xcode by its
-      # version, and some of those names are links to other releases, such as a release
-      # candidate. The bootstrap's check compares only the version number, so this step rejects
-      # a folder that resolves to a release candidate or a beta.
-      - name: Select the Xcode that eng/toolchain.json pins
-        run: |
-          pin=$(plutil -extract tools.xcode.version raw -o - eng/toolchain.json)
-          if [ ! -d "/Applications/Xcode_$pin.app" ]; then
-            echo "::error title=Xcode::The image has no Xcode $pin."
-            exit 1
-          fi
-          resolved=$(cd "/Applications/Xcode_$pin.app" && pwd -P)
-          case "$(printf '%s' "$resolved" | tr '[:upper:]' '[:lower:]')" in
-            *release_candidate*|*beta*|*_rc*)
-              echo "::error title=Xcode::Xcode $pin on the image is $resolved, not a final release."
-              exit 1
-              ;;
-          esac
-          echo "DEVELOPER_DIR=/Applications/Xcode_$pin.app/Contents/Developer" >> "$GITHUB_ENV"
+      # installed, so every later step uses the pinned one, through DEVELOPER_DIR. The script
+      # rejects a version-named folder that resolves to a release candidate or a beta.
+      - name: Select the Xcode that eng/toolchain.json pins (eng/mac/select-xcode.sh)
+        run: eng/mac/select-xcode.sh
 
       # It checks the SDK and Xcode against their pins, installs the iOS workload from the
-      # pinned workload set, and checks that too.
-      - name: Check the toolchain and install the iOS workload (eng/mac/bootstrap.sh)
-        run: eng/mac/bootstrap.sh
+      # pinned workload set and CMake from its pinned download, and checks them too.
+      - name: Check the toolchain and install the iOS workload and CMake (eng/mac/bootstrap.sh --ios)
+        run: eng/mac/bootstrap.sh --ios
 
       # A second run must find the workload in place and skip the install, as it must after the
       # owner of an SDK folder that this user cannot write has installed the workload.
       - name: Check that the bootstrap skips a workload that is installed
         if: ${{ !cancelled() }}
         run: |
-          output=$(eng/mac/bootstrap.sh 2>&1)
+          output=$(eng/mac/bootstrap.sh --ios 2>&1)
           echo "$output"
-          if ! grep -F -q "is already installed" <<< "$output"; then
+          if ! grep -E -q "the ios workload from workload set [^ ]+ is already installed" <<< "$output"; then
             echo "::error title=Bootstrap::A second run of the bootstrap did not find the installed workload."
             exit 1
           fi
 
-      - name: Show the SDK, workload set and Xcode versions
+      - name: Show the SDK, workload set, Xcode and CMake versions
         if: ${{ !cancelled() }}
         run: |
           echo "SDK: $(dotnet --version)"
@@ -250,6 +355,7 @@ jobs:
           dotnet workload list
           xcodebuild -version
           echo "Xcode in use: ${DEVELOPER_DIR:-$(xcode-select -p)}"
+          cmake --version | head -n 1
 
       # The bootstrap must refuse any Xcode but the pinned one. The step runs it against
       # another Xcode on the image and passes only if it fails and names both versions. It
@@ -273,7 +379,7 @@ jobs:
           fi
           echo "Running the bootstrap against $other (Xcode $found; the pin is $pin)."
           status=0
-          output=$(DEVELOPER_DIR="$other/Contents/Developer" GITHUB_ACTIONS=false eng/mac/bootstrap.sh 2>&1) || status=$?
+          output=$(DEVELOPER_DIR="$other/Contents/Developer" GITHUB_ACTIONS=false eng/mac/bootstrap.sh --ios 2>&1) || status=$?
           echo "$output"
           if [ "$status" -eq 0 ]; then
             echo "::error title=Planted mismatch::The bootstrap passed with Xcode $found, but the pin is $pin."
@@ -284,6 +390,23 @@ jobs:
             exit 1
           fi
           echo "The bootstrap exited with $status and named both versions, as expected."
+
+      # S1.2.10: paneport_host.framework from both iOS presets, the one that the main app embeds
+      # and the one with the test exports that the device test flavor embeds (M1.3).
+      - name: Build the host frameworks (presets ios-device and ios-device-test)
+        if: ${{ !cancelled() }}
+        working-directory: src/native
+        run: |
+          for preset in ios-device ios-device-test; do
+            cmake --preset "$preset"
+            cmake --build --preset "$preset" --parallel
+          done
+
+      - name: Check the host frameworks (eng/mac/check-framework.sh)
+        if: ${{ !cancelled() }}
+        run: |
+          eng/mac/check-framework.sh build/native/ios-device/paneport_host.framework \
+            build/native/ios-device-test/paneport_host.framework
 
       - name: Restore Paneport.iOS from its lock file
         if: ${{ !cancelled() }}

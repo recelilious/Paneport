@@ -60,7 +60,7 @@ enum {
     /** Something unexpected that the host recovered from. */
     PP_LOG_WARNING = 2,
     /** A failure. */
-    PP_LOG_ERROR = 3
+    PP_LOG_ERROR = 3,
 };
 
 /** A log line of the host. */

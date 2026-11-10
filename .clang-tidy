@@ -8,6 +8,10 @@
 #
 # - bugprone-easily-swappable-parameters: C interfaces pass several values of one type, such
 #   as the two readings of the memory stub; names and comments carry their order.
+# - clang-analyzer-optin.performance.Padding: it asks to order a struct's members by size. The
+#   structs that cross the interface keep the order of C-0005, which the layout table checks,
+#   and the host's other structs are process-wide singletons, whose members stay grouped by
+#   purpose; a few bytes of padding in one copy matter less than that.
 # - clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling: it asks for the
 #   bounds-checked functions of C11 Annex K, such as memcpy_s, which Apple's C library does
 #   not provide.
@@ -34,6 +38,7 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   cert-*,
   clang-analyzer-*,
+  -clang-analyzer-optin.performance.Padding,
   -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
   concurrency-*,
   misc-*,

@@ -69,7 +69,7 @@ enum {
     /** The resource is in use by another call, which was not waited for. */
     PP_E_BUSY = -8,
     /** The system refused something the host needs, such as a thread. */
-    PP_E_SYSTEM = -9
+    PP_E_SYSTEM = -9,
 };
 
 PP_EXTERN_C_END

@@ -52,6 +52,7 @@ endif()
 
 set(PANEPORT_HOST_SOURCES
     host/crash_record.c
+    host/crash_record_writer.c
     host/error.c
     host/event_queue.c
     host/event_thread.c
@@ -60,14 +61,17 @@ set(PANEPORT_HOST_SOURCES
     host/memory_budget.c
     host/platform_darwin.c
 )
-if(PANEPORT_TEST_BUILD)
-    list(APPEND PANEPORT_HOST_SOURCES host/test_exports.c)
-endif()
+set(PANEPORT_HOST_TEST_SOURCES host/test_exports.c)
 
 find_package(Threads REQUIRED)
 
-# The host's code, compiled once for the library and for the tests.
-add_library(paneport_host_objects OBJECT ${PANEPORT_HOST_SOURCES})
+# The host's code, compiled once for the library and for the tests. Test builds add the
+# exports of paneport/testing.h.
+if(PANEPORT_TEST_BUILD)
+    add_library(paneport_host_objects OBJECT ${PANEPORT_HOST_SOURCES} ${PANEPORT_HOST_TEST_SOURCES})
+else()
+    add_library(paneport_host_objects OBJECT ${PANEPORT_HOST_SOURCES})
+endif()
 target_include_directories(paneport_host_objects
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/host")
@@ -114,6 +118,15 @@ if(PANEPORT_TESTS)
     if(NOT PANEPORT_HOST_FORM STREQUAL "static" OR NOT PANEPORT_TEST_BUILD)
         message(FATAL_ERROR "The tests need PANEPORT_HOST_FORM=static and PANEPORT_TEST_BUILD=ON.")
     endif()
+
+    # The host as the shipped framework compiles it: without the test exports and without
+    # PANEPORT_TEST_BUILD, so that a test runs the main-thread rule that ships.
+    add_library(paneport_host_shipped STATIC ${PANEPORT_HOST_SOURCES})
+    target_include_directories(paneport_host_shipped
+        PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/host")
+    target_link_libraries(paneport_host_shipped PUBLIC Threads::Threads)
+
     enable_testing()
     add_subdirectory("${PANEPORT_REPOSITORY_ROOT}/tests/native" "${CMAKE_BINARY_DIR}/tests")
 endif()

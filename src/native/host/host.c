@@ -106,6 +106,8 @@ PP_EXPORT pp_status_t pp_init(const pp_init_config_t *config) {
         }
     }
     if (status != PP_OK) {
+        // A folder prepared before the failure must not outlive it.
+        pp_crash_record_reset();
         atomic_store_explicit(&s_host.state, PP_HOST_NOT_STARTED, memory_order_release);
         return status;
     }

@@ -6,8 +6,8 @@
  * The memory group of the host interface (C-0005 section 2).
  */
 
-#ifndef PANEPORT_MEMORY_H
-#define PANEPORT_MEMORY_H
+#ifndef PP_MEMORY_H
+#define PP_MEMORY_H
 
 #include <stdint.h>
 
@@ -49,4 +49,4 @@ PP_EXPORT pp_status_t pp_memory_get_budget(pp_memory_budget_t *budget);
 
 PP_EXTERN_C_END
 
-#endif /* PANEPORT_MEMORY_H */
+#endif /* PP_MEMORY_H */

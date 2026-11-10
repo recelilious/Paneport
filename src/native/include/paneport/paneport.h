@@ -7,11 +7,11 @@
  * exports of test builds are in paneport/testing.h, which this header leaves out.
  */
 
-#ifndef PANEPORT_PANEPORT_H
-#define PANEPORT_PANEPORT_H
+#ifndef PP_PANEPORT_H
+#define PP_PANEPORT_H
 
 #include "paneport/common.h"
 #include "paneport/host.h"
 #include "paneport/memory.h"
 
-#endif /* PANEPORT_PANEPORT_H */
+#endif /* PP_PANEPORT_H */

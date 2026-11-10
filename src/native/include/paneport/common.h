@@ -7,8 +7,8 @@
  * interface version, the status codes, and the export and linkage macros.
  */
 
-#ifndef PANEPORT_COMMON_H
-#define PANEPORT_COMMON_H
+#ifndef PP_COMMON_H
+#define PP_COMMON_H
 
 #include <stdint.h>
 
@@ -74,4 +74,4 @@ enum {
 
 PP_EXTERN_C_END
 
-#endif /* PANEPORT_COMMON_H */
+#endif /* PP_COMMON_H */

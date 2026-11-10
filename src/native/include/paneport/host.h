@@ -13,8 +13,8 @@
  * marked [any] runs on any thread. Callbacks run only on the host event thread.
  */
 
-#ifndef PANEPORT_HOST_H
-#define PANEPORT_HOST_H
+#ifndef PP_HOST_H
+#define PP_HOST_H
 
 #include <stdint.h>
 
@@ -27,9 +27,9 @@ typedef struct pp_init_config_t {
     /** sizeof(pp_init_config_t) as the caller knows it. Members past it count as unset. */
     uint32_t struct_size;
     /**
-     * The folder for crash records, UTF-8 and NUL-terminated, such as
-     * Library/Caches/Paneport/ inside the app container (C-0004 section 4). It must exist and
-     * be writable. The host copies it. NULL means that the host writes no crash record.
+     * The absolute path of the folder for crash records, UTF-8 and NUL-terminated, such as
+     * the Library/Caches/Paneport/ folder of the app container (C-0004 section 4). It must exist
+     * and be writable. The host copies it. NULL means that the host writes no crash record.
      */
     const char *crash_record_folder;
 } pp_init_config_t;
@@ -136,9 +136,10 @@ PP_EXPORT void pp_free(void *memory);
  *
  * @param config The settings. Must not be NULL, and struct_size must cover at least its own
  *               member.
- * @return PP_OK; PP_E_ALREADY_INITIALIZED; PP_E_INVALID_ARGUMENT for a missing config, a
- *         path that is too long or not a folder; PP_E_IO for a folder that cannot be written;
- *         PP_E_SYSTEM or PP_E_OUT_OF_MEMORY when the event thread cannot start.
+ * @return PP_OK; PP_E_ALREADY_INITIALIZED; PP_E_WRONG_THREAD; PP_E_INVALID_ARGUMENT for a
+ *         missing config, or a path that is relative, too long or not a folder; PP_E_IO for a
+ *         folder that cannot be written; PP_E_SYSTEM or PP_E_OUT_OF_MEMORY when the event
+ *         thread cannot start.
  */
 PP_EXPORT pp_status_t pp_init(const pp_init_config_t *config);
 
@@ -180,4 +181,4 @@ PP_EXPORT pp_status_t pp_set_log_callback(pp_log_callback_t callback, void *user
 
 PP_EXTERN_C_END
 
-#endif /* PANEPORT_HOST_H */
+#endif /* PP_HOST_H */

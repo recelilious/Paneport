@@ -19,17 +19,17 @@ Back to the [development plan](../development-plan.md).
 | S1.1.3 | Minimal iOS project | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
 | S1.1.4 | iOS CI job | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
 | S1.1.5 | Development environment design document | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
-| M1.2 | Native host skeleton and interface conformance | Medium | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.1 | Status, errors, pp_free and ABI version | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.2 | Lock-free event queue | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.3 | Event thread and callbacks | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.4 | Log pipeline | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.5 | Memory budget estimator | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.6 | Crash record format and writer | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.7 | Paneport.Interop bindings | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.8 | Layout table and conformance test | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.9 | Native format and analysis configuration | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.10 | Host framework packaging | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| M1.2 | Native host skeleton and interface conformance | Medium | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.1 | Status, errors, pp_free and ABI version | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.2 | Lock-free event queue | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.3 | Event thread and callbacks | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.4 | Log pipeline | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.5 | Memory budget estimator | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.6 | Crash record format and writer | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.7 | Paneport.Interop bindings | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.8 | Layout table and conformance test | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.9 | Native format and analysis configuration | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.10 | Host framework packaging | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
 | M1.3 | iOS app head | Medium | Planned | | |
 | S1.3.1 | Scene and root view controller | Small | Planned | | |
 | S1.3.2 | Native host embedding and host adapter | Small | Planned | | |
@@ -350,7 +350,19 @@ Scripts this stage creates: the CTest suite and its assertion header, `eng/mac/c
 
 **Session log.**
 
-_No sessions yet._
+- **2026-11-10 (UTC), first session.** Pull request: [#18](https://github.com/recelilious/Paneport/pull/18).
+  - **Done.** S1.2.1 to S1.2.10.
+    - The native host in `src/native/`, in C17: the headers of the life cycle, diagnostics and memory groups at interface version 1.0, each function with its purpose, thread rule and memory ownership; `pp_init` once per process, with the first caller as the main thread in test builds; the host event thread with two bounded lock-free queues, a buffer for the first 64 early log lines and one notice per queue's first overflow; the log pipeline, which cuts at a character boundary; the memory budget, with a macOS stub and the Game Mode level at 7,936 MiB; the crash record of 128 bytes and its async-signal-safe writer; and the `pp_test_` exports with the layout table.
+    - The CMake presets `ios-device`, `ios-device-test`, `macos-test`, `asan-ubsan` and `tsan` on the base presets and toolchain files in `eng/cmake/`, and the CTest suite in `tests/native/`: 22 cases in six programs, one per small stage, and the header test.
+    - Paneport.Interop's bindings, safe API, callbacks and `LayoutConformance`, and `tests/Paneport.Interop.Tests` with 16 tests.
+    - `.clang-format` and `.clang-tidy`; CMake 4.4.5 and LLVM 23.1.5 pinned with the SHA-256 of their macOS downloads, each from two sources that agree, and mapped to their register rows; the bootstrap's `--ios` and `--native`; `--cmake` and `--llvm` in `tools/CheckToolchain.cs`, whose self-test grows from 79 to 89 cases.
+    - The `native` job; the framework build and `eng/mac/check-framework.sh` in `ios`; `eng/mac/select-xcode.sh` for both macOS jobs; `eng/mac/check-native-style.sh`.
+    - `native-host.md` and `interop.md` with their rows in the design index, and the updates of `repository-checks.md`, `solution-and-build.md`, `dev-environment.md`, `app-shell.md`, the READMEs of the new and changed folders, and CONTRIBUTING.md.
+  - **Verification.** On the workstation, the toolchain self-test passes 89 checks; the toolchain, license, personal-data and format checks pass, and so does `bash -n` on the four scripts; Paneport.Interop and its tests build without a warning and pass their format checks. The native code was also built in a Linux environment of the workstation, with a local stand-in for the three calls of `platform_darwin.c` that is not committed: all 23 tests passed with AddressSanitizer and UndefinedBehaviorSanitizer and with ThreadSanitizer, clang-tidy 22 reported nothing, and a weakened release store in the queue made ThreadSanitizer report a data race. In CI on `98134cf` ([run](https://github.com/recelilious/Paneport/actions/runs/42790864341)), every job passed. In `native`, the bootstrap installed and checked CMake 4.4.5 and LLVM 23.1.5; clang-format passed and failed on the planted error; CTest passed 23 of 23 tests with `asan-ubsan` and with `tsan`; clang-tidy reported nothing on the compile databases of `asan-ubsan` and `ios-device-test`; and `tests/Paneport.Interop.Tests` passed 16 of 16 against the `macos-test` library, the planted wrong definition among them. In `ios`, both frameworks built, and `check-framework.sh` found the install name, arm64 code for iOS devices and exactly the expected exports, eight in `ios-device` and those plus six `pp_test_` exports in `ios-device-test`; the app of M1.1 still built. `checks` and both `dotnet` jobs passed, with the license check accepting the new pins.
+  - **Confirmed in this stage.** C# measures member offsets under `DisableRuntimeMarshalling` as the distance from the start of a default struct, with `Unsafe.ByteOffset` (`interop.md` section 6). The library name is the same on every target, and only its resolution differs (`interop.md` section 2). Both sanitizer builds work with the clang of Xcode 27.1 on the `xcode-27` image. A hidden preset of an included file expands `${fileDir}` for the preset that inherits it, and CMake 4 writes no `-isysroot` unless the SDK is named, which the pinned clang-tidy needs; the first two CI runs found these (`native-host.md` section 12). The bootstrap installs LLVM in about two minutes per run.
+  - **Not yet verified on device.** The iOS readings of the memory budget, the framework import under Mono, and the crash record in the app container; M1.3 embeds the framework, and L1 shows them.
+  - **Left.** recelilious reviews and merges #18. The verification passed and only the merge is left, so M1.2 and S1.2.1 to S1.2.10 are set to Done in the branch's last commit, as plan section 3.3 asks.
+  - **For later sessions.** Notes left in the briefs of M1.3, M2.2, M3.1 and M6.3. M4.1 runs in parallel and also changes `eng/toolchain.json`, `eng/license-map.json`, `tools/CheckToolchain.cs` and `eng/mac/bootstrap.sh`, so the pull request that merges second rebases.
 
 ## M1.3 iOS app head
 

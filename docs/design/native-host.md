@@ -167,7 +167,10 @@ The CMake project's root is `src/native/` (C-0004 section 3). Its presets build 
 
 - **C# offsets under disabled runtime marshalling.** Paneport.Interop measures each member as the distance from the start of a struct to the member, with `Unsafe.ByteOffset`, and each size with `Unsafe.SizeOf`. That is the layout that crosses the interface, because the structs are blittable and runtime marshalling is off; `Marshal.OffsetOf` would describe a marshalled layout that the assembly never uses ([interop.md](interop.md) section 6).
 - **The library name per target.** One name, `@rpath/paneport_host.framework/paneport_host`, on every target; what differs is how it resolves ([interop.md](interop.md) section 2).
-- **Sanitizers with the pinned Xcode.** To be filled in from the first CI run of the `native` job.
+- **Sanitizers with the pinned Xcode.** AddressSanitizer with UndefinedBehaviorSanitizer, and ThreadSanitizer, work with the clang of Xcode 27.1 on the `xcode-27` image: in CI on 2026-11-10 both presets built and passed all 23 tests, in 1.0 s and 1.7 s. Before CI, the same suite also passed under both sanitizers in a Linux build with a local stand-in for the three calls of `platform_darwin.c`, and a mutation that weakened the queue's release store made ThreadSanitizer report a data race.
+- **The framework.** CMake's Unix Makefiles generator builds the flat iOS framework with the install name the bindings import, arm64 code for iOS devices (`LC_BUILD_VERSION` platform 2) and the exports of section 11, with nothing else exported.
+- **Presets and toolchains.** A hidden preset that an included file defines expands `${fileDir}` for the preset that inherits it, so `eng/cmake/base-presets.json` names its toolchain files from `${sourceDir}` instead. CMake 4 names no SDK unless asked, and Apple's compiler driver then finds one by itself, so a compile database holds no `-isysroot`, and clang-tidy, which is not Apple's, finds no SDK header; `eng/cmake/macos.cmake` names the `macosx` SDK, as `ios.cmake` names `iphoneos`.
+- **Tool installs.** In CI the bootstrap installs CMake in about 3 s and the LLVM release in about 1 min 45 s, most of it for the 1.6 GB download and its unpacking.
 
 ## 13. Sources
 

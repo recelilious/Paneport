@@ -110,7 +110,7 @@ The composition root, `CompositionRoot.CreateMainWindow`, creates the log, the f
 | Current footprint | 512 MB |
 | Game Mode level | Not reached |
 
-ABI version 1.0 stands for the first version of the host headers; M1.2 sets the real one.
+ABI version 1.0 stood for the first version of the host headers, and M1.2 gave the headers that version ([native-host.md](native-host.md) section 2), so the fake reports what the native host reports.
 
 **Sample titles.** `SampleLibrary` holds these titles, in the order the Library shows them. They cover every install state and launch path, one local title and one very long name.
 
@@ -157,7 +157,7 @@ The titles were invented for Paneport and carry no game artwork or other game ma
 ## 10. Open questions
 
 - **Slug pattern.** Settled by M6.4: the title schema implements the pattern of section 2 (`compat-db.md` section 2).
-- **Expected ABI version.** The major version the .NET side expects comes with M1.2's headers. M1.3 checks it at startup and shows the compatibility on Diagnostics.
+- **Expected ABI version.** M1.2 set it: the .NET side expects major version 1, which Paneport.Interop names as `HostAbi.Major` ([interop.md](interop.md) section 4). M1.3 checks it at startup and shows the compatibility on Diagnostics.
 - **Token store shape.** M1.3 keeps the account name next to the refresh token, and its developer menu writes a test item under its own key, so `ITokenStore` will grow there (M1.3, M7.1).
 - **The token in managed memory.** A .NET string cannot be wiped. C-0005 section 2 makes the host zero its own copy; whether the managed side keeps the token as bytes it can clear is for M2.3 to decide.
 - **A failed save.** Today only the log records it. How the Settings page shows it is decided with the first store that can fail, the settings file of M1.3.

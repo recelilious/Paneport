@@ -20,10 +20,16 @@ This document records how the repository rules of C-0011 section 2 are checked: 
 | Personal data and forbidden files | `tools/ScanPersonalData.cs` | `checks`: personal data and forbidden files | `eng/personal-data-allow-list.json` |
 | Links in Markdown | lychee | `checks`: lychee | `eng/lychee.toml` |
 | Dependency licenses | `tools/CheckLicenses.cs` | `checks`: dependency licenses | `eng/license-map.json` |
-| Toolchain pins (C-0009 section 2) | `tools/CheckToolchain.cs` | `dotnet`: the SDK and the runner image; `checks`: also the CI tools; `ios`: also Xcode and the iOS workload set, through `eng/mac/bootstrap.sh` | `global.json`, `eng/toolchain.json`, `.github/workflows/` |
+| Toolchain pins (C-0009 section 2) | `tools/CheckToolchain.cs` | `dotnet`: the SDK and the runner image; `checks`: also the CI tools; `ios`: also Xcode, the iOS workload set and CMake, through `eng/mac/bootstrap.sh --ios`; `native`: also Xcode, CMake, clang-format and clang-tidy, through `eng/mac/bootstrap.sh --native` | `global.json`, `eng/toolchain.json`, `.github/workflows/` |
 | C# formatting of Paneport.iOS | `dotnet format` | `ios`: Check the formatting of Paneport.iOS | `.editorconfig` |
+| Native formatting | clang-format, through `eng/mac/check-native-style.sh format` | `native`: Check the format of the native code; a planted error fails it | `.clang-format` |
+| Native analysis | clang-tidy, through `eng/mac/check-native-style.sh tidy`, and the compiler's warnings as errors | `native`: Analyze the native code, and every build | `.clang-tidy`, `src/native/CMakeLists.txt` |
+| Native tests with sanitizers (C-0011 section 1) | CTest | `native`: the presets `asan-ubsan` and `tsan` | `src/native/CMakePresets.json`, `tests/native/` |
+| Interface conformance (C-0005 section 5) | `tests/Paneport.Interop.Tests` | `native`: Run tests/Paneport.Interop.Tests | Its project file |
+| The host frameworks | `eng/mac/check-framework.sh` | `ios`: Check the host frameworks | The public headers, whose `PP_EXPORT` declarations are the expected exports |
+| C# formatting of tests/Paneport.Interop.Tests | `dotnet format` | `native`: Check the formatting of tests/Paneport.Interop.Tests | `.editorconfig` |
 
-The native checks (`clang-format`, `clang-tidy`) come with the `native` job in M1.2, and the compatibility data check with M8.3.
+The compatibility data check comes with M8.3. [native-host.md](native-host.md) section 11 describes the native checks.
 
 ## 2. The file-based tools
 
@@ -132,6 +138,8 @@ Each needs the checker taught to read it, in a reviewed change, before it is use
 - **CI tools.** With `--ci-tools` it also asks each tool of the `checks` job for its version and compares the answer with the pin: `reuse --version`, `gitleaks version` and `lychee --version`.
 - **Xcode.** With `--xcode` it compares the first line of `xcodebuild -version`, such as `Xcode 27.1`, with the `xcode` pin, exactly. xcodebuild reports the Xcode that `DEVELOPER_DIR` or `xcode-select` selects, and a mismatch names both versions.
 - **iOS workload set.** With `--ios-workload` it compares `dotnet workload --version` with the `ios-workload-set` pin, and requires an `ios` row in `dotnet workload list`. Without a workload set the SDK prints a version such as `10.0.400-manifests.<hash>`, and for a missing workload set that `global.json` names it adds "(not installed)"; neither passes. `eng/mac/bootstrap.sh` runs `--xcode` before it installs the workload and `--xcode --ios-workload` after, and the options combine with `--ci-tools` too.
+- **CMake.** With `--cmake` it compares the first line of `cmake --version`, such as `cmake version 4.4.5`, with the `cmake` pin.
+- **clang-format and clang-tidy.** With `--llvm` it compares both programs with the `llvm` pin, the LLVM release they come from: the version on the first line of `clang-format --version`, and the `LLVM version` line of `clang-tidy --version`. Either may carry a packager's word in front, such as `Homebrew`. A mismatch names the program, the pin and both versions, such as "clang-tidy 23.1.4 is installed, but eng/toolchain.json pins llvm 23.1.5", and a program that is missing or cannot start, such as a clang-tidy without its libraries, fails too. `eng/mac/bootstrap.sh` runs `--cmake` for `--ios` and `--cmake --llvm` for `--native`, after it has installed both downloads and put them first on the PATH.
 - **A missing pin.** An option fails for each tool it checks that `eng/toolchain.json` does not pin, such as `--xcode` without an `xcode` entry, instead of comparing nothing and passing.
 - **Pin file.** The file holds only `tools`. Each tool under it has `version` and `source`, an https address. A tool that CI downloads also has `downloads`, keyed by runtime identifier, each with exactly the download's `url` and its `sha256`. The checker rejects any other field, a short or upper-case SHA-256 and a plain http address. Both this checker and the license checker read only `tools` and reject any other key, because a pin elsewhere would escape them. So Xcode, the iOS workload set and the runner image are tools there too, each with a register row and a check. The runner image's `version` is the label that `runs-on` takes, because GitHub updates the image under a label every week; the Xcode and SDK checks confirm what the image carries.
 
@@ -144,13 +152,15 @@ Each needs the checker taught to read it, in a reviewed change, before it is use
 | Xcode | 27.1 | `eng/toolchain.json` (`xcode`) | The runner image in CI; Apple on a local Mac | None |
 | iOS workload set | 10.0.403 | `eng/toolchain.json` (`ios-workload-set`) | NuGet, through `dotnet workload install` in `eng/mac/bootstrap.sh` | None |
 | macOS runner image | `xcode-27` | `eng/toolchain.json` (`macos-runner-image`) | GitHub | None |
+| CMake | 4.4.5 | `eng/toolchain.json` (`cmake`) | Its GitHub release `v4.4.5`, through `eng/mac/bootstrap.sh` | `osx-arm64`: `cmake-4.4.5-macos-universal.tar.gz` |
+| clang-format and clang-tidy | 23.1.5 | `eng/toolchain.json` (`llvm`) | The LLVM release `llvmorg-23.1.5`, through `eng/mac/bootstrap.sh` | `osx-arm64`: `LLVM-23.1.5-macOS-ARM64.tar.xz` |
 
-gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-01, were the newest releases on 2026-10-29. Their licenses (MIT, and MIT OR Apache-2.0) match their register rows. [dev-environment.md](dev-environment.md) section 2 records how the Xcode, workload set and image pins were chosen, why the workload set is not in `global.json`, and how the four pins of the iOS build move together.
+gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-01, were the newest releases on 2026-10-29. CMake 4.4.5, released on 2026-10-27, and LLVM 23.1.5, released on 2026-11-03, were the newest releases on 2026-11-10; CMake 4.5.0 was a release candidate then. Of the LLVM archive, the bootstrap unpacks only clang-format, clang-tidy, the libraries in `lib/` and clang's headers in `lib/clang/<version>/include`, which clang-tidy reads; on the first CI run, its download and unpacking took 2 min 14 s, and CMake's 4 s. Their licenses (MIT, and MIT OR Apache-2.0) match their register rows. [dev-environment.md](dev-environment.md) section 2 records how the Xcode, workload set and image pins were chosen, why the workload set is not in `global.json`, and how the four pins of the iOS build move together.
 
 **Changing a pin.** A pin changes in a reviewed change of its own (C-0009 section 2).
 
 1. A new tool is registered under C-0003 first and mapped in `eng/license-map.json`.
-2. Update `version`, `source` and every download's `url` and `sha256`. Take each SHA-256 from two independent places and check that they agree: GitHub's digest of the release asset (`gh api repos/<owner>/<repo>/releases/tags/<tag>`, field `digest`) and the checksum file that the project publishes with the release (`gitleaks_<version>_checksums.txt`; lychee's `<asset>.sha256`). The values above were taken that way.
+2. Update `version`, `source` and every download's `url` and `sha256`. Take each SHA-256 from two independent places and check that they agree: GitHub's digest of the release asset (`gh api repos/<owner>/<repo>/releases/tags/<tag>`, field `digest`) and the checksum file or attestation that the project publishes with the release (`gitleaks_<version>_checksums.txt`; lychee's `<asset>.sha256`; CMake's `cmake-<version>-SHA-256.txt`; for LLVM, the `subject` digest inside the payload of `<asset>.jsonl`). The values above were taken that way.
 3. If the tool's version output changed, update its version check in `tools/CheckToolchain.cs` and its self-test.
 4. Push, and confirm that `checks` installs the tool and that the toolchain step passes.
 
@@ -184,14 +194,27 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 **`ios`**, on the macOS image that `eng/toolchain.json` pins, for every pull request and every push to `main`, but not for a push to another branch (D7; [dev-environment.md](dev-environment.md) section 5). A newer push to a pull request cancels its earlier run; each push to `main` gets a run of its own:
 
 1. Check out, and install the SDK that `global.json` pins.
-2. Select the Xcode that `eng/toolchain.json` pins: set `DEVELOPER_DIR` to `/Applications/Xcode_<pin>.app` for the later steps, and fail when the image has no such folder, or when the folder resolves to a release candidate or a beta. The image's default Xcode can move past the pin while the pinned one is still installed. Some of the image's version-named folders are links to other releases, such as a release candidate, and the bootstrap's check compares only the version number, which a release candidate shares with its final release.
-3. Run `eng/mac/bootstrap.sh`: it checks the SDK and Xcode, installs the iOS workload from the pinned workload set unless that set and the `ios` workload are already there, and checks the installed workload set. A second run follows, which must say that the workload is installed and skip the install, as it must after the owner of an SDK folder that the user cannot write has installed it.
-4. Print the SDK, the workload set with `dotnet workload list`, and the Xcode in use.
+2. Select the Xcode that `eng/toolchain.json` pins with `eng/mac/select-xcode.sh`: it sets `DEVELOPER_DIR` to `/Applications/Xcode_<pin>.app` for the later steps, and fails when the image has no such folder, or when the folder resolves to a release candidate or a beta. The image's default Xcode can move past the pin while the pinned one is still installed. Some of the image's version-named folders are links to other releases, such as a release candidate, and the bootstrap's check compares only the version number, which a release candidate shares with its final release.
+3. Run `eng/mac/bootstrap.sh --ios`: it checks the SDK and Xcode, installs the iOS workload from the pinned workload set unless that set and the `ios` workload are already there, installs CMake from its pinned download, and checks the installed workload set and CMake. A second run follows, which must say that the workload is installed and skip its install, as it must after the owner of an SDK folder that the user cannot write has installed it.
+4. Print the SDK, the workload set with `dotnet workload list`, the Xcode in use, and CMake.
 5. The planted mismatch: run the bootstrap again against another Xcode on the image, found by the `CFBundleShortVersionString` of each `/Applications/Xcode*.app`; its own `DEVELOPER_DIR` overrides the one of step 2. The step passes only if the bootstrap fails and its output names the found and the pinned version, and fails when the image has no other Xcode. It runs the bootstrap with `GITHUB_ACTIONS=false`, so that the expected failure leaves no error annotation on the pull request.
-6. Restore Paneport.iOS from its lock file, and fail if a lock file was written, printing the file with a line break after it, so that the error command stands on its own line (dev-environment.md section 5).
-7. Build Paneport.iOS for `ios-arm64` in Release, without signing, and check its formatting with `dotnet format`, which needs the workload.
-8. Check the app: the scene delegate of its Info.plist equals the one in `src/Paneport.iOS/Info.plist`, `MinimumOSVersion` is 26.0, `lipo` finds arm64 code only, `codesign -dv` finds no signature, or only the linker's ad-hoc signature (`Signature=adhoc`, marked `linker-signed`) without a team identifier, and there is no `embedded.mobileprovision`.
-9. Only if every check of step 8 passed: zip the app with `ditto`, which keeps the bundle's name and the executable's file mode. Upload it with `actions/upload-artifact` only if every earlier step of the job passed, named by the pull request's commit, or on a push by the pushed commit.
+6. Build `paneport_host.framework` with the CMake presets `ios-device` and `ios-device-test`, and check both with `eng/mac/check-framework.sh` ([native-host.md](native-host.md) section 11).
+7. Restore Paneport.iOS from its lock file, and fail if a lock file was written, printing the file with a line break after it, so that the error command stands on its own line (dev-environment.md section 5).
+8. Build Paneport.iOS for `ios-arm64` in Release, without signing, and check its formatting with `dotnet format`, which needs the workload.
+9. Check the app: the scene delegate of its Info.plist equals the one in `src/Paneport.iOS/Info.plist`, `MinimumOSVersion` is 26.0, `lipo` finds arm64 code only, `codesign -dv` finds no signature, or only the linker's ad-hoc signature (`Signature=adhoc`, marked `linker-signed`) without a team identifier, and there is no `embedded.mobileprovision`.
+10. Only if every check of step 9 passed: zip the app with `ditto`, which keeps the bundle's name and the executable's file mode. Upload it with `actions/upload-artifact` only if every earlier step of the job passed, named by the pull request's commit, or on a push by the pushed commit.
+
+**`native`**, on the macOS image that `eng/toolchain.json` pins, for every push and every pull request, like `dotnet` and `checks`:
+
+1. Check out, install the SDK that `global.json` pins, and select the pinned Xcode with `eng/mac/select-xcode.sh`, as `ios` does.
+2. Run `eng/mac/bootstrap.sh --native`: it checks the SDK and Xcode, installs CMake and the LLVM release of clang-format and clang-tidy from their pinned downloads, checks each against its pin, and puts them first on the PATH of the later steps. Print the four versions.
+3. Check the format of the native code with `eng/mac/check-native-style.sh format`.
+4. The planted format error: copy `src/native/host/memory_budget.c` into `build/planted/`, which git ignores, with extra spaces in one line, and pass only if the format check fails on the copy. The copy finds the root `.clang-format` above it.
+5. Configure, build and run the CTest suite with the preset `asan-ubsan`, then with `tsan`. A sanitizer report stops its test, which fails.
+6. Configure the preset `ios-device-test` for its compile database, and run `eng/mac/check-native-style.sh tidy` on the databases of `asan-ubsan` and `ios-device-test`, so that the code of both platforms is analyzed.
+7. Build the host test library with the preset `macos-test`.
+8. Restore `tests/Paneport.Interop.Tests` from its lock file, fail if a lock file was written, build it, and check its formatting.
+9. Run it with `PANEPORT_HOST_LIBRARY` naming the library of step 7, with a skipped test counted as a failure.
 
 **gitleaks.** It runs from the pinned release, not as the gitleaks GitHub Action (C-0011 section 2). `--redact` replaces every secret in its output and report, which is the option the L0 brief asked to confirm. `--ignore-gitleaks-allow` ignores inline `gitleaks:allow` comments, so that every exception lives in `eng/gitleaks.toml`, which extends gitleaks' default rules and adds nothing yet. gitleaks also skips every finding that a `.gitleaksignore` file lists: version 8.30.1 loads that file from the scanned folder whatever its options say, as its `cmd/root.go` shows (section 11). The step therefore fails when the repository has one, which would be a new root file under C-0004 section 3 anyway. The step prints each finding's file, line, rule and commit from the JSON report, and an annotation, because gitleaks' own verbose output would also print the author and e-mail address of each commit. A false positive goes into `eng/gitleaks.toml` with its reason, as narrowly as possible; a real secret is reported to recelilious at once and is never quoted.
 
@@ -217,7 +240,11 @@ From the repository root, with the SDK that `global.json` pins. Setting `DOTNET_
 | Personal data and forbidden files | `dotnet run tools/ScanPersonalData.cs` |
 | Dependency licenses | `dotnet run tools/CheckLicenses.cs` |
 | SDK pin | `dotnet run tools/CheckToolchain.cs` |
-| Xcode and iOS workload set | `eng/mac/bootstrap.sh` on a Mac, which runs `dotnet run tools/CheckToolchain.cs -- --xcode --ios-workload` after installing the workload; `bash -n eng/mac/bootstrap.sh` checks its syntax anywhere |
+| Xcode, iOS workload set, CMake and LLVM | `eng/mac/bootstrap.sh` on a Mac, which runs `dotnet run tools/CheckToolchain.cs -- --xcode --ios-workload --cmake --llvm` after installing what is missing; `bash -n eng/mac/bootstrap.sh` checks its syntax anywhere |
+| Native format and analysis | On a Mac, with the bootstrap's tools on the PATH: `eng/mac/check-native-style.sh format`, and `eng/mac/check-native-style.sh tidy build/native/asan-ubsan build/native/ios-device-test` once both presets are configured |
+| Native tests | On a Mac, from `src/native`: `cmake --preset asan-ubsan`, `cmake --build --preset asan-ubsan`, `ctest --preset asan-ubsan`, and the same with `tsan` |
+| Interface conformance and bindings | On a Mac, after `cmake --preset macos-test` and `cmake --build --preset macos-test` in `src/native`: `PANEPORT_HOST_LIBRARY="$PWD/build/native/macos-test/libpaneport_host.dylib" dotnet test tests/Paneport.Interop.Tests/Paneport.Interop.Tests.csproj` from the repository root |
+| Host frameworks | On a Mac, after building the presets `ios-device` and `ios-device-test`: `eng/mac/check-framework.sh build/native/ios-device/paneport_host.framework build/native/ios-device-test/paneport_host.framework` |
 | CI tool pins | `dotnet run tools/CheckToolchain.cs -- --ci-tools`, where the CI tools are installed |
 | Formatting | `dotnet format eng/ci.slnf --verify-no-changes`, `dotnet format whitespace tools --folder --verify-no-changes` and, for Paneport.iOS without the iOS workload, `dotnet format whitespace src/Paneport.iOS --folder --verify-no-changes`; the `ios` job checks its full style |
 | Trimmed publish | `dotnet build eng/ci.slnf -c Release`, then `dotnet publish tests/Paneport.TrimTest/Paneport.TrimTest.csproj -c Release --no-build` |
@@ -243,7 +270,7 @@ Each check is shown to fail once, on a draft pull request from a scratch branch 
 
 A run passes when each planted change fails its step and that step's output names the file. The planted build error also fails the test step and the trimmed publish, which need the build. The forbidden-file rule is checked by its self-test only. The pull request of the stage links the run.
 
-The `ios` job plants its own failure on every run: it runs the bootstrap against another Xcode on the image and passes only if the bootstrap fails and names both versions (section 6). A change to `eng/mac/bootstrap.sh` or to the Xcode check is therefore tested by every run of the job.
+The `ios` job plants its own failure on every run: it runs the bootstrap against another Xcode on the image and passes only if the bootstrap fails and names both versions (section 6). A change to `eng/mac/bootstrap.sh` or to the Xcode check is therefore tested by every run of the job. The `native` job plants a format error in a scratch copy on every run and passes only if the format check fails on it (section 6), and `tests/Paneport.Interop.Tests` plants a wrong definition of `pp_memory_budget_t` that the conformance test must report by struct and member ([interop.md](interop.md) section 8).
 
 ## 10. Open items
 

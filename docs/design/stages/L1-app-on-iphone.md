@@ -19,17 +19,17 @@ Back to the [development plan](../development-plan.md).
 | S1.1.3 | Minimal iOS project | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
 | S1.1.4 | iOS CI job | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
 | S1.1.5 | Development environment design document | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
-| M1.2 | Native host skeleton and interface conformance | Medium | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.1 | Status, errors, pp_free and ABI version | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.2 | Lock-free event queue | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.3 | Event thread and callbacks | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.4 | Log pipeline | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.5 | Memory budget estimator | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.6 | Crash record format and writer | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.7 | Paneport.Interop bindings | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.8 | Layout table and conformance test | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.9 | Native format and analysis configuration | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| S1.2.10 | Host framework packaging | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| M1.2 | Native host skeleton and interface conformance | Medium | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.1 | Status, errors, pp_free and ABI version | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.2 | Lock-free event queue | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.3 | Event thread and callbacks | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.4 | Log pipeline | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.5 | Memory budget estimator | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.6 | Crash record format and writer | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.7 | Paneport.Interop bindings | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.8 | Layout table and conformance test | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.9 | Native format and analysis configuration | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
+| S1.2.10 | Host framework packaging | Small | In progress | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
 | M1.3 | iOS app head | Medium | Planned | | |
 | S1.3.1 | Scene and root view controller | Small | Planned | | |
 | S1.3.2 | Native host embedding and host adapter | Small | Planned | | |

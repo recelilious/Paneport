@@ -230,6 +230,18 @@ jobs:
       - name: Check the toolchain and install the iOS workload (eng/mac/bootstrap.sh)
         run: eng/mac/bootstrap.sh
 
+      # A second run must find the workload in place and skip the install, as it must after the
+      # owner of an SDK folder that this user cannot write has installed the workload.
+      - name: Check that the bootstrap skips a workload that is installed
+        if: ${{ !cancelled() }}
+        run: |
+          output=$(eng/mac/bootstrap.sh 2>&1)
+          echo "$output"
+          if ! grep -F -q "is already installed" <<< "$output"; then
+            echo "::error title=Bootstrap::A second run of the bootstrap did not find the installed workload."
+            exit 1
+          fi
+
       - name: Show the SDK, workload set and Xcode versions
         if: ${{ !cancelled() }}
         run: |

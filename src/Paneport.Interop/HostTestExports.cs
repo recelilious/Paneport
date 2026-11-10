@@ -14,7 +14,13 @@ public static unsafe class HostTestExports
     /// Reads the size and member offsets of every struct of the interface, as the host was
     /// compiled (<c>pp_test_get_layout_table</c>, C-0005 section 5). Any thread.
     /// </summary>
+    /// <remarks>
+    /// Each entry and each member of the table starts with its <c>struct_size</c> in the host,
+    /// and the reader steps from one to the next by it, so a host whose table structs gained
+    /// members at their end is read too.
+    /// </remarks>
     /// <returns>One record per struct, with its members in declaration order.</returns>
+    /// <exception cref="HostException">The host's table entries are smaller than these bindings read.</exception>
     public static IReadOnlyList<StructLayoutRecord> ReadLayoutTable()
     {
         NativeLayoutStruct* table = null;
@@ -22,22 +28,33 @@ public static unsafe class HostTestExports
         HostCalls.Check(NativeMethods.TestGetLayoutTable(&table, &count));
 
         var structs = new List<StructLayoutRecord>((int)count);
+        var entry = (byte*)table;
         for (var index = 0; index < count; index++)
         {
-            var entry = table[index];
-            var members = (NativeLayoutMember*)entry.Members;
-            var records = new List<MemberLayoutRecord>((int)entry.MemberCount);
-            for (var member = 0; member < entry.MemberCount; member++)
+            var header = (NativeLayoutStruct*)entry;
+            var entrySize = CheckedSize(header->StructSize, sizeof(NativeLayoutStruct), "pp_test_layout_struct_t");
+            var records = new List<MemberLayoutRecord>((int)header->MemberCount);
+            var member = (byte*)header->Members;
+            for (var position = 0; position < header->MemberCount; position++)
             {
-                records.Add(new MemberLayoutRecord(
-                    HostCalls.Text(members[member].Name), (int)members[member].Offset, (int)members[member].Size));
+                var item = (NativeLayoutMember*)member;
+                var memberSize = CheckedSize(item->StructSize, sizeof(NativeLayoutMember), "pp_test_layout_member_t");
+                records.Add(new MemberLayoutRecord(HostCalls.Text(item->Name), (int)item->Offset, (int)item->Size));
+                member += memberSize;
             }
 
-            structs.Add(new StructLayoutRecord(HostCalls.Text(entry.Name), (int)entry.Size, records));
+            structs.Add(new StructLayoutRecord(HostCalls.Text(header->Name), (int)header->Size, records));
+            entry += entrySize;
         }
 
         return structs;
     }
+
+    // The host's struct_size of a table struct, which must hold at least what these bindings read.
+    private static uint CheckedSize(uint hostSize, int knownSize, string name) => hostSize >= knownSize
+        ? hostSize
+        : throw new HostException(
+            $"The host's {name} has {hostSize} bytes, fewer than the {knownSize} that Paneport.Interop reads.");
 
     /// <summary>
     /// Writes a crash record marked as a test, through the writer that a fatal fault uses

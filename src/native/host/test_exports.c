@@ -19,10 +19,12 @@
 #include "paneport/testing.h"
 
 #define PP_MEMBER(type, member)                                                                    \
-    {#member, (uint32_t)offsetof(type, member), (uint32_t)sizeof(((type *)NULL)->member)}
+    {(uint32_t)sizeof(pp_test_layout_member_t), #member, (uint32_t)offsetof(type, member),         \
+     (uint32_t)sizeof(((type *)NULL)->member)}
 
 #define PP_STRUCT(type, members)                                                                   \
-    {#type, (uint32_t)sizeof(type), (uint32_t)(sizeof(members) / sizeof((members)[0])), members}
+    {(uint32_t)sizeof(pp_test_layout_struct_t), #type, (uint32_t)sizeof(type),                     \
+     (uint32_t)(sizeof(members) / sizeof((members)[0])), members}
 
 static const pp_test_layout_member_t k_init_config_members[] = {
     PP_MEMBER(pp_init_config_t, struct_size),
@@ -50,12 +52,14 @@ static const pp_test_layout_member_t k_memory_budget_members[] = {
 };
 
 static const pp_test_layout_member_t k_layout_member_members[] = {
+    PP_MEMBER(pp_test_layout_member_t, struct_size),
     PP_MEMBER(pp_test_layout_member_t, name),
     PP_MEMBER(pp_test_layout_member_t, offset),
     PP_MEMBER(pp_test_layout_member_t, size),
 };
 
 static const pp_test_layout_member_t k_layout_struct_members[] = {
+    PP_MEMBER(pp_test_layout_struct_t, struct_size),
     PP_MEMBER(pp_test_layout_struct_t, name),
     PP_MEMBER(pp_test_layout_struct_t, size),
     PP_MEMBER(pp_test_layout_struct_t, member_count),

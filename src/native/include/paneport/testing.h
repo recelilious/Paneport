@@ -9,8 +9,8 @@
  * in CI and on the device, and the binding tests of Paneport.Interop.
  */
 
-#ifndef PANEPORT_TESTING_H
-#define PANEPORT_TESTING_H
+#ifndef PP_TESTING_H
+#define PP_TESTING_H
 
 #include <stdint.h>
 
@@ -18,8 +18,13 @@
 
 PP_EXTERN_C_BEGIN
 
-/** One member of a struct in the layout table. */
+/**
+ * One member of a struct in the layout table. Like every struct of the interface, it starts
+ * with struct_size (C-0005 section 1); a reader steps from one member to the next by it.
+ */
 typedef struct pp_test_layout_member_t {
+    /** sizeof(pp_test_layout_member_t) in the host that built the table. */
+    uint32_t struct_size;
     /** The member's name as the header spells it, UTF-8 and NUL-terminated. */
     const char *name;
     /** The member's offset from the start of the struct, in bytes. */
@@ -28,8 +33,13 @@ typedef struct pp_test_layout_member_t {
     uint32_t size;
 } pp_test_layout_member_t;
 
-/** One struct of the interface in the layout table. */
+/**
+ * One struct of the interface in the layout table. It starts with struct_size, and a reader
+ * steps from one entry of the table to the next by it.
+ */
 typedef struct pp_test_layout_struct_t {
+    /** sizeof(pp_test_layout_struct_t) in the host that built the table. */
+    uint32_t struct_size;
     /** The struct's type name, such as "pp_memory_budget_t", UTF-8 and NUL-terminated. */
     const char *name;
     /** sizeof the struct, in bytes. */
@@ -116,4 +126,4 @@ PP_EXPORT pp_status_t pp_test_duplicate_text(const char *text, char **copy);
 
 PP_EXTERN_C_END
 
-#endif /* PANEPORT_TESTING_H */
+#endif /* PP_TESTING_H */

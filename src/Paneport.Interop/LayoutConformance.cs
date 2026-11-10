@@ -39,11 +39,13 @@ public static class LayoutConformance
             .Member("footprint_bytes", (ref NativeMemoryBudget value) => ref value.FootprintBytes)
             .Build(),
         new StructLayoutBuilder<NativeLayoutMember>("pp_test_layout_member_t")
+            .Member("struct_size", (ref NativeLayoutMember value) => ref value.StructSize)
             .Member("name", (ref NativeLayoutMember value) => ref value.Name)
             .Member("offset", (ref NativeLayoutMember value) => ref value.Offset)
             .Member("size", (ref NativeLayoutMember value) => ref value.Size)
             .Build(),
         new StructLayoutBuilder<NativeLayoutStruct>("pp_test_layout_struct_t")
+            .Member("struct_size", (ref NativeLayoutStruct value) => ref value.StructSize)
             .Member("name", (ref NativeLayoutStruct value) => ref value.Name)
             .Member("size", (ref NativeLayoutStruct value) => ref value.Size)
             .Member("member_count", (ref NativeLayoutStruct value) => ref value.MemberCount)

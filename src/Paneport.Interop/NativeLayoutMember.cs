@@ -9,6 +9,7 @@ namespace Paneport.Interop;
 [StructLayout(LayoutKind.Sequential)]
 internal struct NativeLayoutMember
 {
+    public uint StructSize;
     public nint Name;
     public uint Offset;
     public uint Size;

@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.3 |
-| Date | 2026-10-31 |
+| Version | 1.4 |
+| Date | 2026-11-10 |
 | Owner | recelilious |
 
-These are engineering rules for managing licenses, not legal advice. Before a formal public release, have a professional review them if possible.
+These are engineering rules for managing licenses, not legal advice. Before a formal public release, have a professional review them if possible. That review must cover the provenance of the AI-written code in the forks (section 10).
 
 ## 1. Decision
 
@@ -45,6 +45,8 @@ How we meet them:
 - `src/` in this repository holds only original code, all MIT.
 - Code derived from an upstream always lives in its own fork repository named `Paneport-<upstream>`, for example `Paneport-wine`, attached under `external/` as a git submodule.
 - Fork repositories keep the upstream license files and copyright notices.
+- Code of other projects that a fork carries, in its own tree or as a submodule, such as the thirteen submodules of FEX-Emu that its build may fetch, gets a row of its own in section 6 before a build compiles it into a binary that ships; a fork's row covers the fork's own code. A submodule of a fork whose content section 5 forbids, such as test programs without a license, is marked `update = none` and never fetched.
+- A file that we change in a fork under the LGPL must carry a prominent notice that we changed it, with the date of the change (LGPL-2.1 section 2(b)). How we mark it is not settled yet, because C-0010 section 4 covers only the headers of new files; the first stage that changes such a file proposes the rule before it does.
 - Original source files start with `SPDX-License-Identifier: MIT`. New files inside a fork use that upstream's identifier, for example `SPDX-License-Identifier: LGPL-2.1-or-later`.
 - `LICENSES/` holds the texts of the licenses that files in this repository use. It is created with `MIT.txt` together with the first file that carries the SPDX lines of C-0010 section 6. Files that cannot carry a header are covered by `REUSE.toml` (C-0010 section 6). The license texts of third-party components are generated from the register in section 6 into each release and into the app bundle, not into `LICENSES/`.
 
@@ -54,26 +56,29 @@ Before adding any dependency, register it in the table in section 6.
 
 | Category | Licenses | Rule |
 |---|---|---|
-| Allowed | MIT, MIT-Modern-Variant, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, 0BSD, BSL-1.0, Apache-2.0, Apache-2.0 WITH LLVM-exception, CC0-1.0, FTL, OFL-1.1 | Keep the copyright notices. Apache-2.0 also requires keeping the NOTICE file. FTL requires crediting FreeType in the documentation. OFL-1.1 is only for fonts: keep the copyright notice and the license with the font, never sell the font by itself, and never give a modified font the original's Reserved Font Names. |
+| Allowed | MIT, MIT-Modern-Variant, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, 0BSD, BSL-1.0, Apache-2.0, Apache-2.0 WITH LLVM-exception, CC0-1.0, FTL, OFL-1.1, ZPL-2.1, the gdtoa notice of Lucent Technologies and David M. Gay, Sun Microsystems' SunPro notice, code that its authors placed in the public domain | Keep the copyright notices. Apache-2.0 also requires keeping the NOTICE file. FTL requires crediting FreeType in the documentation. OFL-1.1 is only for fonts: keep the copyright notice and the license with the font, never sell the font by itself, and never give a modified font the original's Reserved Font Names. ZPL-2.1 also requires that a file we change says so, with the date of the change. |
 | Conditional | LGPL-2.1-only, LGPL-2.1-or-later, LGPL-3.0, MPL-2.0 | Only as separately identifiable components. Changes are published under the same license. Relinking must stay possible. LGPL-3.0 also requires installation information. |
 | Forbidden | GPL-2.0, GPL-3.0, AGPL-3.0, SSPL, non-commercial-only licenses, code with no license | Never enters this repository, a fork repository or the app package. |
 | Forbidden | Vendor SDK headers, decompiled code | For example the Steamworks SDK and Windows SDK headers. Write the needed interface definitions ourselves and record their basis in a design document. |
 | Under review | Proprietary components such as Apple's Metal Shader Converter | No redistribution terms were found publicly. Read its license and record the conclusion before using it, and never put it in the repository. |
 | Build and CI tool | Any license, including GPL | Only for tools that build or check the repository and are never copied into the repository, a fork or the app package. Registered in section 6 with the category Tool. |
 
+Code that a vendor publishes under an allowed license and that an upstream embeds, such as the MIT-licensed `d3d12tokenizedprogramformat.hpp` from Microsoft that DXMT carries, is part of that upstream, not a vendor SDK header that we use; our own code still writes its own interface definitions. A vendor SDK that a fork names as a submodule, such as NVIDIA's NVAPI in DXMT, is never fetched or built, whatever its license.
+
 For dual-licensed components, choose the less restrictive option. For example, FreeType is used under FTL rather than GPL-2.0.
 
 ## 6. Component register
 
-Checked on 2026-10-28, on 2026-10-29 for the rows that version 1.2 added, and on 2026-10-31 for the rows that version 1.3 added. Licenses are taken from each repository's license file.
+Checked on 2026-10-28, on 2026-10-29 for the rows that version 1.2 added, on 2026-10-31 for the rows that version 1.3 added, and on 2026-11-10 for the rows that version 1.4 added or changed. Licenses are taken from each repository's license file.
 
 | Component | Purpose | License | Category |
 |---|---|---|---|
 | Wine | Windows compatibility layer | LGPL-2.1-or-later | Conditional |
 | FEX-Emu | x86-64 translation | MIT | Allowed |
 | Box64 | Fallback x86 translation | MIT | Allowed |
-| FEX-darwin (dbc-hbin) | FEX integration modules for Darwin and Wine | MIT | Allowed |
+| FEX-darwin (dbc-hbin) | FEX integration modules for Darwin and Wine | MIT, except one imported patch, `Darwin/patches/arknights-macos-runtime`, under MPL-2.0 | Allowed; the MPL-2.0 patch is Conditional and is not taken until a row of its own covers it |
 | DXMT | Direct3D 10/11 to Metal | LGPL-2.1-or-later | Conditional |
+| mingw-w64 DirectX headers (misyltoad/mingw-directx-headers) | The DirectX headers that DXMT's build compiles against, a submodule of the DXMT fork | LGPL-2.1, as its README says: mingw-w64's headers, generated by WIDL from IDL files largely from Wine | Conditional |
 | MoltenVK | Vulkan to Metal, optional | Apache-2.0 | Allowed |
 | SPIRV-Cross | Shader translation, a MoltenVK dependency | Apache-2.0 | Allowed |
 | DXVK | Direct3D to Vulkan, probably unused on iOS | Zlib | Allowed |
@@ -96,16 +101,20 @@ Checked on 2026-10-28, on 2026-10-29 for the rows that version 1.2 added, and on
 | GStreamer | Media decoding, an optional Wine dependency | LGPL-2.1-or-later | Conditional, no GPL plugins |
 | idevice (jkcoxson) | Device protocol, optional | MIT | Allowed |
 | LLVM runtime libraries (compiler-rt, libunwind, libc++, libc++abi) | Linked by llvm-mingw into Windows-side binaries that ship | Apache-2.0 WITH LLVM-exception; parts not yet relicensed remain under LLVM's legacy NCSA-or-MIT dual license, used under MIT | Allowed |
-| mingw-w64 runtime | Linked by llvm-mingw into Windows-side binaries that ship | Several permissive licenses with notice requirements, listed in its `COPYING.MinGW-w64-runtime.txt` | Under review: collect the notices and confirm that no code of unclear license is linked, before the first Windows-side build |
+| mingw-w64 runtime | Linked by llvm-mingw into Windows-side binaries that ship | Public domain for most files; ZPL-2.1 for the files without a notice of their own; the gdtoa notice of Lucent Technologies and David M. Gay; for other parts, the notices in its `COPYING.MinGW-w64-runtime.txt`: Sun's SunPro notice, MIT (musl), ISC and BSD-2-Clause (getopt); Cephes math code without a clear license | Allowed; reviewed on 2026-11-10 for llvm-mingw 20261104. Releases carry the "Overall copyright notice" and "gdtoa" sections of `COPYING.MinGW-w64-runtime.txt`, and the notice of any other part that a build links. The Cephes code is never linked into binaries that ship. A move of the llvm-mingw pin repeats the review. |
 | xunit.v3 | Test framework, not shipped | Apache-2.0 | Allowed |
 | Avalonia.Headless.XUnit | Headless UI tests, not shipped | MIT | Allowed |
 | Microsoft.Testing.Platform | Runs the xunit.v3 tests under `dotnet test`, with its MSBuild, report and telemetry extensions; not shipped | MIT | Allowed |
 | Application Insights SDK (Microsoft.ApplicationInsights) | Sends the test platform's telemetry; not shipped; CI turns it off | MIT | Allowed |
 | CommunityToolkit.Mvvm | MVVM source generators | MIT | Allowed |
 | JsonSchema.Net | Schema validation, CI only | MIT source; NuGet packages under the json-everything Open Source Maintenance Fee agreement | Under review; not used until recelilious decides |
-| llvm-mingw | Windows-side toolchain | Recorded when first pinned | Tool |
+| llvm-mingw | Windows-side toolchain | ISC for its build scripts and wrappers. The toolchain it assembles is LLVM, under Apache-2.0 WITH LLVM-exception, with mingw-w64's headers and tools; the runtime libraries it links into binaries have their own rows. | Tool |
 | CMake | Native build configuration | BSD-3-Clause | Tool |
 | Meson, Ninja | Build systems the forks need | Apache-2.0 | Tool |
+| Python (python-build-standalone) | Runs FEX-Emu's build scripts and Meson on the macOS build host | CPython under PSF-2.0, built with libraries under permissive licenses whose texts the archive holds; the scripts that build it are MPL-2.0 | Tool |
+| GNU Bison | Generates the parsers of Wine's build | GPL-3.0-or-later. The parser skeleton that it copies into each parser it generates is under GPL-3.0-or-later WITH Bison-exception-2.2, so the generated parsers ship under Wine's license. | Tool |
+| flex | Generates the scanners of Wine's build; comes with Xcode | flex's own BSD-style license; the scanners it generates are under no license | Tool |
+| GNU Autoconf | Regenerates Wine's `configure` script when the fork changes `configure.ac` | GPL-3.0-or-later. The scripts it generates are under GPL-3.0-or-later WITH Autoconf-exception-3.0 and may be distributed under any terms. | Tool |
 | Xcode | Apple's toolchain | Apple proprietary | Tool |
 | clang-format, clang-tidy | Native formatting and analysis | Apache-2.0 WITH LLVM-exception | Tool |
 | gitleaks (command-line tool) | Secret scanning | MIT | Tool |
@@ -167,13 +176,15 @@ Upstream projects treat AI-assisted contributions differently.
 | Gentoo, NetBSD | Ban or tightly restrict it |
 | GNU Binutils | Requires LLM-generated content to be labeled |
 | GCC | Still under discussion as of April 2026 |
-| Wine | No explicit policy found as of 2026-10-28 |
+| Wine | Its Clean Room Guidelines tell contributors not to use an LLM tool to generate code, since 2026-04-14 at the latest |
+| DXMT | Refuses contributions made or co-authored by AI, in its AGENTS.md and CONTRIBUTING.md, since 2026-07-27 |
 
 Rules:
 
 1. Before submitting anything upstream, check that project's current policy and follow it.
 2. Never remove AI attribution to get around a policy.
-3. Our FEX-Emu changes stay in our fork and are never proposed upstream. Wine and DXMT changes may also have to live in our forks for the long term.
+3. Our changes to FEX-Emu, Wine and DXMT stay in our forks and are never proposed upstream, because all three refuse AI-generated code.
+4. Wine's guidelines refuse LLM-generated code because its provenance cannot be guaranteed: it may reproduce Microsoft source code, disassembly or ReactOS code. The same risk applies to our own AI-written changes in the forks. So those changes stay integration code, written from public documentation only, and nobody writing them reads Microsoft or ReactOS source code or disassembly. The professional review before a formal public release (preamble) covers this risk as a required item.
 
 ## 11. Alternative
 
@@ -212,60 +223,20 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - GitHub-hosted runner images license: <https://github.com/actions/runner-images/blob/HEAD/LICENSE>
 - MIT-Modern-Variant: <https://spdx.org/licenses/MIT-Modern-Variant.html>
 - OFL-1.1: <https://spdx.org/licenses/OFL-1.1.html>
-
-## Proposed changes for 1.4
-
-**Not yet accepted.** Version 1.3 above stays binding until recelilious approves these changes. They come from stage M4.1, which sets up the forks of Wine, FEX-Emu and DXMT and pins the tools that their builds need, and from recelilious's decision of 2026-11-10 on the provenance of AI-written code in the forks. Each was checked on 2026-11-10 against the project's license file, notices or policy; `docs/design/forks.md` sections 2, 4.3, 5.3, 6, 9, 10 and 11 give the details.
-
-1. **Preamble.** After "Before a formal public release, have a professional review them if possible." add: "That review must cover the provenance of the AI-written code in the forks (section 10)."
-
-2. **Section 4.** After "Fork repositories keep the upstream license files and copyright notices." add two items:
-   - "Code of other projects that a fork carries, in its own tree or as a submodule, such as the thirteen submodules of FEX-Emu that its build may fetch, gets a row of its own in section 6 before a build compiles it into a binary that ships; a fork's row covers the fork's own code. A submodule of a fork whose content section 5 forbids, such as test programs without a license, is marked `update = none` and never fetched."
-   - "A file that we change in a fork under the LGPL must carry a prominent notice that we changed it, with the date of the change (LGPL-2.1 section 2(b)). How we mark it is not settled yet, because C-0010 section 4 covers only the headers of new files; the first stage that changes such a file proposes the rule before it does."
-
-3. **Section 5, the Allowed row.** Add four entries to its licenses: `ZPL-2.1`, the gdtoa notice of Lucent Technologies and David M. Gay, Sun Microsystems' SunPro notice, and code that its authors placed in the public domain. Add to its rule: "ZPL-2.1 also requires that a file we change says so, with the date of the change." These are the terms of the parts of the mingw-w64 runtime that llvm-mingw links into Windows-side binaries, or may link (item 5).
-
-4. **Section 5, after the table.** Add: "Code that a vendor publishes under an allowed license and that an upstream embeds, such as the MIT-licensed `d3d12tokenizedprogramformat.hpp` from Microsoft that DXMT carries, is part of that upstream, not a vendor SDK header that we use; our own code still writes its own interface definitions. A vendor SDK that a fork names as a submodule, such as NVIDIA's NVAPI in DXMT, is never fetched or built, whatever its license."
-
-5. **Section 6, the mingw-w64 runtime.** The review that the row asks for is done (`docs/design/forks.md` section 9). Scratch links of a C program and of a C++ DLL linked with `-static`, for i686, x86_64, aarch64 and arm64ec, with llvm-mingw 20261104, pulled in 63 runtime objects. Their sources are in the public domain, except two files without a notice of their own, which fall under the project's ZPL-2.1, five files of printf code released "without restriction of copyright", and fourteen files of David M. Gay's gdtoa under its notice. No object came from the Cephes math code that `COPYING.MinGW-w64-runtime.txt` lists without a clear license, nor from the parts under Sun's, musl's or the getopt notices, and Wine's modules link no part of the runtime. Replace the row with:
-
-   | Component | Purpose | License | Category |
-   |---|---|---|---|
-   | mingw-w64 runtime | Linked by llvm-mingw into Windows-side binaries that ship | Public domain for most files; ZPL-2.1 for the files without a notice of their own; the gdtoa notice of Lucent Technologies and David M. Gay; for other parts, the notices in its `COPYING.MinGW-w64-runtime.txt`: Sun's SunPro notice, MIT (musl), ISC and BSD-2-Clause (getopt); Cephes math code without a clear license | Allowed; reviewed on 2026-11-10 for llvm-mingw 20261104. Releases carry the "Overall copyright notice" and "gdtoa" sections of `COPYING.MinGW-w64-runtime.txt`, and the notice of any other part that a build links. The Cephes code is never linked into binaries that ship. A move of the llvm-mingw pin repeats the review. |
-
-6. **Section 6, llvm-mingw.** Record its license, which the row left for its first pin: in the llvm-mingw row, replace "Recorded when first pinned" with "ISC for its build scripts and wrappers. The toolchain it assembles is LLVM, under Apache-2.0 WITH LLVM-exception, with mingw-w64's headers and tools; the runtime libraries it links into binaries have their own rows."
-
-7. **Section 6, FEX-darwin.** Its repository became a single-commit patch queue on 2026-11-08 and now carries one patch under MPL-2.0 beside its MIT ones. In the FEX-darwin row, replace the license "MIT" with "MIT, except one imported patch, `Darwin/patches/arknights-macos-runtime`, under MPL-2.0", and the category with "Allowed; the MPL-2.0 patch is Conditional and is not taken until a row of its own covers it".
-
-8. **Section 6, new rows.** The build tools of the forks that have no row yet, and the headers that DXMT's build needs. GNU Autoconf is registered now and pinned when M4.2 first changes Wine's `configure.ac`.
-
-   | Component | Purpose | License | Category |
-   |---|---|---|---|
-   | Python (python-build-standalone) | Runs FEX-Emu's build scripts and Meson on the macOS build host | CPython under PSF-2.0, built with libraries under permissive licenses whose texts the archive holds; the scripts that build it are MPL-2.0 | Tool |
-   | GNU Bison | Generates the parsers of Wine's build | GPL-3.0-or-later. The parser skeleton that it copies into each parser it generates is under GPL-3.0-or-later WITH Bison-exception-2.2, so the generated parsers ship under Wine's license. | Tool |
-   | flex | Generates the scanners of Wine's build; comes with Xcode | flex's own BSD-style license; the scanners it generates are under no license | Tool |
-   | GNU Autoconf | Regenerates Wine's `configure` script when the fork changes `configure.ac` | GPL-3.0-or-later. The scripts it generates are under GPL-3.0-or-later WITH Autoconf-exception-3.0 and may be distributed under any terms. | Tool |
-   | mingw-w64 DirectX headers (misyltoad/mingw-directx-headers) | The DirectX headers that DXMT's build compiles against, a submodule of the DXMT fork | LGPL-2.1, as its README says: mingw-w64's headers, generated by WIDL from IDL files largely from Wine | Conditional |
-
-9. **Section 6, first sentence.** "Checked on 2026-10-28, on 2026-10-29 for the rows that version 1.2 added, on 2026-10-31 for the rows that version 1.3 added, and on 2026-11-10 for the rows that version 1.4 added or changed."
-
-10. **Section 10.** In the table, replace Wine's entry "No explicit policy found as of 2026-10-28" with "Its Clean Room Guidelines tell contributors not to use an LLM tool to generate code, since 2026-04-14 at the latest", and add the row "DXMT | Refuses contributions made or co-authored by AI, in its AGENTS.md and CONTRIBUTING.md, since 2026-07-27". Replace rule 3 with: "Our changes to FEX-Emu, Wine and DXMT stay in our forks and are never proposed upstream, because all three refuse AI-generated code." Add rule 4: "Wine's guidelines refuse LLM-generated code because its provenance cannot be guaranteed: it may reproduce Microsoft source code, disassembly or ReactOS code. The same risk applies to our own AI-written changes in the forks. So those changes stay integration code, written from public documentation only, and nobody writing them reads Microsoft or ReactOS source code or disassembly. The professional review before a formal public release (preamble) covers this risk as a required item."
-
-11. **Section 12.** Add these sources:
-    - llvm-mingw license: <https://github.com/mstorsjo/llvm-mingw/blob/HEAD/LICENSE.txt>
-    - mingw-w64 license: <https://github.com/mingw-w64/mingw-w64/blob/HEAD/COPYING>
-    - mingw-w64 runtime notices, at the commit that llvm-mingw 20261104 builds: <https://raw.githubusercontent.com/mingw-w64/mingw-w64/ee9bd87644156c41072a11ad957d1e11831a72df/COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt>
-    - ZPL-2.1: <https://spdx.org/licenses/ZPL-2.1.html>
-    - python-build-standalone license: <https://github.com/astral-sh/python-build-standalone/blob/HEAD/LICENSE>
-    - CPython license: <https://docs.python.org/3/license.html>
-    - GNU Bison: <https://github.com/akimd/bison>
-    - Bison exception: <https://spdx.org/licenses/Bison-exception-2.2.html>
-    - flex license: <https://github.com/westes/flex/blob/HEAD/COPYING>
-    - Autoconf exception: <https://spdx.org/licenses/Autoconf-exception-3.0.html>
-    - The DirectX headers that DXMT uses: <https://github.com/misyltoad/mingw-directx-headers>
-    - FEX-darwin's MPL-2.0 patch: <https://github.com/dbc-hbin/FEX-darwin/tree/main/Darwin/patches/arknights-macos-runtime>
-    - Wine's Clean Room Guidelines: <https://gitlab.winehq.org/wine/wine/-/wikis/Clean-Room-Guidelines>
-    - DXMT's AI policy: <https://github.com/3Shain/dxmt/blob/HEAD/AGENTS.md> and <https://github.com/3Shain/dxmt/blob/HEAD/CONTRIBUTING.md>
+- llvm-mingw license: <https://github.com/mstorsjo/llvm-mingw/blob/HEAD/LICENSE.txt>
+- mingw-w64 license: <https://github.com/mingw-w64/mingw-w64/blob/HEAD/COPYING>
+- mingw-w64 runtime notices, at the commit that llvm-mingw 20261104 builds: <https://raw.githubusercontent.com/mingw-w64/mingw-w64/ee9bd87644156c41072a11ad957d1e11831a72df/COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt>
+- ZPL-2.1: <https://spdx.org/licenses/ZPL-2.1.html>
+- python-build-standalone license: <https://github.com/astral-sh/python-build-standalone/blob/HEAD/LICENSE>
+- CPython license: <https://docs.python.org/3/license.html>
+- GNU Bison: <https://github.com/akimd/bison>
+- Bison exception: <https://spdx.org/licenses/Bison-exception-2.2.html>
+- flex license: <https://github.com/westes/flex/blob/HEAD/COPYING>
+- Autoconf exception: <https://spdx.org/licenses/Autoconf-exception-3.0.html>
+- The DirectX headers that DXMT uses: <https://github.com/misyltoad/mingw-directx-headers>
+- FEX-darwin's MPL-2.0 patch: <https://github.com/dbc-hbin/FEX-darwin/tree/main/Darwin/patches/arknights-macos-runtime>
+- Wine's Clean Room Guidelines: <https://gitlab.winehq.org/wine/wine/-/wikis/Clean-Room-Guidelines>
+- DXMT's AI policy: <https://github.com/3Shain/dxmt/blob/HEAD/AGENTS.md> and <https://github.com/3Shain/dxmt/blob/HEAD/CONTRIBUTING.md>
 
 ## Change log
 
@@ -276,3 +247,4 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 | 1.1 | 2026-10-28 | Accepted by recelilious. Adds the Build and CI tool category, LGPL-2.1-only and Apache-2.0 WITH LLVM-exception to section 5. Registers the llvm-mingw runtime libraries, test libraries and CI tools in section 6, and corrects SteamKit2 to LGPL-2.1-only. Creates `LICENSES/` with the first SPDX header and generates third-party license texts into releases (section 4). Releases attach source archives (section 3). Section 9 allows the convention and URL scheme documented in StikJIT's `INTEGRATION.md`. |
 | 1.2 | 2026-10-29 | Accepted by recelilious. Adds MIT-Modern-Variant, and OFL-1.1 for fonts only, to section 5. Registers in section 6 the components that stage M0.1's packages and CI workflow bring in: Avalonia.BuildServices, MicroCom.Runtime, HarfBuzzSharp, ANGLE, Tmds.DBus.Protocol, the Inter font, Microsoft.Testing.Platform, the Application Insights SDK, and the actions/checkout and actions/setup-dotnet actions. The SkiaSharp row names the Skia library and the third-party notices of its native-asset packages. |
 | 1.3 | 2026-10-31 | Accepted by recelilious. Registers in section 6 the two components that stage M1.1's `ios` CI job brings in: the actions/upload-artifact action and the GitHub-hosted runner images, whose macOS image C-0009 section 2 pins in `eng/toolchain.json`. |
+| 1.4 | 2026-11-10 | Accepted by recelilious. Comes from stage M4.1, which sets up the forks of Wine, FEX-Emu and DXMT, and from recelilious's decision on the provenance of AI-written fork code. The preamble makes that provenance a required item of the review before a public release. Section 4 requires a row for third-party code that a fork carries before a build ships it, keeps forbidden submodules of forks unfetched, and records that no rule marks changed LGPL files yet. Section 5 allows ZPL-2.1, gdtoa's and Sun's notices and public-domain code, and says how vendor code that an upstream embeds and a vendor SDK submodule of a fork are treated. Section 6 moves the mingw-w64 runtime to Allowed after its review, records llvm-mingw's license, corrects FEX-darwin's row for its MPL-2.0 patch, and registers Python, GNU Bison, flex, GNU Autoconf and the mingw-w64 DirectX headers. Section 10 lists the AI policies of Wine and DXMT, keeps all fork changes in the forks, and adds the provenance rule. |

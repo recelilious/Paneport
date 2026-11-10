@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using System.Text;
 using System.Text.Json;
 using System.Text.Unicode;
 using Paneport.Core.Library;
@@ -41,9 +42,9 @@ public static class TitleEntryJson
             return Reject(CompatRule.Json, CompatPath.Root, "The file is larger than 1 MiB.");
         }
 
-        if (utf8Json.StartsWith("﻿"u8))
+        if (utf8Json.StartsWith(Encoding.UTF8.Preamble))
         {
-            utf8Json = utf8Json[3..];
+            utf8Json = utf8Json[Encoding.UTF8.Preamble.Length..];
         }
 
         if (!Utf8.IsValid(utf8Json))

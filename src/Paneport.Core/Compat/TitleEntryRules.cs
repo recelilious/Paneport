@@ -440,9 +440,11 @@ internal static partial class TitleEntryRules
         }
     }
 
-    // Only white space, as the schema's pattern [^\s\u0085﻿] reads in either dialect of regular
-    // expression: char.IsWhiteSpace, like .NET's \s, counts U+0085, and ECMA-262's \s counts U+FEFF.
-    private static bool IsBlank(string text) =>
+    // Only white space, as the schema's name pattern reads in each dialect of regular expression.
+    // char.IsWhiteSpace counts the units of .NET's \s, U+0085 among them, and the code adds U+FEFF,
+    // which only ECMA-262's \s counts. The pattern names both, and every other unit outside ASCII
+    // that .NET's ECMAScript option leaves out of \s (docs/design/compat-db.md section 9).
+    internal static bool IsBlank(string text) =>
         text.All(character => char.IsWhiteSpace(character) || character == (char)0xFEFF);
 
     // Text that a file can hold, where every surrogate is half of a pair. The writer would replace an

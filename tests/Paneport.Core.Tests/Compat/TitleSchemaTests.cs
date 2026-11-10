@@ -121,6 +121,31 @@ public sealed partial class TitleSchemaTests
     }
 
     [Fact]
+    public void NamePatternFindsTheSameBlankNamesAsTheCode()
+    {
+        // Besides \s, the pattern names each white-space unit outside ASCII, so that .NET's dialect and
+        // its ECMAScript option, whose \s is ASCII only, read it as the code does (compat-db.md
+        // section 9). JsonSchema.Net, the validator registered for M8.3, uses the ECMAScript option.
+        var pattern = (string)Properties["name"]!["pattern"]!;
+        Regex[] dialects = [new(pattern), new(pattern, RegexOptions.ECMAScript)];
+
+        var disagreements = new List<string>();
+        for (var code = 0; code <= char.MaxValue; code++)
+        {
+            var name = ((char)code).ToString();
+            foreach (var dialect in dialects)
+            {
+                if (dialect.IsMatch(name) == TitleEntryRules.IsBlank(name))
+                {
+                    disagreements.Add($"U+{code:X4} ({dialect.Options})");
+                }
+            }
+        }
+
+        Assert.Empty(disagreements);
+    }
+
+    [Fact]
     public void TargetDevicesMatchTheDesignDocument()
     {
         // The rows of the target device table in docs/design/compat-db.md, up to the next heading.

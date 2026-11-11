@@ -11,7 +11,7 @@ Engineering configuration (C-0004 section 3). Build output never goes here: `bui
 |---|---|
 | `ci.slnf` | The solution filter that CI builds and tests (C-0011 section 4). It lists every project of `Paneport.slnx` except Paneport.iOS, `tests/device` and `tests/Paneport.Interop.Tests`. |
 | `nuget.config` | The only package source, nuget.org. `Directory.Build.props` points every restore at this file, so the machine's own NuGet configuration plays no part. |
-| `toolchain.json` | The pinned versions of the tools that `global.json` does not pin (C-0009 section 2): the REUSE tool, gitleaks and lychee for the `checks` job; Xcode, the iOS workload set and the macOS runner image for the `ios` job; and CMake and the LLVM release of clang-format and clang-tidy for the native host. |
+| `toolchain.json` | The pinned versions of the tools that `global.json` does not pin (C-0009 section 2): the REUSE tool, gitleaks and lychee for the `checks` job; Xcode, the iOS workload set and the macOS runner image for the `ios` job; CMake and the LLVM release of clang-format and clang-tidy for the native host; and Ninja, llvm-mingw, Meson, Python, GNU Bison and flex for the builds of the forks. |
 | `license-map.json` | The reviewed mapping from each package ID, tool, action and submodule to the row of the C-0003 register that covers it, which `tools/CheckLicenses.cs` reads. |
 | `personal-data-allow-list.json` | The exceptions to the personal-data scan of `tools/ScanPersonalData.cs`: each entry excuses one rule in one file and states why. It is empty. |
 | `gitleaks.toml` | The gitleaks configuration. It extends gitleaks' default rules, and is where a false positive is allowed, with its reason. |

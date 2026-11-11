@@ -484,6 +484,10 @@ Scripts this stage creates: the i686 build steps and the new programs in `tests/
 - M8.4: large fixed-base titles.
 - A later stage that brings 32-bit titles using the Steam API to the Dock host, which first needs a design document and a change to C-0007 (C-0007 section 6).
 
+**Notes from earlier stages.**
+
+- M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-11): fork branches, pointer moves and the fast-forward of `paneport/integration` after a merge are in `docs/design/forks.md` section 4.2. FEX's `CLAUDE.md` and `AGENTS.md` are upstream's contribution policy, which this stage's work in the fork leaves untouched (forks.md section 4.3).
+
 **Session log.**
 
 _No sessions yet._

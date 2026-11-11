@@ -332,19 +332,25 @@ jobs:
         run: eng/mac/select-xcode.sh
 
       # It checks the SDK and Xcode against their pins, installs the iOS workload from the
-      # pinned workload set and CMake from its pinned download, and checks them too.
-      - name: Check the toolchain and install the iOS workload and CMake (eng/mac/bootstrap.sh --ios)
-        run: eng/mac/bootstrap.sh --ios
+      # pinned workload set, and CMake and the build tools of the forks from their pinned
+      # downloads, and checks them too. llvm-mingw stays off the PATH, in LLVM_MINGW.
+      - name: Check the toolchain and install the iOS workload, CMake and the fork tools (eng/mac/bootstrap.sh --ios --forks)
+        run: eng/mac/bootstrap.sh --ios --forks
 
       # A second run must find the workload in place and skip the install, as it must after the
-      # owner of an SDK folder that this user cannot write has installed the workload.
-      - name: Check that the bootstrap skips a workload that is installed
+      # owner of an SDK folder that this user cannot write has installed the workload, and must
+      # install no tool again.
+      - name: Check that the bootstrap skips what is installed
         if: ${{ !cancelled() }}
         run: |
-          output=$(eng/mac/bootstrap.sh --ios 2>&1)
+          output=$(eng/mac/bootstrap.sh --ios --forks 2>&1)
           echo "$output"
           if ! grep -E -q "the ios workload from workload set [^ ]+ is already installed" <<< "$output"; then
             echo "::error title=Bootstrap::A second run of the bootstrap did not find the installed workload."
+            exit 1
+          fi
+          if grep -E -q "^bootstrap: (installing|building) " <<< "$output"; then
+            echo "::error title=Bootstrap::A second run of the bootstrap installed something again."
             exit 1
           fi
 
@@ -392,6 +398,31 @@ jobs:
           fi
           echo "The bootstrap exited with $status and named both versions, as expected."
 
+      # --fork-tools must name a build tool that is missing or at another version. The step runs
+      # the check with /usr/bin first on the PATH, which holds the Python that Xcode carries, and
+      # without llvm-mingw's folder, and passes only if the check fails and names both. It hides
+      # the tool's annotations, because this failure is the expected one.
+      - name: Check that --fork-tools names a missing and another build tool (planted mismatch)
+        if: ${{ !cancelled() }}
+        run: |
+          pin=$(plutil -extract tools.python.version raw -o - eng/toolchain.json)
+          status=0
+          output=$(PATH="/usr/bin:$PATH" GITHUB_ACTIONS=false dotnet run tools/CheckToolchain.cs -- --fork-tools 2>&1) || status=$?
+          echo "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "::error title=Planted mismatch::--fork-tools passed without llvm-mingw and with Xcode's Python first on the PATH."
+            exit 1
+          fi
+          if ! grep -F -q "llvm-mingw is not installed, or not on the PATH." <<< "$output"; then
+            echo "::error title=Planted mismatch::--fork-tools did not name the missing llvm-mingw."
+            exit 1
+          fi
+          if ! grep -E -q "python [0-9][^ ]* is installed, but eng/toolchain.json pins ${pin//./[.]}[.]" <<< "$output"; then
+            echo "::error title=Planted mismatch::--fork-tools did not name Xcode's Python and the pin $pin."
+            exit 1
+          fi
+          echo "--fork-tools exited with $status and named both, as expected."
+
       # S1.2.10: paneport_host.framework from both iOS presets, the one that the main app embeds
       # and the one with the test exports that the device test flavor embeds (M1.3).
       - name: Build the host frameworks (presets ios-device and ios-device-test)
@@ -408,6 +439,71 @@ jobs:
         run: |
           eng/mac/check-framework.sh build/native/ios-device/paneport_host.framework \
             build/native/ios-device-test/paneport_host.framework
+
+      # The forks' first targets (docs/design/forks.md section 7), which use the build tools that
+      # the bootstrap installed. Only this job fetches the forks: each at the commit this
+      # repository records, at depth 1, and of their own submodules only those these targets
+      # need. Every step prints the versions it uses.
+      - name: Fetch the forks, and the submodules of theirs that the first targets need
+        if: ${{ !cancelled() }}
+        run: |
+          git submodule update --init --depth 1 external/Paneport-wine external/Paneport-FEX external/Paneport-dxmt
+          git -C external/Paneport-FEX submodule update --init --depth 1 External/fmt External/xxhash \
+            External/range-v3 External/unordered_dense External/rpmalloc Source/Common/cpp-optparse
+          git -C external/Paneport-dxmt submodule update --init --depth 1 include/native/directx
+          git submodule status
+
+      - name: Configure Wine for the macOS host with its PE architectures, and build its tools
+        if: ${{ !cancelled() }}
+        run: |
+          export PATH="$LLVM_MINGW/bin:$PATH"
+          x86_64-w64-mingw32-clang --version | head -n 1
+          bison --version | head -n 1
+          flex --version
+          mkdir -p "$RUNNER_TEMP/wine"
+          cd "$RUNNER_TEMP/wine"
+          if ! "$GITHUB_WORKSPACE/external/Paneport-wine/configure" --enable-archs=arm64ec,aarch64,i386 \
+              --with-mingw=clang --without-freetype --disable-tests > configure.out 2>&1; then
+            tail -n 60 configure.out
+            tail -n 120 config.log
+            exit 1
+          fi
+          tail -n 30 configure.out
+          if ! make -j"$(sysctl -n hw.ncpu)" __tooldeps__ > tools.out 2>&1; then
+            tail -n 80 tools.out
+            exit 1
+          fi
+          tools/winebuild/winebuild --version
+
+      - name: Build the i386 libraries of Wine that DXMT's build looks for
+        if: ${{ !cancelled() }}
+        run: |
+          export PATH="$LLVM_MINGW/bin:$PATH"
+          make -C "$RUNNER_TEMP/wine" -j"$(sysctl -n hw.ncpu)" libs/winecrt0/i386-windows/libwinecrt0.a \
+            dlls/ntdll/i386-windows/libntdll.a dlls/dbghelp/i386-windows/libdbghelp.a
+
+      - name: Configure FEX for arm64ec-w64-mingw32
+        if: ${{ !cancelled() }}
+        run: |
+          export PATH="$LLVM_MINGW/bin:$PATH"
+          cmake --version | head -n 1
+          echo "ninja $(ninja --version)"
+          python3 --version
+          cmake -S external/Paneport-FEX -B "$RUNNER_TEMP/fex-arm64ec" -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/external/Paneport-FEX/Data/CMake/toolchain_mingw.cmake" \
+            -DMINGW_TRIPLE=arm64ec-w64-mingw32 -DCMAKE_BUILD_TYPE=Release -DENABLE_LTO=False \
+            -DBUILD_TESTING=False -DENABLE_JEMALLOC_GLIBC_ALLOC=False -DTUNE_CPU=none -DTUNE_ARCH=generic \
+            -DPython_EXECUTABLE="$(command -v python3)"
+
+      # The ARM64EC side also builds DXMT's shader converter for the Mac, which needs LLVM 15;
+      # M5.2 pins it and sets that side up (docs/design/forks.md section 7).
+      - name: Set up DXMT's 32-bit PE side against that Wine build (Meson)
+        if: ${{ !cancelled() }}
+        run: |
+          export PATH="$LLVM_MINGW/bin:$PATH"
+          echo "meson $(meson --version)"
+          meson setup --cross-file external/Paneport-dxmt/build-win32.txt \
+            -Dwine_build_path="$RUNNER_TEMP/wine" "$RUNNER_TEMP/dxmt-i386" external/Paneport-dxmt
 
       - name: Restore Paneport.iOS from its lock file
         if: ${{ !cancelled() }}

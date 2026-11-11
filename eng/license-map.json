@@ -48,12 +48,18 @@
     "xunit.v3.runner.inproc.console": "xunit.v3"
   },
   "tools": {
+    "bison": "GNU Bison",
     "cmake": "CMake",
+    "flex": "flex",
     "gitleaks": "gitleaks (command-line tool)",
     "ios-workload-set": ".NET for iOS (dotnet/macios)",
     "llvm": "clang-format, clang-tidy",
+    "llvm-mingw": "llvm-mingw",
     "lychee": "lychee",
     "macos-runner-image": "GitHub-hosted runner images (actions/runner-images)",
+    "meson": "Meson, Ninja",
+    "ninja": "Meson, Ninja",
+    "python": "Python (python-build-standalone)",
     "reuse": "REUSE tool",
     "xcode": "Xcode"
   },

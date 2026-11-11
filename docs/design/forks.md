@@ -149,21 +149,21 @@ Two of them have submodules of their own, which a recursive clone fetches as wel
 
 ## 6. Build tools of the Mac
 
-C-0009 section 2 pins every tool that the fork builds need, in `eng/toolchain.json`. `eng/mac/bootstrap.sh` installs them on a Mac and in the `ios` job, and `tools/CheckToolchain.cs -- --mac-tools` compares each with its pin ([repository-checks.md](repository-checks.md) section 5).
+C-0009 section 2 pins every tool that the fork builds need, in `eng/toolchain.json`. `eng/mac/bootstrap.sh --forks` installs them on a Mac and in the `ios` job, and `tools/CheckToolchain.cs -- --fork-tools` compares each with its pin, CMake with `--cmake` ([repository-checks.md](repository-checks.md) section 5).
 
 | Tool | Version | Needed by | From | Why this version |
 |---|---|---|---|---|
 | llvm-mingw | 20261104, with LLVM 23.1.5 and mingw-w64 at `ee9bd876` | Every Windows-side build: Wine's PE side, FEX, DXMT's PE side, and later the Dock host and `tests/win32` | Its GitHub release, `ucrt-macos-universal` | The newest release. Upstream llvm-mingw carries ARM64EC (section 2). |
-| CMake | 4.4.5 | FEX, and the native host of M1.2 | Kitware's GitHub release | The newest release; 4.5.0 is still a release candidate. |
+| CMake | 4.4.5 | FEX, and the native host | Kitware's GitHub release | The pin that M1.2 set for the native host, and the newest release; 4.5.0 is still a release candidate. |
 | Ninja | 1.13.2 | FEX and Meson | Its GitHub release | The newest release. |
 | Meson | 1.12.1 | DXMT, which needs 1.3 or later | Its GitHub release, run with the pinned Python | The newest release. It needs Python 3.10 or later. |
 | Python | 3.14.10 | FEX's build scripts, which need 3.9 or later, and Meson | python-build-standalone's release 20261026 | A build that unpacks into a folder of its own and needs no installer. 3.14 has had ten bug-fix releases; the newest series, 3.15, is weeks old. |
 | GNU Bison | 3.8.2 | Wine, which needs 3.0 or later | GNU's source release, built by the bootstrap | The newest release. macOS ships Bison 2.3, which Wine refuses. |
 | flex | 2.6.4 | Wine, which needs 2.5.33 or later | Xcode | The flex that Xcode carries, and the newest flex release. |
 
-- **Where they go.** The bootstrap installs each tool into `$PANEPORT_TOOLS/<tool>-<version>`, by default below `~/.paneport/tools`, outside the repository. It checks each download's SHA-256 before it unpacks it, builds Bison from source, and keeps a finished install, so a second run downloads nothing.
-- **The PATH.** `. ~/.paneport/tools/env.sh` puts CMake, Ninja, Meson, Python and Bison first on the PATH and sets `LLVM_MINGW` to llvm-mingw's folder. That folder stays off the PATH, because it also holds a `clang`, `clang-format` and `clang-tidy` for the Mac that would hide Xcode's and the pinned ones. A build that cross-compiles puts `$LLVM_MINGW/bin` first on its own PATH, as the FEX wiki asks. Under GitHub Actions the bootstrap hands the same settings to the job's later steps.
-- **The llvm-mingw check.** clang reports only LLVM's version, so the check reads the release from the folder that clang names on its `InstalledDir` line, which keeps the name of the release archive.
+- **Where they go.** The bootstrap installs each tool into `$PANEPORT_TOOLS_DIR/<tool>-<version>`, by default below `~/Library/Caches/paneport-tools`, outside the repository, as it installs CMake and LLVM ([dev-environment.md](dev-environment.md) section 4). It checks each download's SHA-256 before it unpacks it, builds Bison from its source in the same folder, and keeps a finished install, so a second run downloads nothing. Meson runs from its source folder, through a small script beside it that starts it with the pinned Python.
+- **The PATH.** Under GitHub Actions the bootstrap puts CMake, Ninja, Meson, Python and Bison first on the PATH of the job's later steps and sets `LLVM_MINGW` to llvm-mingw's folder; on a local Mac it prints the two `export` lines that do the same in a shell. llvm-mingw's folder stays off the PATH, because it also holds a `clang`, `clang-format` and `clang-tidy` for the Mac that would hide Xcode's and the pinned ones. A build that cross-compiles puts `$LLVM_MINGW/bin` first on its own PATH, as the FEX wiki asks.
+- **The llvm-mingw check.** clang reports only LLVM's version, so the check reads the release from the folder that clang names on its `InstalledDir` line, `llvm-mingw-<release>` as the bootstrap names it. The bootstrap's own check puts `$LLVM_MINGW/bin` last on the PATH, so that the cross compiler is found and hides nothing.
 - **Registration.** CMake, Meson and Ninja, and llvm-mingw as a Tool, already have rows in C-0003 section 6. Python, GNU Bison and flex have theirs since C-0003 1.4, which also records llvm-mingw's license, registers GNU Autoconf for M4.2, and moves the mingw-w64 runtime out of Under review (section 9).
 - **What they leave in shipped code.** Bison copies its parser skeleton into the parsers it generates, under the Bison exception, which lets the parsers ship under Wine's license. flex places the scanners it generates under no license at all. Both kinds end up inside Wine's modules.
 
@@ -187,7 +187,7 @@ The jobs that do not build the forks never fetch them: `actions/checkout` fetche
 
 | Cache | Key | Holds | Used by |
 |---|---|---|---|
-| Build tools of the Mac | A hash of `eng/toolchain.json` and `eng/mac/bootstrap.sh` | `$PANEPORT_TOOLS`, which the bootstrap then finds installed | `ios` now, `runtime` from M4.2 |
+| Build tools of the Mac | A hash of `eng/toolchain.json` and `eng/mac/bootstrap.sh` | `$PANEPORT_TOOLS_DIR`, which the bootstrap then finds installed | `ios` now, `runtime` from M4.2 |
 | One fork's build | The fork's submodule commit, a hash of `eng/toolchain.json`, and a hash of that fork's build script under `eng/mac/` | The fork's build output | `runtime` from M4.2, then `ios` when it packages the runtime (M4.4) |
 
 - A key changes whenever anything that shapes the output changes: a new fork commit, a new pin, or a new build script. A run whose key is new builds from scratch and saves the result; nothing is restored by a partial match, so a stale build is never used.

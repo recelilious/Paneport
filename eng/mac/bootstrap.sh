@@ -2,24 +2,28 @@
 # SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 # SPDX-License-Identifier: MIT
 
-# Prepares a Mac to build Paneport's iOS side and its native host, in CI and on a local Mac
-# alike. It checks the .NET SDK and Xcode against their pins, installs what the chosen parts
-# need, and checks that too. tools/CheckToolchain.cs makes every comparison, so the pins are
-# read in one place. The script stops with a non-zero exit code, after saying what to do,
-# when something is missing or does not match. It never touches certificates, provisioning
-# profiles or pairing files (C-0002 section 6, C-0009 section 5).
+# Prepares a Mac to build Paneport's iOS side, its native host and the forks, in CI and on a
+# local Mac alike. It checks the .NET SDK and Xcode against their pins, installs what the
+# chosen parts need, and checks that too. tools/CheckToolchain.cs makes every comparison, so
+# the pins are read in one place. The script stops with a non-zero exit code, after saying
+# what to do, when something is missing or does not match. It never touches certificates,
+# provisioning profiles or pairing files (C-0002 section 6, C-0009 section 5).
 #
-#   eng/mac/bootstrap.sh [--ios] [--native]
+#   eng/mac/bootstrap.sh [--ios] [--native] [--forks]
 #
 #   --ios     the iOS build: the iOS workload from the pinned workload set, and CMake for the
 #             host framework
 #   --native  the native checks: CMake, and the LLVM release of clang-format and clang-tidy
+#   --forks   the builds of the forks (docs/design/forks.md section 6): CMake, llvm-mingw,
+#             Ninja, Meson with the pinned Python, and GNU Bison, built from its source.
+#             flex comes with Xcode.
 #
-# With neither option it prepares both. CMake and LLVM come from the downloads that
-# eng/toolchain.json pins, each checked against its SHA-256 before it is unpacked, into
-# $PANEPORT_TOOLS_DIR, by default ~/Library/Caches/paneport-tools, outside the repository.
-# Under GitHub Actions their folders join the PATH of the later steps; elsewhere the script
-# prints the line that puts them on the PATH.
+# With no option it prepares all three. CMake and the other tools come from the downloads
+# that eng/toolchain.json pins, each checked against its SHA-256 before it is unpacked, into
+# $PANEPORT_TOOLS_DIR, an absolute path, by default ~/Library/Caches/paneport-tools, outside
+# the repository. Under GitHub Actions their folders join the PATH of the later steps;
+# elsewhere the script prints the line that puts them on the PATH. llvm-mingw stays off the
+# PATH: its folder is handed on as LLVM_MINGW in the same two ways.
 #
 # Bash 3.2, which macOS ships (C-0010 section 1). docs/design/dev-environment.md describes
 # how to use it.
@@ -40,16 +44,19 @@ fail() {
 
 want_ios=false
 want_native=false
+want_forks=false
 for argument in "$@"; do
     case "$argument" in
         --ios) want_ios=true ;;
         --native) want_native=true ;;
-        *) fail "unknown option $argument. Usage: eng/mac/bootstrap.sh [--ios] [--native]" ;;
+        --forks) want_forks=true ;;
+        *) fail "unknown option $argument. Usage: eng/mac/bootstrap.sh [--ios] [--native] [--forks]" ;;
     esac
 done
-if [ "$want_ios" = false ] && [ "$want_native" = false ]; then
+if [ "$want_ios" = false ] && [ "$want_native" = false ] && [ "$want_forks" = false ]; then
     want_ios=true
     want_native=true
+    want_forks=true
 fi
 
 # The iOS toolchain runs only on macOS, and Paneport builds for arm64 alone. A shell under
@@ -66,6 +73,15 @@ say "checking the .NET SDK and Xcode against their pins"
 dotnet run tools/CheckToolchain.cs -- --xcode \
     || fail "the SDK or Xcode does not match its pin; the lines above name both versions. Install the pinned \
 version, or select the pinned Xcode with xcode-select or DEVELOPER_DIR, then run this script again."
+
+# The folder of the downloaded tools. Bison's build and Meson's script record it, so it must
+# not depend on where they run; a wrong value stops the script before the workload install
+# changes the SDK.
+tools_dir=${PANEPORT_TOOLS_DIR:-$HOME/Library/Caches/paneport-tools}
+case $tools_dir in
+    /*) ;;
+    *) fail "PANEPORT_TOOLS_DIR must be an absolute path, not $tools_dir." ;;
+esac
 
 # The options of tools/CheckToolchain.cs that the final check passes, and the folders that
 # join the PATH.
@@ -91,8 +107,6 @@ installation, its owner runs this command, and then this script runs again: $ins
     check_options="$check_options --ios-workload"
 fi
 
-tools_dir=${PANEPORT_TOOLS_DIR:-$HOME/Library/Caches/paneport-tools}
-
 # Reads one value of a pinned download from eng/toolchain.json.
 pin_value() {
     plutil -extract "tools.$1.$2" raw -o - eng/toolchain.json 2>/dev/null \
@@ -100,9 +114,10 @@ pin_value() {
 }
 
 # Installs the pinned download of a tool into $tools_dir/<tool>-<version>, unless a finished
-# install of the same download is there, and adds its program folder to tool_paths. The
-# second argument is that folder inside the unpacked archive; the others are the archive's
-# paths to unpack, all of it when none is given.
+# install of the same download is there, and adds its program folder to tool_paths; target
+# names the install folder afterwards. The second argument is that program folder inside the
+# unpacked archive, . for the install folder itself; the others are the archive's paths to
+# unpack, all of it when none is given.
 install_download() {
     tool=$1
     bin=$2
@@ -126,8 +141,9 @@ install_download() {
             fail "the download of $tool $version has the SHA-256 $found, but eng/toolchain.json pins $sha256."
         fi
 
-        # The archive holds one folder, named after the release; only what the patterns name
-        # is unpacked from it, or everything when there is no pattern.
+        # The archive holds one folder, named after the release, or, like Ninja's, the program
+        # alone; only what the patterns name is unpacked from it, or everything when there is
+        # no pattern. tar reads zip archives too.
         mkdir "$work/unpacked"
         if [ $# -gt 0 ]; then
             unpacked=true
@@ -141,16 +157,33 @@ install_download() {
         top=$(ls "$work/unpacked")
         if [ "$(printf '%s\n' "$top" | wc -l | tr -d ' ')" != 1 ]; then
             rm -rf "$work"
-            fail "the archive of $tool $version does not hold exactly one folder."
+            fail "the archive of $tool $version does not hold exactly one folder or program."
         fi
+        # The install folder is named after the pin, and the check of llvm-mingw reads the
+        # release from that name, so the archive's own folder must name the pinned release.
+        case "$tool:$top" in
+            llvm-mingw:"llvm-mingw-$version-"*) ;;
+            llvm-mingw:*)
+                rm -rf "$work"
+                fail "the archive of llvm-mingw $version holds $top, not release $version."
+                ;;
+        esac
         rm -rf "$target"
-        mv "$work/unpacked/$top" "$target"
+        if [ -d "$work/unpacked/$top" ]; then
+            mv "$work/unpacked/$top" "$target"
+        else
+            mv "$work/unpacked" "$target"
+        fi
         printf '%s\n' "$sha256" > "$target/.paneport-sha256"
         rm -rf "$work"
     fi
 
     [ -d "$target/$bin" ] || fail "$tool $version has no folder $bin."
-    tool_paths="$tool_paths:$target/$bin"
+    if [ "$bin" = . ]; then
+        tool_paths="$tool_paths:$target"
+    else
+        tool_paths="$tool_paths:$target/$bin"
+    fi
 }
 
 # CMake builds the host framework for --ios and the test builds for --native. Of the LLVM
@@ -166,19 +199,80 @@ if [ "$want_native" = true ]; then
     check_options="$check_options --llvm"
     installed="CMake, clang-format and clang-tidy"
 fi
+if [ "$want_forks" = true ]; then
+    # Python comes before Meson, which runs on it.
+    install_download python bin
+    python3_path="$target/bin/python3"
+
+    # llvm-mingw's bin folder also holds a clang, clang-format and clang-tidy for the Mac,
+    # which would hide Xcode's and the pinned ones, so it leaves tool_paths again. A build that
+    # cross-compiles puts $LLVM_MINGW/bin first on its own PATH.
+    install_download llvm-mingw bin
+    tool_paths=${tool_paths%:*}
+    llvm_mingw=$target
+
+    # A release of Meson runs from its source folder; a script in its bin folder runs it with
+    # the pinned Python.
+    install_download meson .
+    tool_paths=${tool_paths%:*}
+    mkdir -p "$target/bin"
+    printf '#!/bin/bash\nexec %q %q "$@"\n' "$python3_path" "$target/meson.py" > "$target/bin/meson"
+    chmod 755 "$target/bin/meson"
+    tool_paths="$tool_paths:$target/bin"
+
+    install_download ninja .
+    chmod 755 "$target/ninja"
+
+    # GNU publishes Bison as source only, and macOS ships Bison 2.3, which Wine refuses, so the
+    # pinned release is built once, in its install folder.
+    install_download bison .
+    tool_paths=${tool_paths%:*}
+    if [ ! -f "$target/built/.paneport-built" ]; then
+        say "building bison $(pin_value bison version)"
+        if ! (cd "$target" \
+            && ./configure --prefix="$target/built" --disable-nls --disable-dependency-tracking \
+            && make -j"$(sysctl -n hw.ncpu)" && make install) > "$target/build.log" 2>&1; then
+            tail -n 40 "$target/build.log" >&2
+            fail "building bison failed; the end of its build log is above."
+        fi
+        touch "$target/built/.paneport-built"
+    fi
+    tool_paths="$tool_paths:$target/built/bin"
+
+    check_options="$check_options --fork-tools"
+    if [ "$want_native" = true ]; then
+        installed="CMake, clang-format, clang-tidy and the build tools of the forks"
+    else
+        installed="CMake and the build tools of the forks"
+    fi
+fi
 tool_paths=${tool_paths#:}
 
 say "checking what is installed against its pins"
+# llvm-mingw's folder comes last on the PATH of this check alone, so that its other programs
+# hide nothing.
+check_path="$tool_paths:$PATH"
+if [ "$want_forks" = true ]; then
+    check_path="$check_path:$llvm_mingw/bin"
+fi
 # shellcheck disable=SC2086 # The options are words of their own.
-PATH="$tool_paths:$PATH" dotnet run tools/CheckToolchain.cs -- $check_options \
+PATH="$check_path" dotnet run tools/CheckToolchain.cs -- $check_options \
     || fail "something installed does not match its pin; see the lines above."
 
 if [ -n "${GITHUB_PATH:-}" ]; then
     printf '%s\n' "$tool_paths" | tr ':' '\n' >> "$GITHUB_PATH"
     say "the later steps find the pinned $installed first on the PATH"
+    if [ "$want_forks" = true ]; then
+        printf 'LLVM_MINGW=%s\n' "$llvm_mingw" >> "$GITHUB_ENV"
+        say "the later steps find llvm-mingw in LLVM_MINGW"
+    fi
 else
     say "put the pinned tools first on the PATH of this shell with:"
     printf '  export PATH=%q:"$PATH"\n' "$tool_paths"
+    if [ "$want_forks" = true ]; then
+        say "and name the folder of llvm-mingw with:"
+        printf '  export LLVM_MINGW=%q\n' "$llvm_mingw"
+    fi
 fi
 
 say "ready"

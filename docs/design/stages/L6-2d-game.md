@@ -811,6 +811,7 @@ Out:
 
 **Notes from earlier stages.**
 
+- M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-11): fork branches, pointer moves and the fast-forward of `paneport/integration` after a merge are in `docs/design/forks.md` section 4.2. The `CLAUDE.md` and `AGENTS.md` of the FEX fork and the `AGENTS.md` of the DXMT fork are their upstreams' contribution policy, which this stage's work in the forks leaves untouched (forks.md section 4.3).
 - M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-11-10): the test title's reviewed `drm`, with `ceg` set to `no` by hand, counts only while the device runs a build that the entry lists (C-0008 1.1 section 1). The entry's `exeSha256` (S6.6.5) therefore lists the hash of the copy on the device, as M6.5's import computes it; otherwise the merge gives `UnreviewedBuild`, and the title is refused once classified (`compat-db.md` section 4).
 
 **Session log.**

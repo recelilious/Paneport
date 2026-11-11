@@ -284,6 +284,10 @@ Out:
 - L10: the updated device signal test, and the start-up checks that the changed C-0005 section 4 asks the evidence record to confirm.
 - Every stage that changes the dispatcher, the JIT probe or the forks after this one merges, such as M3.1, M4.3, M4.4 or M8.1 if they are not Done yet, and later work in the forks: the changed C-0005 section 4, in particular the signals that only the runtime may handle or send, the extended test-build check, and the thread the JIT probe runs on.
 
+**Notes from earlier stages.**
+
+- M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-11): fork branches, pointer moves and the fast-forward of `paneport/integration` after a merge are in `docs/design/forks.md` section 4.2. FEX's `CLAUDE.md` and `AGENTS.md` are upstream's contribution policy, which this stage's work in the forks leaves untouched (forks.md section 4.3).
+
 **Session log.**
 
 _No sessions yet._

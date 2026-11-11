@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+# SPDX-License-Identifier: MIT
+
+# The forks of the upstreams that Paneport changes (C-0003 section 4, C-0004 section 3).
+# docs/design/forks.md says how their branches and these pointers move.
+[submodule "external/Paneport-wine"]
+	path = external/Paneport-wine
+	url = https://github.com/recelilious/Paneport-wine.git
+	branch = paneport/integration
+	shallow = true
+[submodule "external/Paneport-FEX"]
+	path = external/Paneport-FEX
+	url = https://github.com/recelilious/Paneport-FEX.git
+	branch = paneport/integration
+	shallow = true
+[submodule "external/Paneport-dxmt"]
+	path = external/Paneport-dxmt
+	url = https://github.com/recelilious/Paneport-dxmt.git
+	branch = paneport/integration
+	shallow = true

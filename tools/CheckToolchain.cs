@@ -11,10 +11,11 @@
 //   dotnet run tools/CheckToolchain.cs -- --ios-workload  also check the installed iOS workload set
 //   dotnet run tools/CheckToolchain.cs -- --cmake         also check CMake
 //   dotnet run tools/CheckToolchain.cs -- --llvm          also check clang-format and clang-tidy
+//   dotnet run tools/CheckToolchain.cs -- --fork-tools    also check the build tools of the forks
 //   dotnet run tools/CheckToolchain.cs -- --self-test     check the parsers on synthetic outputs
 //
-// --ci-tools, --xcode, --ios-workload, --cmake and --llvm may be combined. Exit codes: 0
-// everything matches its pin, 1 something does not, 2 usage or configuration error.
+// --ci-tools, --xcode, --ios-workload, --cmake, --llvm and --fork-tools may be combined. Exit
+// codes: 0 everything matches its pin, 1 something does not, 2 usage or configuration error.
 // docs/design/repository-checks.md describes the pins and how to change one.
 
 #:property PublishAot=false
@@ -43,7 +44,7 @@ internal static class Cli
 {
     // The options that also check the pins whose tools only some machines have.
     public static readonly string[] HostOptions =
-        [Probes.CiTools, Probes.Xcode, Probes.IosWorkload, Probes.Cmake, Probes.Llvm];
+        [Probes.CiTools, Probes.Xcode, Probes.IosWorkload, Probes.Cmake, Probes.Llvm, Probes.ForkTools];
 
     // The options given, or null when one is unknown or given twice.
     public static HashSet<string>? Options(string[] args)
@@ -56,7 +57,7 @@ internal static class Cli
     {
         Console.Error.WriteLine(
             "usage: dotnet run tools/CheckToolchain.cs "
-                + "[-- [--ci-tools] [--xcode] [--ios-workload] [--cmake] [--llvm] | --self-test]");
+                + "[-- [--ci-tools] [--xcode] [--ios-workload] [--cmake] [--llvm] [--fork-tools] | --self-test]");
         return 2;
     }
 }
@@ -233,6 +234,7 @@ internal static partial class Probes
     public const string IosWorkload = "--ios-workload";
     public const string Cmake = "--cmake";
     public const string Llvm = "--llvm";
+    public const string ForkTools = "--fork-tools";
 
     private const string DownloadHint =
         "eng/mac/bootstrap.sh installs the pinned release outside the repository and puts it first on the PATH.";
@@ -260,6 +262,29 @@ internal static partial class Probes
             "eng/mac/bootstrap.sh installs the pinned workload set."),
         ["cmake"] = new(Cmake, "cmake", ["--version"], CmakeVersion(), DownloadHint),
         ["llvm"] = new(Llvm, "clang-format", ["--version"], ClangFormatVersion(), DownloadHint, "clang-format"),
+        ["ninja"] = new(ForkTools, "ninja", ["--version"], BareVersion(), DownloadHint),
+        ["llvm-mingw"] = new(
+            ForkTools,
+            "x86_64-w64-mingw32-clang",
+            ["--version"],
+            LlvmMingwRelease(),
+            "eng/mac/bootstrap.sh installs the pinned release outside the repository and names its folder in "
+                + "LLVM_MINGW, off the PATH; to check it alone, put $LLVM_MINGW/bin at the end of the PATH. The "
+                + "release is read from that folder's name on clang's InstalledDir line."),
+        ["meson"] = new(ForkTools, "meson", ["--version"], BareVersion(), DownloadHint),
+        ["python"] = new(ForkTools, "python3", ["--version"], PythonVersion(), DownloadHint),
+        ["bison"] = new(
+            ForkTools,
+            "bison",
+            ["--version"],
+            BisonVersion(),
+            "eng/mac/bootstrap.sh builds the pinned release outside the repository and puts it first on the PATH."),
+        ["flex"] = new(
+            ForkTools,
+            "flex",
+            ["--version"],
+            FlexVersion(),
+            "flex comes with the Xcode that DEVELOPER_DIR or xcode-select selects."),
     };
 
     // "reuse, version 6.2.0", followed by the license notice.
@@ -302,6 +327,30 @@ internal static partial class Probes
     // packager's word in front of "LLVM".
     [GeneratedRegex(@"^[ \t]*(?:[^\s]+ )?LLVM version ([0-9][^\s]*)", RegexOptions.Multiline)]
     private static partial Regex ClangTidyVersion();
+
+    // A version alone, as ninja and meson print it: "1.13.2".
+    [GeneratedRegex(@"\A([0-9][^\s]*)\z")]
+    private static partial Regex BareVersion();
+
+    // clang names neither the llvm-mingw release nor anything but the LLVM version, so the
+    // release comes from the folder that holds clang: "llvm-mingw-<release>" as the bootstrap
+    // installs it, or "llvm-mingw-<release>-<variant>" as the release archive names it, as in
+    // "InstalledDir: /x/llvm-mingw-20261104/bin". A cross compiler of another kind, such as GCC
+    // from Homebrew's mingw-w64, prints no such line.
+    [GeneratedRegex(@"^InstalledDir: .*/llvm-mingw-([0-9]{8})(?:-[^/\s]*)?/bin[ \t]*$", RegexOptions.Multiline)]
+    private static partial Regex LlvmMingwRelease();
+
+    // "Python 3.14.10".
+    [GeneratedRegex(@"\APython ([0-9][^\s]*)")]
+    private static partial Regex PythonVersion();
+
+    // "bison (GNU Bison) 3.8.2", followed by the authors. macOS ships an older bison, 2.3.
+    [GeneratedRegex(@"\Abison \(GNU Bison\) ([0-9][^\s]*)")]
+    private static partial Regex BisonVersion();
+
+    // "flex 2.6.4", which Apple's build follows with its own tag, as in "flex 2.6.4 Apple(flex-35)".
+    [GeneratedRegex(@"\Aflex ([0-9][^\s]*)")]
+    private static partial Regex FlexVersion();
 }
 
 internal static class Checks
@@ -867,9 +916,31 @@ internal static class SelfTest
                   "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
                 }
               }
-            }
+            },
+            "ninja": { "version": "1.13.2", "source": "https://example.com/ninja" },
+            "llvm-mingw": { "version": "20261104", "source": "https://example.com/llvm-mingw" },
+            "meson": { "version": "1.12.1", "source": "https://example.com/meson" },
+            "python": { "version": "3.14.10", "source": "https://example.com/python" },
+            "bison": { "version": "3.8.2", "source": "https://example.com/bison" },
+            "flex": { "version": "2.6.4", "source": "https://example.com/flex" }
           }
         }
+        """;
+
+    // As llvm-mingw's clang prints it, with a made-up commit and install folder.
+    private const string LlvmMingwOutput =
+        """
+        clang version 23.1.5 (https://github.com/llvm/llvm-project.git 0123456789abcdef0123456789abcdef01234567)
+        Target: x86_64-w64-windows-gnu
+        Thread model: posix
+        InstalledDir: /opt/tools/llvm-mingw-20261104/bin
+        Configuration file: /opt/tools/llvm-mingw-20261104/bin/x86_64.cfg
+        """;
+
+    private const string BisonOutput =
+        """
+        bison (GNU Bison) 3.8.2
+        Written by Robert Corbett and Richard Stallman.
         """;
 
     private const string CmakeOutput =
@@ -950,7 +1021,8 @@ internal static class SelfTest
         string[] expected =
         [
             "reuse 6.2.0", "gitleaks 8.30.1", "lychee 0.24.2", "xcode 27.1", "ios-workload-set 10.0.403",
-            "macos-runner-image xcode-27", "cmake 4.4.5", "llvm 23.1.5",
+            "macos-runner-image xcode-27", "cmake 4.4.5", "llvm 23.1.5", "ninja 1.13.2", "llvm-mingw 20261104",
+            "meson 1.12.1", "python 3.14.10", "bison 3.8.2", "flex 2.6.4",
         ];
         tally.Expect(
             pins.Select(pin => $"{pin.Name} {pin.Version}").SequenceEqual(expected),
@@ -1087,6 +1159,60 @@ internal static class SelfTest
         tally.Expect(
             Checks.Tool(cmake, Output("cmake3 version 3.28.3\n")).Count == 1,
             "output without the version line fails");
+
+        Console.WriteLine("Build tools of the forks:");
+        var forkOutputs = new Dictionary<string, CommandResult>
+        {
+            ["ninja"] = new(0, "1.13.2\n", ""),
+            ["x86_64-w64-mingw32-clang"] = new(0, LlvmMingwOutput, ""),
+            ["meson"] = new(0, "1.12.1\n", ""),
+            ["python3"] = new(0, "Python 3.14.10\n", ""),
+            ["bison"] = new(0, BisonOutput, ""),
+            ["flex"] = new(0, "flex 2.6.4 Apple(flex-35)\n", ""),
+        };
+        CommandRunner forkInstalled = (command, _) => forkOutputs.GetValueOrDefault(command);
+        var forkTools = pins
+            .Where(pin => Probes.ByTool.GetValueOrDefault(pin.Name)?.Option == Probes.ForkTools)
+            .ToList();
+        tally.Expect(
+            forkTools.Count == 6 && forkTools.All(pin => Checks.Tool(pin, forkInstalled).Count == 0),
+            "ninja, llvm-mingw, meson, python, bison and flex match");
+        ToolPin pinned(string name) => pins.Single(pin => pin.Name == name);
+        tally.Expect(
+            Names(
+                Checks.Tool(pinned("llvm-mingw"), Output(Edit(LlvmMingwOutput, "20261104", "20261020"))),
+                "llvm-mingw 20261020",
+                "pins 20261104"),
+            "another llvm-mingw release fails and names both releases");
+        tally.Expect(
+            Checks.Tool(
+                    pinned("llvm-mingw"),
+                    Output(Edit(LlvmMingwOutput, "llvm-mingw-20261104/", "llvm-mingw-20261104-ucrt-macos-universal/")))
+                .Count == 0,
+            "the folder name of the release archive, with its variant, is read too");
+        tally.Expect(
+            Names(
+                Checks.Tool(
+                    pinned("llvm-mingw"),
+                    Output("clang version 23.1.5\nTarget: x86_64-w64-windows-gnu\nInstalledDir: /opt/homebrew/bin\n")),
+                "printed no version"),
+            "a cross compiler outside an llvm-mingw release folder fails");
+        tally.Expect(
+            Names(
+                Checks.Tool(pinned("bison"), Output("bison (GNU Bison) 2.3\nWritten by Robert Corbett.\n")),
+                "bison 2.3",
+                "pins 3.8.2"),
+            "the bison that macOS ships fails and names both versions");
+        tally.Expect(
+            Names(Checks.Tool(pinned("python"), Output("Python 3.15.2\n")), "python 3.15.2", "pins 3.14.10"),
+            "another Python, such as the one earlier on the PATH, fails");
+        tally.Expect(
+            Checks.Tool(pinned("flex"), Output("flex 2.6.4\n")).Count == 0
+                && Checks.Tool(pinned("ninja"), Output("1.13.2")).Count == 0,
+            "flex without Apple's tag and a version without a line break are read");
+        tally.Expect(
+            Names(Checks.Tool(pinned("meson"), (_, _) => null), "meson is not installed"),
+            "a tool that is not on the PATH fails and is named");
 
         Console.WriteLine("Runner image:");
         var image = pins.Single(pin => pin.Name == RunnerImage.Tool);
@@ -1265,6 +1391,12 @@ internal static class SelfTest
                 && Checks.Missing(pins, Probes.Cmake).Count == 0
                 && Checks.Missing(pins, Probes.Llvm).Count == 0,
             "--cmake and --llvm without their pins fail");
+        var withoutMeson = ToolchainJson.Parse(
+            Edit(Pinned, "\"meson\": { \"version\": \"1.12.1\", \"source\": \"https://example.com/meson\" },", ""));
+        tally.Expect(
+            Checks.Missing(pins, Probes.ForkTools).Count == 0
+                && Names(Checks.Missing(withoutMeson, Probes.ForkTools), "pins no meson", "--fork-tools"),
+            "--fork-tools without a meson pin fails");
 
         Console.WriteLine("Options:");
         tally.Expect(Cli.Options([]) is { Count: 0 }, "no option checks the SDK and the runner image only");
@@ -1275,6 +1407,9 @@ internal static class SelfTest
             Cli.Options(["--xcode", "--cmake", "--llvm"]) is { Count: 3 }
                 && Cli.Options(["--xcode", "--ios-workload", "--cmake"]) is { Count: 3 },
             "--cmake and --llvm combine with the others, as the bootstrap gives them");
+        tally.Expect(
+            Cli.Options(["--xcode", "--ios-workload", "--cmake", "--fork-tools"]) is { Count: 4 },
+            "--fork-tools combines with the others, as the bootstrap gives them");
         tally.Expect(Cli.Options(["--xcode", "--xcode"]) is null, "an option given twice is rejected");
         tally.Expect(Cli.Options(["--self-test", "--xcode"]) is null, "--self-test combines with nothing");
         tally.Expect(Cli.Options(["--macos"]) is null, "an unknown option is rejected");

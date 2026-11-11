@@ -250,6 +250,12 @@ Out: Direct3D 9, 10 and 12 (D11, plan section 10); the i686 triangle (L7); graph
 - M8.4: `docs/design/graphics-dxmt.md` (the L8 brief).
 - L7: the pixel check, which S7.0.4 reuses for an i686 triangle if D6 needs one (the L7 brief).
 
+**Notes from earlier stages.**
+
+- M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-10): DXMT's ARM64EC Meson setup compiles its shader converter for the Mac, which needs LLVM 15 with its headers and static libraries. M4.1 set up only DXMT's 32-bit PE side; this stage pins LLVM 15 with its register row (plan section 8) and sets up the ARM64EC side (`docs/design/forks.md` section 7).
+- M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-10): the DXMT fork marks `external/nvapi` as `update = none`, because DXMT builds NVAPI only with `enable_nvapi`, which Paneport leaves off (forks.md section 5.3).
+- M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-10): check the linker map of the first DXMT build against the mingw-w64 runtime objects that forks.md section 9 reviewed; DXMT links its PE side with `-static`, like the reviewed C++ DLL.
+
 **Session log.**
 
 _No sessions yet._

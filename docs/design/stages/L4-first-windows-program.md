@@ -258,6 +258,19 @@ Out: single-process mode, the native host and the bridge (M4.3); iOS builds (M4.
 - M5.1, M5.2, M6.1, M6.2, M6.3, M6.5, M6.6, M7.3 and M8.1: the harness, `eng/mac/run-harness.sh`, the case format, `tests/win32/` and the `runtime` job.
 - L4: `console.exe`.
 
+**Notes from earlier stages.**
+
+- M4.1 (session log of 2026-11-10): the forks, their integration branches and the rules for fork branches, pointers and rebases are in `docs/design/forks.md` sections 1 to 5. This stage's fork changes go on `paneport/M4.2` in each fork, and `paneport/integration` is fast-forwarded only after recelilious merges (section 4.2).
+- M4.1 (session log of 2026-11-10): merge request 11638 changes `configure.ac`, so the fork's rebased copy regenerates Wine's `configure` with GNU Autoconf 2.73, the version that generated Wine 11.20's. Pin it in `eng/toolchain.json` with a `--fork-tools` check in `tools/CheckToolchain.cs`, and install it with the bootstrap's `--forks`; C-0003 registers Autoconf from version 1.4 on (forks.md section 2).
+- M4.1 (session log of 2026-11-10): the forks start at Wine 11.20, at FEX-2610 with two fixes of FEX-2611 to `CheckCall`, and at DXMT `6e69d0f94290` (forks.md section 2). FEX-darwin's patches are written against FEX-2610, so they apply as written; its patch imported from the Arknights runtime is MPL-2.0, a Conditional component, and stays out until the register covers it (forks.md section 11).
+- M4.1 (session log of 2026-11-10): `eng/mac/bootstrap.sh --forks` installs the pinned build tools into `$PANEPORT_TOOLS_DIR` and hands `LLVM_MINGW` to the later CI steps, or prints its `export` line on a Mac; a build script puts `$LLVM_MINGW/bin` first on its own PATH. The first fork targets configured Wine with `--without-freetype`; the real build decides on FreeType (forks.md sections 6 and 7).
+- M4.1 (session log of 2026-11-10): on the `xcode-27` image, fetching the three forks at depth 1 took about 30 s (Wine's checkout is about 500 MB), Wine's `configure` 58 s and its build tools 10 s; the bootstrap's tools take about 100 s without a cache, most of it for building Bison (forks.md sections 7 and 8).
+- M4.1 (session log of 2026-11-10): caching needs `actions/cache`, which C-0003 does not register yet; register it before S4.2.6 uses it, with the keys of forks.md section 8.
+- M4.1 (session log of 2026-11-10): check the linker maps of the first real FEX build against the mingw-w64 runtime objects that forks.md section 9 reviewed. An object from another runtime file adds that file's notice; one from the Cephes files is not shipped, and the stage asks recelilious.
+- M4.1 (session log of 2026-11-10): the third-party code inside the forks (forks.md sections 5.3 and 10) ships once it is built; list what the builds link and propose the register rows it needs before that build, beginning with FEX's 13 fetched submodules, which have no rows.
+- M4.1 (session log of 2026-11-10): LGPL-2.1 section 2(b) asks that a changed file carry a notice that it was changed, with the date, and no contract says yet how Paneport marks a changed Wine file; propose the rule before the first change to a Wine file (forks.md section 11).
+- M4.1 (session log of 2026-11-10): a checkout of FEX at depth 1 holds no tag, so FEX's CMake reports an empty version; the build script sets one, such as `-DOVERRIDE_VERSION`.
+
 **Session log.**
 
 _No sessions yet._

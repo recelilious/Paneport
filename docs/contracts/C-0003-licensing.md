@@ -190,6 +190,18 @@ Rules:
 
 If an explicit patent grant becomes necessary, our own code can move to `MIT OR Apache-2.0` dual licensing. MIT stays the default.
 
+## Proposed changes for 1.5
+
+**Not yet accepted.** Version 1.4 above stays binding until recelilious approves these changes. They come from a check of stage M4.1's forks, which found upstream files under licenses that section 5 forbids in parts of the forks that no build of Paneport compiles, and from recelilious's decision of 2026-11-11 to allow such files there. Each was checked on 2026-11-11 against the files themselves; `docs/design/forks.md` sections 5.3 and 10 give the details.
+
+1. **Section 4, the item on code that a fork carries.** Replace "such as the thirteen submodules of FEX-Emu that its build may fetch" with "such as the submodules of FEX-Emu that its build may fetch", because the number changes whenever a submodule is fetched or left out. Replace the item's last sentence, "A submodule of a fork whose content section 5 forbids, such as test programs without a license, is marked `update = none` and never fetched.", with: "A submodule of a fork that no build of Paneport needs and that holds content that section 5 forbids is marked `update = none` and never fetched, such as FEX-Emu's test programs without a license, its copy of Linux's DRM headers, Catch2 and the glibc build of jemalloc."
+
+2. **Section 4, a new item after it.** Add: "A fork repository, and a submodule of a fork that a build needs, may keep upstream files under a license that section 5 forbids, as long as no build of Paneport compiles, links or copies them into anything that ships, their notices stay, and no shipped binary contains such code. These are files that the upstream keeps beside the code that we build: build scripts under the GPL with the Autoconf exception, such as `config.guess` and `config.sub` in Wine, tests, command-line tools and scripts, such as the GPL-2.0 command-line tool and tests of xxHash in FEX-Emu. The source archives that a release attaches (section 3, C-0009 section 6) may hold them as part of a fork's source."
+
+3. **Section 5, the Forbidden row of GPL-2.0, GPL-3.0, AGPL-3.0, SSPL, non-commercial-only licenses and code with no license.** Replace its rule, "Never enters this repository, a fork repository or the app package.", with: "Never enters this repository or the app package. A fork repository or a submodule of a fork holds it only as section 4 allows: upstream files that no build ships, never code with no license."
+
+The other sections stay as they are. Section 1 places our changes in the forks under the upstreams' licenses, and section 3 and C-0009 section 6 attach each fork's source at the released revision; both hold with these files, which stay part of the upstream's source and never reach a shipped binary. No component row changes, because no build ships these files.
+
 ## 12. Sources
 
 - Wine license: <https://github.com/wine-mirror/wine/blob/HEAD/LICENSE>

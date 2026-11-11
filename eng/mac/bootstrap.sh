@@ -20,10 +20,10 @@
 #
 # With no option it prepares all three. CMake and the other tools come from the downloads
 # that eng/toolchain.json pins, each checked against its SHA-256 before it is unpacked, into
-# $PANEPORT_TOOLS_DIR, by default ~/Library/Caches/paneport-tools, outside the repository.
-# Under GitHub Actions their folders join the PATH of the later steps; elsewhere the script
-# prints the line that puts them on the PATH. llvm-mingw stays off the PATH: its folder is
-# handed on as LLVM_MINGW in the same two ways.
+# $PANEPORT_TOOLS_DIR, an absolute path, by default ~/Library/Caches/paneport-tools, outside
+# the repository. Under GitHub Actions their folders join the PATH of the later steps;
+# elsewhere the script prints the line that puts them on the PATH. llvm-mingw stays off the
+# PATH: its folder is handed on as LLVM_MINGW in the same two ways.
 #
 # Bash 3.2, which macOS ships (C-0010 section 1). docs/design/dev-environment.md describes
 # how to use it.
@@ -99,6 +99,11 @@ installation, its owner runs this command, and then this script runs again: $ins
 fi
 
 tools_dir=${PANEPORT_TOOLS_DIR:-$HOME/Library/Caches/paneport-tools}
+# Bison's build and Meson's script record the folder, which must not depend on where they run.
+case $tools_dir in
+    /*) ;;
+    *) fail "PANEPORT_TOOLS_DIR must be an absolute path, not $tools_dir." ;;
+esac
 
 # Reads one value of a pinned download from eng/toolchain.json.
 pin_value() {
@@ -152,6 +157,15 @@ install_download() {
             rm -rf "$work"
             fail "the archive of $tool $version does not hold exactly one folder or program."
         fi
+        # The install folder is named after the pin, and the check of llvm-mingw reads the
+        # release from that name, so the archive's own folder must name the pinned release.
+        case "$tool:$top" in
+            llvm-mingw:"llvm-mingw-$version-"*) ;;
+            llvm-mingw:*)
+                rm -rf "$work"
+                fail "the archive of llvm-mingw $version holds $top, not release $version."
+                ;;
+        esac
         rm -rf "$target"
         if [ -d "$work/unpacked/$top" ]; then
             mv "$work/unpacked/$top" "$target"

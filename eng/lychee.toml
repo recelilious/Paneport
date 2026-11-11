@@ -16,8 +16,9 @@ hidden = true
 
 # The research notes are a published snapshot with more than a thousand external sources,
 # which rot or turn automated clients away without any change to the repository. Their
-# relative links are checked by the second, offline run instead.
-exclude_path = ['(^|/)\.git/', '(^|/)docs/research/']
+# relative links are checked by the second, offline run instead. The forks in external/ keep
+# their upstreams' documentation, which the repository checks leave alone (C-0010 section 4).
+exclude_path = ['(^|/)\.git/', '(^|/)docs/research/', '(^|/)external/']
 
 # Retry a failed request a few times before declaring a link dead. A request that still times
 # out shows a slow server, not a dead link: it is reported but does not fail the check. A page

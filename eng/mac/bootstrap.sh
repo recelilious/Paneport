@@ -74,6 +74,15 @@ dotnet run tools/CheckToolchain.cs -- --xcode \
     || fail "the SDK or Xcode does not match its pin; the lines above name both versions. Install the pinned \
 version, or select the pinned Xcode with xcode-select or DEVELOPER_DIR, then run this script again."
 
+# The folder of the downloaded tools. Bison's build and Meson's script record it, so it must
+# not depend on where they run; a wrong value stops the script before the workload install
+# changes the SDK.
+tools_dir=${PANEPORT_TOOLS_DIR:-$HOME/Library/Caches/paneport-tools}
+case $tools_dir in
+    /*) ;;
+    *) fail "PANEPORT_TOOLS_DIR must be an absolute path, not $tools_dir." ;;
+esac
+
 # The options of tools/CheckToolchain.cs that the final check passes, and the folders that
 # join the PATH.
 check_options="--xcode"
@@ -97,13 +106,6 @@ installation, its owner runs this command, and then this script runs again: $ins
     fi
     check_options="$check_options --ios-workload"
 fi
-
-tools_dir=${PANEPORT_TOOLS_DIR:-$HOME/Library/Caches/paneport-tools}
-# Bison's build and Meson's script record the folder, which must not depend on where they run.
-case $tools_dir in
-    /*) ;;
-    *) fail "PANEPORT_TOOLS_DIR must be an absolute path, not $tools_dir." ;;
-esac
 
 # Reads one value of a pinned download from eng/toolchain.json.
 pin_value() {

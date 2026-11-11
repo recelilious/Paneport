@@ -1,0 +1,34 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "paneport-base",
+      "hidden": true,
+      "description": "Settings that every native preset shares: the generator, and a build folder under build/native/ at the repository root.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/../../build/native/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "paneport-macos",
+      "hidden": true,
+      "inherits": ["paneport-base"],
+      "description": "The host's test builds for macOS on Apple silicon.",
+      "toolchainFile": "${sourceDir}/../../eng/cmake/macos.cmake"
+    },
+    {
+      "name": "paneport-ios",
+      "hidden": true,
+      "inherits": ["paneport-base"],
+      "description": "The host for arm64-apple-ios.",
+      "toolchainFile": "${sourceDir}/../../eng/cmake/ios.cmake"
+    }
+  ]
+}

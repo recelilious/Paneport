@@ -49,7 +49,7 @@ Paneport.iOS needs the iOS workload for the full format check, which the `ios` j
 dotnet format whitespace src/Paneport.iOS --folder --verify-no-changes
 ```
 
-Build and test as the [quick start](README.md#quick-start) shows. [repository-checks.md](docs/design/repository-checks.md) section 8 lists every check with its local command, among them the dependency licenses, the toolchain pins and the trimmed publish. REUSE and lychee run in the `checks` job of CI. The `ios` job builds the iOS app on a macOS runner for every pull request and every push to `main` ([dev-environment.md](docs/design/dev-environment.md) section 5).
+Build and test as the [quick start](README.md#quick-start) shows. [repository-checks.md](docs/design/repository-checks.md) section 8 lists every check with its local command, among them the dependency licenses, the toolchain pins and the trimmed publish. REUSE and lychee run in the `checks` job of CI. The `ios` job builds the iOS app and the native host framework on a macOS runner for every pull request and every push to `main`, and the `native` job checks and tests the native host there on every push ([dev-environment.md](docs/design/dev-environment.md) section 5). Native C code follows the root `.clang-format` and `.clang-tidy`; without a Mac, CI runs those checks (C-0010 section 3).
 
 ## Tests
 

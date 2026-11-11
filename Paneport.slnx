@@ -13,6 +13,7 @@ SPDX-License-Identifier: MIT
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Paneport.Core.Tests/Paneport.Core.Tests.csproj" />
+    <Project Path="tests/Paneport.Interop.Tests/Paneport.Interop.Tests.csproj" />
     <Project Path="tests/Paneport.Steam.Tests/Paneport.Steam.Tests.csproj" />
     <Project Path="tests/Paneport.TrimTest/Paneport.TrimTest.csproj" />
     <Project Path="tests/Paneport.UI.Tests/Paneport.UI.Tests.csproj" />

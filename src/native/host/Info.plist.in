@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+  The Info.plist of paneport_host.framework (C-0009 section 4). CMake fills in the values
+  from src/native/CMakeLists.txt when it builds the framework.
+  -->
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>${MACOSX_FRAMEWORK_NAME}</string>
+  <key>CFBundleIdentifier</key>
+  <string>${MACOSX_FRAMEWORK_IDENTIFIER}</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>${MACOSX_FRAMEWORK_NAME}</string>
+  <key>CFBundlePackageType</key>
+  <string>FMWK</string>
+  <key>CFBundleShortVersionString</key>
+  <string>${MACOSX_FRAMEWORK_SHORT_VERSION_STRING}</string>
+  <key>CFBundleVersion</key>
+  <string>${MACOSX_FRAMEWORK_BUNDLE_VERSION}</string>
+  <key>CFBundleSupportedPlatforms</key>
+  <array>
+    <string>iPhoneOS</string>
+  </array>
+  <key>MinimumOSVersion</key>
+  <string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
+</dict>
+</plist>

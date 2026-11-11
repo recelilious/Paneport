@@ -469,6 +469,10 @@ Out:
 
 **Hands over to.** M6.6 (connecting the launch check and the HUD data to M6.5's flow, `memoryEstimateMiB` for the test title, and tier tuning), L6 (the memory metrics and S6.0.1), L7 and L8 (larger games, and the phase 4 gate needs the peak footprint, the limit and the Game Mode state).
 
+**Notes from earlier stages.**
+
+- M1.2 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-10): `pp_memory_get_budget` reads both values on every call and samples nothing. Its Game Mode flag is set from 7,936 MiB (`PP_MEMORY_GAME_MODE_LEVEL_BYTES`), and the macOS test builds report a stub that `pp_test_set_memory_stub` sets (`docs/design/native-host.md` section 7). Pressure events become event kinds of `pp_event_t`, posted through the event queue of `src/native/host/event_thread.c`.
+
 **Session log.**
 
 _No sessions yet._

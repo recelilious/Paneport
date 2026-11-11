@@ -1,0 +1,28 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+  The tests of Paneport.Interop, which run on macOS against the host test library that the CMake
+  preset macos-test builds. They are in Paneport.slnx but not in eng/ci.slnf (C-0011 section 4);
+  the native job runs them with PANEPORT_HOST_LIBRARY set.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Paneport.Interop\Paneport.Interop.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\ProjectReferences.cs" Link="Shared\ProjectReferences.cs" />
+  </ItemGroup>
+</Project>

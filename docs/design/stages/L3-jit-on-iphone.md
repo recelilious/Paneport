@@ -176,6 +176,10 @@ _No sessions yet._
 - M4.4: the pool registry (the list of regions with execute-only view, writable alias and size) is handed to the translator through the Wine bridge (C-0005 section 3), and `pp_session_start` refuses to start until the state is `ready` (C-0005 section 2).
 - L5: the phase 1 gate relies on the authorization and verification proven here, including the guarantee that no mapping is writable and executable at once (C-0012 section 3).
 
+**Notes from earlier stages.**
+
+- M1.2 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-10): a new public header, such as the JIT group's, goes into the header lists of `eng/mac/check-framework.sh`, which fails on a header it does not know; each new struct goes into the layout table of `src/native/host/test_exports.c` and into `LayoutConformance.ManagedLayouts`; and the group raises `PP_ABI_VERSION_MINOR` and `HostAbi.Minor` together (`docs/design/native-host.md` sections 2 and 9).
+
 **Session log.**
 
 _No sessions yet._

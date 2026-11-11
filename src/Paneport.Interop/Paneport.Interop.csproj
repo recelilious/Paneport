@@ -3,9 +3,19 @@ SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 SPDX-License-Identifier: MIT
 -->
 <Project Sdk="Microsoft.NET.Sdk">
+  <!--
+  The bindings to the native host (C-0005 section 1): LibraryImport declarations with blittable
+  structs only, so the assembly turns runtime marshalling off. It is the only project that may
+  use unsafe code (C-0010 section 2). docs/design/interop.md describes it.
+  -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsAotCompatible>true</IsAotCompatible>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.DisableRuntimeMarshallingAttribute" />
+  </ItemGroup>
 </Project>

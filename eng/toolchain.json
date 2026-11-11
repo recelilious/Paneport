@@ -43,6 +43,26 @@
     "macos-runner-image": {
       "version": "xcode-27",
       "source": "https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md"
+    },
+    "cmake": {
+      "version": "4.4.5",
+      "source": "https://github.com/Kitware/CMake/releases/tag/v4.4.5",
+      "downloads": {
+        "osx-arm64": {
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-macos-universal.tar.gz",
+          "sha256": "679e77a96b9ef9484cc6c1445255fc4f84206b48a65420efbedf16bdab55fbff"
+        }
+      }
+    },
+    "llvm": {
+      "version": "23.1.5",
+      "source": "https://github.com/llvm/llvm-project/releases/tag/llvmorg-23.1.5",
+      "downloads": {
+        "osx-arm64": {
+          "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/LLVM-23.1.5-macOS-ARM64.tar.xz",
+          "sha256": "aba592b4a15e8f90c634c5367b51ec8418b8bcd2829865db331a17dc9418dcff"
+        }
+      }
     }
   }
 }

@@ -1,0 +1,130 @@
+// SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+// SPDX-License-Identifier: MIT
+
+// Helpers that several native tests share: starting the host, waiting, threads and
+// temporary folders.
+
+#ifndef PANEPORT_TESTS_TEST_SUPPORT_H
+#define PANEPORT_TESTS_TEST_SUPPORT_H
+
+#include <errno.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+
+#include "paneport/host.h"
+#include "pp_check.h"
+
+// Starts the host, with a crash record folder or none.
+static inline void pp_start_host(const char *crash_record_folder) {
+    const pp_init_config_t config = {
+        .struct_size = (uint32_t)sizeof(pp_init_config_t),
+        .crash_record_folder = crash_record_folder,
+    };
+    PP_CHECK_EQUAL(pp_init(&config), PP_OK);
+}
+
+static inline void pp_sleep_milliseconds(long milliseconds) {
+    const struct timespec duration = {
+        .tv_sec = milliseconds / 1000L,
+        .tv_nsec = (milliseconds % 1000L) * 1000000L,
+    };
+    (void)nanosleep(&duration, NULL);
+}
+
+// Waits up to a minute for a counter to reach a value, which leaves room for slow sanitizer
+// runs, and fails the test when it does not.
+static inline void pp_wait_for_count(_Atomic(uint64_t) *counter, uint64_t expected) {
+    for (int round = 0; round < 60000 && atomic_load(counter) < expected; round++) {
+        pp_sleep_milliseconds(1);
+    }
+    PP_CHECK_EQUAL(atomic_load(counter), expected);
+}
+
+static inline pthread_t pp_start_thread(void *(*function)(void *), void *argument) {
+    pthread_t thread;
+    PP_CHECK_EQUAL(pthread_create(&thread, NULL, function, argument), 0);
+    return thread;
+}
+
+static inline void pp_join_thread(pthread_t thread) {
+    PP_CHECK_EQUAL(pthread_join(thread, NULL), 0);
+}
+
+// Creates an empty folder under /tmp, whose path is written to path.
+static inline void pp_make_folder(char *path, size_t size) {
+    PP_CHECK(snprintf(path, size, "/tmp/paneport-native-XXXXXX") > 0);
+    PP_CHECK(mkdtemp(path) != NULL);
+}
+
+// Reads the decimal number that follows prefix at the start of text. Returns whether text
+// starts so; rest, unless NULL, receives the text after the number.
+static inline bool pp_read_number(const char *text, const char *prefix, unsigned long long *number,
+                                  const char **rest) {
+    const size_t length = strlen(prefix);
+    if (strncmp(text, prefix, length) != 0) {
+        return false;
+    }
+    const char *digits = text + length;
+    if (*digits < '0' || *digits > '9') {
+        return false;
+    }
+    char *end = NULL;
+    errno = 0;
+    const unsigned long long value = strtoull(digits, &end, 10);
+    if (errno != 0) {
+        return false;
+    }
+    *number = value;
+    if (rest != NULL) {
+        *rest = end;
+    }
+    return true;
+}
+
+// What a test thread receives: the state that its test shares, and its own number. Tests keep
+// their state in such contexts rather than in file-scope variables (C-0010 section 3).
+typedef struct pp_thread_argument_t {
+    void *context;
+    uint32_t number;
+} pp_thread_argument_t;
+
+// Starts count threads, each with the context and its number in arguments[i], which must
+// outlive them.
+static inline void pp_start_threads(pthread_t *threads, pp_thread_argument_t *arguments,
+                                    size_t count, void *(*function)(void *), void *context) {
+    for (size_t index = 0; index < count; index++) {
+        arguments[index].context = context;
+        arguments[index].number = (uint32_t)index;
+        threads[index] = pp_start_thread(function, &arguments[index]);
+    }
+}
+
+static inline void pp_join_threads(const pthread_t *threads, size_t count) {
+    for (size_t index = 0; index < count; index++) {
+        pp_join_thread(threads[index]);
+    }
+}
+
+// Waits up to a minute for a flag to turn true.
+static inline void pp_wait_for_flag(_Atomic(bool) *flag) {
+    for (int round = 0; round < 60000 && !atomic_load(flag); round++) {
+        pp_sleep_milliseconds(1);
+    }
+    PP_CHECK(atomic_load(flag));
+}
+
+// Removes a file of a folder, if it exists.
+static inline void pp_remove_file(const char *folder, const char *name) {
+    char path[1024];
+    PP_CHECK(snprintf(path, sizeof path, "%s/%s", folder, name) > 0);
+    (void)remove(path);
+}
+
+#endif // PANEPORT_TESTS_TEST_SUPPORT_H

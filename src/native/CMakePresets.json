@@ -1,0 +1,97 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "include": ["../../eng/cmake/base-presets.json"],
+  "configurePresets": [
+    {
+      "name": "ios-device",
+      "displayName": "iOS device",
+      "description": "paneport_host.framework for arm64-apple-ios, which the main app embeds. No test export.",
+      "inherits": ["paneport-ios"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PANEPORT_HOST_FORM": "framework"
+      }
+    },
+    {
+      "name": "ios-device-test",
+      "displayName": "iOS device, test build",
+      "description": "The same framework with the pp_test_ exports, for the device test flavor.",
+      "inherits": ["paneport-ios"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PANEPORT_HOST_FORM": "framework",
+        "PANEPORT_TEST_BUILD": "ON"
+      }
+    },
+    {
+      "name": "macos-test",
+      "displayName": "macOS test library",
+      "description": "libpaneport_host.dylib with the pp_test_ exports, which tests/Paneport.Interop.Tests loads.",
+      "inherits": ["paneport-macos"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "PANEPORT_HOST_FORM": "shared",
+        "PANEPORT_TEST_BUILD": "ON"
+      }
+    },
+    {
+      "name": "asan-ubsan",
+      "displayName": "AddressSanitizer and UndefinedBehaviorSanitizer",
+      "description": "The CTest suite with AddressSanitizer and UndefinedBehaviorSanitizer (C-0011 sections 1 and 4).",
+      "inherits": ["paneport-macos"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "PANEPORT_HOST_FORM": "static",
+        "PANEPORT_TEST_BUILD": "ON",
+        "PANEPORT_TESTS": "ON",
+        "PANEPORT_SANITIZERS": "address,undefined"
+      }
+    },
+    {
+      "name": "tsan",
+      "displayName": "ThreadSanitizer",
+      "description": "The CTest suite with ThreadSanitizer (C-0011 sections 1 and 4).",
+      "inherits": ["paneport-macos"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "PANEPORT_HOST_FORM": "static",
+        "PANEPORT_TEST_BUILD": "ON",
+        "PANEPORT_TESTS": "ON",
+        "PANEPORT_SANITIZERS": "thread"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "ios-device", "configurePreset": "ios-device" },
+    { "name": "ios-device-test", "configurePreset": "ios-device-test" },
+    { "name": "macos-test", "configurePreset": "macos-test" },
+    { "name": "asan-ubsan", "configurePreset": "asan-ubsan" },
+    { "name": "tsan", "configurePreset": "tsan" }
+  ],
+  "testPresets": [
+    {
+      "name": "asan-ubsan",
+      "configurePreset": "asan-ubsan",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false },
+      "environment": {
+        "ASAN_OPTIONS": "detect_stack_use_after_return=1:strict_string_checks=1:abort_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      }
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false },
+      "environment": {
+        "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1"
+      }
+    }
+  ]
+}

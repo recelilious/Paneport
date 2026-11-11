@@ -11,16 +11,16 @@ Back to the [development plan](../development-plan.md).
 | Stage | Title | Level | Status | Branch or PR | Last session |
 |---|---|---|---|---|---|
 | L4 | First Windows program on the iPhone | Large | Planned | | |
-| M4.1 | Forks, submodules and toolchains | Medium | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| M4.1 | Forks, submodules and toolchains | Medium | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | M4.2 | ARM64EC Wine with FEX on macOS | Medium | Planned | | |
 | M4.3 | Single-process Wine on macOS | Medium | Planned | | |
 | M4.4 | Runtime on iOS | Medium | Planned | | |
 | S4.0.1 | In-app console and the Run sample program action | Small | Planned | | |
-| S4.1.1 | Fork repositories and integration branches | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.1.2 | Submodules | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.1.3 | Toolchain pins and Mac bootstrap update | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.1.4 | C-0003 register proposal and mingw-w64 runtime review | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.1.5 | Forks design document | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.1 | Fork repositories and integration branches | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.2 | Submodules | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.3 | Toolchain pins and Mac bootstrap update | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.4 | C-0003 register proposal and mingw-w64 runtime review | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.5 | Forks design document | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | S4.2.1 | Wine build script for macOS | Small | Planned | | |
 | S4.2.2 | PE-side build | Small | Planned | | |
 | S4.2.3 | FEX ARM64EC build for Darwin | Small | Planned | | |
@@ -219,6 +219,9 @@ Out: building the forks for real (M4.2, M4.4, M5.2); changes inside a fork beyon
     - The entry above now says that the recursive clone on the workstation was not repeated.
   - **Verification.** On the workstation, the self-tests of the toolchain (99 cases), personal-data (244) and license (53) checks pass, and so do the license, toolchain and personal-data checks, the tools' formatting and `bash -n`. Everything about the forks was read, and the fork commit was made, through the GitHub API, with nothing downloaded. The recursive clone on the workstation was not repeated at `dd288e6` either, for the same reason; CI's fresh checkout records the new commit, and `update = none` only leaves submodules out of a clone. CI runs on this round's head, and the pull request records its result.
   - **Left.** recelilious reviews the C-0003 1.5 proposal. Once it is accepted, the acceptance commit goes on the contract branch, which is pushed and merged first; then this branch says so in `forks.md`, M4.1 and S4.1.1 to S4.1.5 are set to Done in its last commit with CI green on it, and recelilious merges #17. After that merge, the FEX fork's `paneport/integration` is fast-forwarded to `dd288e6` and its `paneport/M4.1` is deleted (forks.md section 4.2).
+- **2026-11-11 (UTC), C-0003 1.5 acceptance.** recelilious accepted the C-0003 1.5 proposal, narrowed to the GPL: only upstream files under GPL-2.0 or GPL-3.0, with or without an exception such as the Autoconf exception, may stay in the forks where no build ships them, and AGPL-3.0, SSPL, non-commercial-only code and code with no license never enter a fork or its submodules. The acceptance commit `9e088ed` on `contract/m4-1-unshipped-upstream-files` applies it with that narrowing, drops the proposal section and updates the contracts index; the branch is pushed with its pull request, [#20](https://github.com/recelilious/Paneport/pull/20), which merges before #17. `forks.md` section 5.3 now speaks of the accepted version. Section 4 of C-0003 no longer counts FEX-Emu's submodules, which settles the note of the first follow-up.
+  - **Verification.** CI on `f02186b`, the second follow-up ([run](https://github.com/recelilious/Paneport/actions/runs/43024112472)): every job passed, `ios` in 7 min 38 s. `git submodule status` showed `external/Paneport-FEX` at `dd288e6`, and the bootstrap, both planted mismatches and every first target passed again. The license check does not read the text of C-0003, so it passes with and without #20.
+  - **Left.** recelilious merges #20, then #17. Then the FEX fork's `paneport/integration` is fast-forwarded to `dd288e6` and its `paneport/M4.1` is deleted, by recelilious or by Claude when recelilious asks (forks.md section 4.2). The verification passed and only the merges are left, so M4.1 and S4.1.1 to S4.1.5 are set to Done in the branch's last commit, as plan section 3.3 asks.
 
 ## M4.2 ARM64EC Wine with FEX on macOS
 

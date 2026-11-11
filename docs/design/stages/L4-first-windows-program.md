@@ -11,16 +11,16 @@ Back to the [development plan](../development-plan.md).
 | Stage | Title | Level | Status | Branch or PR | Last session |
 |---|---|---|---|---|---|
 | L4 | First Windows program on the iPhone | Large | Planned | | |
-| M4.1 | Forks, submodules and toolchains | Medium | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| M4.1 | Forks, submodules and toolchains | Medium | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | M4.2 | ARM64EC Wine with FEX on macOS | Medium | Planned | | |
 | M4.3 | Single-process Wine on macOS | Medium | Planned | | |
 | M4.4 | Runtime on iOS | Medium | Planned | | |
 | S4.0.1 | In-app console and the Run sample program action | Small | Planned | | |
-| S4.1.1 | Fork repositories and integration branches | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.1.2 | Submodules | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.1.3 | Toolchain pins and Mac bootstrap update | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.1.4 | C-0003 register proposal and mingw-w64 runtime review | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.1.5 | Forks design document | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.1 | Fork repositories and integration branches | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.2 | Submodules | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.3 | Toolchain pins and Mac bootstrap update | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.4 | C-0003 register proposal and mingw-w64 runtime review | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.5 | Forks design document | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | S4.2.1 | Wine build script for macOS | Small | Planned | | |
 | S4.2.2 | PE-side build | Small | Planned | | |
 | S4.2.3 | FEX ARM64EC build for Darwin | Small | Planned | | |

@@ -11,16 +11,16 @@ Back to the [development plan](../development-plan.md).
 | Stage | Title | Level | Status | Branch or PR | Last session |
 |---|---|---|---|---|---|
 | L4 | First Windows program on the iPhone | Large | Planned | | |
-| M4.1 | Forks, submodules and toolchains | Medium | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| M4.1 | Forks, submodules and toolchains | Medium | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | M4.2 | ARM64EC Wine with FEX on macOS | Medium | Planned | | |
 | M4.3 | Single-process Wine on macOS | Medium | Planned | | |
 | M4.4 | Runtime on iOS | Medium | Planned | | |
 | S4.0.1 | In-app console and the Run sample program action | Small | Planned | | |
-| S4.1.1 | Fork repositories and integration branches | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.1.2 | Submodules | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.1.3 | Toolchain pins and Mac bootstrap update | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.1.4 | C-0003 register proposal and mingw-w64 runtime review | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.1.5 | Forks design document | Small | In progress | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.1 | Fork repositories and integration branches | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.2 | Submodules | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.3 | Toolchain pins and Mac bootstrap update | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.4 | C-0003 register proposal and mingw-w64 runtime review | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
+| S4.1.5 | Forks design document | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | S4.2.1 | Wine build script for macOS | Small | Planned | | |
 | S4.2.2 | PE-side build | Small | Planned | | |
 | S4.2.3 | FEX ARM64EC build for Darwin | Small | Planned | | |
@@ -193,6 +193,21 @@ Out: building the forks for real (M4.2, M4.4, M5.2); changes inside a fork beyon
     - `forks.md` section 6, `dev-environment.md`, `repository-checks.md`, the READMEs of `eng/`, `tools/` and the workflows, and the notes for M4.2 use the new names.
   - **Verification.** CI on `d98dc1e`, the code of this branch ([run](https://github.com/recelilious/Paneport/actions/runs/42988046811)): every job passed, `ios` in 5 min 19 s. There, the bootstrap with `--ios --forks` installed the workload, CMake and the six tools of the forks, Bison's build included, and checked them in 109 s, and its second run installed nothing; the planted mismatch of `--fork-tools` named the missing llvm-mingw and Xcode's Python 3.9.6, and the Bison 2.3 of macOS too; `git submodule status` showed the three forks at their recorded commits; and fetching the forks (26 s), Wine's `configure` and build tools (65 s), Wine's i386 libraries, FEX's CMake configuration and DXMT's 32-bit Meson setup all exited with 0 and logged clang 23.1.5, Bison 3.8.2, flex 2.6.4, CMake 4.4.5, Ninja 1.13.2, Python 3.14.10 and Meson 1.12.1. M1.2's framework steps and the app of M1.1 passed as before. `native`, `checks` and both `dotnet` jobs passed, and the license check accepted the three submodules and the six tools. On the workstation, the self-tests of the toolchain (99 cases), personal-data (244) and license (53) checks pass, and so do the license, toolchain and personal-data checks, the tools' formatting and `bash -n` on the scripts in `eng/mac/`. The fresh clone on the workstation was not repeated: `.gitmodules` and the three submodule commits are unchanged since the first session, and the `ios` job's fresh checkout fetched the forks at those commits.
   - **Left.** recelilious reviews and merges #17. The verification passed and only the merge is left, so M4.1 and S4.1.1 to S4.1.5 are set to Done in the branch's last commit, as plan section 3.3 asks. The forks need nothing more: their `paneport/integration` branches hold the recorded commits.
+- **2026-11-11 (UTC), review follow-up.** An independent review of #17 at `c1f9749`, by two reviewers and two verifiers who tried to refute each finding, found one high and nine low points. This session fixed all of them on the same branch, [#17](https://github.com/recelilious/Paneport/pull/17).
+  - **High.** FK-1: FEX's `External/drm-headers` holds nine headers under GPL-2.0 WITH Linux-syscall-note alone, which C-0003 section 5 keeps out of the forks. The FEX fork marks it `update = none` in `0d4b14e`, a commit made through GitHub's contents API on `paneport/M4.1`, and `external/Paneport-FEX` points at it. Only `Source/Tools/LinuxEmulation` includes the headers, and FEX builds it only when it does not build for MinGW, so the Windows-side build needs none of them and nothing is left for recelilious to decide.
+  - **Low.**
+    - TC-1: before it names the install folder after the pin, `install_download` checks that llvm-mingw's archive holds the folder of the pinned release, because the version check reads the release from that name.
+    - TC-2: `repository-checks.md` no longer takes a second SHA-256 from a download on the workstation.
+    - TC-3: the READMEs of `eng/` and the workflows name the build tools of the forks among the pins.
+    - TC-4: `PANEPORT_TOOLS_DIR` must be an absolute path.
+    - FK-2: `forks.md` says why M4.1 put its configuration commits on `paneport/integration`, and that later fork changes follow its section 4.2.
+    - FK-3: the deepest path of a recursive clone is 186 characters, in range-v3's `doc/gh-pages`, so a folder on Windows may have about 70.
+    - FK-4: `forks.md` section 10 adds tiny-json, musl's and Arm Limited's code and Wine's headers in FEX, and DXMT's MD5 code from dxbc-spirv, and the note for M4.2 names them.
+    - FK-5: the message of `5c00616` says that each fork carries one configuration commit of its own. FEX carries two, after the two cherry-picks, and now `0d4b14e` too, and DXMT two; `forks.md` section 3 is the exact list.
+    - FK-6: the briefs of M4.4 and M7.3 note where the fork rules and FEX's `CLAUDE.md` are explained.
+  - **Verification.** CI on `9e101d2`, the fixes ([run](https://github.com/recelilious/Paneport/actions/runs/42998423260)): every job passed, `ios` in 5 min 7 s. Its bootstrap installed llvm-mingw past the new check of the archive's folder, and `git submodule status` showed `external/Paneport-FEX` at `0d4b14e`, which GitHub served by its hash although it is not on the fork's default branch. Wine's `configure` and tools, its i386 libraries, FEX's CMake configuration, DXMT's 32-bit Meson setup and both planted mismatches passed again, and so did `native`, `checks` and both `dotnet` jobs. On the workstation, the self-tests of the toolchain (99 cases), personal-data (244) and license (53) checks pass, and so do the license, toolchain and personal-data checks, the tools' formatting and `bash -n`; the two new checks of the bootstrap were run on sample values, where the folder of another release, a folder without its variant and relative tools folders all fail. Nothing was downloaded: the facts of the review were read, and the fork commit was made, through the GitHub API.
+  - **Left.** recelilious reviews and merges #17. Then the FEX fork's `paneport/integration` is fast-forwarded to `0d4b14e` and `paneport/M4.1` is deleted, by recelilious or by Claude when recelilious asks (forks.md section 4.2). The verification passed again and only the merge is left, so M4.1 and S4.1.1 to S4.1.5 are set to Done in the branch's last commit, as plan section 3.3 asks.
+  - **For later sessions.** C-0003 section 4 still gives "the thirteen submodules of FEX-Emu that its build may fetch" as its example; with `drm-headers` no longer fetched, the build fetches twelve, which a later revision of the contract can correct.
 
 ## M4.2 ARM64EC Wine with FEX on macOS
 

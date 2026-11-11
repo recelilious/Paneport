@@ -179,7 +179,7 @@ The `ios` job builds the forks (C-0011 section 4). In this stage it runs their f
 
 Each step passes when it exits with 0. None of them builds a module that ships; building the forks for real starts with M4.2.
 
-On 2026-11-10 every step passed in the `ios` job ([run](https://github.com/recelilious/Paneport/actions/runs/42792375947)): fetching the forks took 36 s, Wine's `configure` and tools 93 s, its i386 libraries 4 s, FEX's configuration 20 s and DXMT's setup 15 s, and `git submodule status` showed the three forks at their recorded commits. A fresh `git clone --recurse-submodules` on the workstation did too (section 5.2).
+On 2026-11-10 every step passed in the `ios` job ([run](https://github.com/recelilious/Paneport/actions/runs/42792375947)): fetching the forks took 36 s, Wine's `configure` and tools 93 s, its i386 libraries 4 s, FEX's configuration 20 s and DXMT's setup 15 s, and `git submodule status` showed the three forks at their recorded commits. A fresh `git clone --recurse-submodules` on the workstation did too (section 5.2). On 2026-11-11, with the tools installed by M1.2's bootstrap, every step passed again ([run](https://github.com/recelilious/Paneport/actions/runs/42988046811)): the fetch in 26 s, Wine's `configure` and tools in 65 s, its i386 libraries in 3 s, FEX's configuration in 11 s and DXMT's setup in 9 s.
 
 ## 8. Caching fork builds in CI
 

@@ -103,11 +103,32 @@ static void free_host_memory(void) {
     PP_CHECK_EQUAL(pp_test_duplicate_text("text", NULL), PP_E_INVALID_ARGUMENT);
 }
 
+// Version 1.1: the model identifier fills a large buffer, and a missing or small buffer fails with
+// a message that names the size needed.
+static void device_model(void) {
+    char model[64] = {0};
+    PP_CHECK_EQUAL(pp_device_get_model(model, (uint32_t)sizeof model), PP_OK);
+    PP_CHECK(strlen(model) > 0U);
+    PP_CHECK(strlen(model) < sizeof model);
+    PP_CHECK_TEXT(pp_last_error(), "");
+
+    PP_CHECK_EQUAL(pp_device_get_model(NULL, 64U), PP_E_INVALID_ARGUMENT);
+    PP_CHECK(strstr(pp_last_error(), "needs a buffer") != NULL);
+
+    char small[1] = {'x'};
+    PP_CHECK_EQUAL(pp_device_get_model(small, (uint32_t)sizeof small), PP_E_INVALID_ARGUMENT);
+    char expected[64];
+    PP_CHECK(snprintf(expected, sizeof expected, "a buffer of %zu bytes", strlen(model) + 1U) > 0);
+    PP_CHECK(strstr(pp_last_error(), expected) != NULL);
+    PP_CHECK_EQUAL(small[0], 'x');
+}
+
 int main(int argc, char **argv) {
     static const pp_test_case_t cases[] = {
         {"abi_version", abi_version},
         {"last_error_per_thread", last_error_per_thread},
         {"free_host_memory", free_host_memory},
+        {"device_model", device_model},
     };
     return pp_run_case(argc, argv, cases, PP_CASE_COUNT(cases));
 }

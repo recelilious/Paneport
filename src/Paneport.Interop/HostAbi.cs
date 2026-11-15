@@ -15,7 +15,7 @@ public static class HostAbi
     public const ushort Major = 1;
 
     /// <summary>The minor version, which grows when the interface gains a function or a struct member.</summary>
-    public const ushort Minor = 0;
+    public const ushort Minor = 1;
 
     /// <summary>Gets the version packed as <c>pp_abi_version</c> returns it.</summary>
     public static uint Packed => ((uint)Major << 16) | Minor;

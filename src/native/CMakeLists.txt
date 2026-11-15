@@ -20,8 +20,8 @@ option(PANEPORT_TEST_BUILD "Build the test exports and the test rule for the mai
 option(PANEPORT_TESTS "Build the CTest suite of tests/native." OFF)
 set(PANEPORT_SANITIZERS "" CACHE STRING
     "The sanitizers for -fsanitize, such as address,undefined or thread; empty for none.")
-set(PANEPORT_FRAMEWORK_IDENTIFIER "com.example.paneport.host" CACHE STRING
-    "The framework's bundle identifier; a placeholder until decision D3 names the app's.")
+set(PANEPORT_FRAMEWORK_IDENTIFIER "io.github.recelilious.paneport.host" CACHE STRING
+    "The framework's bundle identifier, derived from the app's of decision D3.")
 
 # C17 without compiler extensions, and C++20 for the header test only (C-0005 section 5,
 # C-0010 section 3). Apple's SDK headers come through the sysroot as system headers, so the
@@ -53,6 +53,7 @@ endif()
 set(PANEPORT_HOST_SOURCES
     host/crash_record.c
     host/crash_record_writer.c
+    host/device.c
     host/error.c
     host/event_queue.c
     host/event_thread.c

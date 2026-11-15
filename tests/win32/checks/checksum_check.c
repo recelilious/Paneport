@@ -6,7 +6,7 @@
 #include <inttypes.h>
 #include <string.h>
 
-#if defined(__SSE2__)
+#ifdef __SSE2__
 #include <emmintrin.h>
 #endif
 
@@ -39,7 +39,7 @@ static uint64_t compute_checksum(const unsigned char *bytes) {
     }
 
     uint32_t lanes[4] = {0U, 0U, 0U, 0U};
-#if defined(__SSE2__)
+#ifdef __SSE2__
     __m128i sums = _mm_setzero_si128();
     for (size_t offset = 0; offset < PP_CHECKSUM_BYTES; offset += 16U) {
         sums =
@@ -63,7 +63,8 @@ static uint64_t compute_checksum(const unsigned char *bytes) {
 bool pp_checksum_report(struct pp_test_run *run) {
     unsigned char *bytes =
         VirtualAlloc(NULL, PP_CHECKSUM_BYTES, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (!pp_test_check(run, bytes != NULL, "VirtualAlloc gives the 64 MiB buffer")) {
+    if (bytes == NULL) {
+        pp_test_check(run, false, "VirtualAlloc gives the 64 MiB buffer");
         return false;
     }
     fill_buffer(bytes);

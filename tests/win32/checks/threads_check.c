@@ -17,7 +17,7 @@
 
 // The value that the suspended worker receives in its second register argument once its
 // context is changed. On x86-64 it fills the whole register, so that a truncated context shows.
-#if defined(__x86_64__)
+#ifdef __x86_64__
 #define PP_THREADS_MARKER UINT64_C(0x50414e45504f5254)
 #define PP_THREADS_CONVENTION
 #else
@@ -233,7 +233,7 @@ static bool check_events(struct pp_test_run *run, const char *area, bool detaile
 // its two arguments, on a stack below the one the thread was using, aligned as at a function's
 // entry: 16 bytes, less the return address that a call would have pushed.
 static void redirect_context(CONTEXT *context, struct suspend_state *state) {
-#if defined(__x86_64__)
+#ifdef __x86_64__
     context->Rsp = ((context->Rsp - 256U) & ~(DWORD64)15U) - 8U;
     context->Rip = (ULONG_PTR)redirect_target;
     context->Rcx = (ULONG_PTR)state;
@@ -265,7 +265,8 @@ static bool suspend_and_redirect(struct pp_test_run *run, HANDLE thread,
     }
     CONTEXT context;
     memset(&context, 0, sizeof context);
-    context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+    // CONTEXT_FULL holds the control and integer registers that the change needs.
+    context.ContextFlags = CONTEXT_FULL;
     bool changed = false;
     if (pp_test_check(run, GetThreadContext(thread, &context) != FALSE,
                       "GetThreadContext reads the suspended thread")) {

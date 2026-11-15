@@ -85,29 +85,31 @@ public sealed class FileLog : ILog, IDisposable
         await using var writerScope = writer.ConfigureAwait(false);
         long written = 0;
         var limitReached = false;
-        await foreach (var line in _lines.Reader.ReadAllAsync().ConfigureAwait(false))
+
+        // Each wake-up writes every line that is queued, then flushes once.
+        while (await _lines.Reader.WaitToReadAsync().ConfigureAwait(false))
         {
-            if (limitReached)
+            while (_lines.Reader.TryRead(out var line))
             {
-                continue;
+                if (limitReached)
+                {
+                    continue;
+                }
+
+                var size = encoding.GetByteCount(line) + 1;
+                if (written + size > MaxBytes)
+                {
+                    limitReached = true;
+                    await writer.WriteLineAsync(LimitLine).ConfigureAwait(false);
+                }
+                else
+                {
+                    written += size;
+                    await writer.WriteLineAsync(line).ConfigureAwait(false);
+                }
             }
 
-            var size = encoding.GetByteCount(line) + 1;
-            if (written + size > MaxBytes)
-            {
-                limitReached = true;
-                await writer.WriteLineAsync(LimitLine).ConfigureAwait(false);
-            }
-            else
-            {
-                written += size;
-                await writer.WriteLineAsync(line).ConfigureAwait(false);
-            }
-
-            if (_lines.Reader.Count == 0)
-            {
-                await writer.FlushAsync().ConfigureAwait(false);
-            }
+            await writer.FlushAsync().ConfigureAwait(false);
         }
     }
 }

@@ -25,12 +25,14 @@ SPDX-License-Identifier: MIT
   <!--
   The compatibility tests read their fixtures, the title schema, every file in compat/titles/ and
   the target devices of docs/design/compat-db.md. The README goes along, so that the folder of
-  repository titles exists even while it holds no title file.
+  repository titles exists even while it holds no title file. The storage tests read the layout
+  table of C-0004 section 4.
   -->
   <ItemGroup>
     <None Update="Compat\Fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\compat\schema\title.schema.json" Link="Repository\compat\schema\title.schema.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\compat\titles\*.json;..\..\compat\titles\README.md" LinkBase="Repository\compat\titles" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\docs\design\compat-db.md" Link="Repository\docs\design\compat-db.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\docs\contracts\C-0004-architecture-and-layout.md" Link="Repository\docs\contracts\C-0004-architecture-and-layout.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

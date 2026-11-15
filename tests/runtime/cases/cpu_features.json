@@ -1,0 +1,1 @@
+{"program": "cpu_features.exe", "timeout_seconds": 300, "exit_code": 0, "expected": "cpu_features.txt"}

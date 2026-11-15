@@ -16,6 +16,8 @@ Paneport's automated tests (C-0011 section 1). They use xunit.v3 on Microsoft.Te
 | [Paneport.TrimTest](Paneport.TrimTest/README.md) | A program whose trimmed publish checks our libraries together with their dependencies. It holds no tests, and `dotnet test` skips it. |
 | [Paneport.UI.Tests](Paneport.UI.Tests/README.md) | Tests of Paneport.UI, including headless tests of the Avalonia application |
 | [native](native/README.md) | The CTest suite of the native host, which runs on macOS with the sanitizer presets `asan-ubsan` and `tsan` |
+| [runtime](runtime/README.md) | The runtime harness, which runs the Win32 test programs under Wine on macOS and compares their output with its expected outputs, and the CTest cases of its own parts |
+| [win32](win32/README.md) | Small Windows console programs of our own, which the runtime harness runs |
 | [Shared](Shared/README.md) | Source files that several test projects compile in |
 
 Run the tests of `eng/ci.slnf`, the ones that run on any machine, from the repository root:

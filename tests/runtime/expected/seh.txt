@@ -1,0 +1,5 @@
+= seh: an x86-64 build
+= seh: access violation, divide by zero and RaiseException caught: pass
+= seh: a __finally block ran during the unwind: pass
+= seh: vectored handlers ran first and continued execution: pass
+= result: pass

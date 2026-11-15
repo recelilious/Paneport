@@ -40,6 +40,17 @@
       }
     },
     {
+      "name": "macos-harness",
+      "displayName": "macOS runtime harness",
+      "description": "paneport_harness of tests/runtime, which eng/mac/run-harness.sh runs.",
+      "inherits": ["paneport-macos"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "PANEPORT_HOST_FORM": "static",
+        "PANEPORT_HARNESS": "ON"
+      }
+    },
+    {
       "name": "asan-ubsan",
       "displayName": "AddressSanitizer and UndefinedBehaviorSanitizer",
       "description": "The CTest suite with AddressSanitizer and UndefinedBehaviorSanitizer (C-0011 sections 1 and 4).",
@@ -70,6 +81,7 @@
     { "name": "ios-device", "configurePreset": "ios-device" },
     { "name": "ios-device-test", "configurePreset": "ios-device-test" },
     { "name": "macos-test", "configurePreset": "macos-test" },
+    { "name": "macos-harness", "configurePreset": "macos-harness" },
     { "name": "asan-ubsan", "configurePreset": "asan-ubsan" },
     { "name": "tsan", "configurePreset": "tsan" }
   ],

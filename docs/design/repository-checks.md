@@ -33,7 +33,7 @@ The compatibility data check comes with M8.3. [native-host.md](native-host.md) s
 
 ## 2. The file-based tools
 
-The three tools are C# file-based apps, run from the repository root with `dotnet run tools/<Name>.cs` (C-0010 section 1). They share these rules:
+The four tools are C# file-based apps, run from the repository root with `dotnet run tools/<Name>.cs` (C-0010 section 1). `tools/ScanPackage.cs`, which M1.3 added, scans app packages and is described in [ios-app-head.md](ios-app-head.md) section 11. They share these rules:
 
 - **One file each.** Every type a tool needs lives in its file and is `internal`. The tools use only the base class library and depend on nothing under `src/` (C-0004 section 2).
 - **Self-test.** `-- --self-test` runs the tool's parsers and rules against synthetic fixtures and prints one line per check. Fixtures use addresses at `example.com`, IP addresses from the documentation ranges of RFC 5737 and RFC 3849, and made-up identifiers (C-0011 section 1). Values shaped like credentials, such as tokens and keys, are built at run time, so that the source file holds nothing a secret scanner would report.
@@ -45,7 +45,7 @@ The three tools are C# file-based apps, run from the repository root with `dotne
 
 - File-based apps get `Directory.Build.props`, `Directory.Packages.props`, `.editorconfig` and `eng/nuget.config` like any project under the root. Warnings fail their build, and the code-style rules of `.editorconfig` run while they build.
 - A file-based app sets `PublishAot` to `true` by default. That adds the AOT compiler package and a runtime-specific section to its lock file, so the lock file written on Windows would fail the locked restore on Ubuntu. Each tool therefore starts with `#:property PublishAot=false`; the tools are never published.
-- The three tools share one lock file, `tools/packages.lock.json`, because NuGet keeps a project's lock file in its folder, and every file-based app in `tools/` is a project in that folder. It lists no package. In locked mode, a missing lock file is created rather than reported, so the committed one keeps every run the same. NuGet names the project of `tools/<Tool>.cs` `<Tool>.cs`, and uses `tools/packages.<Tool>.cs.lock.json` instead of the shared file once that file exists. A tool that ever needs a package gets such a lock file of its own; the license checker requires it and rejects `NuGetLockFilePath` (section 4).
+- The tools share one lock file, `tools/packages.lock.json`, because NuGet keeps a project's lock file in its folder, and every file-based app in `tools/` is a project in that folder. It lists no package. In locked mode, a missing lock file is created rather than reported, so the committed one keeps every run the same. NuGet names the project of `tools/<Tool>.cs` `<Tool>.cs`, and uses `tools/packages.<Tool>.cs.lock.json` instead of the shared file once that file exists. A tool that ever needs a package gets such a lock file of its own; the license checker requires it and rejects `NuGetLockFilePath` (section 4).
 - `dotnet format` does not accept a file-based app. CI runs `dotnet format whitespace tools --folder --verify-no-changes` for the tools, and their build enforces the code-style rules. IDE0003 and IDE0049, which the build skips (see section 4 of solution-and-build.md), are not checked for the tools.
 - The compiler accepts `#:` directives before the first token of a file: after blank lines, comments and preprocessor lines such as `#nullable` or `#pragma`, but not after `#if`. The SDK also accepts whitespace after `#:`, as in `#: package`, but not between `#` and `:`. The license checker reads them the same way, so text further down, such as its own fixtures, is not mistaken for a directive.
 
@@ -190,7 +190,7 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 1. Check out the whole history, which gitleaks scans, and install the SDK that `global.json` pins, which runs the tools.
 2. Install the CI tools that `eng/toolchain.json` pins: REUSE with pipx; gitleaks and lychee from their GitHub releases, each download checked against its pinned SHA-256 before it is unpacked.
 3. Self-test the toolchain check, then check the SDK and the CI tools against their pins.
-4. Self-test the personal-data scanner and the license checker.
+4. Self-test the personal-data scanner, the license checker and the package scan.
 5. REUSE: `reuse lint`.
 6. gitleaks over the whole history: `gitleaks git --config eng/gitleaks.toml --redact --ignore-gitleaks-allow`, with a JSON report. The step fails first if a `.gitleaksignore` exists.
 7. The personal-data and forbidden-file check.
@@ -208,10 +208,12 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 6. The planted mismatch of the build tools: run `tools/CheckToolchain.cs -- --fork-tools` with `/usr/bin`, which holds the Python that Xcode carries, first on the PATH, and without llvm-mingw's folder. The step passes only if the check fails and names the missing llvm-mingw and the found Python with the pinned version. It also runs with `GITHUB_ACTIONS=false`.
 7. Build `paneport_host.framework` with the CMake presets `ios-device` and `ios-device-test`, and check both with `eng/mac/check-framework.sh` ([native-host.md](native-host.md) section 11).
 8. Fetch the three forks at the commits this repository records, at depth 1, and of their own submodules only those that their first targets need, then run those targets with the build tools of the forks: Wine's `configure` for the macOS host with `--enable-archs=arm64ec,aarch64,i386` and its build tools, Wine's i386 libraries that DXMT's build looks for, FEX's CMake configuration for `arm64ec-w64-mingw32`, and DXMT's Meson setup of its 32-bit PE side ([forks.md](forks.md) section 7). Each prints the versions it uses.
-9. Restore Paneport.iOS from its lock file, and fail if a lock file was written, printing the file with a line break after it, so that the error command stands on its own line (dev-environment.md section 5).
-10. Build Paneport.iOS for `ios-arm64` in Release, without signing, and check its formatting with `dotnet format`, which needs the workload.
-11. Check the app: the scene delegate of its Info.plist equals the one in `src/Paneport.iOS/Info.plist`, `MinimumOSVersion` is 26.0, `lipo` finds arm64 code only, `codesign -dv` finds no signature, or only the linker's ad-hoc signature (`Signature=adhoc`, marked `linker-signed`) without a team identifier, and there is no `embedded.mobileprovision`.
-12. Only if every check of step 11 passed: zip the app with `ditto`, which keeps the bundle's name and the executable's file mode. Upload it with `actions/upload-artifact` only if every earlier step of the job passed, named by the pull request's commit, or on a push by the pushed commit.
+9. Restore both flavors of the app, Paneport.iOS and the device test flavor of `tests/device`, from their lock files, and fail if a lock file was written, printing each file with a line break after it, so that the error command stands on its own line (dev-environment.md section 5).
+10. Build both for `ios-arm64` in Release, without signing, with the pull request's head commit as `PaneportCommit` and the run number as `PaneportBuildNumber` for the build stamp, and check their formatting with `dotnet format`, which needs the workload.
+11. Sign each app ad hoc with `eng/mac/sign-adhoc.sh`: its frameworks first, then the app with `src/Paneport.iOS/Entitlements.plist`, with no Apple identity (C-0009 section 5).
+12. Check each app with `eng/mac/check-app.sh`: Info.plist with the bundle identifier of D3, the flavor's display name and the keys of C-0009 section 4, arm64 code linked against the host framework, the framework with the flavor's host build, ad-hoc signatures without a team identifier, no provisioning profile, and exactly `increased-memory-limit` as the entitlements ([ios-app-head.md](ios-app-head.md) section 11).
+13. Package each app as an `.ipa` with `eng/mac/package-ipa.sh`, and scan both with `tools/ScanPackage.cs`, which fails on a provisioning profile and on a team identifier or application-identifier prefix in any property list or signature.
+14. Only if every earlier step of the job passed: upload both `.ipa` files with `actions/upload-artifact`, as `Paneport-main-<commit>` and `Paneport-test-<commit>`, named by the pull request's head commit, or on a push by the pushed commit.
 
 **`native`**, on the macOS image that `eng/toolchain.json` pins, for every push and every pull request, like `dotnet` and `checks`:
 
@@ -245,7 +247,7 @@ From the repository root, with the SDK that `global.json` pins. Setting `DOTNET_
 
 | Check | Command |
 |---|---|
-| Self-tests | `dotnet run tools/ScanPersonalData.cs -- --self-test`, and the same for `CheckLicenses.cs` and `CheckToolchain.cs` |
+| Self-tests | `dotnet run tools/ScanPersonalData.cs -- --self-test`, and the same for `CheckLicenses.cs`, `CheckToolchain.cs` and `ScanPackage.cs` |
 | Personal data and forbidden files | `dotnet run tools/ScanPersonalData.cs` |
 | Dependency licenses | `dotnet run tools/CheckLicenses.cs` |
 | SDK pin | `dotnet run tools/CheckToolchain.cs` |
@@ -254,8 +256,9 @@ From the repository root, with the SDK that `global.json` pins. Setting `DOTNET_
 | Native tests | On a Mac, from `src/native`: `cmake --preset asan-ubsan`, `cmake --build --preset asan-ubsan`, `ctest --preset asan-ubsan`, and the same with `tsan` |
 | Interface conformance and bindings | On a Mac, after `cmake --preset macos-test` and `cmake --build --preset macos-test` in `src/native`: `PANEPORT_HOST_LIBRARY="$PWD/build/native/macos-test/libpaneport_host.dylib" dotnet test tests/Paneport.Interop.Tests/Paneport.Interop.Tests.csproj` from the repository root |
 | Host frameworks | On a Mac, after building the presets `ios-device` and `ios-device-test`: `eng/mac/check-framework.sh build/native/ios-device/paneport_host.framework build/native/ios-device-test/paneport_host.framework` |
+| App packages | `dotnet run tools/ScanPackage.cs -- --self-test` anywhere; on a Mac, after building, signing and packaging the apps as the `ios` job does, `eng/mac/check-app.sh <app> main` (or `test`) and `dotnet run tools/ScanPackage.cs -- <ipa>...` |
 | CI tool pins | `dotnet run tools/CheckToolchain.cs -- --ci-tools`, where the CI tools are installed |
-| Formatting | `dotnet format eng/ci.slnf --verify-no-changes`, `dotnet format whitespace tools --folder --verify-no-changes` and, for Paneport.iOS without the iOS workload, `dotnet format whitespace src/Paneport.iOS --folder --verify-no-changes`; the `ios` job checks its full style |
+| Formatting | `dotnet format eng/ci.slnf --verify-no-changes`, `dotnet format whitespace tools --folder --verify-no-changes` and, for the two iOS projects without the iOS workload, `dotnet format whitespace src/Paneport.iOS --folder --verify-no-changes` and the same for `tests/device`; the `ios` job checks their full style |
 | Trimmed publish | `dotnet build eng/ci.slnf -c Release`, then `dotnet publish tests/Paneport.TrimTest/Paneport.TrimTest.csproj -c Release --no-build` |
 | Secrets | `gitleaks git --config eng/gitleaks.toml --redact --ignore-gitleaks-allow .`, once the pinned release is installed. The repository has no `.gitleaksignore`, which gitleaks would honor. |
 | Links | `lychee --config eng/lychee.toml --no-progress .` and `lychee --offline --no-progress --extensions md docs/research`, once the pinned release is installed. Before a research note is published, `lychee --no-progress <note>` also checks its external sources. |
@@ -279,7 +282,8 @@ Each check is shown to fail once, on a draft pull request from a scratch branch 
 
 A run passes when each planted change fails its step and that step's output names the file. The planted build error also fails the test step and the trimmed publish, which need the build. The forbidden-file rule is checked by its self-test only. The pull request of the stage links the run.
 
-The `ios` job plants its own failures on every run: it runs the bootstrap against another Xcode on the image and passes only if the bootstrap fails and names both versions, and it runs `--fork-tools` with another Python first on the PATH and without llvm-mingw, and passes only if the check fails and names both (section 6). A change to `eng/mac/bootstrap.sh`, to the Xcode check or to the checks of the build tools of the forks is therefore tested by every run of the job. The `native` job plants a format error in a scratch copy on every run and passes only if the format check fails on it (section 6), and `tests/Paneport.Interop.Tests` plants a wrong definition of `pp_memory_budget_t` that the conformance test must report by struct and member ([interop.md](interop.md) section 8).
+The `ios` job plants its own failures on every run: it runs the bootstrap against another Xcode on the image and passes only if the bootstrap fails and names both versions, and it runs `--fork-tools` with another Python first on the PATH and without llvm-mingw, and passes only if the check fails and names both (section 6). A change to `eng/mac/bootstrap.sh`, to the Xcode check or to the checks of the build tools of the forks is therefore tested by every run of the job. The `native` job plants a format error in a scratch copy on every run and passes only if the format check fails on it (section 6), and `tests/Paneport.Interop.Tests` plants a wrong definition of `pp_memory_budget_t` that the conformance test must report by struct and member ([interop.md](interop.md) section 8). The self-test of `tools/ScanPackage.cs`, which the `checks` job runs, plants a provisioning profile, team identifiers and application-identifier prefixes in packages that it builds in memory, and passes only if each fails and names its file.
+
 
 ## 10. Open items
 

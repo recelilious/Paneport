@@ -21,11 +21,11 @@ flowchart LR
   Desktop["Paneport.Desktop<br>composition root, fakes"] --> UI["Paneport.UI<br>views"]
   Desktop --> Core["Paneport.Core<br>model, interfaces, view models"]
   UI --> Core
-  iOS["Paneport.iOS (M1.3)"] -.-> UI
-  iOS -.-> Core
+  iOS["Paneport.iOS<br>composition root, device stores"] --> UI
+  iOS --> Core
 ```
 
-- The view models live in Paneport.Core and never reference Avalonia. Paneport.UI binds its views to them. The heads implement the interfaces and create everything in a composition root: Paneport.Desktop now, Paneport.iOS from M1.3. The directions are those of C-0004 section 2, and each test project's dependency direction test checks them.
+- The view models live in Paneport.Core and never reference Avalonia. Paneport.UI binds its views to them. The heads implement the interfaces and create everything in a composition root: Paneport.Desktop with fakes, and Paneport.iOS with the device's implementations since M1.3 ([ios-app-head.md](ios-app-head.md) section 3). The directions are those of C-0004 section 2, and each test project's dependency direction test checks them.
 - View models reach the native host only through the runtime host interface (C-0004 section 1).
 - The main view is a control, not a window. The desktop head puts it in a window, and the iOS head shows it as its single main view (`avalonia_ui_layer.md` section 2.1).
 
@@ -56,16 +56,16 @@ Rules that the types enforce:
 
 | Interface | Covers now | Desktop head | Real implementation |
 |---|---|---|---|
-| `IRuntimeHost` | The implementation's name, the ABI version and the memory budget | `FakeRuntimeHost` (section 6) | M1.3: a host adapter over Paneport.Interop, whose bindings M1.2 writes |
-| `ILibraryService` | Listing the titles | `SampleLibrary` (section 6) | M7.1 builds the library from Steam; M6.5 adds imported titles. M1.3 uses an empty library until then. |
+| `IRuntimeHost` | The implementation's name, the ABI version and the bindings' version, the import, the host's events and the memory budget | `FakeRuntimeHost` (section 6) | `NativeRuntimeHost`, the host adapter over Paneport.Interop ([ios-app-head.md](ios-app-head.md) section 4) |
+| `ILibraryService` | Listing the titles | `SampleLibrary` (section 6) | M7.1 builds the library from Steam; M6.5 adds imported titles. The iOS head uses `EmptyLibraryService` until then. |
 | `ISteamService` | The sign-in state only | `SignedOutSteamService`, from Paneport.Core | M2.3, in Paneport.Steam |
-| `ISettingsStore` | Loading and saving `AppSettings` | `InMemorySettingsStore`, for one run | M1.3 (S1.3.5): a file in the settings folder of C-0004 section 4 |
-| `ITokenStore` | Reading, writing and deleting the Steam refresh token | `InMemoryTokenStore`, for one run and never on disk | M1.3 (S1.3.6): the keychain (C-0004 section 4); M2.3 (S2.3.3) makes the Steam service use it |
-| `ILog` | Writing a log line | `ConsoleLog`, to the terminal | M1.3: a sink in `Library/Caches/Paneport/` |
+| `ISettingsStore` | Loading and saving `AppSettings` | `InMemorySettingsStore`, for one run | `FileSettingsStore`, a file in the settings folder of C-0004 section 4 (ios-app-head.md section 5) |
+| `ITokenStore` | Reading, writing and deleting the Steam sign-in: the refresh token and the account name, as a `SavedSignIn` | `InMemoryTokenStore`, for one run and never on disk | `SecureTokenStore` over the keychain (C-0004 section 4, ios-app-head.md section 5); M2.3 (S2.3.3) makes the Steam service use it |
+| `ILog` | Writing a log line | `ConsoleLog`, to the terminal | `FileLog`, a file below `Library/Caches/Paneport/` (ios-app-head.md section 9) |
 | `INavigator` | Opening a page on top of the current one | Not a head's: the shell implements it | The shell (section 5) |
 
 - **Shape.** Each interface covers only what the shell shows now, so that later stages, which know more, can change it cheaply before the iOS head exists. The library service and the settings and token stores are asynchronous, with a cancellation token, because their real implementations wait on files, the keychain or the network. Five members are synchronous. The runtime host's three, `ImplementationName`, `AbiVersion` and `GetMemoryBudget`, are fixed values or cheap calls that any thread may make, such as `pp_abi_version` and `pp_memory_get_budget` (C-0005 section 2). The Steam sign-in state is a plain property until M2.3 designs sign-in. `ILog.Write` returns at once, so that logging never waits.
-- **`AppServices`** collects the six services that a head provides, and the shell takes it. The token store has no user yet; the Steam sign-in of M2.3 is the first.
+- **`AppServices`** collects the six services that a head provides, and what the Diagnostics page reads besides the host (ios-app-head.md section 8), and the shell takes it. A head that gives a developer menu, as the device test flavor does, gives it to the shell beside the services. The token store has no user yet; the Steam sign-in of M2.3 is the first.
 - **The Steam stub** `SignedOutSteamService` is in Paneport.Core, not in a head, because both heads use it until M2.3: the desktop head now, and the iOS head of M1.3.
 - **Logging.** A log line never holds a password, token or other personal data (C-0010 section 2). Where the shell logs a failure, it writes the exception's type and not its message, because a message can hold a local path. A `Secret` written into a message shows as `[redacted]`. Avalonia's own warnings reach the log through `AvaloniaLogForwarder` in Paneport.UI, under the same rule (section 6).
 
@@ -104,13 +104,13 @@ The composition root, `CompositionRoot.CreateMainWindow`, creates the log, the f
 | Field | Value |
 |---|---|
 | Host | Fake host (desktop head sample values, not a device reading) |
-| Host ABI version | 1.0 |
+| Host ABI version | 1.1 |
 | Memory limit | 6,144 MB |
 | Available memory | 5,632 MB |
 | Current footprint | 512 MB |
 | Game Mode level | Not reached |
 
-ABI version 1.0 stood for the first version of the host headers, and M1.2 gave the headers that version ([native-host.md](native-host.md) section 2), so the fake reports what the native host reports.
+The fake reports the version of the host headers, 1.1 since M1.3 added `pp_device_get_model` ([native-host.md](native-host.md) section 2). The rest of the Diagnostics page shows stand-ins that say they are not a device: no entitlements, crash record or storage folders, and a memory timeline that samples the fake once a second.
 
 **Sample titles.** `SampleLibrary` holds these titles, in the order the Library shows them. They cover every install state and launch path, one local title and one very long name.
 
@@ -157,15 +157,15 @@ The titles were invented for Paneport and carry no game artwork or other game ma
 ## 10. Open questions
 
 - **Slug pattern.** Settled by M6.4: the title schema implements the pattern of section 2 (`compat-db.md` section 2).
-- **Expected ABI version.** M1.2 set it: the .NET side expects major version 1, which Paneport.Interop names as `HostAbi.Major` ([interop.md](interop.md) section 4). M1.3 checks it at startup and shows the compatibility on Diagnostics.
-- **Token store shape.** M1.3 keeps the account name next to the refresh token, and its developer menu writes a test item under its own key, so `ITokenStore` will grow there (M1.3, M7.1).
+- **Expected ABI version.** Settled: the .NET side expects major version 1, which Paneport.Interop names as `HostAbi.Major` ([interop.md](interop.md) section 4). The iOS head checks it before `pp_init` and shows the compatibility on Diagnostics (ios-app-head.md section 3).
+- **Token store shape.** Settled by M1.3: `ITokenStore` keeps a `SavedSignIn` with the account name next to the refresh token, and the developer menu writes its test item under a key of its own (ios-app-head.md section 5). M7.1 proposes the same layout.
 - **The token in managed memory.** A .NET string cannot be wiped. C-0005 section 2 makes the host zero its own copy; whether the managed side keeps the token as bytes it can clear is for M2.3 to decide.
-- **A failed save.** Today only the log records it. How the Settings page shows it is decided with the first store that can fail, the settings file of M1.3.
-- **Overlapping saves and loads.** A newer change cancels the save before it, and leaving Settings does not wait for its save, so a new Settings page can load while that save runs. The settings file of M1.3 must therefore serialize its work: a cancelled save stops before it replaces the file, and a load waits for a pending save. Otherwise an older save could land last, or a new page could show the older value while the file holds the newer one.
+- **A failed save.** Settled by M1.3: the Settings page shows "The settings could not be saved." until a later save works, and the log keeps the exception's type (ios-app-head.md section 5).
+- **Overlapping saves and loads.** Settled by M1.3: the settings file runs one operation at a time, a cancelled save stops before it replaces the file, and a load waits for a pending save (ios-app-head.md section 5).
 - **Loads of pages that are gone.** Only a newer section cancels a load (section 5). Leaving the first Library page or a pushed page lets its load run to its end, which costs nothing with today's fakes. When M7.1 makes the Library's load a Steam request, it decides whether leaving a page cancels its load, for example through a token that the shell cancels when it drops the page.
 - **The locale in a session.** Whether Wine needs another form of the tag, such as `de_DE.UTF-8`, is for the session flow of M6.5, which converts it.
 - **Larger libraries.** The Library realizes every title. When the library comes from Steam (M7.1), it moves to a virtualizing panel, and download progress needs change notifications, which `TitleViewModel` does not raise yet.
-- **The phone.** The layout works at phone width on the headless platform. Safe areas, the on-screen keyboard and the overlay are checked on the device from M1.3 and M2.1.
+- **The phone.** The layout works at phone width on the headless platform. The iOS head keeps the shell out of the safe area (ios-app-head.md section 2); L1 checks it on the device, and the on-screen keyboard and the overlay come with M2.1.
 
 ## 11. Sources
 

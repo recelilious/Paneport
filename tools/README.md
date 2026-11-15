@@ -12,6 +12,7 @@ C# file-based tools that check the repository (C-0004 section 3, C-0011 section 
 | `ScanPersonalData.cs` | Personal data in `docs/evidence/`, `compat/` and `tests/`, and files that C-0002 section 6 forbids anywhere | `eng/personal-data-allow-list.json` |
 | `CheckLicenses.cs` | That every package, tool, action and submodule is covered by the register in C-0003 section 6 | `eng/license-map.json` |
 | `CheckToolchain.cs` | The installed SDK against `global.json` and the macOS jobs' runner image against `eng/toolchain.json`; with `--ci-tools` also the tools of the `checks` job, with `--xcode` Xcode, with `--ios-workload` the installed iOS workload set, with `--cmake` CMake, with `--llvm` clang-format and clang-tidy, and with `--fork-tools` the build tools of the forks (C-0009 section 2) | `global.json`, `eng/toolchain.json`, `.github/workflows/` |
+| `ScanPackage.cs` | App packages, such as the `.ipa` files of the `ios` job: it fails on a provisioning profile, and on a property list or code signature that names a team identifier or an application-identifier prefix, and lists the entitlements it finds (C-0009 section 6) | None; the packages are its arguments |
 
 Run a tool, or its self-test over synthetic fixtures:
 
@@ -23,8 +24,10 @@ dotnet run tools/ScanPersonalData.cs
 dotnet run tools/ScanPersonalData.cs -- --self-test
 ```
 
+`ScanPackage.cs` takes the packages to scan as its arguments, after `--`, and `--self-test` builds its packages in memory.
+
 A tool exits with 0 when its check passes, 1 when it fails, and 2 for a wrong argument or a file it cannot read. Findings name the file and the line, never the value they matched.
 
-`packages.lock.json` is the lock file that the three tools share. It lists no package, because each tool turns off `PublishAot` with a `#:property` directive and uses nothing beyond the base class library. A tool that ever needs a package gets a lock file of its own, `packages.<Tool>.cs.lock.json`, which NuGet then uses in place of the shared one; `CheckLicenses.cs` requires it.
+`packages.lock.json` is the lock file that the four tools share. It lists no package, because each tool turns off `PublishAot` with a `#:property` directive and uses nothing beyond the base class library. A tool that ever needs a package gets a lock file of its own, `packages.<Tool>.cs.lock.json`, which NuGet then uses in place of the shared one; `CheckLicenses.cs` requires it.
 
 [repository-checks.md](../docs/design/repository-checks.md) describes every rule, the mapping policy, the pins, the CI jobs, how to run each check locally, and the planted-failure procedure.

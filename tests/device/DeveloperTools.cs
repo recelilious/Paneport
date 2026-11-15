@@ -52,7 +52,7 @@ internal static class DeveloperTools
                 new DeveloperAction("Read", async cancellationToken =>
                 {
                     var bytes = await keychain.ReadAsync(TestItemKey, cancellationToken);
-                    if (bytes is null || keychain.ReadAttributes(TestItemKey) is not { } attributes)
+                    if (bytes is null || KeychainItemStore.ReadAttributes(TestItemKey) is not { } attributes)
                     {
                         return "No item.";
                     }

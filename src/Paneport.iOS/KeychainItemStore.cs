@@ -65,7 +65,7 @@ internal sealed class KeychainItemStore : ISecureItemStore
     // The attributes of an item, for the developer menu's token store page: whether it is accessible
     // after the first unlock on this device only, and whether it is synchronizable. Null when there
     // is no such item.
-    public (bool AfterFirstUnlockThisDeviceOnly, bool Synchronizable, int Length)? ReadAttributes(string key)
+    public static (bool AfterFirstUnlockThisDeviceOnly, bool Synchronizable, int Length)? ReadAttributes(string key)
     {
         using var query = Query(key);
         using var record = SecKeyChain.QueryAsRecord(query, out var status);

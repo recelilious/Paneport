@@ -37,12 +37,15 @@ SPDX-License-Identifier: MIT
   Device builds compile everything ahead of time, with the interpreter off (C-0009 section 3).
   The build signs nothing: CI never holds an Apple identity (C-0009 section 5), and
   eng/mac/sign-adhoc.sh signs the app ad hoc with Entitlements.plist afterwards. The SDK picks
-  up an Entitlements.plist next to the project file by itself, so an unsigned build clears it. A
-  build on a Mac with a development profile can sign itself with -p:EnableCodeSigning=true.
+  up an Entitlements.plist next to the project file by itself, after this file, and then asks
+  for a provisioning profile (MT7139), so an unsigned build turns that off and clears the
+  property. A build on a Mac with a development profile can sign itself with
+  -p:EnableCodeSigning=true.
   -->
   <PropertyGroup>
     <UseInterpreter>false</UseInterpreter>
     <EnableCodeSigning Condition="'$(EnableCodeSigning)' == ''">false</EnableCodeSigning>
+    <EnableDefaultCodesignEntitlements Condition="'$(EnableCodeSigning)' != 'true'">false</EnableDefaultCodesignEntitlements>
     <CodesignEntitlements Condition="'$(EnableCodeSigning)' != 'true'"></CodesignEntitlements>
     <CodesignEntitlements Condition="'$(EnableCodeSigning)' == 'true'">$(MSBuildThisFileDirectory)Entitlements.plist</CodesignEntitlements>
   </PropertyGroup>

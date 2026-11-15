@@ -15,6 +15,7 @@ SPDX-License-Identifier: MIT
   <ItemGroup>
     <PackageVersion Include="Avalonia" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.iOS" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
   </ItemGroup>
 

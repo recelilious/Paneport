@@ -65,7 +65,7 @@ FEX upstream does not build for macOS. Its ARM64EC module needs these changes on
 - guard regions of a whole host page, 16 KB, for its JIT and call-return stacks, because Wine's 4 KB page simulation gives every 4 KB page of a host page the same protection, which would leave a 4 KB guard page writable;
 - nothing for its optional Unix library, `Source/Windows/UnixLib`, whose functions (hardware TSO, transparent huge pages, naming mappings, shared statistics) FEX's module does without when the library is not there.
 
-FEX-darwin, which C-0003 registers, carries such changes. Since 2026-11-08 its Darwin support is five patches that it imported from Hadron, a Mac app that plays Windows games from a Steam library, and it moved its own patches to a FEX commit after FEX-2611 on 2026-11-11. Whether Paneport takes Hadron's patches is recelilious's decision under C-0001 section 6, which forbids code from existing products whatever its license; until it is made, the fork's FEX changes are written in the fork from FEX's own code and Apple's documentation (section 11).
+FEX-darwin carries such changes, but since 2026-11-08 its Darwin support is five patches that it imported from Hadron, a Mac app that plays Windows games from a Steam library, and it moved its own patches to a FEX commit after FEX-2611 on 2026-11-11. Hadron is an existing product under C-0001 section 6, which forbids its code whatever the license. **recelilious decided on 2026-11-15** that Paneport takes no code from Hadron, nor any of FEX-darwin's patches that build on it: the FEX fork's macOS changes are written from FEX's own code and Apple's public documentation alone, and nobody writing them opens those patches, so that nothing is rewritten from them (C-0001 section 6, C-0003 section 10 rule 4). FEX-darwin's README and published results are read as evidence of what FEX needs on Darwin, as for any product (C-0001 section 6 item 3), and C-0003 1.6 proposes to move its register row to the reference-only list.
 
 ## 4. The Win32 test programs
 
@@ -141,7 +141,7 @@ Several of these come under licenses that C-0003 section 5 does not list yet, so
 
 ## 11. Open items
 
-- **Decisions for recelilious:** whether Hadron's patches may enter the FEX fork (section 3.1), the downloads that the fork work needs, and the scratch workflow (section 7).
+- **Decided on 2026-11-15:** no code from Hadron or from FEX-darwin's patches (section 3.1); shallow checkouts of the two forks and merge request 11638's commit, as source only and deleted afterwards; and scratch workflows on `scratch/m4-2-*` branches, deleted after their runs, with registered actions pinned by commit, no cache, no secrets, read permissions and no artifacts (section 7).
 - **The rule for marking changed files** under LGPL-2.1 section 2(b) is proposed before the fork's first change to a Wine file ([forks.md](forks.md) section 11).
 - **clang-tidy for `tests/win32/`** needs llvm-mingw's headers, which the `native` job does not install; it runs where llvm-mingw is, until the `native` job gets it.
 - **The first runs** answer the questions of section 9 and measure the build times.

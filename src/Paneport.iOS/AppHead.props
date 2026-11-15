@@ -101,6 +101,21 @@ SPDX-License-Identifier: MIT
     <TrimmableAssembly Include="Avalonia.DesignerSupport" />
   </ItemGroup>
 
+  <!--
+  Avalonia.iOS is kept whole. When .NET for iOS trims an assembly with NSObject subclasses, its
+  MarkNSObjectsStep preserves their members through dynamic dependencies by name, and the names
+  of explicitly implemented protocol members, such as those of Avalonia's text input responder,
+  do not resolve (IL2037). Those members would then be trimmed away and the keyboard's input lost.
+  Copied whole, the assembly keeps every member and gets no such dependency.
+  -->
+  <Target Name="PaneportKeepAvaloniaIOSWhole" BeforeTargets="_ComputeManagedAssemblyToLink">
+    <ItemGroup>
+      <ResolvedFileToPublish Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'Avalonia.iOS.dll'">
+        <TrimMode>copy</TrimMode>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Core/Paneport.Core.csproj" />
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Steam/Paneport.Steam.csproj" />

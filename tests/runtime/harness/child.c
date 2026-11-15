@@ -93,6 +93,16 @@ static void read_stream(stream_t *stream, size_t limit, bool *truncated) {
     stream->data[stream->length] = '\0';
 }
 
+// The working folder of the child. macOS 26 names the action as POSIX 2024 does and deprecates
+// its earlier name, which the C libraries of other systems may still have alone.
+static int add_chdir(posix_spawn_file_actions_t *actions, const char *directory) {
+#if defined(__APPLE__)
+    return posix_spawn_file_actions_addchdir(actions, directory);
+#else
+    return posix_spawn_file_actions_addchdir_np(actions, directory);
+#endif
+}
+
 static int start_child(pid_t *child, char *const arguments[], char *const environment[],
                        const char *directory, const int output[2], const int errors[2]) {
     posix_spawn_file_actions_t actions;
@@ -125,7 +135,7 @@ static int start_child(pid_t *child, char *const arguments[], char *const enviro
     status =
         status != 0 ? status : posix_spawn_file_actions_adddup2(&actions, errors[1], STDERR_FILENO);
     if (status == 0 && directory != NULL) {
-        status = posix_spawn_file_actions_addchdir_np(&actions, directory);
+        status = add_chdir(&actions, directory);
     }
     if (status == 0) {
         status = posix_spawn(child, arguments[0], &actions, &attributes, arguments, environment);
@@ -173,7 +183,8 @@ static int collect(pid_t child, stream_t streams[2], unsigned timeout_seconds, s
         }
         int ready = poll(count == 0U ? NULL : watched, count, PP_CHILD_POLL_MS);
         for (nfds_t index = 0; ready > 0 && index < count; index++) {
-            if ((watched[index].revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
+            unsigned events = (unsigned)watched[index].revents;
+            if ((events & ((unsigned)POLLIN | (unsigned)POLLHUP | (unsigned)POLLERR)) != 0U) {
                 read_stream(owners[index], limit, &result->truncated);
             }
         }

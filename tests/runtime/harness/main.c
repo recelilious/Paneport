@@ -77,8 +77,10 @@ static bool read_options(int argc, char *const *argv, options_t *options) {
         }
         *slot = value;
     }
-    const char *const required[] = {options->case_path, options->programs, options->expected,
-                                    options->prefix,    options->loader,   options->logs};
+    const char *const required[] = {
+        options->case_path, options->programs, options->expected,
+        options->prefix,    options->loader,   options->logs,
+    };
     for (size_t index = 0; index < sizeof required / sizeof required[0]; index++) {
         if (required[index] == NULL) {
             return false;

@@ -124,7 +124,6 @@ The `ios` and `native` jobs in `.github/workflows/ci.yml` are the macOS build ho
 ## 8. Open items
 
 - **The preview mark of `xcode-27`.** The image list still marks the image as a preview after GitHub's changelog announced it as generally available (section 2). If GitHub changes the image or its label, the pins move in a reviewed change.
-- **The ad-hoc signature.** Since M1.3 the job signs every app and framework ad hoc, and `eng/mac/check-app.sh` rejects a signature that is only the linker's. C-0011 section 4 still says that the job builds without signing; the clarification of C-0011 1.1 waits for recelilious's review.
 
 ## 9. Sources
 

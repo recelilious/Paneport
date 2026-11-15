@@ -30,17 +30,17 @@ Back to the [development plan](../development-plan.md).
 | S1.2.8 | Layout table and conformance test | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
 | S1.2.9 | Native format and analysis configuration | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
 | S1.2.10 | Host framework packaging | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| M1.3 | iOS app head | Medium | Planned | | |
-| S1.3.1 | Scene and root view controller | Small | Planned | | |
-| S1.3.2 | Native host embedding and host adapter | Small | Planned | | |
-| S1.3.3 | Info.plist and entitlements | Small | Planned | | |
-| S1.3.4 | Storage layout bootstrap | Small | Planned | | |
-| S1.3.5 | Settings store on disk | Small | Planned | | |
-| S1.3.6 | Keychain token store | Small | Planned | | |
-| S1.3.7 | Diagnostics wiring | Small | Planned | | |
-| S1.3.8 | Crash record reader | Small | Planned | | |
-| S1.3.9 | Ad-hoc signing, packaging and scan | Small | Planned | | |
-| S1.3.10 | Device test flavor skeleton | Small | Planned | | |
+| M1.3 | iOS app head | Medium | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
+| S1.3.1 | Scene and root view controller | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
+| S1.3.2 | Native host embedding and host adapter | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
+| S1.3.3 | Info.plist and entitlements | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
+| S1.3.4 | Storage layout bootstrap | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
+| S1.3.5 | Settings store on disk | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
+| S1.3.6 | Keychain token store | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
+| S1.3.7 | Diagnostics wiring | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
+| S1.3.8 | Crash record reader | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
+| S1.3.9 | Ad-hoc signing, packaging and scan | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
+| S1.3.10 | Device test flavor skeleton | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
 
 ## L1 Paneport on the iPhone
 

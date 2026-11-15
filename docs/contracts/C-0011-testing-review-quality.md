@@ -90,6 +90,16 @@ Registered as under review, and not used until recelilious decides:
 
 Not allowed: FluentAssertions 8 and later. They are under Xceed's proprietary Community License, which is free only for non-commercial use (it counts open-source development as non-commercial) and needs a paid license for any commercial use. That makes it a non-commercial-only license, which C-0003 section 5 forbids.
 
+## Proposed changes for 1.1
+
+**Not yet accepted.** Version 1.0 above stays binding until recelilious approves these changes. They come from stage M1.3, whose `ios` job produces the `.ipa` files that L1 installs on the device, as plan section 8 expects for this stage.
+
+1. **Section 4, the row of the `ios` job.** Replace its steps, "C-0009 stages 1 to 4 without signing: the forks, the native host, the Dock host and Paneport.iOS.", with: "C-0009 stages 1 to 4 without an Apple identity: the forks, the native host, the Dock host, and both flavors of the app, the main app and the device test flavor of `tests/device`. Each app and every framework it embeds is signed ad hoc, as C-0009 section 6 describes for releases, and each `.ipa` is checked and scanned as C-0009 section 6 describes, then uploaded."
+
+2. **Section 4, a new item after the item on the job's triggers.** Add: "An ad-hoc signature holds no Apple identity and no provisioning profile. It embeds the app's entitlements, so that a sideloading tool can read the ones it must request when it re-signs the app with the user's own Apple ID. The job never holds or uses an Apple-issued certificate or profile (C-0009 section 5)."
+
+Why: a sideloading tool such as AltStore reads the entitlements it requests from the app's signature, and an unsigned app carries none, so the increased memory limit of C-0009 section 4 would be lost on the device. C-0009 section 6 already signs releases this way from the `release` job; this change lets the `ios` job do the same for development builds. No other section changes.
+
 ## Change log
 
 | Version | Date | Notes |

@@ -1,0 +1,30 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+  The device test flavor (plan section 7.3): the full app plus the developer menu. It builds the
+  head from the sources of src/Paneport.iOS, with the head's build from AppHead.props, instead of
+  referencing that project, on which nothing may depend (C-0004 section 2). It shares the main
+  app's bundle identifier (D12), so it replaces the main app on the device, has its own display
+  name, and embeds the ios-device-test build of the host with the test exports
+  (docs/design/ios-app-head.md section 10). Like Paneport.iOS it needs a Mac with the iOS
+  workload, so eng/ci.slnf leaves it out (C-0011 section 4).
+  -->
+  <PropertyGroup>
+    <RootNamespace>Paneport.DeviceTest</RootNamespace>
+    <ApplicationTitle>Paneport Test</ApplicationTitle>
+    <PaneportHostPreset>ios-device-test</PaneportHostPreset>
+    <PaneportFlavor>device test flavor</PaneportFlavor>
+  </PropertyGroup>
+
+  <Import Project="../../src/Paneport.iOS/AppHead.props" />
+
+  <ItemGroup>
+    <Compile Include="../../src/Paneport.iOS/**/*.cs"
+             Exclude="../../src/Paneport.iOS/bin/**;../../src/Paneport.iOS/obj/**"
+             LinkBase="AppHead" />
+    <None Include="../../src/Paneport.iOS/Info.plist" Link="Info.plist" />
+  </ItemGroup>
+</Project>

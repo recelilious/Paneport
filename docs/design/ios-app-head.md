@@ -112,13 +112,21 @@ The page has seven sections. It never shows a device name, a team identifier, an
 
 The `ios` job builds both flavors in Release with full AOT and the interpreter off, and without signing, then:
 
-1. `eng/mac/sign-adhoc.sh` signs each framework and library in `Frameworks/` with `codesign --force --sign -`, then the app with `codesign --force --sign - --entitlements Entitlements.plist --generate-entitlement-der`, and verifies the result. An ad-hoc signature holds no Apple identity and no provisioning profile (C-0009 section 5), and embeds the entitlements that the user's sideloading tool requests when it re-signs the app, as C-0009 section 6 describes for releases. C-0011 section 4 says that the job builds without signing; the clarification of plan section 8 waits for recelilious's review (section 14).
+1. `eng/mac/sign-adhoc.sh` signs each framework and library in `Frameworks/` with `codesign --force --sign -`, then the app with `codesign --force --sign - --entitlements Entitlements.plist --generate-entitlement-der`, and verifies the result. An ad-hoc signature holds no Apple identity and no provisioning profile (C-0009 section 5), and embeds the entitlements that the user's sideloading tool requests when it re-signs the app, as C-0009 section 6 describes for releases. C-0011 section 4 says that the job builds without signing; the clarification of plan section 8 waits for recelilious's review (section 15).
 2. `eng/mac/check-app.sh` checks each app: the bundle identifier, the flavor's display name, iOS 26.0, the scene delegate and every key of C-0009 section 4 in Info.plist, a version of three numbers and an integer build number; arm64 code only, a link to `@rpath/paneport_host.framework/paneport_host` and the run path `@executable_path/Frameworks`; the framework in `Frameworks/` with its derived identifier and the flavor's host build, without test exports in the main app and with them in the test flavor; every signature ad hoc, without a team identifier and more than the linker's, and verified; no provisioning profile; and exactly `increased-memory-limit`, set to true, as the app's entitlements.
 3. `eng/mac/package-ipa.sh` puts the app into `Payload/` and zips it with `ditto`, which keeps the executable's file mode and the bundle's links and writes no resource forks.
 4. `tools/ScanPackage.cs` scans each `.ipa` and fails on a provisioning profile anywhere in it, and on a property list, XML or binary, or a code signature's entitlements that name a team identifier under one of the team keys (`TeamIdentifier`, `com.apple.developer.team-identifier`, `AppIdentifierPrefix`, `ApplicationIdentifierPrefix`, `DEVELOPMENT_TEAM`), or hold a team identifier in front of a bundle identifier or appended to one, as `application-identifier`, `keychain-access-groups` and re-signed identifiers do. A property list or signature that it cannot read fails too. It lists the entitlements of every signature, printing Boolean values only, and names a finding by package, file and rule, never by its value. Its self-test builds packages in memory, with a binary property list writer of its own, and the `checks` job runs it. M9.1 extends the tool for releases and keeps its name.
 5. Both `.ipa` files are uploaded, named by flavor and short commit hash: `Paneport-main-<commit>` and `Paneport-test-<commit>`, only when every earlier step passed. [dev-environment.md](dev-environment.md) section 6 says how to install them.
 
-## 12. Tests
+## 12. Trimming
+
+The Release build of the head is the first to trim Avalonia.Skia, SkiaSharp, HarfBuzzSharp and Avalonia.iOS together with an app (repository-checks.md section 7). The SDK trims an assembly that is marked trimmable and keeps every other one whole, and the trimmer analyzes what it keeps. Its first run found three causes, each fixed without a suppression (C-0010 section 2):
+
+- **IL2045, ours.** The trimmer of iOS builds removes every `AssemblyMetadataAttribute`, so the build stamp moved to the runtime's configuration (section 6).
+- **IL2104 for `Avalonia.DesignerSupport`.** It serves only the XAML previewer and the app never loads it, but it is not marked trimmable, so the SDK kept it whole and the trimmer analyzed all of it. `AppHead.props` marks it trimmable, and it goes with the rest of the unused code.
+- **IL2037, eleven times, for Avalonia.iOS.** When .NET for iOS trims an assembly with NSObject subclasses, its `MarkNSObjectsStep` preserves their members through dynamic dependencies by name, and the names of explicitly implemented protocol members, such as those of Avalonia's `AvaloniaAppDelegate<TApp>`, `DefaultAvaloniaViewController` and the text input responder of `AvaloniaView`, do not resolve. Those members would then be trimmed away, and the keyboard's input with them. `AppHead.props` keeps Avalonia.iOS whole, with the `TrimMode` metadata `copy` on its item of `ResolvedFileToPublish`, the extension point that the SDK reads, so it keeps every member and gets no such dependency. The cost is the assembly's unused code in the app.
+
+## 13. Tests
 
 | Small stage | Tests |
 |---|---|
@@ -131,21 +139,20 @@ The `ios` job builds both flavors in Release with full AOT and the interpreter o
 
 The account values of the tests are made up and assembled at run time, so that no file holds an identifier's shape (C-0011 section 1). The `ios` job covers S1.3.1, S1.3.3, S1.3.9 and S1.3.10, which need the iOS workload, and L1 checks the device behavior.
 
-## 13. Confirmed in this stage
+## 14. Confirmed in this stage
 
 - Avalonia's platform starts with `UseiOS()` and `SetupWithoutStarting()` without any delegate of Avalonia's, and the head builds with `AvaloniaView` in its own root view controller (section 2). Whether it renders and takes touches on the device is for L1.
 - The `NativeReference` of kind `Framework` links the executable against the framework and embeds it, and the executable carries the run path `@executable_path/Frameworks`, as `check-app.sh` checks.
 - The SDK takes an `Entitlements.plist` next to the project as the signing entitlements by itself, after the project's properties, and an unsigned build then fails with MT7139 unless `EnableDefaultCodesignEntitlements` is false (section 7).
 - The lock files of the two iOS projects name `net10.0-ios27.1` and its `ios-arm64` runtime, and hold Avalonia.iOS with the iOS native assets of SkiaSharp and HarfBuzzSharp, which the register's Avalonia, SkiaSharp and HarfBuzzSharp rows cover.
 
-## 14. Open items
+## 15. Open items
 
 - **The C-0011 clarification.** The ad-hoc signature of the `ios` job waits for recelilious's review of C-0011 1.1 on its own branch (C-0012 section 2). If recelilious reads section 4 as already allowing it, because it uses no Apple identity, the clarification is dropped.
 - **On the device, for L1.** The framework import under Mono, the readings of the host, the entitlements after AltStore re-signs the ad-hoc build, the keychain attributes, the backup marks and the crash record's round trip. If the import fails, the `__Internal` fallback of section 4 is built.
-- **Trimming of Avalonia's iOS backend.** The Release build of the head is the first to trim Avalonia.Skia, SkiaSharp, HarfBuzzSharp and Avalonia.iOS (repository-checks.md section 7); a warning they bring goes to recelilious.
 - **The Avalonia view's transparency, the overlay and pass-through** come with M2.1, and the activation events of Avalonia's app delegate with the stage that first needs one.
 
-## 15. Sources
+## 16. Sources
 
 Public material consulted (C-0001 section 6). Avalonia's and .NET for iOS's sources were read to learn their public API, not copied.
 

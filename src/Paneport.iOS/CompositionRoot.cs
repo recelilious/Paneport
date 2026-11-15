@@ -30,9 +30,24 @@ internal static partial class CompositionRoot
 
     public static AppComposition Compose()
     {
-        var root = ContainerFolders.FindRoot();
-        var log = OpenLog(root);
+        ILog log = new ConsoleLog();
+        try
+        {
+            var root = ContainerFolders.FindRoot();
+            log = OpenLog(root);
+            return Compose(root, log);
+        }
+        catch (Exception exception)
+        {
+            // A failure at launch shows its message in place of the shell rather than ending the
+            // app before anything is on screen. Only the type is logged; the message can hold a path.
+            log.Write(LogLevel.Error, LogSource, $"Startup failed with {exception.GetType().Name}.");
+            return AppComposition.Failed($"Paneport could not start ({exception.GetType().Name}).", log);
+        }
+    }
 
+    private static AppComposition Compose(string root, ILog log)
+    {
         // Set before any view exists, so that a binding error in a page reaches the log.
         Logger.Sink = new AvaloniaLogForwarder(log);
         log.Write(LogLevel.Information, LogSource, "Paneport is starting.");

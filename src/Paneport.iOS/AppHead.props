@@ -69,7 +69,9 @@ SPDX-License-Identifier: MIT
   </ItemGroup>
 
   <!--
-  The build stamp of Diagnostics (ios-app-head.md section 6), as assembly metadata. CI passes the
+  The build stamp of Diagnostics (ios-app-head.md section 6), as values of the runtime's
+  configuration, which AppContext.GetData reads; the trimmer of iOS builds removes every
+  AssemblyMetadataAttribute, so assembly metadata would be lost (IL2045). CI passes the
   pull request's head commit as PaneportCommit, because it checks out the merge commit; a local
   build records none.
   -->
@@ -79,11 +81,11 @@ SPDX-License-Identifier: MIT
   </PropertyGroup>
 
   <ItemGroup>
-    <AssemblyMetadata Include="PaneportCommit" Value="$(PaneportCommit)" />
-    <AssemblyMetadata Include="PaneportConfiguration" Value="$(Configuration)" />
-    <AssemblyMetadata Include="PaneportInterpreter" Value="$(UseInterpreter)" />
-    <AssemblyMetadata Include="PaneportHostPreset" Value="$(PaneportHostPreset)" />
-    <AssemblyMetadata Include="PaneportFlavor" Value="$(PaneportFlavor)" />
+    <RuntimeHostConfigurationOption Include="Paneport.Commit" Value="$(PaneportCommit)" />
+    <RuntimeHostConfigurationOption Include="Paneport.Configuration" Value="$(Configuration)" />
+    <RuntimeHostConfigurationOption Include="Paneport.Interpreter" Value="$(UseInterpreter)" />
+    <RuntimeHostConfigurationOption Include="Paneport.HostPreset" Value="$(PaneportHostPreset)" />
+    <RuntimeHostConfigurationOption Include="Paneport.Flavor" Value="$(PaneportFlavor)" />
   </ItemGroup>
 
   <ItemGroup>

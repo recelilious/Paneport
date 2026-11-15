@@ -40,6 +40,8 @@ The head depends on Core, Steam, UI and Interop, and nothing depends on it (C-00
 6. Start the host with `HostStartup.Start`: read `pp_abi_version`; when its major version differs from the bindings' (`HostAbi.Major`), stop with a message and never call `pp_init` (C-0005 section 1); otherwise call `pp_init` with `Library/Caches/Paneport/` as the crash record folder, then set the failure handler, the log handler and the event handler. A host that cannot be loaded, that refuses to start or that refuses its handlers stops startup with a message as well. The messages name versions, never paths.
 7. Build the services and the shell (section 4), with the developer menu in the test flavor (section 10).
 
+An exception at any step ends the composition with a message that names the exception's type, in place of the shell (section 2), and the log keeps the type; the app never ends before anything is on screen.
+
 The root view controller starts the shell once its view has appeared, which runs the shell's first load on the UI thread with Avalonia's synchronization context in place, and starts the memory timeline's timer at the same time (section 8).
 
 ## 4. The host adapter and the services
@@ -59,7 +61,7 @@ The root view controller starts the shell once its view has appeared, which runs
 
 ## 6. The build stamp and the versions
 
-- **The stamp.** `AppHead.props` records, as assembly metadata, the commit, the configuration, the interpreter setting, the host build and the flavor. CI passes the pull request's head commit as `PaneportCommit`, because the job checks out the merge commit; a push names its own commit, and a local build records none. `BuildInfo` adds the versions of the bundle's Info.plist and the compilation mode as the runtime reports it: "Full ahead-of-time" when `RuntimeFeature.IsDynamicCodeSupported` is false, as it is with full AOT and the interpreter off (C-0009 section 3). The runtime is Mono (C-0010 section 1), and the host import is the framework of section 4.
+- **The stamp.** `AppHead.props` records the commit, the configuration, the interpreter setting, the host build and the flavor as values of the runtime's configuration (`RuntimeHostConfigurationOption`), which `AppContext.GetData` reads; the trimmer of iOS builds removes every `AssemblyMetadataAttribute`, so assembly metadata would be lost (IL2045). CI passes the pull request's head commit as `PaneportCommit`, because the job checks out the merge commit; a push names its own commit, and a local build records none. `BuildInfo` adds the versions of the bundle's Info.plist and the compilation mode as the runtime reports it: "Full ahead-of-time" when `RuntimeFeature.IsDynamicCodeSupported` is false, as it is with full AOT and the interpreter off (C-0009 section 3). The runtime is Mono (C-0010 section 1), and the host import is the framework of section 4.
 - **Development versions.** `CFBundleShortVersionString` is the next release, `0.1.0`, from `ApplicationDisplayVersion`, and `CFBundleVersion` is the CI run number from `PaneportBuildNumber`, an integer that grows with every run; a local build uses 1. Release versions come from tags (C-0009 section 6, M9.1).
 
 ## 7. Info.plist and entitlements

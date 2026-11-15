@@ -548,10 +548,12 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
+          status=0
           for project in src/Paneport.iOS/Paneport.iOS.csproj tests/device/Paneport.DeviceTest.csproj; do
             dotnet build "$project" -c Release --no-restore \
-              -p:PaneportCommit="$HEAD_SHA" -p:PaneportBuildNumber="$RUN_NUMBER"
+              -p:PaneportCommit="$HEAD_SHA" -p:PaneportBuildNumber="$RUN_NUMBER" || status=1
           done
+          exit "$status"
 
       - name: Check the formatting of both flavors
         if: ${{ !cancelled() }}

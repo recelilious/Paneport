@@ -140,8 +140,9 @@ static bool has_feature(const struct cpu_view *view, const struct cpu_feature *f
         break;
     }
     bool present = (value & (1U << feature->bit)) != 0U;
-    if (strcmp(feature->name, "avx") == 0 || strcmp(feature->name, "avx2") == 0) {
-        present = present && view->avx_state_saved;
+    bool needs_avx_state = strncmp(feature->name, "avx", 3U) == 0;
+    if (needs_avx_state && !view->avx_state_saved) {
+        present = false;
     }
     return present;
 }
@@ -179,14 +180,17 @@ bool pp_cpu_report(struct pp_test_run *run, const char *area) {
         }
         used += (size_t)added;
     }
-    bool printable = vendor_is_printable(view.vendor);
-    pp_test_line(run, "%s: vendor %s, features%s", area, printable ? view.vendor : "unreadable",
-                 list);
-    bool passed = pp_test_check(run, printable, "CPUID gives a vendor of 12 printable characters");
-    passed = pp_test_check(run, has_named_feature(&view, "sse") && has_named_feature(&view, "sse2"),
-                           "CPUID reports SSE and SSE2") &&
-             passed;
-    return passed;
+    unsigned failures = run->failures;
+    const char *vendor = "unreadable";
+    if (vendor_is_printable(view.vendor)) {
+        vendor = view.vendor;
+    }
+    pp_test_line(run, "%s: vendor %s, features%s", area, vendor, list);
+    pp_test_check(run, vendor_is_printable(view.vendor),
+                  "CPUID gives a vendor of 12 printable characters");
+    pp_test_check(run, has_named_feature(&view, "sse"), "CPUID reports SSE");
+    pp_test_check(run, has_named_feature(&view, "sse2"), "CPUID reports SSE2");
+    return run->failures == failures;
 }
 
 bool pp_cpu_compare_with_windows(struct pp_test_run *run, const char *area) {
@@ -194,14 +198,14 @@ bool pp_cpu_compare_with_windows(struct pp_test_run *run, const char *area) {
     bool sse = IsProcessorFeaturePresent(PF_XMMI_INSTRUCTIONS_AVAILABLE) != FALSE;
     bool sse2 = IsProcessorFeaturePresent(PF_XMMI64_INSTRUCTIONS_AVAILABLE) != FALSE;
     bool sse3 = IsProcessorFeaturePresent(PF_SSE3_INSTRUCTIONS_AVAILABLE) != FALSE;
-    bool passed = pp_test_check(run, sse == has_named_feature(&view, "sse"),
-                                "IsProcessorFeaturePresent agrees with CPUID about SSE");
-    passed = pp_test_check(run, sse2 == has_named_feature(&view, "sse2"),
-                           "IsProcessorFeaturePresent agrees with CPUID about SSE2") &&
-             passed;
-    passed = pp_test_check(run, sse3 == has_named_feature(&view, "sse3"),
-                           "IsProcessorFeaturePresent agrees with CPUID about SSE3") &&
-             passed;
+    unsigned failures = run->failures;
+    pp_test_check(run, sse == has_named_feature(&view, "sse"),
+                  "IsProcessorFeaturePresent agrees with CPUID about SSE");
+    pp_test_check(run, sse2 == has_named_feature(&view, "sse2"),
+                  "IsProcessorFeaturePresent agrees with CPUID about SSE2");
+    pp_test_check(run, sse3 == has_named_feature(&view, "sse3"),
+                  "IsProcessorFeaturePresent agrees with CPUID about SSE3");
+    bool passed = run->failures == failures;
     if (passed) {
         pp_test_line(run, "%s: IsProcessorFeaturePresent agrees on sse, sse2 and sse3", area);
     }

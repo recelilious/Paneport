@@ -111,23 +111,32 @@ static bool catch_raised(struct seh_record *record, ULONG_PTR first) {
     return handled;
 }
 
+// What unwind_through_finally saw: whether the outer handler ran, and whether the __finally
+// block ran and saw an abnormal termination.
+struct unwind_record {
+    bool handled;
+    bool finally_ran;
+    bool finally_abnormal;
+};
+
 // The exception passes through a __finally block on its way to the outer handler, which must
 // run the block during the unwind, as an abnormal termination.
-static bool unwind_through_finally(struct seh_record *record, bool *finally_abnormal) {
-    bool handled = false;
+static void unwind_through_finally(struct seh_record *record, struct unwind_record *unwind) {
     volatile bool finally_ran = false;
+    volatile bool finally_abnormal = false;
     __try {
         __try {
             raise_with_parameters(PP_SEH_RAISED_CODE, 0U);
         } __finally {
             finally_ran = true;
-            *finally_abnormal = _abnormal_termination() != 0;
+            finally_abnormal = _abnormal_termination() != 0;
         }
     } __except (
         record_exception(record, (EXCEPTION_POINTERS *)_exception_info(), PP_SEH_RAISED_CODE)) {
-        handled = true;
+        unwind->handled = true;
     }
-    return handled && finally_ran;
+    unwind->finally_ran = finally_ran;
+    unwind->finally_abnormal = finally_abnormal;
 }
 
 #pragma clang diagnostic pop
@@ -136,14 +145,19 @@ static bool unwind_through_finally(struct seh_record *record, bool *finally_abno
 // vectored_report as its first parameter.
 static LONG CALLBACK vectored_handler(EXCEPTION_POINTERS *pointers) {
     const EXCEPTION_RECORD *exception = pointers->ExceptionRecord;
-    bool ours = exception->ExceptionCode == PP_SEH_RAISED_CODE ||
-                exception->ExceptionCode == PP_SEH_CONTINUED_CODE;
-    if (!ours || exception->NumberParameters < 1U || exception->ExceptionInformation[0] == 0U) {
+    DWORD code = exception->ExceptionCode;
+    if (code != PP_SEH_RAISED_CODE && code != PP_SEH_CONTINUED_CODE) {
         return EXCEPTION_CONTINUE_SEARCH;
     }
-    struct vectored_report *report = (struct vectored_report *)exception->ExceptionInformation[0];
+    if (exception->NumberParameters < 1U || exception->ExceptionInformation[0] == 0U) {
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+    // The parameter is the address of the report, which pp_seh_extended passed in.
+    struct vectored_report *report =
+        (struct vectored_report *)
+            exception->ExceptionInformation[0]; // NOLINT(performance-no-int-to-ptr)
     report->seen = true;
-    if (exception->ExceptionCode == PP_SEH_CONTINUED_CODE) {
+    if (code == PP_SEH_CONTINUED_CODE) {
         report->continued = true;
         return EXCEPTION_CONTINUE_EXECUTION;
     }
@@ -151,74 +165,84 @@ static LONG CALLBACK vectored_handler(EXCEPTION_POINTERS *pointers) {
 }
 
 bool pp_seh_basic(struct pp_test_run *run, const char *area) {
+    unsigned failures = run->failures;
+
     struct seh_record violation;
     memset(&violation, 0, sizeof violation);
-    bool passed = pp_test_check(run, catch_access_violation(&violation),
-                                "a write to address 0x10 raises an access violation");
-    passed = pp_test_check(run,
-                           violation.parameters >= 2U && violation.information[0] == 1U &&
-                               violation.information[1] == PP_SEH_FAULT_ADDRESS,
-                           "the access violation names a write at address 0x10") &&
-             passed;
+    pp_test_check(run, catch_access_violation(&violation),
+                  "a write to address 0x10 raises an access violation");
+    pp_test_check(run, violation.parameters >= 2U, "the access violation has two parameters");
+    pp_test_check(run, violation.information[0] == 1U, "the access violation names a write");
+    pp_test_check(run, violation.information[1] == PP_SEH_FAULT_ADDRESS,
+                  "the access violation names address 0x10");
 
     struct seh_record division;
     memset(&division, 0, sizeof division);
-    passed = pp_test_check(run, catch_divide_by_zero(&division, 0),
-                           "an integer division by zero raises EXCEPTION_INT_DIVIDE_BY_ZERO") &&
-             passed;
+    pp_test_check(run, catch_divide_by_zero(&division, 0),
+                  "an integer division by zero raises EXCEPTION_INT_DIVIDE_BY_ZERO");
 
     struct seh_record raised;
     memset(&raised, 0, sizeof raised);
-    passed = pp_test_check(run, catch_raised(&raised, 0x1234U),
-                           "RaiseException reaches the handler of its __try block") &&
-             passed;
-    passed = pp_test_check(run,
-                           raised.flags == 0U && raised.parameters == 2U &&
-                               raised.information[0] == 0x1234U && raised.information[1] == 0x5678U,
-                           "the raised exception keeps its flags and parameters") &&
-             passed;
+    pp_test_check(run, catch_raised(&raised, 0x1234U),
+                  "RaiseException reaches the handler of its __try block");
+    pp_test_check(run, raised.flags == 0U, "the raised exception keeps its flags");
+    pp_test_check(run, raised.parameters == 2U, "the raised exception keeps two parameters");
+    pp_test_check(run, raised.information[0] == 0x1234U,
+                  "the raised exception keeps its first parameter");
+    pp_test_check(run, raised.information[1] == 0x5678U,
+                  "the raised exception keeps its second parameter");
 
+    bool passed = run->failures == failures;
     pp_test_line(run, "%s: access violation, divide by zero and RaiseException caught: %s", area,
-                 passed ? "pass" : "fail");
+                 pp_test_verdict(passed));
+    return passed;
+}
+
+static bool check_finally(struct pp_test_run *run, const char *area) {
+    unsigned failures = run->failures;
+    struct seh_record unwound;
+    memset(&unwound, 0, sizeof unwound);
+    struct unwind_record unwind = {false, false, false};
+    unwind_through_finally(&unwound, &unwind);
+    pp_test_check(run, unwind.handled, "the exception reaches the outer handler");
+    pp_test_check(run, unwind.finally_ran, "a __finally block runs while an exception unwinds");
+    pp_test_check(run, unwind.finally_abnormal, "the __finally block sees an abnormal end");
+    bool passed = run->failures == failures;
+    pp_test_line(run, "%s: a __finally block ran during the unwind: %s", area,
+                 pp_test_verdict(passed));
+    return passed;
+}
+
+static bool check_vectored(struct pp_test_run *run, const char *area) {
+    unsigned failures = run->failures;
+    struct vectored_report report = {false, false};
+    PVOID handle = AddVectoredExceptionHandler(1, vectored_handler);
+    if (pp_test_check(run, handle != NULL, "AddVectoredExceptionHandler works")) {
+        struct seh_record ordered;
+        memset(&ordered, 0, sizeof ordered);
+        ordered.report = &report;
+        pp_test_check(run, catch_raised(&ordered, (ULONG_PTR)&report),
+                      "a raised exception reaches the frame handler");
+        pp_test_check(run, ordered.vectored_seen_first,
+                      "the vectored handler runs before the frame handler");
+
+        report.seen = false;
+        raise_with_parameters(PP_SEH_CONTINUED_CODE, (ULONG_PTR)&report);
+        pp_test_check(run, report.seen, "the vectored handler sees the second exception");
+        pp_test_check(run, report.continued,
+                      "a vectored handler continues execution after RaiseException");
+        pp_test_check(run, RemoveVectoredExceptionHandler(handle) != 0U,
+                      "RemoveVectoredExceptionHandler works");
+    }
+    bool passed = run->failures == failures;
+    pp_test_line(run, "%s: vectored handlers ran first and continued execution: %s", area,
+                 pp_test_verdict(passed));
     return passed;
 }
 
 bool pp_seh_extended(struct pp_test_run *run, const char *area) {
-    struct seh_record unwound;
-    memset(&unwound, 0, sizeof unwound);
-    bool abnormal = false;
-    bool finally_passed = pp_test_check(run, unwind_through_finally(&unwound, &abnormal),
-                                        "a __finally block runs while an exception unwinds");
-    finally_passed =
-        pp_test_check(run, abnormal, "the __finally block sees an abnormal end") && finally_passed;
-    pp_test_line(run, "%s: a __finally block ran during the unwind: %s", area,
-                 finally_passed ? "pass" : "fail");
-
-    struct vectored_report report = {false, false};
-    PVOID handle = AddVectoredExceptionHandler(1, vectored_handler);
-    bool vectored_passed = pp_test_check(run, handle != NULL, "AddVectoredExceptionHandler works");
-    if (handle != NULL) {
-        struct seh_record ordered;
-        memset(&ordered, 0, sizeof ordered);
-        ordered.report = &report;
-        vectored_passed = pp_test_check(run, catch_raised(&ordered, (ULONG_PTR)&report),
-                                        "a raised exception reaches the frame handler") &&
-                          vectored_passed;
-        vectored_passed = pp_test_check(run, ordered.vectored_seen_first,
-                                        "the vectored handler runs before the frame handler") &&
-                          vectored_passed;
-
-        report.seen = false;
-        raise_with_parameters(PP_SEH_CONTINUED_CODE, (ULONG_PTR)&report);
-        vectored_passed =
-            pp_test_check(run, report.seen && report.continued,
-                          "a vectored handler continues execution after RaiseException") &&
-            vectored_passed;
-        vectored_passed = pp_test_check(run, RemoveVectoredExceptionHandler(handle) != 0U,
-                                        "RemoveVectoredExceptionHandler works") &&
-                          vectored_passed;
-    }
-    pp_test_line(run, "%s: vectored handlers ran first and continued execution: %s", area,
-                 vectored_passed ? "pass" : "fail");
-    return finally_passed && vectored_passed;
+    unsigned failures = run->failures;
+    check_finally(run, area);
+    check_vectored(run, area);
+    return run->failures == failures;
 }

@@ -27,7 +27,7 @@
 #include "child.h"
 #include "expected.h"
 
-#define PP_HARNESS_OUTPUT_LIMIT (4U * 1024U * 1024U)
+#define PP_HARNESS_OUTPUT_LIMIT ((size_t)4U * 1024U * 1024U)
 #define PP_HARNESS_ERROR_SIZE 512U
 #define PP_HARNESS_REASONS_SIZE 4096U
 #define PP_HARNESS_MAX_ENVIRONMENT 4096U
@@ -51,7 +51,7 @@ static int usage(void) {
     return 2;
 }
 
-static bool read_options(int argc, char **argv, options_t *options) {
+static bool read_options(int argc, char *const *argv, options_t *options) {
     memset(options, 0, sizeof *options);
     options->mode = "multi";
     for (int index = 1; index + 1 < argc; index += 2) {
@@ -77,9 +77,14 @@ static bool read_options(int argc, char **argv, options_t *options) {
         }
         *slot = value;
     }
-    return argc % 2 == 1 && options->case_path != NULL && options->programs != NULL &&
-           options->expected != NULL && options->prefix != NULL && options->loader != NULL &&
-           options->logs != NULL;
+    const char *const required[] = {options->case_path, options->programs, options->expected,
+                                    options->prefix,    options->loader,   options->logs};
+    for (size_t index = 0; index < sizeof required / sizeof required[0]; index++) {
+        if (required[index] == NULL) {
+            return false;
+        }
+    }
+    return argc % 2 == 1;
 }
 
 // The case's name: its file name without the folder and without .json.
@@ -93,20 +98,35 @@ static void case_name(const char *path, char *name, size_t size) {
     }
 }
 
-static bool join(char *path, size_t size, const char *folder, const char *name) {
-    int length = snprintf(path, size, "%s/%s", folder, name);
-    return length > 0 && (size_t)length < size;
+// Writes base/name into out; fails when it does not fit.
+static bool join(char *out, size_t size, const char *base, const char *name) {
+    int length = snprintf(out, size, "%s/%s", base, name);
+    if (length <= 0) {
+        return false;
+    }
+    return (size_t)length < size;
 }
 
-static bool make_folder(const char *path) { return mkdir(path, 0755) == 0 || errno == EEXIST; }
+static bool make_folder(const char *path) {
+    if (mkdir(path, 0755) == 0) {
+        return true;
+    }
+    return errno == EEXIST;
+}
 
 static bool write_file(const char *path, const char *data, size_t length) {
     FILE *file = fopen(path, "wb");
     if (file == NULL) {
         return false;
     }
-    bool written = length == 0U || fwrite(data, 1U, length, file) == length;
-    return fclose(file) == 0 && written;
+    bool written = true;
+    if (length > 0U && fwrite(data, 1U, length, file) != length) {
+        written = false;
+    }
+    if (fclose(file) != 0) {
+        written = false;
+    }
+    return written;
 }
 
 static bool copy_file(const char *source, const char *target) {
@@ -122,7 +142,9 @@ static bool copy_file(const char *source, const char *target) {
         if (count == 0) {
             break;
         }
-        copied = count > 0 && write(output, buffer, (size_t)count) == count;
+        if (count < 0 || write(output, buffer, (size_t)count) != count) {
+            copied = false;
+        }
     }
     (void)close(input);
     if (output >= 0 && close(output) != 0) {
@@ -138,11 +160,11 @@ static char **case_environment(const char *prefix, char **owned) {
     while (environ[count] != NULL && count < PP_HARNESS_MAX_ENVIRONMENT) {
         count++;
     }
-    char **result = calloc(count + 2U, sizeof *result);
+    char **result = (char **)calloc(count + 2U, sizeof *result);
     size_t size = strlen("WINEPREFIX=") + strlen(prefix) + 1U;
     *owned = malloc(size);
     if (result == NULL || *owned == NULL) {
-        free(result);
+        free((void *)result);
         free(*owned);
         *owned = NULL;
         return NULL;
@@ -219,20 +241,28 @@ static void judge(const pp_case_t *test, const pp_expected_t *expected,
     }
 }
 
+static bool write_log(const char *folder, const char *name, const char *data, size_t length) {
+    char path[PATH_MAX];
+    if (!join(path, sizeof path, folder, name)) {
+        return false;
+    }
+    return write_file(path, data, length);
+}
+
 static bool write_logs(const options_t *options, const char *name, const pp_child_result_t *run,
                        const char *summary) {
     char folder[PATH_MAX];
-    char path[PATH_MAX];
     if (!join(folder, sizeof folder, options->logs, name) || !make_folder(options->logs) ||
         !make_folder(folder)) {
         return false;
     }
-    bool written = join(path, sizeof path, folder, "stdout.txt") &&
-                   write_file(path, run->output, run->output_length);
-    written = join(path, sizeof path, folder, "stderr.txt") &&
-              write_file(path, run->errors, run->errors_length) && written;
-    written = join(path, sizeof path, folder, "result.txt") &&
-              write_file(path, summary, strlen(summary)) && written;
+    bool written = write_log(folder, "stdout.txt", run->output, run->output_length);
+    if (!write_log(folder, "stderr.txt", run->errors, run->errors_length)) {
+        written = false;
+    }
+    if (!write_log(folder, "result.txt", summary, strlen(summary))) {
+        written = false;
+    }
     return written;
 }
 
@@ -275,10 +305,12 @@ static int run_case(const options_t *options, const char *name) {
     if (environment == NULL) {
         (void)snprintf(run.message, sizeof run.message, "out of memory");
     }
-    bool started =
-        environment != NULL && pp_child_run(arguments, environment, folder, test.timeout_seconds,
-                                            PP_HARNESS_OUTPUT_LIMIT, &run);
-    free(environment);
+    bool started = false;
+    if (environment != NULL) {
+        started = pp_child_run(arguments, environment, folder, test.timeout_seconds,
+                               PP_HARNESS_OUTPUT_LIMIT, &run);
+    }
+    free((void *)environment);
     free(prefix_variable);
     if (!started) {
         (void)printf("ERROR %s: %s\n", name, run.message);
@@ -304,7 +336,10 @@ static int run_case(const options_t *options, const char *name) {
     pp_child_result_free(&run);
     pp_expected_free(&expected);
     pp_case_free(&test);
-    return passed ? 0 : 1;
+    if (passed) {
+        return 0;
+    }
+    return 1;
 }
 
 int main(int argc, char **argv) {

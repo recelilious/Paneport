@@ -21,7 +21,7 @@
 #include <stddef.h>
 
 #define PP_CASE_MAX_ARGUMENTS 16U
-#define PP_CASE_MAX_SIZE (64U * 1024U)
+#define PP_CASE_MAX_SIZE ((size_t)64U * 1024U)
 
 // One case. The strings are owned by the case and freed by pp_case_free.
 typedef struct pp_case_t {

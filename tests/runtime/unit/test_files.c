@@ -24,12 +24,23 @@
 static bool has_suffix(const char *name, const char *suffix) {
     size_t length = strlen(name);
     size_t suffix_length = strlen(suffix);
-    return length > suffix_length && strcmp(name + length - suffix_length, suffix) == 0;
+    if (length <= suffix_length) {
+        return false;
+    }
+    return strcmp(name + length - suffix_length, suffix) == 0;
 }
 
 static bool exists(const char *path) {
     struct stat status;
-    return stat(path, &status) == 0 && S_ISREG(status.st_mode);
+    if (stat(path, &status) != 0) {
+        return false;
+    }
+    return S_ISREG(status.st_mode) != 0;
+}
+
+// The test runs on one thread, so readdir's static state is no concern.
+static struct dirent *next_entry(DIR *directory) {
+    return readdir(directory); // NOLINT(concurrency-mt-unsafe)
 }
 
 static void join(char *path, const char *folder, const char *name) {
@@ -45,7 +56,8 @@ static unsigned check_cases(const char *folder, bool planted) {
     DIR *directory = opendir(path);
     PP_CHECK(directory != NULL);
     unsigned count = 0;
-    for (struct dirent *entry = readdir(directory); entry != NULL; entry = readdir(directory)) {
+    for (struct dirent *entry = next_entry(directory); entry != NULL;
+         entry = next_entry(directory)) {
         if (!has_suffix(entry->d_name, ".json")) {
             continue;
         }
@@ -90,7 +102,8 @@ static void expected_outputs_are_valid(void) {
     DIR *directory = opendir(path);
     PP_CHECK(directory != NULL);
     unsigned count = 0;
-    for (struct dirent *entry = readdir(directory); entry != NULL; entry = readdir(directory)) {
+    for (struct dirent *entry = next_entry(directory); entry != NULL;
+         entry = next_entry(directory)) {
         if (!has_suffix(entry->d_name, ".txt")) {
             continue;
         }

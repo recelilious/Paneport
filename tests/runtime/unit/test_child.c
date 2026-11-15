@@ -23,7 +23,10 @@ static pp_child_result_t run_shell(const char *script, const char *directory,
 }
 
 static bool equals(const char *data, size_t length, const char *expected) {
-    return data != NULL && length == strlen(expected) && memcmp(data, expected, length) == 0;
+    if (data == NULL || length != strlen(expected)) {
+        return false;
+    }
+    return memcmp(data, expected, length) == 0;
 }
 
 static void output_and_exit_code(void) {

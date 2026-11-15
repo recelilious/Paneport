@@ -53,25 +53,45 @@ bool pp_test_check(struct pp_test_run *run, bool passed, const char *what) {
     return passed;
 }
 
-int pp_test_exit_code_argument(struct pp_test_run *run, int argc, char **argv) {
+// The number that text spells with one to three digits, or -1.
+static int small_number(const char *text) {
+    size_t length = strlen(text);
+    if (length == 0U || length > 3U) {
+        return -1;
+    }
+    int value = 0;
+    for (size_t index = 0; index < length; index++) {
+        char digit = text[index];
+        if (digit < '0' || digit > '9') {
+            return -1;
+        }
+        value = (value * 10) + (digit - '0');
+    }
+    return value;
+}
+
+int pp_test_exit_code_argument(struct pp_test_run *run, int argc, char *const *argv) {
     if (argc <= 1) {
         return 0;
     }
-    const char *text = argv[1];
-    size_t length = strlen(text);
-    bool valid = argc == 2 && length > 0U && length <= 3U;
-    int value = 0;
-    for (size_t index = 0; valid && index < length; index++) {
-        char digit = text[index];
-        if (digit < '0' || digit > '9') {
-            valid = false;
-        } else {
-            value = value * 10 + (digit - '0');
-        }
+    int value = -1;
+    if (argc == 2) {
+        value = small_number(argv[1]);
     }
-    valid = valid && value <= 255;
-    pp_test_check(run, valid, "the only argument is an exit code from 0 to 255");
-    return valid ? value : PP_TEST_EXIT_FAILURE;
+    if (value > 255) {
+        value = -1;
+    }
+    if (!pp_test_check(run, value >= 0, "the only argument is an exit code from 0 to 255")) {
+        return PP_TEST_EXIT_FAILURE;
+    }
+    return value;
+}
+
+const char *pp_test_verdict(bool passed) {
+    if (passed) {
+        return "pass";
+    }
+    return "fail";
 }
 
 int pp_test_finish(struct pp_test_run *run, int exit_code) {

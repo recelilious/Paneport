@@ -144,8 +144,10 @@ static bool line_matches(const pp_expected_line_t *expected, line_t line) {
         return false;
     }
     if (expected->kind == PP_EXPECTED_LITERAL) {
-        return strlen(expected->text) == line.length &&
-               memcmp(expected->text, line.start, line.length) == 0;
+        if (strlen(expected->text) != line.length) {
+            return false;
+        }
+        return memcmp(expected->text, line.start, line.length) == 0;
     }
     if (line.length > PP_OUTPUT_MAX_LINE) {
         return false;

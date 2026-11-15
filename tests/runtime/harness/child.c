@@ -30,7 +30,7 @@ typedef struct stream_t {
 static double now_seconds(void) {
     struct timespec now;
     (void)clock_gettime(CLOCK_MONOTONIC, &now);
-    return (double)now.tv_sec + (double)now.tv_nsec / 1e9;
+    return (double)now.tv_sec + ((double)now.tv_nsec / 1e9);
 }
 
 static bool make_pipe(int descriptors[2]) {
@@ -69,8 +69,14 @@ static void read_stream(stream_t *stream, size_t limit, bool *truncated) {
         keep = limit - stream->length;
         *truncated = true;
     }
-    if (stream->length + keep + 1U > stream->capacity) {
-        size_t capacity = stream->capacity == 0U ? 2U * PP_CHILD_READ_SIZE : stream->capacity;
+    if (keep == 0U) {
+        return;
+    }
+    if (stream->data == NULL || stream->length + keep + 1U > stream->capacity) {
+        size_t capacity = stream->capacity;
+        if (capacity == 0U) {
+            capacity = (size_t)2U * PP_CHILD_READ_SIZE;
+        }
         while (capacity < stream->length + keep + 1U) {
             capacity *= 2U;
         }
@@ -82,10 +88,8 @@ static void read_stream(stream_t *stream, size_t limit, bool *truncated) {
         stream->data = grown;
         stream->capacity = capacity;
     }
-    if (keep > 0U) {
-        memcpy(stream->data + stream->length, buffer, keep);
-        stream->length += keep;
-    }
+    memcpy(stream->data + stream->length, buffer, keep);
+    stream->length += keep;
     stream->data[stream->length] = '\0';
 }
 
@@ -142,7 +146,7 @@ static int collect(pid_t child, stream_t streams[2], unsigned timeout_seconds, s
     for (;;) {
         if (!ended && waitpid(child, &wait_status, WNOHANG) == child) {
             ended = true;
-            drain_end = now_seconds() + (double)PP_CHILD_DRAIN_MS / 1000.0;
+            drain_end = now_seconds() + ((double)PP_CHILD_DRAIN_MS / 1000.0);
         }
         double now = now_seconds();
         if ((ended && streams[0].descriptor < 0 && streams[1].descriptor < 0) ||

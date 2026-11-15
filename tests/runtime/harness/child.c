@@ -96,7 +96,7 @@ static void read_stream(stream_t *stream, size_t limit, bool *truncated) {
 // The working folder of the child. macOS 26 names the action as POSIX 2024 does and deprecates
 // its earlier name, which the C libraries of other systems may still have alone.
 static int add_chdir(posix_spawn_file_actions_t *actions, const char *directory) {
-#if defined(__APPLE__)
+#ifdef __APPLE__
     return posix_spawn_file_actions_addchdir(actions, directory);
 #else
     return posix_spawn_file_actions_addchdir_np(actions, directory);

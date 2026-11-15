@@ -66,6 +66,7 @@ static const struct cpu_feature k_features[] = {
 
 static struct cpuid_result run_cpuid(uint32_t leaf, uint32_t subleaf) {
     struct cpuid_result result;
+    // NOLINTNEXTLINE(portability-no-assembler): the test reads what CPUID itself reports.
     __asm__ volatile("cpuid"
                      : "=a"(result.eax), "=b"(result.ebx), "=c"(result.ecx), "=d"(result.edx)
                      : "a"(leaf), "c"(subleaf));
@@ -77,6 +78,7 @@ static struct cpuid_result run_cpuid(uint32_t leaf, uint32_t subleaf) {
 static uint64_t read_xcr0(void) {
     uint32_t low = 0;
     uint32_t high = 0;
+    // NOLINTNEXTLINE(portability-no-assembler): the test reads what XGETBV itself reports.
     __asm__ volatile("xgetbv" : "=a"(low), "=d"(high) : "c"(0U));
     return ((uint64_t)high << 32U) | low;
 }

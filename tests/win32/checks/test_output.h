@@ -18,7 +18,7 @@
 #define PP_TEST_EXIT_FAILURE 1
 
 // The architecture that the program was built for, as its greeting names it.
-#if defined(__x86_64__)
+#ifdef __x86_64__
 #define PP_TEST_ARCHITECTURE "x86-64"
 #elif defined(__i386__)
 #define PP_TEST_ARCHITECTURE "i686"

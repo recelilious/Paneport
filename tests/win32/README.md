@@ -32,7 +32,7 @@ eng/mac/build-win32-tests.sh x86_64
 
 The programs land in `build/win32/x86_64/`, with a linker map beside each one and the `compile_commands.json` that the analysis reads. The flags are those of C-0010 section 3, `-Wall -Wextra -Wpedantic -Werror`, plus:
 
-- `-fms-extensions`, for `__try`, `__except` and `__finally`. clang accepts them for MinGW targets with this flag. It has no asynchronous exceptions there, so it catches only exceptions raised inside a call: every fault happens in a function of its own that the `__try` block calls. The keyword warning that `-Wpedantic` gives for `__try` is turned off around those functions alone.
+- `-fms-extensions`, for `__try`, `__except` and `__finally`. clang accepts them for MinGW targets with this flag. It has no asynchronous exceptions there, so it catches only exceptions raised inside a call: every fault happens in a function of its own that the `__try` block calls. The keyword warning that `-Wpedantic` gives for `__try` is turned off around those functions alone. Only `checks/seh_check.c` gets the flag: with it, clang-tidy's `readability-duplicate-include` reports includes that are not repeated, which that file alone tells it to ignore.
 - `-D__USE_MINGW_ANSI_STDIO=0`, so that the UCRT formats the output, as in the C program of the mingw-w64 runtime review ([forks.md](../../docs/design/forks.md) section 9).
 - `-Wl,--section-alignment,16384`, so that no 16 KB page of Apple silicon holds both code and writable data.
 

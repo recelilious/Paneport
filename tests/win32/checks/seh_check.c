@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+// This file alone is built with -fms-extensions, with which clang-tidy's
+// readability-duplicate-include reports includes that are not repeated.
+// NOLINTBEGIN(readability-duplicate-include)
 #include "seh_check.h"
 
 #include <stdint.h>
@@ -8,6 +11,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+// NOLINTEND(readability-duplicate-include)
 
 // An address in the first page of the address space, which Windows never maps, and neither
 // does Wine on macOS, where the first 4 GB are the executable's page zero.
@@ -63,6 +67,7 @@ __attribute__((noinline)) static void write_to_fault_address(void) {
 __attribute__((noinline)) static int32_t divide(int32_t dividend, int32_t divisor) {
     int32_t quotient = dividend;
     int32_t remainder = 0;
+    // NOLINTNEXTLINE(portability-no-assembler): the test needs the IDIV instruction itself.
     __asm__ volatile("cltd\n\tidivl %2" : "+a"(quotient), "=&d"(remainder) : "r"(divisor) : "cc");
     (void)remainder;
     return quotient;
@@ -152,10 +157,8 @@ static LONG CALLBACK vectored_handler(EXCEPTION_POINTERS *pointers) {
     if (exception->NumberParameters < 1U || exception->ExceptionInformation[0] == 0U) {
         return EXCEPTION_CONTINUE_SEARCH;
     }
-    // The parameter is the address of the report, which pp_seh_extended passed in.
-    struct vectored_report *report =
-        (struct vectored_report *)
-            exception->ExceptionInformation[0]; // NOLINT(performance-no-int-to-ptr)
+    // NOLINTNEXTLINE(performance-no-int-to-ptr): the parameter is the report's address.
+    struct vectored_report *report = (struct vectored_report *)exception->ExceptionInformation[0];
     report->seen = true;
     if (code == PP_SEH_CONTINUED_CODE) {
         report->continued = true;

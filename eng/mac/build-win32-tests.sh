@@ -47,13 +47,12 @@ out="$build_dir/win32/$target"
 rm -rf "$out"
 mkdir -p "$out/objects"
 
-# -fms-extensions gives __try and __except, which tests/win32/checks/seh_check.c uses. UCRT
-# formats the output, not mingw-w64's own printf, as for the C program of the runtime review
+# UCRT formats the output, not mingw-w64's own printf, as for the C program of the runtime review
 # in docs/design/forks.md section 9. Source paths in the binaries are relative to the
 # repository (C-0009 section 6). Sections are aligned to 16 KiB, the page size of Apple
 # silicon, so that no host page holds both code and writable data
 # (docs/design/runtime-macos-harness.md).
-cflags=(-std=c17 -O2 -g -Wall -Wextra -Wpedantic -Werror -Wvla -fms-extensions
+cflags=(-std=c17 -O2 -g -Wall -Wextra -Wpedantic -Werror -Wvla
     -D__USE_MINGW_ANSI_STDIO=0 "-ffile-prefix-map=$repo/=" -I "$repo/tests/win32/checks")
 ldflags=(-Wl,--section-alignment,16384)
 
@@ -85,7 +84,14 @@ first=true
 for source in "${checks[@]}" "${programs[@]}"; do
     relative=${source#"$repo"/}
     object="$out/objects/$(printf '%s' "$relative" | tr '/' '_' | sed 's/\.c$/.o/')"
-    "$compiler" "${cflags[@]}" -c "$source" -o "$object"
+    # -fms-extensions gives __try, __except and __finally to tests/win32/checks/seh_check.c,
+    # the only file that needs them. With it, clang-tidy's readability-duplicate-include
+    # reports includes that are not repeated, so no other file gets it.
+    flags=("${cflags[@]}")
+    case "$source" in
+        */seh_check.c) flags+=(-fms-extensions) ;;
+    esac
+    "$compiler" "${flags[@]}" -c "$source" -o "$object"
     if [ "$first" = true ]; then
         first=false
     else
@@ -94,7 +100,7 @@ for source in "${checks[@]}" "${programs[@]}"; do
     {
         printf '{\n  "directory": %s,\n  "arguments": [' "$(json_string "$repo")"
         separator=""
-        for argument in "$compiler" "${cflags[@]}" -c "$source" -o "$object"; do
+        for argument in "$compiler" "${flags[@]}" -c "$source" -o "$object"; do
             printf '%s%s' "$separator" "$(json_string "$argument")"
             separator=", "
         done

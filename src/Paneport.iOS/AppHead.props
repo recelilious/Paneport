@@ -92,6 +92,15 @@ SPDX-License-Identifier: MIT
     <PackageReference Include="Avalonia.iOS" />
   </ItemGroup>
 
+  <!--
+  Avalonia.DesignerSupport serves only the XAML previewer of an IDE, and the app never loads it.
+  The SDK keeps every assembly that is not marked trimmable whole, which makes the trimmer
+  analyze all of it (IL2104); marked trimmable, it is removed with the rest of the unused code.
+  -->
+  <ItemGroup>
+    <TrimmableAssembly Include="Avalonia.DesignerSupport" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Core/Paneport.Core.csproj" />
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Steam/Paneport.Steam.csproj" />

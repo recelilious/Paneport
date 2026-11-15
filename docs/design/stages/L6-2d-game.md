@@ -472,6 +472,7 @@ Out:
 **Notes from earlier stages.**
 
 - M1.2 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-10): `pp_memory_get_budget` reads both values on every call and samples nothing. Its Game Mode flag is set from 7,936 MiB (`PP_MEMORY_GAME_MODE_LEVEL_BYTES`), and the macOS test builds report a stub that `pp_test_set_memory_stub` sets (`docs/design/native-host.md` section 7). Pressure events become event kinds of `pp_event_t`, posted through the event queue of `src/native/host/event_thread.c`.
+- M1.3 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-15): `MemoryMonitor` in Paneport.Core samples `pp_memory_get_budget` and the thermal state once a second on the UI thread, from the shell's first appearance, for Diagnostics; it is not the governor's sampling. Diagnostics warns below 5,632 MB (`MemoryLimitCheck`), and the timeline keeps 600 samples (`docs/design/ios-app-head.md` section 8).
 
 **Session log.**
 
@@ -712,6 +713,7 @@ Out:
 - M6.4 ([M6.4 brief](#m64-compatibility-database-core), session logs of 2026-11-01 and 2026-11-10): a reviewed `drm` counts only while the device runs the reviewed program (C-0008 1.1 section 1). The layers pair by file name, hence by slug, so an import whose hash matches a reviewed build takes that bundled entry's slug, or the merge never meets the entry. The device entry lists in `exeSha256` the hash of the program the device runs. Under a bundled entry of the same slug that sets `drm`, a hash that the entry does not list gives `UnreviewedBuild`; without such an entry, `EffectiveTitleSettings.ReviewedClassification` is `None`. Either way only the computed classification counts, and the title is refused once classified. Show the reason (`compat-db.md` section 4).
 - M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-11-10): where the device runs an unreviewed build, only `drm` stops counting; the rating, the reports and the other reviewed settings still come from the bundled entry (C-0008 1.1 section 1). This stage decides whether the title's page says that they belong to another build (`compat-db.md` section 10).
 - M6.4 ([M6.4 brief](#m64-compatibility-database-core), session log of 2026-11-10): C-0008 section 5 forbids `arguments` that skip a launcher or an ownership check, and review checks that only in `compat/titles/`, never in a device file. The reviewed-program rule looks at the program and not at its arguments (C-0008 1.1 section 1), so a device entry that changes only the arguments keeps the reviewed classification. The app therefore takes no device `arguments` from free text without a check; if this stage lets the user set arguments, its design document says how that check works (`compat-db.md` section 8).
+- M1.3 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-15): `StorageBootstrap.MarkAgain` renews the backup mark of a folder that says "No" after files in it were replaced, as C-0004 section 4 asks; a stage that writes into `prefixes/`, `library/`, `downloads/` or `runtime/` calls it. The bundle does not carry `compat/` yet (`docs/design/ios-app-head.md` section 9).
 
 **Session log.**
 

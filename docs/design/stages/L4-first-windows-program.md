@@ -493,6 +493,7 @@ Out: display, input and audio (M5.1, M6.1, M6.2); DXMT (M5.2); 32-bit pieces (M7
 **Notes from earlier stages.**
 
 - M4.1 (session log of 2026-11-11): fork branches, pointer moves and the fast-forward of `paneport/integration` after a merge are in `docs/design/forks.md` section 4.2. FEX's `CLAUDE.md` and `AGENTS.md` are upstream's contribution policy, which this stage's work in the fork leaves untouched (forks.md section 4.3).
+- M1.3 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-15): the head embeds frameworks with a `NativeReference` of kind `Framework` in `src/Paneport.iOS/AppHead.props`, and `eng/mac/sign-adhoc.sh` signs every framework and library in the app's `Frameworks/` before the app. `eng/mac/check-app.sh` expects exactly `increased-memory-limit` as the app's entitlements and checks the host framework by name; new bundle locations need their checks there (`docs/design/ios-app-head.md` section 11).
 
 **Session log.**
 

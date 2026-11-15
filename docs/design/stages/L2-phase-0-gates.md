@@ -268,6 +268,7 @@ Scripts this stage creates: `tools/CheckOverlayBlend.cs`. The device gate is L2 
 **Notes from earlier stages.**
 
 - M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 leaves the shell's safe areas, the on-screen keyboard and the overlay on the phone to device checks from M1.3 and this stage.
+- M1.3 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-15): `RootViewController` in `src/Paneport.iOS` holds a full-screen `GameView`, whose layer is an opaque, idle `CAMetalLayer`, under one full-screen `AvaloniaView` whose content is a `Border` around `MainView`, padded by the safe area. The Avalonia view is still opaque, because the Fluent theme paints its background and `TopLevel` its fallback; the style override and the hit-test of this stage go there. The device test flavor's developer menu takes this stage's pages (`docs/design/ios-app-head.md` sections 2 and 10).
 
 **Session log.**
 
@@ -364,6 +365,7 @@ Scripts this stage creates: the CTest cases and the native harness runner in `te
 - M1.2 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-10): the crash record writer is `pp_crash_record_write`, declared in `src/native/host/crash_record.h` and alone in `crash_record_writer.c`, whose object a CTest test checks with `nm` against an allowlist of async-signal-safe calls (`tests/native/check_writer_calls.cmake`); a call that the dispatcher adds there goes on the list only when POSIX lists it as async-signal-safe. It is async-signal-safe; the dispatcher passes the signal, `si_code`, `si_addr`, the program counter from the context and the thread role, which `pp_host_thread_role()` gives as main, event thread or other. Guest and translator threads become new role values, added to the table of `docs/design/native-host.md` section 8 and to the reader of M1.3.
 - M1.2 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-10): posting an event or a log line is not async-signal-safe, because waking the event thread may take a lock, so a signal handler never logs (`docs/design/native-host.md` section 5).
 - M1.2 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-10): a CTest program runs one case per process through `tests/native/pp_check.h` and is registered with `paneport_native_test()` in `tests/native/CMakeLists.txt`. Test-build exports are `pp_test_` functions in `paneport/testing.h`, compiled from `src/native/host/test_exports.c` under `PANEPORT_TEST_BUILD`; `eng/mac/check-framework.sh` expects them in `ios-device-test` and refuses them in `ios-device`.
+- M1.3 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-15): the startup is `CompositionRoot.Compose` in `src/Paneport.iOS`, on the main thread: log, storage, the crash record, Avalonia's platform, then `HostStartup.Start` with the version check and `pp_init`; the crash-chaining call joins it after the runtime starts and before any guest thread. `CrashRecordReader` and `CrashRecordStore` in Paneport.Core read the record at launch and show it on Diagnostics until dismissed, and the test flavor in `tests/device` embeds the `ios-device-test` host (`docs/design/ios-app-head.md` sections 3, 9 and 10).
 
 **Session log.**
 
@@ -464,6 +466,7 @@ This stage creates no script beyond its tests. The full gate run is L2 steps 16 
 **Notes from earlier stages.**
 
 - M0.3 ([L0 brief](L0-foundation.md), session log of 2026-10-30): `docs/design/app-shell.md` section 10 asks this stage whether the managed side keeps the refresh token as bytes that it can clear.
+- M1.3 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-15): `ITokenStore` keeps a `SavedSignIn`, the account name with the refresh token as a `Secret`; on the device `SecureTokenStore` keeps it as one keychain item, service `Paneport`, account `steam-sign-in`, a JSON document with a version, and removes an unreadable one. The settings file is `FileSettingsStore`, and the developer menu of `tests/device` takes the gate's pages (`docs/design/ios-app-head.md` sections 5 and 10).
 
 **Session log.**
 

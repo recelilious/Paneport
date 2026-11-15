@@ -488,6 +488,7 @@ Scripts this stage creates: the i686 build steps and the new programs in `tests/
 **Notes from earlier stages.**
 
 - M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-11): fork branches, pointer moves and the fast-forward of `paneport/integration` after a merge are in `docs/design/forks.md` section 4.2. FEX's `CLAUDE.md` and `AGENTS.md` are upstream's contribution policy, which this stage's work in the fork leaves untouched (forks.md section 4.3).
+- M4.2 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-15): the checks of `tests/win32/` carry i686 code paths that no build has compiled yet: a `fastcall` target for the context change of threads.exe, and `cltd` with `idivl` for the divide of seh.exe. `eng/mac/build-win32-tests.sh` refuses `i686` until this stage adds it, and its machine-type check expects x86-64 only (`tests/win32/README.md`).
 
 **Session log.**
 

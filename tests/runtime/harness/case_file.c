@@ -3,6 +3,7 @@
 
 #include "case_file.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,7 +43,10 @@ static void skip_space(reader_t *reader) {
 
 static bool at(reader_t *reader, char expected) {
     skip_space(reader);
-    return reader->position < reader->length && reader->text[reader->position] == expected;
+    if (reader->position >= reader->length) {
+        return false;
+    }
+    return reader->text[reader->position] == expected;
 }
 
 static bool take(reader_t *reader, char expected, const char *message) {
@@ -116,8 +120,7 @@ static char *read_string(reader_t *reader) {
 
 // Reads a JSON integer of at most nine digits, which is all a case needs.
 static bool read_integer(reader_t *reader, long *value) {
-    skip_space(reader);
-    bool negative = reader->position < reader->length && reader->text[reader->position] == '-';
+    bool negative = at(reader, '-');
     if (negative) {
         reader->position++;
     }
@@ -129,7 +132,7 @@ static bool read_integer(reader_t *reader, long *value) {
             fail_at(reader, "the number is too long");
             return false;
         }
-        result = result * 10 + (reader->text[reader->position] - '0');
+        result = (result * 10) + (reader->text[reader->position] - '0');
         reader->position++;
     }
     size_t digits = reader->position - start;
@@ -137,7 +140,10 @@ static bool read_integer(reader_t *reader, long *value) {
         fail_at(reader, "expected an integer");
         return false;
     }
-    *value = negative ? -result : result;
+    if (negative) {
+        result = -result;
+    }
+    *value = result;
     return true;
 }
 
@@ -181,9 +187,7 @@ static bool is_file_name(const char *name, const char *suffix) {
     }
     for (size_t index = 0; index < length; index++) {
         char next = name[index];
-        bool allowed = (next >= 'a' && next <= 'z') || (next >= 'A' && next <= 'Z') ||
-                       (next >= '0' && next <= '9') || next == '.' || next == '-' || next == '_';
-        if (!allowed) {
+        if (isalnum((unsigned char)next) == 0 && strchr("._-", next) == NULL) {
             return false;
         }
     }
@@ -215,11 +219,12 @@ static void read_bounded(reader_t *reader, long low, long high, long *value, con
     }
 }
 
-static bool read_member(reader_t *reader, pp_case_t *result, seen_t *seen) {
+// Reads one member; a failure shows in reader->failed.
+static void read_member(reader_t *reader, pp_case_t *result, seen_t *seen) {
     char *name = read_string(reader);
     if (name == NULL || !take(reader, ':', "expected : after a member's name")) {
         free(name);
-        return false;
+        return;
     }
     long number = 0;
     if (strcmp(name, "program") == 0) {
@@ -249,7 +254,6 @@ static bool read_member(reader_t *reader, pp_case_t *result, seen_t *seen) {
                         "exit_code and expected");
     }
     free(name);
-    return !reader->failed;
 }
 
 static void check_complete(reader_t *reader, const pp_case_t *result, const seen_t *seen) {
@@ -271,7 +275,11 @@ bool pp_case_parse(const char *text, size_t length, pp_case_t *result, char *err
         if (at(&reader, '}')) {
             reader.position++;
         } else {
-            while (read_member(&reader, result, &seen)) {
+            for (;;) {
+                read_member(&reader, result, &seen);
+                if (reader.failed) {
+                    break;
+                }
                 if (at(&reader, '}')) {
                     reader.position++;
                     break;
@@ -308,10 +316,18 @@ char *pp_read_file(const char *path, size_t limit, size_t *length, char *error, 
     }
     char *text = malloc(limit + 1U);
     size_t read = text == NULL ? 0U : fread(text, 1U, limit + 1U, file);
-    bool failed = text == NULL || ferror(file) != 0;
+    bool failed = text == NULL;
+    if (ferror(file) != 0) {
+        failed = true;
+    }
     (void)fclose(file);
-    if (failed || read > limit) {
-        (void)snprintf(error, error_size, failed ? "cannot read %s" : "%s is too long", path);
+    if (failed) {
+        (void)snprintf(error, error_size, "cannot read %s", path);
+        free(text);
+        return NULL;
+    }
+    if (read > limit) {
+        (void)snprintf(error, error_size, "%s is too long", path);
         free(text);
         return NULL;
     }

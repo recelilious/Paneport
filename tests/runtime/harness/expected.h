@@ -18,7 +18,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define PP_EXPECTED_MAX_SIZE (64U * 1024U)
+#define PP_EXPECTED_MAX_SIZE ((size_t)64U * 1024U)
 #define PP_EXPECTED_MAX_LINE 1024U
 #define PP_COMPARISON_MESSAGE_SIZE 2560U
 

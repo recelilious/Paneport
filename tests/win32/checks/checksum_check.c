@@ -13,13 +13,13 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-#define PP_CHECKSUM_BYTES (64U * 1024U * 1024U)
+#define PP_CHECKSUM_BYTES 67108864U // 64 MiB
 #define PP_CHECKSUM_PASSES 4U
 
 static void fill_buffer(unsigned char *bytes) {
     uint64_t state = UINT64_C(0x50616e65706f7274);
     for (size_t offset = 0; offset < PP_CHECKSUM_BYTES; offset += sizeof(uint64_t)) {
-        state = state * UINT64_C(6364136223846793005) + UINT64_C(1442695040888963407);
+        state = (state * UINT64_C(6364136223846793005)) + UINT64_C(1442695040888963407);
         uint64_t word = state ^ (state >> 33U);
         memcpy(bytes + offset, &word, sizeof word);
     }
@@ -50,7 +50,7 @@ static uint64_t compute_checksum(const unsigned char *bytes) {
     for (size_t offset = 0; offset < PP_CHECKSUM_BYTES; offset += 16U) {
         for (size_t lane = 0; lane < 4U; lane++) {
             uint32_t value = 0;
-            memcpy(&value, bytes + offset + lane * 4U, sizeof value);
+            memcpy(&value, bytes + offset + (lane * 4U), sizeof value);
             lanes[lane] += value;
         }
     }
@@ -98,9 +98,8 @@ bool pp_checksum_report(struct pp_test_run *run) {
     uint64_t throughput = (uint64_t)((64.0 * (double)frequency.QuadPart) / (double)fastest);
     pp_test_line(run, "checksum: 0x%016" PRIx64 " (expected 0x%016" PRIx64 "), %" PRIu64 " MiB/s",
                  value, PP_CHECKSUM_EXPECTED, throughput);
-    bool passed = pp_test_check(run, same, "every checksum pass gives the same value");
-    passed = pp_test_check(run, value == PP_CHECKSUM_EXPECTED,
-                           "the checksum equals the expected value") &&
-             passed;
-    return passed;
+    unsigned failures = run->failures;
+    pp_test_check(run, same, "every checksum pass gives the same value");
+    pp_test_check(run, value == PP_CHECKSUM_EXPECTED, "the checksum equals the expected value");
+    return run->failures == failures;
 }

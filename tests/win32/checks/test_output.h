@@ -47,7 +47,10 @@ bool pp_test_check(struct pp_test_run *run, bool passed, const char *what);
 // Reads the optional exit-code argument of a program: with no argument the exit code is 0,
 // and with one it is that number, from 0 to 255. Anything else fails a check and gives
 // PP_TEST_EXIT_FAILURE.
-int pp_test_exit_code_argument(struct pp_test_run *run, int argc, char **argv);
+int pp_test_exit_code_argument(struct pp_test_run *run, int argc, char *const *argv);
+
+// "pass" or "fail", for the line that ends a group of checks. The text is static.
+const char *pp_test_verdict(bool passed);
 
 // Prints the result line, "result: pass" or "result: fail, <n> checks failed", and returns
 // the exit code for main: exit_code when every check passed, PP_TEST_EXIT_FAILURE otherwise.

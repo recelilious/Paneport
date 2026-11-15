@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using Paneport.Core.Diagnostics;
 using Paneport.Core.Hosting;
 using Paneport.Core.Library;
 using Paneport.Core.Logging;
@@ -23,13 +24,15 @@ public sealed class AppServices
     /// <param name="settings">The settings store.</param>
     /// <param name="tokens">The token store.</param>
     /// <param name="log">The log.</param>
+    /// <param name="diagnostics">What the Diagnostics page reads besides the host.</param>
     public AppServices(
         IRuntimeHost host,
         ILibraryService library,
         ISteamService steam,
         ISettingsStore settings,
         ITokenStore tokens,
-        ILog log)
+        ILog log,
+        DiagnosticsSources diagnostics)
     {
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(library);
@@ -37,12 +40,14 @@ public sealed class AppServices
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(tokens);
         ArgumentNullException.ThrowIfNull(log);
+        ArgumentNullException.ThrowIfNull(diagnostics);
         Host = host;
         Library = library;
         Steam = steam;
         Settings = settings;
         Tokens = tokens;
         Log = log;
+        Diagnostics = diagnostics;
     }
 
     /// <summary>Gets the native runtime host.</summary>
@@ -64,4 +69,7 @@ public sealed class AppServices
 
     /// <summary>Gets the log.</summary>
     public ILog Log { get; }
+
+    /// <summary>Gets what the Diagnostics page reads besides the host.</summary>
+    public DiagnosticsSources Diagnostics { get; }
 }

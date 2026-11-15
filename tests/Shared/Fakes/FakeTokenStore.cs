@@ -8,19 +8,19 @@ namespace Paneport.Tests.Fakes;
 // A token store in memory. No page uses it yet; the shell's services need one.
 internal sealed class FakeTokenStore : ITokenStore
 {
-    public Secret? Token { get; private set; }
+    public SavedSignIn? SignIn { get; private set; }
 
-    public Task<Secret?> ReadAsync(CancellationToken cancellationToken) => Task.FromResult(Token);
+    public Task<SavedSignIn?> ReadAsync(CancellationToken cancellationToken) => Task.FromResult(SignIn);
 
-    public Task WriteAsync(Secret token, CancellationToken cancellationToken)
+    public Task WriteAsync(SavedSignIn signIn, CancellationToken cancellationToken)
     {
-        Token = token;
+        SignIn = signIn;
         return Task.CompletedTask;
     }
 
     public Task DeleteAsync(CancellationToken cancellationToken)
     {
-        Token = null;
+        SignIn = null;
         return Task.CompletedTask;
     }
 }

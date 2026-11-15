@@ -102,7 +102,7 @@ public sealed class SettingsAndDiagnosticsPageTests
 
         var texts = ShellHarness.TextsIn(harness.Page<DiagnosticsPage>());
         Assert.Contains("Fake host for tests", texts);
-        Assert.Contains("1.0", texts);
+        Assert.Contains("1.1", texts);
         Assert.Contains("6,144 MB", texts);
         Assert.Contains("5,120 MB", texts);
         Assert.Contains("1,024 MB", texts);

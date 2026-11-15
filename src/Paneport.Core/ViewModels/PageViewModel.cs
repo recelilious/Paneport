@@ -71,4 +71,25 @@ public abstract partial class PageViewModel : ObservableObject
     /// <param name="cancellationToken">Cancels the load.</param>
     /// <returns>A task that completes when the data is loaded.</returns>
     protected virtual Task OnLoadAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// Called when the shell starts showing the page, also when it returns to the page. A page that
+    /// follows a live source subscribes here. The default does nothing.
+    /// </summary>
+    protected virtual void OnShown()
+    {
+    }
+
+    /// <summary>
+    /// Called when the shell stops showing the page, because another page took its place. A page
+    /// unsubscribes here what <see cref="OnShown"/> subscribed. The default does nothing.
+    /// </summary>
+    protected virtual void OnHidden()
+    {
+    }
+
+    // The shell's calls, when the page becomes or stops being its current page.
+    internal void NotifyShown() => OnShown();
+
+    internal void NotifyHidden() => OnHidden();
 }

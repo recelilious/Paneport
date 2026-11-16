@@ -91,6 +91,16 @@ Registered as under review, and not used until recelilious decides:
 
 Not allowed: FluentAssertions 8 and later. They are under Xceed's proprietary Community License, which is free only for non-commercial use (it counts open-source development as non-commercial) and needs a paid license for any commercial use. That makes it a non-commercial-only license, which C-0003 section 5 forbids.
 
+## Proposed changes for 1.2
+
+**Not yet accepted.** Version 1.1 above stays binding until recelilious approves these changes. They come from the review of stage M1.3 after its merge. Version 1.1 has the `ios` job scan each `.ipa` as C-0009 section 6 describes, but the scan tool that M1.3 wrote, `tools/ScanPackage.cs`, looks only for what a build step can leave of an Apple account. The rest of that scan needs an allow list by file and by the SHA-256 of each matched text, each entry with a reason, for the hits inside third-party binaries and in the upstream notices that must be kept. Stage M9.1 plans both the scan and the list (S9.1.3 and the risks of M9.1 in the L9 brief). Item 3 records decision D7 of the development plan, on when the `ios` job runs.
+
+1. **Section 4, the row of the `ios` job.** Replace its last sentence, "Each app and every framework it embeds is signed ad hoc, as C-0009 section 6 describes for releases, and each `.ipa` is checked and scanned as C-0009 section 6 describes, then uploaded.", with: "Each app and every framework it embeds is signed ad hoc, as C-0009 section 6 describes for releases. Each `.ipa` is checked, scanned for provisioning profiles and for team identifiers and application-identifier prefixes in its property lists and code signatures, and is uploaded only if the scan finds none of them."
+
+2. **Section 4, a new item after the item on ad-hoc signatures.** Add: "The rest of the scan of C-0009 section 6, for UDIDs, ECIDs, serial numbers, e-mail addresses and local paths, with device model identifiers allowed, as C-0009 section 6 says, comes with stage M9.1. M9.1 completes the scan tool (S9.1.3) and adds its allow list, which names each allowed hit by file and by the SHA-256 of the matched text, each with a reason. From then on the `ios` job runs the whole scan of C-0009 section 6 on both flavors of the app, with the same allow list as releases, and fails on a finding that the allow list does not cover. The job's builds never involve a device or an Apple identity (C-0009 section 5)."
+
+3. **Section 4, the item on when the `ios` job runs.** Replace "recelilious decides whether the `ios` job runs on every pull request or only before merging, once its run time is known." with: "The `ios` job runs for every pull request and every push to `main` (plan decision D7)."
+
 ## Change log
 
 | Version | Date | Notes |

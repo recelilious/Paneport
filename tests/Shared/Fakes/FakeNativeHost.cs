@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using Paneport.Core.Diagnostics;
 using Paneport.Core.Hosting;
 
 namespace Paneport.Tests.Fakes;
@@ -82,7 +83,12 @@ internal sealed class FakeNativeHost : INativeHost
 
     public MemoryBudget GetMemoryBudget() => Budget;
 
-    public string ReadDeviceModel() => Model;
+    // A host older than the version that added pp_device_get_model lacks the function, so the
+    // bindings' call throws EntryPointNotFoundException, which the adapter guards as the iOS
+    // head's does.
+    public string ReadDeviceModel() => HostExports.Call(
+        DeviceModel.AddedIn,
+        () => Version.Minor >= DeviceModel.AddedIn.Minor ? Model : throw new EntryPointNotFoundException("pp_device_get_model"));
 
     private void Record(string call)
     {

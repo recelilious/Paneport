@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using Paneport.Core.Diagnostics;
 using Paneport.Core.Hosting;
 using Paneport.Core.Logging;
 using Paneport.Core.ViewModels;
@@ -55,6 +56,27 @@ public sealed class HostStartupTests
         Assert.Equal(new HostAbiVersion(1, 1), result.Host.BindingsVersion);
         Assert.Equal(NativeRuntimeHost.NativeImplementationName, result.Host.ImplementationName);
         Assert.Equal("Framework", result.Host.ImportName);
+    }
+
+    [Fact]
+    public void AnOlderMinorHostStartsAndShowsTheModelAsUnknown()
+    {
+        // C-0005 section 1 counts a 1.0 host as compatible with bindings of 1.1, but it lacks
+        // pp_device_get_model, which 1.1 added: the app starts, and the model reads as unknown.
+        var host = new FakeNativeHost { Version = new(1, 0), BindingsVersion = new(1, 1) };
+        var fakes = new FakeServices();
+
+        var result = HostStartup.Start(host, CrashFolder, new FakeUiDispatcher(), fakes.Log);
+        var device = new FakeDeviceInfo { ModelIdentifier = DeviceModel.Read(host, fakes.Log) };
+        var page = new DiagnosticsViewModel(
+            result.Host!,
+            new DiagnosticsSources(fakes.Memory, device, fakes.Build, [], null, () => []),
+            fakes.Log);
+
+        Assert.True(result.Started);
+        Assert.Equal("Compatible: the app's bindings use version 1.1", page.AbiCompatibility);
+        Assert.Contains(new DiagnosticsRow("Model identifier", DeviceModel.Unknown), page.DeviceRows);
+        Assert.Contains(fakes.Log.Lines, line => line.Message == "Reading the model identifier failed (Unsupported).");
     }
 
     [Fact]

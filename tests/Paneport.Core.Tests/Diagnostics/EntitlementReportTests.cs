@@ -66,11 +66,47 @@ public sealed class EntitlementReportTests
     [Fact]
     public void AnUnsignedExecutableHasNoSignatureSource()
     {
-        var readings = Read(SigningSamples.Executable(null), profile: null);
+        var executable = SigningSamples.Executable(null);
 
+        var readings = Read(executable, profile: null);
+
+        Assert.False(CodeSignatureReader.HasSignature(new MemoryStream(executable)));
         Assert.All(readings, reading => Assert.Equal(EntitlementSourceState.Absent, reading.SignatureState));
         Assert.All(readings, reading => Assert.Null(reading.Effective));
         Assert.Equal("unknown: neither the code signature nor a profile could be read", readings[1].Description);
+        Assert.Equal(
+            "the app is not signed; true in the profile",
+            Read(executable, SigningSamples.Profile(increasedMemoryLimit: true, getTaskAllow: false))[1].Description);
+    }
+
+    [Fact]
+    public void ASignatureWithoutTheXmlBlobIsNotTakenForAnUnsignedApp()
+    {
+        // A tool that writes only the DER form of the entitlements leaves no XML blob to read: the
+        // app is signed, and what the signature holds stays unknown.
+        var executable = SigningSamples.Executable(SigningSamples.Entitlements(increasedMemoryLimit: true), derOnly: true);
+
+        var readings = Read(executable, profile: null);
+
+        Assert.True(CodeSignatureReader.HasSignature(new MemoryStream(executable)));
+        Assert.Null(CodeSignatureReader.ReadEntitlements(new MemoryStream(executable)));
+        Assert.All(readings, reading => Assert.Equal(EntitlementSourceState.NoXmlEntitlements, reading.SignatureState));
+        Assert.All(readings, reading => Assert.Null(reading.Signature));
+        Assert.All(readings, reading => Assert.Null(reading.Effective));
+        Assert.Equal("the code signature holds no XML entitlements; no profile, as in an ad-hoc-signed build", readings[1].Description);
+    }
+
+    [Fact]
+    public void ASignatureWithoutTheXmlBlobLeavesTheProfileToTell()
+    {
+        var readings = Read(
+            SigningSamples.Executable(SigningSamples.Entitlements(increasedMemoryLimit: true), derOnly: true),
+            SigningSamples.Profile(increasedMemoryLimit: true, getTaskAllow: false));
+
+        Assert.Equal("the code signature holds no XML entitlements; true in the profile", readings[1].Description);
+        Assert.Null(readings[1].Effective);
+        Assert.Equal("the code signature holds no XML entitlements; false in the profile", readings[0].Description);
+        Assert.False(readings[0].Effective);
     }
 
     [Fact]

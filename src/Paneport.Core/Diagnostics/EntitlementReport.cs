@@ -38,7 +38,9 @@ public static class EntitlementReport
             }
             else
             {
-                signatureState = EntitlementSourceState.Absent;
+                signatureState = CodeSignatureReader.HasSignature(executable)
+                    ? EntitlementSourceState.NoXmlEntitlements
+                    : EntitlementSourceState.Absent;
             }
         }
         catch (Exception exception)

@@ -32,11 +32,36 @@ public static class CodeSignatureReader
 
     /// <summary>Reads the entitlements of an executable's code signature.</summary>
     /// <param name="executable">The executable, readable and seekable.</param>
-    /// <returns>The entitlements as an XML property list, or null when the executable is not signed or its signature holds none.</returns>
+    /// <returns>
+    /// The entitlements as an XML property list, or null when the executable is not signed or its
+    /// signature holds no XML entitlements blob; <see cref="HasSignature"/> tells the two apart.
+    /// </returns>
     /// <exception cref="InvalidDataException">The file is not a Mach-O executable of the expected form.</exception>
     public static byte[]? ReadEntitlements(Stream executable)
     {
         ArgumentNullException.ThrowIfNull(executable);
+        return FindSignature(executable) is { } signature
+            ? ReadEntitlementsBlob(executable, signature.Offset, signature.Size)
+            : null;
+    }
+
+    /// <summary>
+    /// Tells whether an executable has a code signature, such as one without an XML entitlements
+    /// blob: signed without entitlements, or by a tool that writes only their DER form.
+    /// </summary>
+    /// <param name="executable">The executable, readable and seekable.</param>
+    /// <returns>True when the executable has an <c>LC_CODE_SIGNATURE</c> load command.</returns>
+    /// <exception cref="InvalidDataException">The file is not a Mach-O executable of the expected form.</exception>
+    public static bool HasSignature(Stream executable)
+    {
+        ArgumentNullException.ThrowIfNull(executable);
+        return FindSignature(executable) is not null;
+    }
+
+    // Where the code signature's super blob lies, from the LC_CODE_SIGNATURE load command; null
+    // when the executable has none.
+    private static (long Offset, uint Size)? FindSignature(Stream executable)
+    {
         var start = SliceStart(executable);
         var header = ReadAt(executable, start, MachHeader64Size);
         if (BinaryPrimitives.ReadUInt32LittleEndian(header) != MachMagic64)
@@ -76,7 +101,7 @@ public static class CodeSignatureReader
 
                 var dataOffset = BinaryPrimitives.ReadUInt32LittleEndian(commands.AsSpan(offset + 8));
                 var dataSize = BinaryPrimitives.ReadUInt32LittleEndian(commands.AsSpan(offset + 12));
-                return ReadEntitlementsBlob(executable, start + dataOffset, dataSize);
+                return (start + dataOffset, dataSize);
             }
 
             offset += (int)size;

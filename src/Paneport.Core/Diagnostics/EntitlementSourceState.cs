@@ -14,4 +14,11 @@ public enum EntitlementSourceState
 
     /// <summary>The source exists but could not be read.</summary>
     Unreadable,
+
+    /// <summary>
+    /// The code signature exists but holds no XML entitlements blob: it was made without
+    /// entitlements, or by a tool that writes only their DER form, which is not read. Code
+    /// signature only.
+    /// </summary>
+    NoXmlEntitlements,
 }

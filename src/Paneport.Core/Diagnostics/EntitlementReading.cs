@@ -24,7 +24,8 @@ public sealed record EntitlementReading(
     {
         get
         {
-            if (SignatureState != EntitlementSourceState.Read && ProfileState != EntitlementSourceState.Read)
+            if (SignatureState is EntitlementSourceState.Absent or EntitlementSourceState.Unreadable
+                && ProfileState != EntitlementSourceState.Read)
             {
                 return "unknown: neither the code signature nor a profile could be read";
             }
@@ -33,6 +34,7 @@ public sealed record EntitlementReading(
             {
                 EntitlementSourceState.Read => $"{Text(Signature)} in the code signature",
                 EntitlementSourceState.Absent => "the app is not signed",
+                EntitlementSourceState.NoXmlEntitlements => "the code signature holds no XML entitlements",
                 _ => "the code signature could not be read",
             };
             var profile = ProfileState switch

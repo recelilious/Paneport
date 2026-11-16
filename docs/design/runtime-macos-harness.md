@@ -130,7 +130,7 @@ Until the job exists, there is no local Mac (D1), so the builds and the harness 
 | Question of the brief | Answer |
 |---|---|
 | Compiler `__try` blocks or a vectored handler for seh.exe | `__try` with `-fms-extensions`, confirmed with clang 22 and with the pinned llvm-mingw, which builds the six programs with `-Werror` in the `ios` job: scope tables with `__C_specific_handler`, as long as each fault happens in a called function. The run under Wine confirms the behavior. |
-| How the harness runs Wine without a display driver | `winemac.drv=d` and the null driver (section 6); to be confirmed with the first run. |
+| How the harness runs Wine without a display driver | `winemac.drv=d` and the null driver (section 6), confirmed: `wineboot` creates the prefix in about 60 s, and the programs that try to open a window during it log `nodrv_CreateWindow` errors, on which no case depends. |
 | `com.apple.security.cs.allow-jit` or no hardened runtime | No entitlement: a program that the linker signs ad hoc, without the hardened runtime, maps `MAP_JIT` memory and switches it with `pthread_jit_write_protect_np` (probe of 2026-11-16). |
 | What macOS 27 lets a process execute | Probes on the runner: code in a file mapped executable, or mapped read-only and made executable with `mprotect`, as Wine maps an image, runs; anonymous memory written and then made executable runs; memory both writable and executable is refused without `MAP_JIT` (`EACCES`); `MAP_JIT` refuses `MAP_FIXED` (`EINVAL`) and allows `mprotect` inside it. |
 | x18, `TPIDR_EL0` and the loader's link | x18 survives context switches only when the main executable names SDK 11 or 12, not 13 or the current one, whatever its deployment target; `TPIDR_EL0` never keeps a value written to it; an executable linked with `-segalign,0x1000` is killed at exec, one with the deployment target 12 alone runs (section 2.1). |
@@ -138,6 +138,7 @@ Until the job exists, there is no local Mac (D1), so the builds and the harness 
 | The runner | macOS 27.0.1 on an Apple M1 (Virtual) with 3 cores, 7 GiB of memory and 36 GiB of free disk, with Xcode 27.1 (scratch run 43695160263). |
 | Build times, cold | Wine: configured in 44 s, built in 1572 s with 3 jobs, installed in 32 s. FEX: its six submodules fetched, configured in 17 s, built in 65 s. The test programs and the harness: 11 s. A cold run fits a job by far, so the job needs no split. |
 | The first harness run | Run 43928068884: `wineboot` made the template prefix in 58 s; `checksum`, `cpu_features`, `file_io` and `threads` passed under FEX, the checksum at about 4.4 GB/s; `console`, `console_exit_code` and `seh` failed on the divide check alone (section 3.1). |
+| The harness | Run 43936699061, with Wine `908c58a` and FEX `5c3cbd8`: all seven cases pass in 10 to 13 s each, and the planted cases fail with their names (`wrong_exit_code` exited with 3, not 4; `wrong_line` differs in line 1). FEX's map lists 235 input files and no object of mingw-w64's runtime. |
 | Does merge request 11638 build on Wine 11.20 | Yes: the rebased fork configures and builds for `arm64ec`, `aarch64` and `i386`, the loader prints `wine-11.20`, and every module that the build made is installed. The 64-bit modules are ARM64X files. |
 
 ## 10. Third-party code in the builds
@@ -202,7 +203,7 @@ What M4.4 has to settle:
 - **The divide error on quotient overflow**, such as `idiv` of the smallest value by -1, is not raised yet (section 3.1).
 - **32-bit processes.** During `wineboot`, a 32-bit process could not reserve its low memory (`map_fixed_area out of memory for 0x10000-0x110000`), because macOS keeps the low 4 GB as the loader's page zero; WoW64 needs that range, which is for M7.3.
 - **Third-party code** for M4.4 to register, among it a GPL file of FFmpeg and Cephes without a license (section 10).
-- **The first runs** answer the questions of section 9 that remain.
+- **The `runtime` job** (section 7) waits for the contract proposals of C-0011, C-0004 and C-0003; until then, the scratch runs of section 9 stand in for it.
 
 ## 12. Sources
 

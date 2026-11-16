@@ -84,4 +84,68 @@ public sealed class FileLogTests
         Assert.True(new FileInfo(path).Length <= FileLog.MaxBytes + 256);
         Assert.Equal("The log reached its size limit; later lines are dropped.", File.ReadLines(path).Last());
     }
+
+    [Fact]
+    public async Task AFailedWriteStopsTheLogAndDropsLaterLines()
+    {
+        // A full device, as a stream whose writes fail: the log closes its queue rather than
+        // keeping every later line in memory, and neither Write nor Dispose throws.
+        using var folder = new TemporaryFolder();
+        var stream = new FailingStream();
+        var log = new FileLog(folder.Path, new FakeTimeProvider(), _ => stream);
+
+        log.Write(LogLevel.Information, "Run", "the line whose flush fails");
+        await log.Closed.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+        Assert.True(stream.WriteAttempted);
+        for (var line = 0; line < 1000; line++)
+        {
+            log.Write(LogLevel.Information, "Run", "a line that is dropped");
+        }
+
+        Assert.True(log.Closed.IsCompletedSuccessfully);
+        log.Dispose();
+    }
+
+    // A stream that accepts nothing, as a file on a full device does.
+    private sealed class FailingStream : Stream
+    {
+        public bool WriteAttempted { get; private set; }
+
+        public override bool CanRead => false;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => true;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            WriteAttempted = true;
+            throw new IOException("No space left on device.");
+        }
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            WriteAttempted = true;
+            return ValueTask.FromException(new IOException("No space left on device."));
+        }
+    }
 }

@@ -23,6 +23,11 @@ namespace Paneport.Core.Logging;
 /// holds no password, token or other secret (C-0010 section 2); exporting it, which needs the
 /// scrubbing of C-0004 section 4, comes with a later stage.
 /// </para>
+/// <para>
+/// When a write or a flush fails, such as on a full device, the log stops for the rest of the run:
+/// the queue is closed and emptied, so later lines are dropped at once instead of piling up in
+/// memory.
+/// </para>
 /// </remarks>
 public sealed class FileLog : ILog, IDisposable
 {
@@ -46,9 +51,16 @@ public sealed class FileLog : ILog, IDisposable
     /// <param name="time">The clock that stamps the lines.</param>
     /// <exception cref="IOException">The folder or the file cannot be opened. The message can hold a local path.</exception>
     public FileLog(string folder, TimeProvider time)
+        : this(folder, time, path => new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
+    {
+    }
+
+    // Opens the run's file through openFile, which a test replaces to make the writes fail.
+    internal FileLog(string folder, TimeProvider time, Func<string, Stream> openFile)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         ArgumentNullException.ThrowIfNull(time);
+        ArgumentNullException.ThrowIfNull(openFile);
         _time = time;
         Directory.CreateDirectory(folder);
         Path = System.IO.Path.Combine(folder, FileName);
@@ -57,12 +69,15 @@ public sealed class FileLog : ILog, IDisposable
             File.Move(Path, System.IO.Path.Combine(folder, PreviousFileName), overwrite: true);
         }
 
-        var stream = new FileStream(Path, FileMode.Create, FileAccess.Write, FileShare.Read);
+        var stream = openFile(Path);
         _writer = Task.Run(() => WriteLinesAsync(stream));
     }
 
     /// <summary>Gets the path of the current run's file.</summary>
     public string Path { get; }
+
+    // Completes when the queue is closed and empty: after Dispose, or once a write failed.
+    internal Task Closed => _lines.Reader.Completion;
 
     /// <inheritdoc />
     public void Write(LogLevel level, string source, string message)
@@ -78,7 +93,24 @@ public sealed class FileLog : ILog, IDisposable
         _writer.Wait(TimeSpan.FromSeconds(5));
     }
 
-    private async Task WriteLinesAsync(FileStream stream)
+    // Writes until the queue is closed. A failed write or flush stops the log: the queue is
+    // closed, so that Write drops later lines, and what it still holds is dropped too.
+    private async Task WriteLinesAsync(Stream stream)
+    {
+        try
+        {
+            await WriteUntilClosedAsync(stream).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            _lines.Writer.TryComplete();
+            while (_lines.Reader.TryRead(out _))
+            {
+            }
+        }
+    }
+
+    private async Task WriteUntilClosedAsync(Stream stream)
     {
         var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
         var writer = new StreamWriter(stream, encoding) { NewLine = "\n" };

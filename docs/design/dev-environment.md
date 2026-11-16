@@ -108,12 +108,41 @@ The `ios` and `native` jobs in `.github/workflows/ci.yml` are the macOS build ho
 ## 6. The iPhone
 
 - **Device.** An iPhone 17 Pro, 17 Pro Max, 18 Pro or 18 Pro Max on iOS 26 or 27 (C-0001 section 2), with Developer Mode on, in Settings, Privacy & Security ([Apple](https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device)).
-- **Installing from Windows.** AltServer on Windows, which needs Apple's own iTunes and iCloud rather than their Microsoft Store versions, installs AltStore 2.2 or later on the iPhone; AltStore then re-signs and installs Paneport with the user's Apple ID (C-0009 section 5). AltStore 2.2 states support for apps with the increased memory limit entitlement, which Paneport needs ([avalonia_ui_layer.md](../research/avalonia_ui_layer.md) section 2.2). The re-signing profile also provides `get-task-allow`.
-- **Free or paid account.** recelilious uses a free account (D2, 2026-10-29). A free account signs at most three apps per device and its profiles expire after seven days, so AltStore re-signs Paneport within a week, from the same Windows machine on the same network. AltStore, StikDebug and Paneport already use the three apps, which is why the device test flavor shares the main app's bundle identifier (D12). A paid account removes the limit and gives one-year profiles.
-- **Installing from a Mac.** Xcode, `xcrun devicectl` or Apple Configurator, with a development profile of the user's own (C-0009 section 5). The bootstrap signs nothing, and nothing from the user's account enters the repository.
+- **Free or paid account.** recelilious uses a free account (D2, 2026-10-29). A free account keeps at most three sideloaded apps active on a device, the sideloading tool among them, and its profiles expire after seven days, so the tool re-signs Paneport within a week. AltStore, StikDebug and Paneport already use the three apps, which is why the device test flavor shares the main app's bundle identifier (D12). A paid account removes the limit and gives one-year profiles.
+- **Installing from Windows.** AltServer on Windows, which needs Apple's own iTunes and iCloud rather than their Microsoft Store versions, and AltStore 2.2 or later on the iPhone re-sign Paneport with the user's own Apple ID and install it (C-0009 section 5). AltStore 2.2 states support for apps with the increased memory limit entitlement, which Paneport needs ([avalonia_ui_layer.md](../research/avalonia_ui_layer.md) section 2.2), and the re-signing profile provides `get-task-allow`. The install route below gives the steps.
+- **Installing from a Mac.** Xcode, `xcrun devicectl device install app` or Apple Configurator, with a development profile of the user's own (C-0009 section 5). The bootstrap signs nothing, and nothing from the user's account enters the repository. There is no local Mac (D1), so L1 installs from Windows.
 - **Routes that are not supported yet.** SideStore 0.7.0 is reported to drop `increased-memory-limit` for free accounts ([SideStore issue 1616](https://github.com/SideStore/SideStore/issues/1616), open), and Sideloadly is untested. Neither is supported until a device test measures the memory limit after installing with it (C-0009 section 5, C-0012).
 - **JIT.** StikDebug, a pairing file and LocalDevVPN come with L3 (C-0006).
-- **The app.** The `ios` job of a pull request leaves two `.ipa` files (section 5). On the pull request's page, open the checks, then the run of the CI workflow, and download the artifacts `Paneport-main-<commit>` and `Paneport-test-<commit>` from its summary; GitHub wraps each `.ipa` in a zip, which is unpacked first. Install the main app's `.ipa` with AltStore, from its My Apps tab, or from a Mac with Xcode or `xcrun devicectl device install app`. The device test flavor shares the main app's bundle identifier (D12), so installing it replaces the main app, keeps one app of the free account's three, and keeps the keychain's items; installing the main app again replaces it back. iOS asks to trust the developer of a re-signed app once, in Settings, General, VPN & Device Management. Never attach a screenshot of the sideloading tool or of Settings to a record, and never the download path of an `.ipa` (C-0012 section 4). S1.0.2 records the install route that worked, with its exact steps, in this section.
+
+**The install route from Windows (S1.0.2).** This is a draft until L1's acceptance run. It comes from AltStore's documentation and the documents of M1.1 and M1.3; the run tries it, and the session that records the run completes it with the path that worked and the versions it used. L2 and L6 install through the route recorded here ([L1 brief](stages/L1-app-on-iphone.md), S1.0.2).
+
+| Item | Value |
+|---|---|
+| Tools | AltStore Classic 2.2 or later on the iPhone, the first release whose notes state support for sideloading apps with the increased memory limit entitlement, and AltServer for Windows. On 2026-11-16 the newest releases were AltStore 2.3.1, of 2026-10-21, and AltServer 1.7.4 for Windows, of 2026-03-24 ([AltStore release notes](https://faq.altstore.io/release-notes/altstore), [AltServer release notes](https://faq.altstore.io/release-notes/altserver)). |
+| Account | A free Apple account, which signs as a Personal Team (D2). Its Apple ID is entered only into iTunes, iCloud, AltServer and AltStore, and never into this repository, a record or a chat. |
+| Limits of the free account | Three active sideloaded apps, AltStore among them; ten App IDs, each held for a week; and profiles that expire after seven days ([activating apps](https://faq.altstore.io/altstore-classic/activating-apps), [App IDs](https://faq.altstore.io/altstore-classic/app-ids)). Both flavors share one bundle identifier, so they use one App ID and one app slot (D12). |
+
+Once per Windows machine and iPhone, as AltStore's [guide for Windows](https://faq.altstore.io/altstore-classic/how-to-install-altstore-windows) describes:
+
+1. Install iTunes and iCloud from Apple's website, not from the Microsoft Store, and sign in to iTunes with the Apple ID.
+2. Connect the iPhone by cable, unlock it, trust the computer, and turn on Wi-Fi sync for the iPhone in iTunes.
+3. Start AltServer as administrator, and allow it on private networks when Windows asks.
+4. From AltServer's icon in the notification area, choose Install AltStore and then the iPhone, and enter the Apple ID when AltServer asks for it.
+5. On the iPhone, trust the developer in Settings, General, VPN & Device Management, and turn on Developer Mode in Settings, Privacy & Security, which iOS 16 and later need for apps signed this way; the iPhone restarts once.
+6. In AltStore's settings, leave Randomize Bundle IDs off. AltStore 2.3.1 added it as an experiment; turned on, it would give the two flavors different bundle identifiers, and the test flavor would take a second app slot instead of replacing the main app (D12).
+
+For each `.ipa` that an acceptance step installs:
+
+1. The `ios` job of a pull request leaves two `.ipa` files (section 5). On the pull request's page, open the Checks tab, then the run of the CI workflow, and download `Paneport-main-<commit>` or `Paneport-test-<commit>` from the artifacts in its summary, which needs a signed-in GitHub account. Each artifact is a zip around the `.ipa`; unpack it.
+2. Hold Shift and click AltServer's icon in the notification area, choose Sideload .ipa, then the iPhone and the `.ipa`. AltServer re-signs the app with the Apple ID and installs it. AltServer gained this command in version 1.5, and its release notes are the only page of AltStore's documentation that describes installing an `.ipa` that comes from no AltStore source ([AltServer release notes](https://faq.altstore.io/release-notes/altserver)).
+3. If AltServer fails, or L1's step 5 shows that the install dropped `increased-memory-limit`, install the same `.ipa` from AltStore's My Apps tab instead, choosing it in the Files app, where iCloud Drive can bring it from Windows. AltStore 2.2 states its support for the entitlement for AltStore's own sideloading, while AltServer's release notes say nothing about entitlements. AltStore's documentation does not describe this path either, so the run records whether it is offered and whether it keeps the entitlement.
+4. Open Paneport. iOS asks to trust a developer once per certificate, which the install of AltStore already did; if it asks again, trust it in Settings, General, VPN & Device Management.
+
+An app installed over another with the same bundle identifier replaces it and keeps its data and its keychain items. So the device test flavor replaces the main app, and installing the main app again replaces it back (D12).
+
+**The seven-day re-sign.** The free account's profile expires seven days after an install or a refresh, and then the app no longer opens, while its data stays ([AltStore's getting started](https://faq.altstore.io/altstore-classic/your-altstore)). With its Background Refresh setting on, AltStore refreshes the apps it installed while AltServer runs on the same Wi-Fi network, and Refresh All in My Apps refreshes them at once ([AltServer](https://faq.altstore.io/altstore-classic/altserver)). An app sideloaded with AltServer's Sideload .ipa is not refreshed that way: AltServer's release notes say to install it again every seven days, which installing each new CI build over the previous one does as well.
+
+**Never in a record.** What AltStore, AltServer, iTunes, iCloud and Settings show: the Apple ID, the developer's name under VPN & Device Management, the device's name, its UDID or serial number, and the re-signed bundle identifier. Never attach a screenshot of those apps, and never name the download path of an `.ipa` (C-0012 section 4). Paneport's own pages show none of these values ([ios-app-head.md](ios-app-head.md) section 8).
 
 ## 7. Never in the repository
 
@@ -124,6 +153,7 @@ The `ios` and `native` jobs in `.github/workflows/ci.yml` are the macOS build ho
 ## 8. Open items
 
 - **The preview mark of `xcode-27`.** The image list still marks the image as a preview after GitHub's changelog announced it as generally available (section 2). If GitHub changes the image or its label, the pins move in a reviewed change.
+- **The install route of section 6.** A draft until L1's acceptance run, which shows whether AltServer's Sideload .ipa keeps `increased-memory-limit` and whether AltStore's My Apps offers its own path; the session that records the run completes the route (S1.0.2).
 
 ## 9. Sources
 
@@ -150,5 +180,10 @@ Public material consulted (C-0001 section 6):
 - Hot Restart: <https://learn.microsoft.com/en-us/dotnet/maui/ios/hot-restart>
 - Developer Mode: <https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device>
 - SideStore issue 1616: <https://github.com/SideStore/SideStore/issues/1616>
+- AltStore's release notes, with 2.2's support for the increased memory limit entitlement and 2.3.1's Randomize Bundle IDs: <https://faq.altstore.io/release-notes/altstore>
+- AltServer's release notes, with Sideload .ipa in version 1.5: <https://faq.altstore.io/release-notes/altserver>
+- Installing AltStore from Windows, trusting the developer and Developer Mode: <https://faq.altstore.io/altstore-classic/how-to-install-altstore-windows>
+- The free account's active apps and App IDs: <https://faq.altstore.io/altstore-classic/activating-apps> and <https://faq.altstore.io/altstore-classic/app-ids>
+- Expiry, Background Refresh and Refresh All: <https://faq.altstore.io/altstore-classic/your-altstore> and <https://faq.altstore.io/altstore-classic/altserver>
 - Research note `avalonia_ui_layer.md`, sections 2.2 and 3.2: [avalonia_ui_layer.md](../research/avalonia_ui_layer.md)
 - Research note `ios_platform_constraints.md`, section 4: [ios_platform_constraints.md](../research/ios_platform_constraints.md)

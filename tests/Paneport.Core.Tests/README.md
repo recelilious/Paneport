@@ -14,6 +14,7 @@ Tests of [Paneport.Core](../../src/Paneport.Core/README.md).
 | `SecretTests.cs` | The secret value type's text forms, and a log line that holds one, never contain the secret. |
 | `SettingsModelTests.cs`, `AppServicesTests.cs`, `SignedOutSteamServiceTests.cs` | The settings and locales, the services record, and the Steam stub. |
 | `PageViewModelTests.cs`, `ShellViewModelTests.cs` | Page loading and its failures; navigating to every page and back; choosing the marked section; and a newer navigation while a page loads, whose cancelled load ends quietly. |
+| `AppStartTests.cs` | The run starts once per process: the first start samples the memory timeline, starts its timer and loads the shell, and a later start, such as from a scene that iOS connected again, does nothing. |
 | `LibraryViewModelTests.cs`, `TitleViewModelTests.cs`, `TitleDetailsViewModelTests.cs` | Listing, choosing and showing titles, with exact download percentages. |
 | `SettingsViewModelTests.cs`, `DiagnosticsViewModelTests.cs` | A setting that round-trips through the store, a choice made while the page loads, a save that a newer change supersedes, and the host's values with the Game Mode level reached and not reached. |
 | `FakeNavigator.cs` | Not a test. A navigator that records the pages it shows. |

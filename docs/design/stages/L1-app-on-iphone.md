@@ -30,17 +30,17 @@ Back to the [development plan](../development-plan.md).
 | S1.2.8 | Layout table and conformance test | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
 | S1.2.9 | Native format and analysis configuration | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
 | S1.2.10 | Host framework packaging | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| M1.3 | iOS app head | Medium | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
-| S1.3.1 | Scene and root view controller | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
-| S1.3.2 | Native host embedding and host adapter | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
-| S1.3.3 | Info.plist and entitlements | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
-| S1.3.4 | Storage layout bootstrap | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
-| S1.3.5 | Settings store on disk | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
-| S1.3.6 | Keychain token store | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
-| S1.3.7 | Diagnostics wiring | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
-| S1.3.8 | Crash record reader | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
-| S1.3.9 | Ad-hoc signing, packaging and scan | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
-| S1.3.10 | Device test flavor skeleton | Small | In progress | `feat/m1-3-ios-app-head` | 2026-11-15 |
+| M1.3 | iOS app head | Medium | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.1 | Scene and root view controller | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.2 | Native host embedding and host adapter | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.3 | Info.plist and entitlements | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.4 | Storage layout bootstrap | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.5 | Settings store on disk | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.6 | Keychain token store | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.7 | Diagnostics wiring | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.8 | Crash record reader | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.9 | Ad-hoc signing, packaging and scan | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.10 | Device test flavor skeleton | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
 
 ## L1 Paneport on the iPhone
 
@@ -515,3 +515,4 @@ Scripts this stage creates: `eng/mac/sign-adhoc.sh`, `eng/mac/package-ipa.sh`, `
   - **For later sessions.** Notes left in the briefs of L1, M2.1, M2.2, M2.3, M3.1, M4.4, M6.3, M6.5, M7.1, M9.1 and M10.2.
 - **2026-11-15 (UTC), contract acceptance.** recelilious accepted the C-0011 1.1 proposal as it stands. The acceptance commit on `contract/m1-3-ios-adhoc-signing` applies it to section 4 and the change log, drops the proposal section and the index's note, and the branch is pushed with its pull request, [#23](https://github.com/recelilious/Paneport/pull/23), which merges before #21. `ios-app-head.md`, `dev-environment.md` and the note for L1 no longer list the clarification as open.
   - **Left.** recelilious merges #23. Then `checks` must pass on #21: its lychee step still fails only because cmake.org serves an expired TLS certificate, which a check from the workstation confirmed too, for four links of `native-host.md` that this branch does not change; once cmake.org renews it, a rerun of the job is enough. M1.3 and S1.3.1 to S1.3.10 are then set to Done in the branch's last commit, and recelilious merges #21.
+- **2026-11-16 (UTC), checks rerun.** cmake.org serves a valid certificate again, and its four links answered 200 from the workstation. On recelilious's choice to wait for the renewal, the failed `checks` jobs of #21 at `445d4db` and of #23 at `555016f` were run again, push and pull request alike, and passed; every other job had passed on those commits, `ios` among them. The verification is complete, and only the merges are left, #23 first and then #21, so M1.3 and S1.3.1 to S1.3.10 are set to Done in this commit, as plan section 3.3 asks. A background check of the certificate, started after the previous entry, had stopped early, when the workstation could no longer start processes; a check on resuming found the renewal.

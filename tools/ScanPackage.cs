@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Scans app packages for what a build step may leave behind that names an Apple account
-// (C-0009 section 6, S1.3.9): a provisioning profile, and a property list or entitlement that
-// names a team identifier or an application-identifier prefix. It lists the entitlements of
-// every code signature it finds. M9.1 extends it for releases and keeps its name.
+// (C-0009 section 6, S1.3.9): a provisioning profile, and a property list, entitlement or code
+// directory that names a team identifier or an application-identifier prefix. It lists the
+// entitlements of every code signature it finds, and fails a package that holds no app. The
+// rest of the scan of C-0009 section 6 comes with M9.1, which extends this tool and keeps its
+// name.
 //
 //   dotnet run tools/ScanPackage.cs -- <package.ipa>...   scan packages
 //   dotnet run tools/ScanPackage.cs -- --self-test        check every rule on generated packages
@@ -56,6 +58,10 @@ internal static class Rules
     public const string AppIdentifierPrefix = "app-identifier-prefix";
     public const string UnreadableSignature = "unreadable-signature";
     public const string UnreadablePropertyList = "unreadable-property-list";
+    public const string NoApp = "no-app";
+
+    // The Info.plist of an app at the top of its bundle, in the package's Payload folder.
+    public static readonly Regex AppInfo = new(@"^Payload/[^/]+\.app/Info\.plist$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
     // Keys whose value is a team identifier or a list of them, in profiles, entitlements and the
     // property lists that Xcode or a signing tool writes.
@@ -108,12 +114,16 @@ internal static class Scanner
         return total == 0 ? 0 : 1;
     }
 
-    // Scans one package, a zip archive such as an .ipa.
+    // Scans one package, a zip archive such as an .ipa. A package needs an app: an Info.plist in
+    // Payload/<name>.app/ whose CFBundleExecutable names a Mach-O file beside it, so that a
+    // packaging mistake cannot pass for a clean package.
     public static PackageReport Scan(Stream package)
     {
         using var archive = new ZipArchive(package, ZipArchiveMode.Read);
         var findings = new List<Finding>();
         var entitlements = new List<string>();
+        var machOFiles = new HashSet<string>(StringComparer.Ordinal);
+        var executables = new List<string>();
         foreach (var entry in archive.Entries.Where(entry => !entry.FullName.EndsWith('/')).OrderBy(entry => entry.FullName, StringComparer.Ordinal))
         {
             var name = entry.FullName;
@@ -127,19 +137,31 @@ internal static class Scanner
             var bytes = Read(entry);
             if (MachO.IsMachO(bytes))
             {
+                machOFiles.Add(name);
                 ScanSignature(name, bytes, findings, entitlements);
             }
             else if (Plist.IsPropertyList(name, bytes))
             {
                 try
                 {
-                    Check(name, Plist.Parse(bytes), findings);
+                    var tree = Plist.Parse(bytes);
+                    Check(name, tree, findings);
+                    if (Rules.AppInfo.IsMatch(name) && tree is Dictionary<string, object> info
+                        && info.GetValueOrDefault("CFBundleExecutable") is string executable)
+                    {
+                        executables.Add(name[..^"Info.plist".Length] + executable);
+                    }
                 }
                 catch (InvalidDataException)
                 {
                     findings.Add(new Finding(name, Rules.UnreadablePropertyList));
                 }
             }
+        }
+
+        if (!executables.Any(machOFiles.Contains))
+        {
+            findings.Add(new Finding("Payload/", Rules.NoApp));
         }
 
         return new PackageReport([.. findings.Distinct()], entitlements);
@@ -150,7 +172,14 @@ internal static class Scanner
         byte[]? xml;
         try
         {
-            xml = MachO.ReadEntitlements(bytes);
+            (xml, var namesTeam) = MachO.ReadSignatures(bytes);
+
+            // A code directory names a team only when an Apple identity signed it; an ad-hoc
+            // signature names none.
+            if (namesTeam)
+            {
+                findings.Add(new Finding($"{name} (code signature)", Rules.TeamIdentifier));
+            }
         }
         catch (InvalidDataException)
         {
@@ -237,9 +266,11 @@ internal static class Scanner
 }
 
 // The code signature of a Mach-O file, as Apple's open-source mach-o/loader.h, mach-o/fat.h and
-// the code signing blobs describe it: LC_CODE_SIGNATURE points at a super blob, whose index names
-// the entitlements blob, an XML property list. Mach-O headers are little-endian on arm64; fat
-// headers and signature blobs are big-endian.
+// the code signing blobs of cs_blobs.h describe it: LC_CODE_SIGNATURE points at a super blob,
+// whose index names the code directories and the entitlements blob, an XML property list. A code
+// directory of version 0x20200 or later holds the offset of a team identifier at byte 48, which an
+// ad-hoc signature leaves at zero. Mach-O headers are little-endian on arm64; fat headers and
+// signature blobs are big-endian.
 internal static class MachO
 {
     private const uint Magic64 = 0xFEEDFACF;
@@ -248,32 +279,40 @@ internal static class MachO
     private const uint SuperBlobMagic = 0xFADE0CC0;
     private const uint EntitlementsMagic = 0xFADE7171;
     private const uint EntitlementsSlot = 5;
+    private const uint CodeDirectoryMagic = 0xFADE0C02;
+    private const uint CodeDirectorySlot = 0;
+    private const uint AlternateCodeDirectorySlot = 0x1000;
+    private const uint AlternateCodeDirectories = 5;
+    private const uint TeamOffsetVersion = 0x20200;
+    private const int TeamOffsetField = 48;
 
     public static bool IsMachO(byte[] bytes) =>
         bytes.Length >= 32 && (BinaryPrimitives.ReadUInt32LittleEndian(bytes) == Magic64 || BinaryPrimitives.ReadUInt32BigEndian(bytes) == FatMagic);
 
-    // The entitlements of the first slice that has a signature, or null when no slice is signed.
-    public static byte[]? ReadEntitlements(byte[] bytes)
+    // The entitlements of the first slice whose signature holds them, or null; and whether a code
+    // directory of any slice names a team.
+    public static (byte[]? Entitlements, bool NamesTeam) ReadSignatures(byte[] bytes)
     {
         if (BinaryPrimitives.ReadUInt32BigEndian(bytes) == FatMagic)
         {
+            byte[]? entitlements = null;
+            var namesTeam = false;
             var count = BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(4));
             for (var index = 0; index < count && index < 16; index++)
             {
                 var offset = (int)BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, 8 + (index * 20) + 8, 4));
-                if (ReadThin(bytes, offset) is { } xml)
-                {
-                    return xml;
-                }
+                var slice = ReadThin(bytes, offset);
+                entitlements ??= slice.Entitlements;
+                namesTeam |= slice.NamesTeam;
             }
 
-            return null;
+            return (entitlements, namesTeam);
         }
 
         return ReadThin(bytes, 0);
     }
 
-    private static byte[]? ReadThin(byte[] bytes, int start)
+    private static (byte[]? Entitlements, bool NamesTeam) ReadThin(byte[] bytes, int start)
     {
         if (BinaryPrimitives.ReadUInt32LittleEndian(Slice(bytes, start, 4)) != Magic64)
         {
@@ -300,36 +339,52 @@ internal static class MachO
             offset += size;
         }
 
-        return null;
+        return (null, false);
     }
 
-    private static byte[]? ReadBlob(byte[] bytes, int superBlob)
+    private static (byte[]? Entitlements, bool NamesTeam) ReadBlob(byte[] bytes, int superBlob)
     {
         if (BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, superBlob, 4)) != SuperBlobMagic)
         {
             throw new InvalidDataException("the code signature is not a super blob");
         }
 
+        byte[]? entitlements = null;
+        var namesTeam = false;
         var count = BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, superBlob + 8, 4));
         for (var index = 0; index < count && index < 64; index++)
         {
             var slot = BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, superBlob + 12 + (index * 8), 4));
             var blob = superBlob + (int)BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, superBlob + 16 + (index * 8), 4));
-            if (slot != EntitlementsSlot)
+            if (slot == EntitlementsSlot)
             {
-                continue;
-            }
+                if (BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, blob, 4)) != EntitlementsMagic)
+                {
+                    throw new InvalidDataException("the entitlements blob has another magic");
+                }
 
-            if (BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, blob, 4)) != EntitlementsMagic)
+                var length = (int)BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, blob + 4, 4));
+                entitlements = Slice(bytes, blob + 8, length - 8).ToArray();
+            }
+            else if (slot is CodeDirectorySlot or (>= AlternateCodeDirectorySlot and < AlternateCodeDirectorySlot + AlternateCodeDirectories))
             {
-                throw new InvalidDataException("the entitlements blob has another magic");
+                namesTeam |= NamesTeam(bytes, blob);
             }
-
-            var length = (int)BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, blob + 4, 4));
-            return Slice(bytes, blob + 8, length - 8).ToArray();
         }
 
-        return null;
+        return (entitlements, namesTeam);
+    }
+
+    private static bool NamesTeam(byte[] bytes, int codeDirectory)
+    {
+        if (BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, codeDirectory, 4)) != CodeDirectoryMagic)
+        {
+            throw new InvalidDataException("a code directory has another magic");
+        }
+
+        var version = BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, codeDirectory + 8, 4));
+        return version >= TeamOffsetVersion
+            && BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, codeDirectory + TeamOffsetField, 4)) != 0;
     }
 
     private static ReadOnlySpan<byte> Slice(byte[] bytes, int offset, int length) =>
@@ -401,25 +456,29 @@ internal static class Plist
                 throw new InvalidDataException("the binary property list is too short");
             }
 
+            // Every number of the trailer is checked against the file's size before it is used, so
+            // that a made-up trailer can neither overflow nor size an allocation beyond the file.
             var trailer = bytes.AsSpan(bytes.Length - 32);
             var offsetSize = trailer[6];
             var referenceSize = trailer[7];
-            var count = checked((int)BinaryPrimitives.ReadUInt64BigEndian(trailer[8..]));
-            var top = checked((int)BinaryPrimitives.ReadUInt64BigEndian(trailer[16..]));
-            var table = checked((int)BinaryPrimitives.ReadUInt64BigEndian(trailer[24..]));
-            if (offsetSize is < 1 or > 8 || referenceSize is < 1 or > 8 || count < 1 || top >= count
-                || table < 8 || table + ((long)count * offsetSize) > bytes.Length - 32)
+            var count = BinaryPrimitives.ReadUInt64BigEndian(trailer[8..]);
+            var top = BinaryPrimitives.ReadUInt64BigEndian(trailer[16..]);
+            var table = BinaryPrimitives.ReadUInt64BigEndian(trailer[24..]);
+            var limit = (ulong)(bytes.Length - 32);
+            if (offsetSize is < 1 or > 8 || referenceSize is < 1 or > 8 || count < 1 || count > limit || top >= count
+                || table < 8 || table > limit || table + (count * offsetSize) > limit)
             {
                 throw new InvalidDataException("the binary property list's trailer is invalid");
             }
 
-            var offsets = new int[count];
-            for (var index = 0; index < count; index++)
+            var offsets = new int[(int)count];
+            for (var index = 0; index < offsets.Length; index++)
             {
-                offsets[index] = checked((int)Number(bytes.AsSpan(table + (index * offsetSize), offsetSize)));
+                var offset = Number(bytes.AsSpan((int)table + (index * offsetSize), offsetSize));
+                offsets[index] = offset < limit ? (int)offset : throw new InvalidDataException("an object lies outside the binary property list");
             }
 
-            return new Reader(bytes, offsets, referenceSize).Read(top, 0);
+            return new Reader(bytes, offsets, referenceSize).Read((int)top, 0);
         }
 
         private static ulong Number(ReadOnlySpan<byte> bytes)
@@ -506,11 +565,23 @@ internal static class Plist
                     throw new InvalidDataException("the binary property list has an invalid length");
                 }
 
+                // No object holds more items than the file has bytes after its start, so a made-up
+                // length fails here instead of sizing an allocation.
                 var size = 1 << (marker & 0x0F);
-                return (checked((int)Number(Span(offset + 2, size))), offset + 2 + size);
+                var start = offset + 2 + size;
+                var length = Number(Span(offset + 2, size));
+                return length <= (ulong)Math.Max(0, bytes.Length - start)
+                    ? ((int)length, start)
+                    : throw new InvalidDataException("the binary property list has an invalid length");
             }
 
-            private int Reference(int offset) => checked((int)Number(Span(offset, referenceSize)));
+            private int Reference(int offset)
+            {
+                var reference = Number(Span(offset, referenceSize));
+                return reference < (ulong)offsets.Length
+                    ? (int)reference
+                    : throw new InvalidDataException("the binary property list is malformed");
+            }
 
             private ReadOnlySpan<byte> Span(int offset, int length) =>
                 offset < 0 || length < 0 || (long)offset + length > bytes.Length
@@ -520,9 +591,10 @@ internal static class Plist
     }
 }
 
-// Checks every rule on packages that it builds in memory: a clean package passes, and a planted
-// provisioning profile, team identifier or application-identifier prefix each fails and names
-// its file. The planted values are made up and exist only in memory.
+// Checks every rule on packages that it builds in memory: a clean package, whose signatures are ad
+// hoc, passes; a planted provisioning profile, team identifier or application-identifier prefix
+// each fails and names its file; a package without an app fails; and a malformed binary property
+// list is reported, never crashed on. The planted values are made up and exist only in memory.
 internal static class SelfTest
 {
     private const string App = "Payload/Paneport.app/";
@@ -577,6 +649,24 @@ internal static class SelfTest
         Expect("an unreadable property list fails", Files(("Broken.plist", "<plist><dict>"u8.ToArray())),
             [new Finding($"{App}Broken.plist", Rules.UnreadablePropertyList)]);
 
+        Expect("a code directory that names a team fails",
+            Files(("Paneport.iOS", MachO(Entitlements(string.Empty), Team))),
+            [new Finding($"{App}Paneport.iOS (code signature)", Rules.TeamIdentifier)]);
+        Expect("a framework's code directory that names a team fails",
+            Files(("Frameworks/paneport_host.framework/paneport_host", MachO(Entitlements(string.Empty), Team))),
+            [new Finding($"{App}Frameworks/paneport_host.framework/paneport_host (code signature)", Rules.TeamIdentifier)]);
+        Expect("an empty package fails", Package(), [new Finding("Payload/", Rules.NoApp)]);
+        Expect("a package without an app fails", Package(("README.txt", "Paneport"u8.ToArray())),
+            [new Finding("Payload/", Rules.NoApp)]);
+        Expect("an app without its executable fails", Files(("Paneport.iOS", null)),
+            [new Finding("Payload/", Rules.NoApp)]);
+        Expect("a binary property list that claims more objects than it holds is unreadable",
+            Files(("Huge.plist", RawBinaryPlist([0x09], count: 1UL << 40))),
+            [new Finding($"{App}Huge.plist", Rules.UnreadablePropertyList)]);
+        Expect("a binary property list whose array is longer than the file is unreadable",
+            Files(("Long.plist", RawBinaryPlist([0xAF, 0x12, 0x7F, 0xFF, 0xFF, 0xFF], count: 1))),
+            [new Finding($"{App}Long.plist", Rules.UnreadablePropertyList)]);
+
         Console.WriteLine(s_failures == 0 ? "Self-test passed." : $"Self-test failed: {s_failures} cases.");
         return s_failures == 0 ? 0 : 1;
     }
@@ -612,8 +702,9 @@ internal static class SelfTest
         Console.WriteLine($"ok   {name}");
     }
 
-    // The files of a clean app, with the given files added or replaced, as a package.
-    private static byte[] Files(params (string Name, byte[] Bytes)[] changes)
+    // The files of a clean app, with the given files added, replaced or, for null, removed, as a
+    // package.
+    private static byte[] Files(params (string Name, byte[]? Bytes)[] changes)
     {
         var files = new Dictionary<string, byte[]>(StringComparer.Ordinal)
         {
@@ -630,15 +721,28 @@ internal static class SelfTest
         };
         foreach (var (name, bytes) in changes)
         {
-            files[name] = bytes;
+            if (bytes is null)
+            {
+                files.Remove(name);
+            }
+            else
+            {
+                files[name] = bytes;
+            }
         }
 
+        return Package([.. files.Select(file => (App + file.Key, file.Value))]);
+    }
+
+    // A package of the given entries, by their full names.
+    private static byte[] Package(params (string Name, byte[] Bytes)[] entries)
+    {
         using var stream = new MemoryStream();
         using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
         {
-            foreach (var (name, bytes) in files)
+            foreach (var (name, bytes) in entries)
             {
-                using var entry = archive.CreateEntry(App + name).Open();
+                using var entry = archive.CreateEntry(name).Open();
                 entry.Write(bytes);
             }
         }
@@ -647,7 +751,8 @@ internal static class SelfTest
     }
 
     private static string InfoBody(string extra) =>
-        $"<dict><key>CFBundleIdentifier</key><string>{BundleId}</string><key>CFBundleDisplayName</key><string>Paneport</string>{extra}</dict>";
+        $"<dict><key>CFBundleIdentifier</key><string>{BundleId}</string><key>CFBundleDisplayName</key><string>Paneport</string>"
+            + $"<key>CFBundleExecutable</key><string>Paneport.iOS</string>{extra}</dict>";
 
     private static string Entitlements(string extra) =>
         $"<dict><key>com.apple.developer.kernel.increased-memory-limit</key><true/>{extra}</dict>";
@@ -657,9 +762,11 @@ internal static class SelfTest
             + "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
             + $"<plist version=\"1.0\">{body}</plist>\n");
 
-    // A 64-bit Mach-O header with one LC_CODE_SIGNATURE command whose super blob holds the
-    // entitlements, or with no load command for an unsigned binary.
-    private static byte[] MachO(string? entitlementsBody)
+    // A 64-bit Mach-O header with one LC_CODE_SIGNATURE command whose super blob holds a code
+    // directory of version 0x20400 and the entitlements, or with no load command for an unsigned
+    // binary. The code directory of an ad-hoc signature names no team; with a team, it names it
+    // after its fields, as an Apple identity's signature does.
+    private static byte[] MachO(string? entitlementsBody, string? team = null)
     {
         var bytes = new List<byte>();
         void little(uint value)
@@ -690,26 +797,69 @@ internal static class SelfTest
         }
 
         var xml = Xml(entitlementsBody);
+        byte[] teamBytes = team is null ? [] : [.. Encoding.ASCII.GetBytes(team), 0];
         const uint SignatureOffset = 64;
+        const uint DirectoryStart = 28;
+        const uint DirectoryFields = 88;
+        var directoryLength = DirectoryFields + (uint)teamBytes.Length;
         var blobLength = (uint)(8 + xml.Length);
+        var superLength = DirectoryStart + directoryLength + blobLength;
         little(0x1D);
         little(16);
         little(SignatureOffset);
-        little(20 + blobLength);
+        little(superLength);
         while (bytes.Count < SignatureOffset)
         {
             bytes.Add(0);
         }
 
         big(0xFADE0CC0);
-        big(20 + blobLength);
-        big(1);
+        big(superLength);
+        big(2);
+        big(0);
+        big(DirectoryStart);
         big(5);
-        big(20);
+        big(DirectoryStart + directoryLength);
+
+        // The code directory: magic, length, version and flags (ad hoc without a team), the fields
+        // up to the scatter offset, then the team identifier's offset at byte 48.
+        big(0xFADE0C02);
+        big(directoryLength);
+        big(0x20400);
+        big(team is null ? 0x2U : 0U);
+        for (var field = 16; field < 48; field += 4)
+        {
+            big(0);
+        }
+
+        big(team is null ? 0U : DirectoryFields);
+        while (bytes.Count < SignatureOffset + DirectoryStart + DirectoryFields)
+        {
+            bytes.Add(0);
+        }
+
+        bytes.AddRange(teamBytes);
         big(0xFADE7171);
         big(blobLength);
         bytes.AddRange(xml);
         return [.. bytes];
+    }
+
+    // A bplist00 file of the given object bytes at offset 8, with offsets of four bytes, one-byte
+    // references and a trailer that claims the given number of objects.
+    private static byte[] RawBinaryPlist(byte[] objectBytes, ulong count)
+    {
+        var file = new List<byte>("bplist00"u8.ToArray());
+        file.AddRange(objectBytes);
+        var table = file.Count;
+        file.AddRange([0, 0, 0, 8]);
+        var trailer = new byte[32];
+        trailer[6] = 4;
+        trailer[7] = 1;
+        BinaryPrimitives.WriteUInt64BigEndian(trailer.AsSpan(8), count);
+        BinaryPrimitives.WriteUInt64BigEndian(trailer.AsSpan(24), (ulong)table);
+        file.AddRange(trailer);
+        return [.. file];
     }
 
     // A bplist00 file with one-byte references and offsets of four bytes, for dictionaries,

@@ -319,6 +319,11 @@ jobs:
     concurrency:
       group: ios-${{ github.event.pull_request.number || github.sha }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    # The switch of C-0009 section 4 for extended-virtual-addressing, off as L1 and the release
+    # expect: the build takes it as PaneportExtendedVirtualAddressing, eng/mac/sign-adhoc.sh
+    # declares the entitlement only when it is true, and eng/mac/check-app.sh then expects it.
+    env:
+      PANEPORT_EXTENDED_VIRTUAL_ADDRESSING: "false"
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -552,7 +557,8 @@ jobs:
           status=0
           for project in src/Paneport.iOS/Paneport.iOS.csproj tests/device/Paneport.DeviceTest.csproj; do
             dotnet build "$project" -c Release --no-restore \
-              -p:PaneportCommit="$HEAD_SHA" -p:PaneportBuildNumber="$RUN_NUMBER" || status=1
+              -p:PaneportCommit="$HEAD_SHA" -p:PaneportBuildNumber="$RUN_NUMBER" \
+              -p:PaneportExtendedVirtualAddressing="$PANEPORT_EXTENDED_VIRTUAL_ADDRESSING" || status=1
           done
           exit "$status"
 

@@ -51,6 +51,20 @@ SPDX-License-Identifier: MIT
   </PropertyGroup>
 
   <!--
+  extended-virtual-addressing is declared only when PaneportExtendedVirtualAddressing is true
+  (C-0009 section 4); the default is false, as L1 and the release expect. A signing build adds it
+  to Entitlements.plist's entitlements here. An unsigned build has no entitlements of its own: the
+  ad-hoc route takes the same switch as PANEPORT_EXTENDED_VIRTUAL_ADDRESSING, which the ios job
+  sets once for the build, eng/mac/sign-adhoc.sh and eng/mac/check-app.sh.
+  -->
+  <PropertyGroup>
+    <PaneportExtendedVirtualAddressing Condition="'$(PaneportExtendedVirtualAddressing)' == ''">false</PaneportExtendedVirtualAddressing>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(EnableCodeSigning)' == 'true' And '$(PaneportExtendedVirtualAddressing)' == 'true'">
+    <CustomEntitlements Include="com.apple.developer.kernel.extended-virtual-addressing" Type="Boolean" Value="true" />
+  </ItemGroup>
+
+  <!--
   The native host (C-0009 section 4): a framework that the ios job builds before the app,
   embedded with a NativeReference of kind Framework and imported as
   @rpath/paneport_host.framework/paneport_host. The main app embeds the build of the ios-device

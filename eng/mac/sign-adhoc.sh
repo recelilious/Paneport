@@ -11,9 +11,10 @@
 # Each embedded framework and library first, with `codesign --force --sign -`, then the app with
 # `codesign --force --sign - --entitlements <entitlements>`. An ad-hoc signature holds no Apple
 # identity and no provisioning profile (C-0009 section 5). With
-# PANEPORT_EXTENDED_VIRTUAL_ADDRESSING=true, which the build property
-# PaneportExtendedVirtualAddressing stands for, the app also declares
-# extended-virtual-addressing (C-0009 section 4); the default build does not. Bash 3.2
+# PANEPORT_EXTENDED_VIRTUAL_ADDRESSING=true, the app also declares extended-virtual-addressing
+# (C-0009 section 4); the default does not. The variable is the ad-hoc route's form of the build
+# property PaneportExtendedVirtualAddressing: the ios job sets it once, passes the same value to
+# the build, and eng/mac/check-app.sh expects the entitlement exactly when it is true. Bash 3.2
 # (C-0010 section 1).
 
 set -euo pipefail

@@ -10,7 +10,8 @@ The entitlements of C-0009 section 4 that the app declares itself. increased-mem
 declared explicitly, because the .NET build does not copy it from the profile. get-task-allow
 comes from the development profile when the user's sideloading tool re-signs the app, so it is
 not here. extended-virtual-addressing is added only when the build property
-PaneportExtendedVirtualAddressing is true (eng/mac/sign-adhoc.sh).
+PaneportExtendedVirtualAddressing is true: a signing build adds it through AppHead.props, and
+eng/mac/sign-adhoc.sh adds it when PANEPORT_EXTENDED_VIRTUAL_ADDRESSING is true.
 -->
 <dict>
   <key>com.apple.developer.kernel.increased-memory-limit</key>

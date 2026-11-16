@@ -308,7 +308,8 @@ jobs:
   # the merge result that the pull_request event checks out, and for every push to main, which
   # catches two pull requests that pass alone and break together, and direct commits. Other
   # branch pushes skip it, because the pull request's run covers them. Only a pull request
-  # cancels its own earlier run; every push to main is built.
+  # cancels its own earlier run. Every push to main is built: each gets a group of its own
+  # commit, because a group keeps one pending run and a newer run would cancel it.
   ios:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     # eng/toolchain.json pins this image as macos-runner-image, and tools/CheckToolchain.cs
@@ -316,7 +317,7 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 45
     concurrency:
-      group: ios-${{ github.event.pull_request.number || github.ref }}
+      group: ios-${{ github.event.pull_request.number || github.sha }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - name: Check out
@@ -558,56 +559,99 @@ jobs:
       - name: Check the formatting of both flavors
         if: ${{ !cancelled() }}
         run: |
-          dotnet format src/Paneport.iOS/Paneport.iOS.csproj --verify-no-changes --no-restore
-          dotnet format tests/device/Paneport.DeviceTest.csproj --verify-no-changes --no-restore
+          status=0
+          for project in src/Paneport.iOS/Paneport.iOS.csproj tests/device/Paneport.DeviceTest.csproj; do
+            dotnet format "$project" --verify-no-changes --no-restore || status=1
+          done
+          exit "$status"
 
       # S1.3.9: each embedded framework, then each app, ad hoc, with the app's Entitlements.plist;
       # no Apple identity is used (C-0009 section 5). Then the checks of eng/mac/check-app.sh, the
-      # .ipa of each flavor, named by flavor and short commit hash, and the package scan.
+      # .ipa of each flavor, named by flavor and short commit hash, and the package scan. Each
+      # step goes on with the other flavor after a failure, and a flavor whose bundle exists is
+      # checked even when its signing failed, so that one run shows every failure.
       - name: Sign both flavors ad hoc (eng/mac/sign-adhoc.sh)
         id: apps
         if: ${{ !cancelled() }}
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
+          status=0
+          echo "commit=${HEAD_SHA:0:12}" >> "$GITHUB_OUTPUT"
           main=$(find src/Paneport.iOS/bin/Release -maxdepth 4 -type d -name 'Paneport.iOS.app' | head -n 1)
           test=$(find tests/device/bin/Release -maxdepth 4 -type d -name 'Paneport.DeviceTest.app' | head -n 1)
-          if [ -z "$main" ] || [ -z "$test" ]; then
-            echo "::error title=App bundle::A build made no .app bundle: main '$main', test '$test'."
-            exit 1
+          if [ -n "$main" ]; then
+            echo "main=$main" >> "$GITHUB_OUTPUT"
+            eng/mac/sign-adhoc.sh "$main" src/Paneport.iOS/Entitlements.plist || status=1
+          else
+            echo "::error title=App bundle::The main app's build made no .app bundle."
+            status=1
           fi
-          eng/mac/sign-adhoc.sh "$main" src/Paneport.iOS/Entitlements.plist
-          eng/mac/sign-adhoc.sh "$test" src/Paneport.iOS/Entitlements.plist
-          {
-            echo "main=$main"
-            echo "test=$test"
-            echo "commit=${HEAD_SHA:0:12}"
-          } >> "$GITHUB_OUTPUT"
+          if [ -n "$test" ]; then
+            echo "test=$test" >> "$GITHUB_OUTPUT"
+            eng/mac/sign-adhoc.sh "$test" src/Paneport.iOS/Entitlements.plist || status=1
+          else
+            echo "::error title=App bundle::The device test flavor's build made no .app bundle."
+            status=1
+          fi
+          exit "$status"
 
       - name: Check both apps (eng/mac/check-app.sh)
-        if: ${{ !cancelled() && steps.apps.outputs.main != '' }}
+        if: ${{ !cancelled() && (steps.apps.outputs.main != '' || steps.apps.outputs.test != '') }}
+        env:
+          MAIN_APP: ${{ steps.apps.outputs.main }}
+          TEST_APP: ${{ steps.apps.outputs.test }}
         run: |
           status=0
-          eng/mac/check-app.sh "${{ steps.apps.outputs.main }}" main || status=1
-          eng/mac/check-app.sh "${{ steps.apps.outputs.test }}" test || status=1
+          if [ -n "$MAIN_APP" ]; then
+            eng/mac/check-app.sh "$MAIN_APP" main || status=1
+          fi
+          if [ -n "$TEST_APP" ]; then
+            eng/mac/check-app.sh "$TEST_APP" test || status=1
+          fi
           exit "$status"
 
       - name: Package both apps as .ipa files (eng/mac/package-ipa.sh)
         id: packages
-        if: ${{ !cancelled() && steps.apps.outputs.main != '' }}
+        if: ${{ !cancelled() && (steps.apps.outputs.main != '' || steps.apps.outputs.test != '') }}
+        env:
+          MAIN_APP: ${{ steps.apps.outputs.main }}
+          TEST_APP: ${{ steps.apps.outputs.test }}
+          COMMIT: ${{ steps.apps.outputs.commit }}
         run: |
-          main_ipa="$RUNNER_TEMP/Paneport-main-${{ steps.apps.outputs.commit }}.ipa"
-          test_ipa="$RUNNER_TEMP/Paneport-test-${{ steps.apps.outputs.commit }}.ipa"
-          eng/mac/package-ipa.sh "${{ steps.apps.outputs.main }}" "$main_ipa"
-          eng/mac/package-ipa.sh "${{ steps.apps.outputs.test }}" "$test_ipa"
-          {
-            echo "main=$main_ipa"
-            echo "test=$test_ipa"
-          } >> "$GITHUB_OUTPUT"
+          status=0
+          if [ -n "$MAIN_APP" ]; then
+            main_ipa="$RUNNER_TEMP/Paneport-main-$COMMIT.ipa"
+            if eng/mac/package-ipa.sh "$MAIN_APP" "$main_ipa"; then
+              echo "main=$main_ipa" >> "$GITHUB_OUTPUT"
+            else
+              status=1
+            fi
+          fi
+          if [ -n "$TEST_APP" ]; then
+            test_ipa="$RUNNER_TEMP/Paneport-test-$COMMIT.ipa"
+            if eng/mac/package-ipa.sh "$TEST_APP" "$test_ipa"; then
+              echo "test=$test_ipa" >> "$GITHUB_OUTPUT"
+            else
+              status=1
+            fi
+          fi
+          exit "$status"
 
       - name: Scan both packages (tools/ScanPackage.cs)
-        if: ${{ !cancelled() && steps.packages.outputs.main != '' }}
-        run: dotnet run tools/ScanPackage.cs -- "${{ steps.packages.outputs.main }}" "${{ steps.packages.outputs.test }}"
+        if: ${{ !cancelled() && (steps.packages.outputs.main != '' || steps.packages.outputs.test != '') }}
+        env:
+          MAIN_IPA: ${{ steps.packages.outputs.main }}
+          TEST_IPA: ${{ steps.packages.outputs.test }}
+        run: |
+          packages=()
+          if [ -n "$MAIN_IPA" ]; then
+            packages+=("$MAIN_IPA")
+          fi
+          if [ -n "$TEST_IPA" ]; then
+            packages+=("$TEST_IPA")
+          fi
+          dotnet run tools/ScanPackage.cs -- "${packages[@]}"
 
       # Only when every earlier step passed. The .ipa keeps the bundle's name and the
       # executable's file mode, which an artifact of the bare folder would lose.

@@ -79,8 +79,11 @@ echo "Version: $short_version ($build_number)"
 executable="$app/$(value "$plist" CFBundleExecutable)"
 [ -f "$executable" ] || problem "the bundle has no executable $executable."
 if [ -f "$executable" ]; then
-    architectures=$(lipo -archs "$executable")
-    [ "$architectures" = arm64 ] || problem "the executable holds $architectures, not arm64 alone."
+    if architectures=$(lipo -archs "$executable"); then
+        [ "$architectures" = arm64 ] || problem "the executable holds $architectures, not arm64 alone."
+    else
+        problem "lipo cannot read the executable's architectures."
+    fi
     otool -L "$executable" | grep -F -q "@rpath/paneport_host.framework/paneport_host" \
         || problem "the executable does not link @rpath/paneport_host.framework/paneport_host."
     otool -l "$executable" | awk '$1 == "path" { print $2 }' | grep -F -x -q "@executable_path/Frameworks" \
@@ -127,12 +130,15 @@ done
 entitlements=$(mktemp)
 trap 'rm -f "$entitlements"' EXIT
 if codesign -d --entitlements - --xml "$app" > "$entitlements" 2>/dev/null && [ -s "$entitlements" ]; then
-    keys=$(plutil -convert json -o - "$entitlements" | jq -r 'keys[]' | tr '\n' ' ')
-    echo "Entitlements: $keys"
-    [ "$keys" = "com.apple.developer.kernel.increased-memory-limit " ] \
-        || problem "the app's entitlements are $keys, not exactly com.apple.developer.kernel.increased-memory-limit."
-    [ "$(plutil -convert json -o - "$entitlements" | jq -r '."com.apple.developer.kernel.increased-memory-limit"')" = true ] \
-        || problem "increased-memory-limit is not true."
+    if keys=$(plutil -convert json -o - "$entitlements" | jq -r 'keys[]' | tr '\n' ' '); then
+        echo "Entitlements: $keys"
+        [ "$keys" = "com.apple.developer.kernel.increased-memory-limit " ] \
+            || problem "the app's entitlements are $keys, not exactly com.apple.developer.kernel.increased-memory-limit."
+        [ "$(plutil -convert json -o - "$entitlements" | jq -r '."com.apple.developer.kernel.increased-memory-limit"')" = true ] \
+            || problem "increased-memory-limit is not true."
+    else
+        problem "the app's entitlements cannot be read as a property list."
+    fi
 else
     problem "the app's signature holds no entitlements."
 fi

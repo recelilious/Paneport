@@ -56,19 +56,9 @@ internal static class CompositionRoot
 
         // Starting once the window is open runs the first load on the UI thread, where the view
         // models live. The memory timeline samples the fake host once a second, as the iOS head
-        // samples the device.
-        window.Opened += (_, _) =>
-        {
-            memory.Sample();
-            DispatcherTimer.Run(
-                () =>
-                {
-                    memory.Sample();
-                    return true;
-                },
-                MemoryMonitor.Interval);
-            shell.StartCommand.Execute(null);
-        };
+        // samples the device, and the run starts as the iOS head's does.
+        var run = new AppStart(shell, memory, (tick, interval) => DispatcherTimer.Run(tick, interval));
+        window.Opened += (_, _) => run.TryStart();
         return window;
     }
 

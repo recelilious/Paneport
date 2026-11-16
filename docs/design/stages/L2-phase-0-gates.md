@@ -21,14 +21,14 @@ Back to the [development plan](../development-plan.md).
 | S2.1.5 | Game view and overlay design document | Small | Planned | | |
 | S2.1.6 | Overlay gate page | Small | Planned | | |
 | S2.1.7 | Screenshot blend check | Small | Planned | | |
-| M2.2 | Signal dispatcher | Medium | Planned | | |
-| S2.2.1 | Install, save and chain | Small | Planned | | |
-| S2.2.2 | Routing registries | Small | Planned | | |
-| S2.2.3 | Guest handler registration API | Small | Planned | | |
-| S2.2.4 | Mach thread control helpers | Small | Planned | | |
-| S2.2.5 | Crash-chaining call and installed check | Small | Planned | | |
-| S2.2.6 | Stress harness and screen | Small | Planned | | |
-| S2.2.7 | Signals design document | Small | Planned | | |
+| M2.2 | Signal dispatcher | Medium | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
+| S2.2.1 | Install, save and chain | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
+| S2.2.2 | Routing registries | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
+| S2.2.3 | Guest handler registration API | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
+| S2.2.4 | Mach thread control helpers | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
+| S2.2.5 | Crash-chaining call and installed check | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
+| S2.2.6 | Stress harness and screen | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
+| S2.2.7 | Signals design document | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
 | M2.3 | SteamKit2 on the device | Medium | Planned | | |
 | S2.3.1 | Connection | Small | Planned | | |
 | S2.3.2 | Sign-in flows | Small | Planned | | |

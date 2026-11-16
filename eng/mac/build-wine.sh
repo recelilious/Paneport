@@ -128,13 +128,18 @@ for folder in "$install"/lib/wine/*-windows; do
         printf '%s\n' "$missing" | sed "s/^/build-wine: $arch: built but not installed: /" >&2
         problems=1
     fi
+    # The 64-bit modules are hybrid ARM64X files, which llvm-readobj reports as such; the
+    # programs, such as wineboot.exe, exist for the 64-bit architecture only.
+    samples="ntdll.dll kernel32.dll kernelbase.dll ucrtbase.dll user32.dll"
     case "$arch" in
-        aarch64-windows) expected=IMAGE_FILE_MACHINE_ARM64 ;;
+        aarch64-windows) expected="IMAGE_FILE_MACHINE_ARM64X IMAGE_FILE_MACHINE_ARM64"
+                         samples="$samples wineboot.exe" ;;
         i386-windows) expected=IMAGE_FILE_MACHINE_I386 ;;
         x86_64-windows) expected=IMAGE_FILE_MACHINE_AMD64 ;;
         *) expected="" ;;
     esac
-    for module in ntdll.dll kernel32.dll kernelbase.dll ucrtbase.dll user32.dll wineboot.exe; do
+    # shellcheck disable=SC2086 # The sample names are words of their own.
+    for module in $samples; do
         if [ ! -f "$folder/$module" ]; then
             say "$arch: $module is missing" >&2
             problems=1
@@ -143,12 +148,13 @@ for folder in "$install"/lib/wine/*-windows; do
         headers=$("$readobj" --file-headers "$folder/$module")
         machine=$(printf '%s\n' "$headers" | sed -n 's/^ *Machine: \([A-Z0-9_]*\).*/\1/p' | head -n 1)
         hybrid=""
-        if "$readobj" --coff-load-config "$folder/$module" 2>/dev/null | grep -q 'CHPEMetadata'; then
+        if "$readobj" --coff-load-config "$folder/$module" 2>/dev/null |
+            grep -Eq 'CHPEMetadata(Pointer)?: 0x0*[1-9A-Fa-f]'; then
             hybrid=", with ARM64EC code (CHPE metadata)"
         fi
         say "$arch: $module is $machine$hybrid"
-        if [ -n "$expected" ] && [ "$machine" != "$expected" ]; then
-            say "$arch: $module should be $expected" >&2
+        if [ -n "$expected" ] && ! [[ " $expected " == *" $machine "* ]]; then
+            say "$arch: $module should be one of: $expected" >&2
             problems=1
         fi
     done

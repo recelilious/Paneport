@@ -22,7 +22,7 @@ This document describes how stage M4.2 builds the Wine fork as ARM64EC Wine for 
 - **Only what macOS provides.** The optional libraries that would come from Homebrew or a similar source are left out with `--without-*`: ALSA, CAPI, CUPS, D-Bus, FFmpeg for the Unix side, Fontconfig, FreeType, gettext, gphoto, GnuTLS, GSSAPI and Kerberos, GStreamer, hwloc, inotify, NetAPI, OpenCL, OSS, libpcap, PC/SC, PulseAudio, SANE, SDL, udev, libusb, V4L2, VA-API, Vulkan, Wayland and X11. The build is then the same on every Mac, and nothing outside the register reaches the Unix side. Core Audio and OpenGL come with macOS and stay. Console programs need no fonts, so FreeType waits for the stage that draws text.
 - **The PE side's bundled libraries.** Wine builds its own copies of the libraries in its `libs/` folder for the PE side when llvm-mingw has none: libc++, libc++abi, libunwind and compiler-rt, Capstone, FAudio, FFmpeg, FluidSynth, GSM, ICU, libjpeg, jxrlib, Little CMS, OpenLDAP, mpg123, musl, libpng, SQLite, SymCrypt, libtiff, vkd3d, libxml2, libxslt and zlib (Wine 11.20's `configure.ac`, `WINE_EXTLIB_FLAGS`). They are compiled into Wine's PE modules, which ship from M4.4 on, so each needs a register row before then (section 10).
 - **Tests.** `--disable-tests`: Wine's own regression tests are not built.
-- **Checks.** S4.2.1: the installed loader starts and prints its version. S4.2.2: for each PE architecture folder of the install, every module that the build tree holds for that architecture is installed, and `ntdll.dll`, `kernel32.dll`, `kernelbase.dll`, `ucrtbase.dll`, `user32.dll` and `wineboot.exe` have the machine type of their folder, read with the pinned llvm-mingw's `llvm-readobj`, which also shows the CHPE metadata of ARM64X modules.
+- **Checks.** S4.2.1: the installed loader starts and prints its version. S4.2.2: for each PE architecture folder of the install, every module that the build tree holds for that architecture is installed, and `ntdll.dll`, `kernel32.dll`, `kernelbase.dll`, `ucrtbase.dll` and `user32.dll`, and in the 64-bit folder also `wineboot.exe`, have the machine type of their folder, read with the pinned llvm-mingw's `llvm-readobj`. It reports the 64-bit modules as `IMAGE_FILE_MACHINE_ARM64X`, the hybrid files that hold ARM64 and ARM64EC code, and Wine's programs exist in the 64-bit folder only, as the first build showed (section 9).
 
 ### 2.1 What the fork must add
 
@@ -34,16 +34,18 @@ Upstream Wine 11.20 does not run natively on arm64 macOS. Merge request 11638, "
 - finds the TEB from the thread's data instead of trusting x18 and `TPIDR_EL0`;
 - reserves the address ranges that Windows images need on Apple silicon.
 
-The fork carries a copy of it rebased onto Wine 11.20, on `paneport/M4.2` ([forks.md](forks.md) sections 2 and 4.2). It changes `configure.ac`, so the fork's commit also regenerates `configure` with GNU Autoconf 2.73, the version that generated Wine 11.20's, which `eng/toolchain.json` pins with this stage.
+The fork carries a copy of it rebased onto Wine 11.20, on `paneport/M4.2` (`8fe7cfe`, and `42f009e` for the notices of section 11; [forks.md](forks.md) sections 2 and 4.2). Wine 11.20 had moved the code under four of the request's hunks, which the rebase ports: the syscall and Unix call dispatchers, which now keep their scratch values in other registers, the reservation of the address space in `virtual_init`, and the mapping of the shared user data; the request's limit of the TEB block to the low 2 GB is no longer needed. The request changes `configure.ac` and carries its own regenerated hunks of `configure`. The fork places those hunks where Wine 11.20's `configure` holds the matching code instead of regenerating the whole file, because regenerating needs GNU M4 besides Autoconf 2.73, and C-0003 registers no M4 yet; Autoconf stays unpinned until a stage changes `configure.ac` itself (section 11). The first scratch build configured and built the fork with Xcode 27.1's clang and the pinned llvm-mingw (section 9).
 
-Two hooks that FEX needs on macOS are not part of the request:
+Two hooks that FEX needs on macOS are not part of the request. The fork adds them in `53cf7fa`:
 
-- **Executable allocations.** FEX allocates its code buffers with `VirtualAlloc2` and `PAGE_EXECUTE_READWRITE`, marked as ARM64EC code (FEX's `AllocatorHooks.h`). On Apple silicon a mapping can be writable and executable only when it is created with `MAP_JIT`, and a thread writes to it only after `pthread_jit_write_protect_np(0)` and runs it only after `pthread_jit_write_protect_np(1)` (Apple's porting guide for JIT compilers). Wine's `virtual.c` maps no memory with `MAP_JIT`, and drops the write permission when an executable and writable protection fails. The fork therefore maps executable and writable allocations with `MAP_JIT`.
-- **Write scopes.** FEX's module, a PE file, cannot call `pthread_jit_write_protect_np` itself, so it switches its thread between writing and running code through a call to the Unix side, around every write to its code buffers.
+- **Executable allocations.** FEX allocates its code buffers with `VirtualAlloc2` and `PAGE_EXECUTE_READWRITE`, marked as ARM64EC code with `MEM_EXTENDED_PARAMETER_EC_CODE` (FEX's `AllocatorHooks.h`). On Apple silicon a page can be writable and executable at once only in a mapping created with `MAP_JIT`, which the kernel places itself, and each thread sees such pages either as writable or as executable, as `pthread_jit_write_protect_np` last set it for that thread (Apple's porting guide for JIT compilers). Wine maps a view at an address of its own choosing and without `PROT_EXEC`, and outside a `MAP_JIT` mapping the later `mprotect` cannot add execution to writing. `map_jit_view` in `dlls/ntdll/unix/virtual.c` therefore maps an allocation marked as ARM64EC code with `MAP_JIT` when it leaves the address, the limits and write watching to Wine, and marks its view `VPROT_JIT`. Other allocations that ask for execution and writing keep Wine's behavior and stay writable but not executable, which is all that x86-64 code needs, since FEX only reads it.
+- **Write scopes.** FEX's module, a PE file, cannot call `pthread_jit_write_protect_np` itself. The fork's ntdll exports `__wine_jit_write_protect` for aarch64 and ARM64EC, which makes those views writable or executable again for the calling thread through a Unix call; on other hosts it answers `STATUS_NOT_SUPPORTED`.
+
+Wine replaces decommitted pages with a new mapping at the same address, and a `MAP_JIT` mapping cannot be placed there, so pages of a `MAP_JIT` view that are decommitted and committed again can no longer be both writable and executable. FEX never decommits its code buffers (section 11).
 
 The harness runs without the hardened runtime, which a locally built loader does not carry, so `MAP_JIT` needs no `com.apple.security.cs.allow-jit` entitlement there; whether that holds on the runner is confirmed with the first run (section 9).
 
-These changes are integration code, written from Wine's, FEX's and Apple's public documentation and source only (C-0003 section 10).
+These changes are integration code, written from Wine's and FEX's own code and Apple's public documentation only (C-0003 section 10).
 
 ## 3. Building FEX
 
@@ -52,18 +54,18 @@ These changes are integration code, written from Wine's, FEX's and Apple's publi
 - `-DBUILD_TESTING=False`, `-DENABLE_JEMALLOC_GLIBC_ALLOC=False`, `-DENABLE_LTO=False`, `-DENABLE_CCACHE=False`, `-DTUNE_CPU=none` and `-DTUNE_ARCH=generic`, as the `ios` job's first target configured it ([forks.md](forks.md) section 7).
 - `-DOVERRIDE_VERSION=FEX-2610-paneport-<commit>` and `-DOVERRIDE_HASH=<commit>`, because a checkout at depth 1 holds no tag for FEX's own version detection ([forks.md](forks.md) section 11).
 - `-Wl,--section-alignment,16384`, so that no 16 KB page holds both code and writable data.
-- `-Wl,-Map=`, for the check of the mingw-w64 runtime review ([forks.md](forks.md) section 9). FEX links its module with `-static -nostdlib -nostartfiles -nodefaultlibs` and LLVM's libc++, libc++abi, libunwind and compiler-rt, with a C library of its own, so the map should show LLVM's runtime libraries and no object of mingw-w64's runtime. The script lists every library member that the link took, and names any from mingw-w64's runtime.
+- `-Wl,-Map=`, for the check of the mingw-w64 runtime review ([forks.md](forks.md) section 9). FEX links its module with `-static -nostdlib -nostartfiles -nodefaultlibs` and LLVM's libc++, libc++abi, libunwind and compiler-rt, with a C library of its own, so the map should show LLVM's runtime libraries and no object of mingw-w64's runtime. lld's map names an archive member without its archive, so the script lists the map's input files and names those of mingw-w64's runtime by the library prefix that mingw-w64 gives its members, such as `lib64_libmingwex_a-strtod.o`.
 - The only submodules it fetches are the six that the MinGW build needs (forks.md section 5.3).
 
-FEX's module carries the machine type of x86-64 in its header, as every ARM64EC module does, and the script checks that its load configuration holds CHPE metadata.
+llvm-readobj reports FEX's module as `IMAGE_FILE_MACHINE_ARM64EC`, and the script checks that its load configuration points to CHPE metadata.
 
 ### 3.1 FEX on macOS
 
-FEX upstream does not build for macOS. Its ARM64EC module needs these changes on Apple silicon:
+FEX upstream does not build for macOS. Its ARM64EC module needs these changes on Apple silicon, which the fork carries on `paneport/M4.2`:
 
-- the write scopes of section 2.1 around its code writes, which also cover the block links and invalidations that patch existing code;
-- guard regions of a whole host page, 16 KB, for its JIT and call-return stacks, because Wine's 4 KB page simulation gives every 4 KB page of a host page the same protection, which would leave a 4 KB guard page writable;
-- nothing for its optional Unix library, `Source/Windows/UnixLib`, whose functions (hardware TSO, transparent huge pages, naming mappings, shared statistics) FEX's module does without when the library is not there.
+- **Write scopes** (`13c0a6a`). `FEXCore::Allocator::JITWriteScope` brackets every write to FEX's code buffers: the copy of a compiled or cached block into the code buffer, the emission of the dispatcher, the patches that link and unlink blocks, and the relocations of the code cache. It calls a hook, `Allocator::JITWriteProtect`, that stays empty unless a frontend installs one, and the instruction cache is cleared after the scope ends. The Windows frontend installs the hook when ntdll exports `__wine_jit_write_protect` of section 2.1 and a first call to it succeeds. Each scope holds only the stores themselves, so scopes never nest and no generated code runs inside one.
+- **Guard regions of a whole host page** (`4d07acd` and `026d646`). Wine's simulation of 4 KB pages on 16 KB hosts gives a host page the union of the protections of its four pages, so a 4 KB guard page next to writable memory stays writable. `FEX_GUARD_SIZE` is 16 KB on Windows builds, which works on 4 KB hosts too, and 4 KB elsewhere. The code buffers, the temporary buffers in which FEX compiles a block and the call-return stack use it, and so do the checks that recognize a fault in a guard region. FEX relies on the guard after the temporary buffer to notice that a block needs more room and to compile it again.
+- **Nothing for its optional Unix library**, `Source/Windows/UnixLib`, whose functions (hardware TSO, transparent huge pages, naming mappings, shared statistics) FEX's module does without when the library is not there.
 
 FEX-darwin carries such changes, but since 2026-11-08 its Darwin support is five patches that it imported from Hadron, a Mac app that plays Windows games from a Steam library, and it moved its own patches to a FEX commit after FEX-2611 on 2026-11-11. Hadron is an existing product under C-0001 section 6, which forbids its code whatever the license. **recelilious decided on 2026-11-15** that Paneport takes no code from Hadron, nor any of FEX-darwin's patches that build on it: the FEX fork's macOS changes are written from FEX's own code and Apple's public documentation alone, and nobody writing them opens those patches, so that nothing is rewritten from them (C-0001 section 6, C-0003 section 10 rule 4). FEX-darwin's README and published results are read as evidence of what FEX needs on Darwin, as for any product (C-0001 section 6 item 3), and C-0003 1.6 proposes to move its register row to the reference-only list.
 
@@ -127,24 +129,71 @@ Until the job exists, there is no local Mac (D1), so the builds and the harness 
 | Compiler `__try` blocks or a vectored handler for seh.exe | `__try` with `-fms-extensions`, confirmed with clang 22 and with the pinned llvm-mingw, which builds the six programs with `-Werror` in the `ios` job: scope tables with `__C_specific_handler`, as long as each fault happens in a called function. The run under Wine confirms the behavior. |
 | How the harness runs Wine without a display driver | `winemac.drv=d` and the null driver (section 6); to be confirmed with the first run. |
 | `com.apple.security.cs.allow-jit` or no hardened runtime | The loader is built locally and not signed with the hardened runtime, so `MAP_JIT` should need no entitlement; to be confirmed with the first run. |
-| The runner's limits | 6 hours per job and 10 GB of caches per repository; the build times are measured with the first runs. |
+| The runner's limits | 6 hours per job and 10 GB of caches per repository. |
+| The runner | macOS 27.0.1 on an Apple M1 (Virtual) with 3 cores, 7 GiB of memory and 36 GiB of free disk, with Xcode 27.1 (scratch run 43695160263). |
+| Build times, cold | Wine: configured in 44 s, built in 1572 s with 3 jobs, installed in 32 s. FEX: its six submodules fetched, configured in 17 s, built in 65 s. The test programs and the harness: 11 s. A cold run fits a job by far, so the job needs no split. |
+| Does merge request 11638 build on Wine 11.20 | Yes: the rebased fork configures and builds for `arm64ec`, `aarch64` and `i386`, the loader prints `wine-11.20`, and every module that the build made is installed. The 64-bit modules are ARM64X files. |
 
 ## 10. Third-party code in the builds
 
-The PE side of Wine and FEX's module compile code of other projects, which C-0003 section 4 asks to register before a build compiles it into a binary that ships. Nothing ships from M4.2: its builds run on the harness only. Wine's PE modules and FEX's module ship from M4.4 on, so the rows are proposed with this stage and accepted before M4.4 packages them:
+The PE side of Wine and FEX's module compile code of other projects, which C-0003 section 4 asks to register before a build compiles it into a binary that ships. Nothing ships from M4.2: its builds run on the harness only. M4.2 surveyed that code instead, on 2026-11-15, from the license files and the headers of every file in Wine's bundled libraries and in the folders of FEX that its Windows build compiles, at the forks' bases `0bec332` and `dd288e6`. M4.4, the first stage that packages Wine's PE modules and FEX's module into the app, proposes their register rows and the additions to C-0003 section 5 before it ships them, and the release dry run of M9.1 checks that nothing is missing. This moves the rows from M4.2, to which [forks.md](forks.md) section 10 had given them as the first stage that would ship these builds. The one row that M4.2 needs itself, `actions/cache` for the job's caches, is in its C-0003 proposal.
 
-- Wine's bundled libraries of section 2, each with the license of its own license file in Wine's tree;
-- FEX's six fetched submodules that its MinGW build needs (fmt, xxHash, range-v3, unordered_dense, rpmalloc, cpp-optparse) and the code of other projects in FEX's own tree ([forks.md](forks.md) section 10);
-- `actions/cache`, for the job's caches.
+| Component | Where | License, as SPDX | On C-0003 section 5's list |
+|---|---|---|---|
+| LLVM's libc++, libc++abi, libunwind and compiler-rt | Wine `libs/c++`, `libs/c++abi`, `libs/unwind`, `libs/compiler-rt` | MIT OR NCSA | Yes, as MIT |
+| Capstone | Wine `libs/capstone` | BSD-3-Clause AND NCSA (28 files from LLVM) | NCSA no |
+| FAudio | Wine `libs/faudio` | Zlib | Yes |
+| FFmpeg 8.1.1 | Wine `libs/ffmpeg` | LGPL-2.1-or-later; `libavutil/aarch64/crc.S` GPL-2.0-or-later | The GPL file is forbidden in anything that ships |
+| FluidSynth | Wine `libs/fluidsynth` | LGPL-2.1-or-later | Yes |
+| GSM | Wine `libs/gsm` | TU-Berlin-2.0 | No |
+| ICU | Wine `libs/icucommon`, `libs/icui18n` | Unicode-DFS-2016 AND ICU, with BSD-3-Clause for double-conversion | No |
+| libjpeg | Wine `libs/jpeg` | IJG | No |
+| jxrlib | Wine `libs/jxr` | BSD-2-Clause | Yes |
+| Little CMS | Wine `libs/lcms2` | MIT | Yes |
+| OpenLDAP | Wine `libs/ldap` | OLDAP-2.8, with the University of Michigan's notice | No |
+| mpg123 | Wine `libs/mpg123` | LGPL-2.1-only | Yes |
+| musl's libm | Wine `libs/musl` | MIT AND SunPro AND BSD-2-Clause | Yes |
+| libpng | Wine `libs/png` | libpng-2.0 | No |
+| SQLite 3.53.2 | Wine `libs/sqlite3` | blessing, a public-domain dedication | Yes, as public domain |
+| SymCrypt | Wine `libs/symcrypt` | MIT | Yes |
+| libtiff | Wine `libs/tiff` | libtiff AND BSD-4.3TAHOE AND MIT | No |
+| vkd3d | Wine `libs/vkd3d` | LGPL-2.1-or-later AND MIT-Khronos-old AND MIT | MIT-Khronos-old no |
+| libxml2 | Wine `libs/xml2` | MIT AND ISC-Veillard | ISC-Veillard no |
+| libxslt | Wine `libs/xslt` | X11 | No |
+| zlib | Wine `libs/zlib` | Zlib | Yes |
+| fmt 12.2.1 | FEX `External/fmt` | MIT | Yes |
+| xxHash | FEX `External/xxhash` | BSD-2-Clause; its `cli/` is GPL-2.0 and not built | Yes |
+| range-v3 | FEX `External/range-v3` | BSL-1.0 AND (MIT OR NCSA), with the notices of HP, SGI and Stepanov and McJones | The three notices no |
+| unordered_dense | FEX `External/unordered_dense` | MIT | Yes |
+| rpmalloc | FEX `External/rpmalloc` | 0BSD OR Unlicense | Yes, as 0BSD |
+| cpp-optparse | FEX `Source/Common/cpp-optparse` | MIT | Yes |
+| tiny-json | FEX `External/tiny-json` | MIT | Yes |
+| musl's and Arm's C library code | FEX `Source/Windows/Common/CRT/Musl` | MIT | Yes |
+| Wine's headers | FEX `Source/Windows/include` | LGPL-2.1-or-later | Yes |
+| `LoadConfig.S` from mingw-w64 | FEX `Source/Windows/Common` | Public domain | Yes |
+| VIXL's utilities | FEX `CodeEmitter/CodeEmitter/VixlUtils.inl` | BSD-3-Clause | Yes |
+| SplitMix64 | FEX `FEXCore/Source/Interface/Core/JIT/JIT.cpp` | CC0-1.0 | Yes |
+| SoftFloat 3e | FEX `External/SoftFloat-3e` | BSD-3-Clause | Yes |
+| Cephes | FEX `External/cephes` | None stated: "BSD licensed", from an e-mail of its author | No: code without a license |
 
-Several of these come under licenses that C-0003 section 5 does not list yet, so the proposal also extends that list where the terms only ask for a notice.
+What M4.4 has to settle:
+
+- **A GPL file is compiled.** FFmpeg's `libavutil/aarch64/crc.S` states GPL-2.0-or-later, as upstream FFmpeg's does, though FFmpeg's `LICENSE.md` does not list it among its GPL parts. Wine compiles it for aarch64, and through `libavutil/arm64ec/crc.S` for ARM64EC, with `HAVE_ARM_CRC` set. Only `av_crc` uses it, through `libavutil/hash.c` and `lfg.c`, and none of the six modules that link Wine's FFmpeg (colorcnv, iyuv_32, msvproc, quartz, resampledmo and vidreszr) calls those, so it is probably in none of them; the built modules have not been checked. C-0003 section 4 forbids it in anything that ships: M4.4 shows from link maps that no module holds it, or the fork leaves it out of the build.
+- **Cephes has no license text.** FEX's `External/cephes/LICENSE` rests on an e-mail in which its author allowed BSD terms without naming a variant, and its files carry copyright lines only. FEX's module compiles it, and C-0003 section 5 forbids code without a license, so recelilious decides before the module ships.
+- **Licenses not on the list.** NCSA, TU-Berlin-2.0, Unicode-DFS-2016 and ICU, IJG, OLDAP-2.8, libpng-2.0, libtiff, BSD-4.3TAHOE, X11, ISC-Veillard, MIT-Khronos-old and range-v3's three notices are permissive terms that ask for a notice, a credit in the documentation or a mark on changed files, so they can be added to C-0003 section 5.
+- **Wine's `NOTICES.md` is incomplete:** it has no entry for FAudio and GSM, names only libc++ for LLVM, and lacks Capstone's NCSA text, ICU's legacy and double-conversion notices, libtiff's Berkeley notice and vkd3d's Khronos and Intel notices. The release's notices come from the register (C-0009 section 6), not from that file.
 
 ## 11. Open items
 
 - **Decided on 2026-11-15:** no code from Hadron or from FEX-darwin's patches (section 3.1); shallow checkouts of the two forks and merge request 11638's commit, as source only and deleted afterwards; and scratch workflows on `scratch/m4-2-*` branches, deleted after their runs, with registered actions pinned by commit, no cache, no secrets, read permissions and no artifacts (section 7).
-- **The rule for marking changed files** under LGPL-2.1 section 2(b) is proposed before the fork's first change to a Wine file ([forks.md](forks.md) section 11).
+- **The rule for marking changed files** under LGPL-2.1 section 2(b) is proposed in C-0010 1.1, and the fork's changed files already carry its notice line ([forks.md](forks.md) section 11).
 - **clang-tidy for `tests/win32/`** needs llvm-mingw's headers, which the `native` job does not install; it runs where llvm-mingw is, until the `native` job gets it.
-- **The first runs** answer the questions of section 9 and measure the build times.
+- **`configure`.** The fork carries the request's own regenerated hunks (section 2.1). The first stage that changes `configure.ac` itself registers GNU M4, pins it and Autoconf 2.73, and regenerates the file.
+- **Decommitted `MAP_JIT` pages** lose `MAP_JIT` (section 2.1). Nothing that M4.2 runs decommits them; an emulator that does needs Wine to keep the mapping and zero the pages itself.
+- **The request's thread safety.** Where `TPIDR_EL0` does not hold a TEB, the request's dispatchers fall back to the global variables `current_teb` and `current_syscall_frame`, which every thread overwrites. If the threads case shows it, the fork replaces the fallback with a commit of its own.
+- **Builds the fork does not serve yet.** The request defines its two TEB Unix calls in the part of `dlls/ntdll/unix/loader.c` that a build for x86-64 Linux skips, so that build would not link. Its Unix calls also have no entries for WoW64, whose i386 `ntdll.dll` asks for the shared user data's address, and FEX's WoW64 module allocates its code without `MEM_EXTENDED_PARAMETER_EC_CODE`, so it gets no `MAP_JIT` view; both are for M7.3 (L7 brief).
+- **Third-party code** for M4.4 to register, among it a GPL file of FFmpeg and Cephes without a license (section 10).
+- **The first runs** answer the questions of section 9 that remain.
 
 ## 12. Sources
 

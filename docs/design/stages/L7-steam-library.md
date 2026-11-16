@@ -489,6 +489,7 @@ Scripts this stage creates: the i686 build steps and the new programs in `tests/
 
 - M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-11): fork branches, pointer moves and the fast-forward of `paneport/integration` after a merge are in `docs/design/forks.md` section 4.2. FEX's `CLAUDE.md` and `AGENTS.md` are upstream's contribution policy, which this stage's work in the fork leaves untouched (forks.md section 4.3).
 - M4.2 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-15): the checks of `tests/win32/` carry i686 code paths that no build has compiled yet: a `fastcall` target for the context change of threads.exe, and `cltd` with `idivl` for the divide of seh.exe. `eng/mac/build-win32-tests.sh` refuses `i686` until this stage adds it, and its machine-type check expects x86-64 only (`tests/win32/README.md`).
+- M4.2 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-17): three gaps for 32-bit guests in the Wine and FEX forks. Merge request 11638 adds three Unix calls to ntdll without entries in its WoW64 table, while the i386 `ntdll.dll` built for the same host also asks for the shared user data's address. FEX's WoW64 module allocates its code without `MEM_EXTENDED_PARAMETER_EC_CODE`, so the fork's `map_jit_view` does not serve it and its code would stay writable but not executable. FEX's write scopes and 16 KB guard regions already cover the WoW64 module through the shared Windows frontend (`docs/design/runtime-macos-harness.md` sections 2.1, 3.1 and 11).
 
 **Session log.**
 

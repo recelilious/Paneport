@@ -34,7 +34,7 @@ eng/mac/bootstrap.sh --ios
 ```
 
 ```bash
-cmake --preset ios-device -S src/native && cmake --build --preset ios-device --parallel
+(cd src/native && cmake --preset ios-device && cmake --build --preset ios-device --parallel)
 ```
 
 ```bash

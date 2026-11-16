@@ -17,6 +17,15 @@ Tests of [Paneport.Core](../../src/Paneport.Core/README.md).
 | `AppStartTests.cs` | The run starts once per process: the first start samples the memory timeline, starts its timer and loads the shell, and a later start, such as from a scene that iOS connected again, does nothing. |
 | `LibraryViewModelTests.cs`, `TitleViewModelTests.cs`, `TitleDetailsViewModelTests.cs` | Listing, choosing and showing titles, with exact download percentages. |
 | `SettingsViewModelTests.cs`, `DiagnosticsViewModelTests.cs` | A setting that round-trips through the store, a choice made while the page loads, a save that a newer change supersedes, and the host's values with the Game Mode level reached and not reached. |
+| `DiagnosticsSectionsTests.cs` | S1.3.7: the sections of the Diagnostics page over a fake host, clock and device: the host and its compatibility, the memory timeline with its warning, the entitlements, the crash record, the storage folders, the build and the device. |
+| `ShellPageLifecycleTests.cs` | The shell tells a page when it starts and stops being shown, also on the way back, and a head that gives a developer menu gets a Developer section. |
+| `Hosting/` | S1.3.2: the startup sequence over a fake host, with the major version check, a 1.0 host for bindings of 1.1, and the host's events reaching the view models through the UI dispatcher; and the guard of functions that a later minor version added. |
+| `Storage/` | S1.3.4: the layout table against C-0004 section 4 itself, and the bootstrap's folders and backup marks; and the System.IO file system in a temporary folder. |
+| `Settings/` | S1.3.5: the settings file over a fake file system: a round trip, an interrupted write, an unreadable file, and saves and loads in order. |
+| `Security/` | S1.3.6: the token store over a fake secure-item store, a corrupt item, and no token or account name in a log line or a text form. |
+| `Diagnostics/` | S1.3.7 and S1.3.8: the memory timeline, the entitlement readers on synthetic signatures and profiles, the crash record reader and store, the model identifier's reading, and the iOS build in the system's version text. |
+| `Logging/` | The log file in a temporary folder: lines from many threads, the previous run's file, the size limit, and a failed write that stops the log. |
+| `Library/` | The empty library of the iOS head. |
 | `FakeNavigator.cs` | Not a test. A navigator that records the pages it shows. |
 | `Compat/TitleSchemaTests.cs` | The title schema read as plain JSON: draft 2020-12, the fields of C-0008, no `Steam` variable on the environment allow-list, the target devices of `compat-db.md`, and the lists, ranges, defaults and names that the code checks. |
 | `Compat/TitleEntryJsonTests.cs` | Every valid fixture loads, every invalid fixture is rejected for the rule it breaks, and loading, writing and loading again keeps every value. |

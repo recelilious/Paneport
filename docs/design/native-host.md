@@ -15,8 +15,10 @@ The host is a C17 library in `src/native/`. The app embeds it as `paneport_host.
 | Group (C-0005 section 2) | Functions | File |
 |---|---|---|
 | Life cycle | `pp_abi_version` [any], `pp_init` [main], `pp_shutdown` [main], `pp_set_event_callback` [main] | `host.c` |
-| Diagnostics | `pp_set_log_callback` [main], `pp_last_error` [any], `pp_free` [any] | `host.c`, `error.c` |
+| Diagnostics | `pp_set_log_callback` [main], `pp_last_error` [any], `pp_free` [any], `pp_device_get_model` [any] | `host.c`, `error.c`, `device.c` |
 | Memory | `pp_memory_get_budget` [any] | `memory_budget.c` |
+
+M1.3 added `pp_device_get_model` to the diagnostics group, which raised the interface to version 1.1 (section 2).
 
 The JIT, session, process, Steam, display, input and audio groups, the signal dispatcher and the Wine bridge come with their stages (M2.2 to M8.2), each adding its functions and raising the minor version (C-0005 section 1). The host uses no Objective-C yet, because no API it calls needs it.
 

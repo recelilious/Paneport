@@ -12,7 +12,7 @@ The CTest suite of the native host (C-0011 section 1). The presets `asan-ubsan` 
 | `CMakeLists.txt` | Registers each case of each test program as a test of its own, `<program>.<case>`, generates the sources of the header test, and registers the check of the crash record writer's calls |
 | `pp_check.h` | The small assertion header: `PP_CHECK`, `PP_CHECK_EQUAL`, `PP_CHECK_TEXT`, and the runner of a program's cases |
 | `test_support.h` | Helpers that several programs share: starting the host, waiting, threads with a context and a number, numbers in text, and temporary folders |
-| `test_status.c` | S1.2.1: the interface version, `pp_last_error` per thread, and `pp_free`, whose freed bytes the sanitizers' allocator count must show |
+| `test_status.c` | S1.2.1: the interface version, `pp_last_error` per thread, and `pp_free`, whose freed bytes the sanitizers' allocator count must show; and, for M1.3, `pp_device_get_model` with a large buffer, no buffer and one too small (case `device_model`) |
 | `test_event_queue.c` | S1.2.2: a full queue refuses and counts, and eight producers move 1,000,000 entries through one consumer |
 | `test_event_thread.c` | S1.2.3: callbacks on the event thread only, none after `pp_shutdown`, a post in progress still delivered when the host stops, the event queue's first overflow logged once, one `pp_init` per process, the main-thread rule of test builds, and replacing a callback |
 | `test_main_thread.c` | S1.2.3: the main-thread rule that ships, on the host built without `PANEPORT_TEST_BUILD` |

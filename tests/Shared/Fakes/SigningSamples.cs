@@ -42,8 +42,11 @@ internal static class SigningSamples
     }
 
     // A thin arm64 executable whose one load command is LC_CODE_SIGNATURE, pointing at a super
-    // blob with a code directory slot and the entitlements slot; or no load command at all.
-    public static byte[] Executable(string? entitlements)
+    // blob with a code directory slot and the entitlements slot; or no load command at all. With
+    // derOnly, the entitlements take the slot and magic of their DER form (7, 0xFADE7172), as a
+    // tool that writes only that form leaves them, so the signature has no XML entitlements blob;
+    // the XML stands in for the DER content, which no reader parses.
+    public static byte[] Executable(string? entitlements, bool derOnly = false)
     {
         var bytes = new List<byte>();
         void little(uint value) => bytes.AddRange(BitConverter.GetBytes(value));
@@ -87,13 +90,13 @@ internal static class SigningSamples
         big(2);
         big(0);
         big(28);
-        big(5);
+        big(derOnly ? 7U : 5U);
         big(28 + DirectoryLength);
         big(0xFADE0C02);
         big(DirectoryLength);
         big(0);
         big(0);
-        big(0xFADE7171);
+        big(derOnly ? 0xFADE7172 : 0xFADE7171);
         big(entitlementsLength);
         bytes.AddRange(xml);
         return [.. bytes];

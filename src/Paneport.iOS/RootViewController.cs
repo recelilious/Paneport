@@ -4,8 +4,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.iOS;
-using Avalonia.Threading;
-using Paneport.Core.Diagnostics;
+using Paneport.Core.Logging;
 using Paneport.UI.Views;
 using UIKit;
 
@@ -16,12 +15,13 @@ namespace Paneport.IOS;
 // API for an app-supplied root view controller, and its maintainers advise hosting AvaloniaView
 // in one's own (avalonia_ui_layer.md section 2.1). The shell's content keeps out of the safe area,
 // which the controller tracks, while the views themselves fill the screen. When the native host
-// did not start, a label shows the startup's message instead of the shell.
+// did not start, or the shell's view cannot be built, a label shows the message instead of the
+// shell, since a device without a Mac shows no console (D1).
 internal sealed class RootViewController : UIViewController
 {
     private readonly AppComposition _composition;
     private Border? _safeArea;
-    private bool _started;
+    private bool _shellViewFailed;
 
     public RootViewController(AppComposition composition)
     {
@@ -43,42 +43,49 @@ internal sealed class RootViewController : UIViewController
             AutoresizingMask = UIViewAutoresizing.FlexibleWidth | UIViewAutoresizing.FlexibleHeight,
         });
 
-        if (_composition.Shell is { } shell)
+        if (_composition.Shell is not { } shell)
+        {
+            AddFailureMessage(view, _composition.FailureMessage ?? "Paneport cannot start.");
+            return;
+        }
+
+        AvaloniaView? avalonia = null;
+        try
         {
             _safeArea = new Border { Child = new MainView { DataContext = shell } };
-            view.AddSubview(new AvaloniaView
+            avalonia = new AvaloniaView
             {
                 Frame = view.Bounds,
                 AutoresizingMask = UIViewAutoresizing.FlexibleWidth | UIViewAutoresizing.FlexibleHeight,
                 Content = _safeArea,
-            });
+            };
+            view.AddSubview(avalonia);
         }
-        else
+        catch (Exception exception)
         {
-            AddFailureMessage(view, _composition.FailureMessage ?? "Paneport cannot start.");
+            // Building the views is the first use of Avalonia's platform without its delegates. A
+            // failure shows on screen, as a failed composition does, and nothing starts. Only the
+            // type is logged; the message can hold a path.
+            avalonia?.RemoveFromSuperview();
+            _safeArea = null;
+            _shellViewFailed = true;
+            var type = exception.GetType().Name;
+            _composition.Log.Write(LogLevel.Error, nameof(RootViewController), $"Building the shell's view failed with {type}.");
+            AddFailureMessage(view, $"Paneport could not start ({type}).");
         }
     }
 
-    // The shell starts once its view is on screen, so that the first load runs on the UI thread
-    // with Avalonia's synchronization context in place, and the memory timeline starts with it.
+    // The run starts once the shell's view is on screen, so that the first load runs on the UI
+    // thread with Avalonia's synchronization context in place, and the memory timeline starts with
+    // it. AppStart starts it once per process: a controller of a scene that iOS connected again
+    // starts nothing.
     public override void ViewDidAppear(bool animated)
     {
         base.ViewDidAppear(animated);
-        if (_started || _composition.Shell is not { } shell || _composition.Memory is not { } memory)
+        if (!_shellViewFailed)
         {
-            return;
+            _composition.Start?.TryStart();
         }
-
-        _started = true;
-        memory.Sample();
-        DispatcherTimer.Run(
-            () =>
-            {
-                memory.Sample();
-                return true;
-            },
-            MemoryMonitor.Interval);
-        shell.StartCommand.Execute(null);
     }
 
     public override void ViewSafeAreaInsetsDidChange()

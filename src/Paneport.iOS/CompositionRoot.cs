@@ -3,6 +3,7 @@
 
 using Avalonia;
 using Avalonia.Logging;
+using Avalonia.Threading;
 using Foundation;
 using Paneport.Core;
 using Paneport.Core.Diagnostics;
@@ -86,7 +87,8 @@ internal static partial class CompositionRoot
         Func<INavigator, PageViewModel>? developerPage = null;
         AddDeveloperMenu(services, ref developerPage);
         var shell = new ShellViewModel(services, developerPage);
-        return AppComposition.Running(shell, memory, log);
+        var run = new AppStart(shell, memory, (tick, interval) => DispatcherTimer.Run(tick, interval));
+        return AppComposition.Running(shell, run, log);
     }
 
     // The device test flavor's developer menu (tests/device). The main app has no implementation,

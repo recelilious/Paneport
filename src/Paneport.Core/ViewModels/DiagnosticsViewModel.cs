@@ -306,11 +306,13 @@ public sealed partial class DiagnosticsViewModel : PageViewModel
         }
     }
 
-    /// <summary>Reads the memory budget from the host again, as a sample of the timeline.</summary>
+    /// <summary>
+    /// Shows the memory timeline's latest sample and reads the storage folders again. It takes no
+    /// sample of its own, so the timeline keeps the head's one sample a second.
+    /// </summary>
     [RelayCommand]
     private void Refresh()
     {
-        _sources.Memory.Sample();
         UpdateMemory();
         StorageRows = StorageRowsOf(_sources.Storage());
     }

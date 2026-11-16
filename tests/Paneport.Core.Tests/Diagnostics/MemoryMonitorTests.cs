@@ -16,6 +16,14 @@ public sealed class MemoryMonitorTests
     private const ulong Megabyte = MemoryLimitCheck.BytesPerMegabyte;
 
     [Fact]
+    public void TheHeadsSampleOnceASecond()
+    {
+        // The heads' timers use this interval, and the page says "one a second" (C-0011 section 1).
+        Assert.Equal(TimeSpan.FromSeconds(1), MemoryMonitor.Interval);
+        Assert.Equal(TimeSpan.FromMinutes(10), MemoryMonitor.Interval * MemoryMonitor.MaxSamples);
+    }
+
+    [Fact]
     public void TheTimelineGainsASampleEachSecond()
     {
         var fakes = new FakeServices();

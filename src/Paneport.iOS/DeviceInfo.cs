@@ -11,21 +11,13 @@ namespace Paneport.IOS;
 
 // What the device tells about itself: the model identifier from the native host (hw.machine), the
 // iOS version and build, and the thermal state, never the device's name (C-0012 section 4). The
-// version and the build are read once, on the main thread; the thermal state on any thread.
+// version and the build are read once, on the main thread; the thermal state on any thread. A
+// host that cannot tell the model, such as one older than interface 1.1, gives "unknown".
 internal sealed class DeviceInfo : IDeviceInfo
 {
     public DeviceInfo(INativeHost host, ILog log)
     {
-        try
-        {
-            ModelIdentifier = host.ReadDeviceModel();
-        }
-        catch (NativeHostException exception)
-        {
-            log.Write(LogLevel.Warning, nameof(DeviceInfo), $"Reading the model identifier failed ({exception.Status}).");
-            ModelIdentifier = "unknown";
-        }
-
+        ModelIdentifier = DeviceModel.Read(host, log);
         SystemVersion = UIDevice.CurrentDevice.SystemVersion;
         SystemBuild = SystemVersionText.BuildOf(NSProcessInfo.ProcessInfo.OperatingSystemVersionString);
     }

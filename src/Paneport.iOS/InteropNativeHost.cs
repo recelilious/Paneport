@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using Paneport.Core.Diagnostics;
 using Paneport.Core.Hosting;
 using Paneport.Core.Logging;
 using Paneport.Interop;
@@ -9,7 +10,9 @@ namespace Paneport.IOS;
 
 // The host's calls through Paneport.Interop, as Paneport.Core's INativeHost: the bindings of
 // C-0005, with their records mapped to Paneport.Core's and a HostException turned into a
-// NativeHostException, which carries the status and the host's own fixed message.
+// NativeHostException, which carries the status and the host's own fixed message. A function that
+// a later minor version added goes through HostExports, so that a host that predates it fails the
+// call with the status Unsupported instead of an EntryPointNotFoundException.
 internal sealed class InteropNativeHost : INativeHost
 {
     public string ImportName => $"Framework: {NativeHost.LibraryName}";
@@ -35,7 +38,7 @@ internal sealed class InteropNativeHost : INativeHost
         return new MemoryBudget(budget.LimitBytes, budget.AvailableBytes, budget.FootprintBytes, budget.GameModeLevelReached);
     }
 
-    public string ReadDeviceModel() => Call(NativeHost.ReadDeviceModel);
+    public string ReadDeviceModel() => HostExports.Call(DeviceModel.AddedIn, () => Call(NativeHost.ReadDeviceModel));
 
     private static void Call(Action call)
     {

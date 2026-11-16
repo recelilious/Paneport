@@ -53,7 +53,7 @@ public sealed class DiagnosticsViewModelTests
     }
 
     [Fact]
-    public void RefreshReadsTheBudgetAgainAndAnnouncesTheChange()
+    public void RefreshShowsTheLatestSampleWithoutTakingOne()
     {
         var fakes = new FakeServices();
         var diagnostics = new DiagnosticsViewModel(fakes.Host, fakes.ToDiagnosticsSources(), fakes.Log);
@@ -61,9 +61,15 @@ public sealed class DiagnosticsViewModelTests
         diagnostics.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
         fakes.Host.Budget = new MemoryBudget(8_192 * Megabyte, 4_096 * Megabyte, 4_096 * Megabyte, gameModeLevelReached: true);
 
+        // The head's timer samples while the page does not follow the timeline.
+        fakes.Memory.Sample();
+        var reads = fakes.Host.BudgetReads;
         diagnostics.RefreshCommand.Execute(null);
 
-        Assert.Equal(2, fakes.Host.BudgetReads);
+        // The timeline keeps one sample a second: Refresh only shows the latest.
+        Assert.Equal(reads, fakes.Host.BudgetReads);
+        Assert.Equal(2, fakes.Memory.SampleCount);
+        Assert.Contains(new DiagnosticsRow("Samples", "2, one a second"), diagnostics.MemoryRows);
         Assert.Equal("8,192 MB", diagnostics.MemoryLimit);
         Assert.Equal("Reached", diagnostics.GameModeLevel);
         Assert.Contains(nameof(DiagnosticsViewModel.MemoryLimit), changed);

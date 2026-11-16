@@ -108,11 +108,12 @@ say "installed in $(($(date +%s) - built)) s into $install"
 version=$("$install/bin/wine" --version) || fail "the installed loader does not start."
 say "the loader reports $version"
 
-# macOS kills an arm64 executable whose segments are not aligned to its 16 KiB pages, and keeps
-# x18, which holds the Windows TEB, only for a main executable that names the macOS 12 SDK or an
-# older one (docs/design/runtime-macos-harness.md section 2.1).
+# bin/wine is Wine's launcher, which execs the loader in lib/wine/aarch64-unix as the program's
+# process. macOS kills an arm64 executable whose segments are not aligned to its 16 KiB pages,
+# and keeps x18, which holds the Windows TEB, only for a main executable that names the macOS 12
+# SDK or an older one (docs/design/runtime-macos-harness.md section 2.1).
 for loader in "$install/bin/wine" "$install/lib/wine/aarch64-unix/wine"; do
-    [ -f "$loader" ] || continue
+    [ -f "$loader" ] || fail "${loader#"$install/"} is missing."
     name=${loader#"$install/"}
     sdk=$(vtool -show-build "$loader" 2>/dev/null | awk '$1 == "sdk" { print $2 }' | head -n 1)
     misaligned=0
@@ -121,8 +122,9 @@ for loader in "$install/bin/wine" "$install/lib/wine/aarch64-unix/wine"; do
     done
     say "$name: SDK version ${sdk:-unknown}, $misaligned segments not aligned to 16 KiB"
     [ "$misaligned" -eq 0 ] || fail "$name has segments that macOS will not map."
-    [ -n "$sdk" ] && [ "${sdk%%.*}" -le 12 ] || fail "$name names SDK ${sdk:-unknown}, so macOS will not keep x18."
 done
+[ -n "$sdk" ] && [ "${sdk%%.*}" -le 12 ] \
+    || fail "lib/wine/aarch64-unix/wine names SDK ${sdk:-unknown}, so macOS will not keep x18."
 
 # S4.2.2: every module that the build made for a PE architecture is installed in that
 # architecture's folder, and a sample of modules has the machine type of its folder.

@@ -106,26 +106,34 @@ module=$(find "$work" -name libarm64ecfex.dll -type f | head -n 1)
 [ -n "$module" ] || fail "the build made no libarm64ecfex.dll."
 cp "$module" "$install/libarm64ecfex.dll"
 
-# An ARM64EC module carries the machine type of x86-64 in its header and its ARM64EC code is
-# described by the CHPE metadata of its load configuration.
+# llvm-readobj reports an ARM64EC module as IMAGE_FILE_MACHINE_ARM64EC, and the CHPE metadata
+# of its load configuration describes its ARM64EC code.
 readobj="$LLVM_MINGW/bin/llvm-readobj"
 headers=$("$readobj" --file-headers "$install/libarm64ecfex.dll")
 machine=$(printf '%s\n' "$headers" | sed -n 's/^ *Machine: \([A-Z0-9_]*\).*/\1/p' | head -n 1)
 alignment=$(printf '%s\n' "$headers" | sed -n 's/^ *SectionAlignment: \([0-9]*\).*/\1/p' | head -n 1)
-"$readobj" --coff-load-config "$install/libarm64ecfex.dll" | grep -q 'CHPEMetadata' \
+"$readobj" --coff-load-config "$install/libarm64ecfex.dll" | grep -Eq 'CHPEMetadata(Pointer)?: 0x0*[1-9A-Fa-f]' \
     || fail "libarm64ecfex.dll has no CHPE metadata, so it is not an ARM64EC module."
 say "libarm64ecfex.dll: $machine with CHPE metadata, sections aligned to $alignment bytes, $(wc -c < "$install/libarm64ecfex.dll" | tr -d ' ') bytes"
 
-# The objects that the link took from llvm-mingw's libraries, for the check against the
-# runtime review of docs/design/forks.md section 9: mingw-w64's runtime, and LLVM's runtime
-# libraries, which C-0003 registers.
+# The input files of the link, for the check against the runtime review of
+# docs/design/forks.md section 9. lld's map names an archive member without its archive, but
+# mingw-w64 names the members of its runtime after their library, as in
+# lib64_libmingwex_a-strtod.o, so those show which runtime objects the link took.
 map="$install/libarm64ecfex.map"
 if [ -f "$map" ]; then
-    members=$(grep -o -E '[A-Za-z0-9_+.-]+\.a\([^)]+\)' "$map" | sort -u || true)
-    say "objects linked from libraries: $(printf '%s\n' "$members" | sed '/^$/d' | wc -l | tr -d ' ')"
-    printf '%s\n' "$members" | sed '/^$/d' | sed 's/(.*//' | sort | uniq -c | sed 's/^/build-fex:   /'
-    printf '%s\n' "$members" | sed '/^$/d' | grep -E '^lib(mingw|mingwex|mingw32|moldname|ucrt|msvcrt)' \
-        | sed 's/^/build-fex:   mingw-w64 runtime object: /' || true
+    inputs=$(sed -n -E 's/^[0-9A-Fa-f]+ +[0-9A-Fa-f]+ +[0-9]+ +([^ ].*):\([^)]*\)$/\1/p' "$map" \
+        | sed 's|.*/||' | sort -u)
+    say "input files in the map: $(printf '%s\n' "$inputs" | sed '/^$/d' | wc -l | tr -d ' ')"
+    runtime=$(printf '%s\n' "$inputs" | grep -E '^lib[a-z0-9]*_lib[a-z0-9_]*_a-' || true)
+    if [ -n "$runtime" ]; then
+        printf '%s\n' "$runtime" | sed 's/^/build-fex:   mingw-w64 runtime object: /'
+    elif [ -n "$inputs" ]; then
+        say "no object of mingw-w64's runtime"
+    else
+        say "the map is not in the expected format; its first lines are:" >&2
+        head -n 12 "$map" | sed 's/^/build-fex:   /' >&2
+    fi
 else
     say "the link wrote no map at $map" >&2
 fi

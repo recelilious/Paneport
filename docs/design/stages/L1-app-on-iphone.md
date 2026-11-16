@@ -10,9 +10,9 @@ Back to the [development plan](../development-plan.md).
 
 | Stage | Title | Level | Status | Branch or PR | Last session |
 |---|---|---|---|---|---|
-| L1 | Paneport on the iPhone | Large | In progress | `feat/l1-app-on-iphone` | 2026-11-16 |
-| S1.0.1 | Evidence record template | Small | In progress | `feat/l1-app-on-iphone` | 2026-11-16 |
-| S1.0.2 | Recorded install route | Small | In progress | `feat/l1-app-on-iphone` | 2026-11-16 |
+| L1 | Paneport on the iPhone | Large | In progress | [#24](https://github.com/recelilious/Paneport/pull/24) | 2026-11-16 |
+| S1.0.1 | Evidence record template | Small | Done | [#24](https://github.com/recelilious/Paneport/pull/24) | 2026-11-16 |
+| S1.0.2 | Recorded install route | Small | In progress | [#24](https://github.com/recelilious/Paneport/pull/24) | 2026-11-16 |
 | M1.1 | macOS build environment and the iOS CI job | Medium | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
 | S1.1.1 | Toolchain pins | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
 | S1.1.2 | Mac bootstrap script | Small | Done | [#10](https://github.com/recelilious/Paneport/pull/10) | 2026-10-31 |
@@ -64,7 +64,7 @@ Back to the [development plan](../development-plan.md).
 
 **Acceptance steps.** L1 is not a C-0012 gate. The steps show that the stage works on the device and fill the evidence record. Never copy an Apple ID, a team name or identifier, a device name or a re-signed bundle identifier from any tool. Text in quotation marks is what Paneport shows, word for word; the integration session matched it to Diagnostics and the developer pages as M1.3 built them.
 
-Before you start: D2 is decided. The iPhone is a 17 Pro, 17 Pro Max, 18 Pro or 18 Pro Max on iOS 26 or 27 with Developer Mode on (C-0001 section 2, C-0009 section 1). AltServer runs on Windows with Apple's own iTunes and iCloud, not the Microsoft Store versions, and AltStore 2.2 or later is on the iPhone, with its Randomize Bundle IDs setting off (`avalonia_ui_layer.md` section 2.2, `docs/design/dev-environment.md` section 6); or a Mac with the pinned Xcode is at hand (`docs/design/dev-environment.md`). Both `.ipa` artifacts of the `ios` job are downloaded from the pull request's last CI run and unpacked.
+Before you start: D2 is decided. The iPhone is a 17 Pro, 17 Pro Max, 18 Pro or 18 Pro Max on iOS 26 or 27 with Developer Mode on (C-0001 section 2, C-0009 section 1). AltServer runs on Windows with Apple's own iTunes and iCloud, not the Microsoft Store versions, and AltStore 2.2 or later is on the iPhone, with its Randomize Bundle IDs setting off where it has one (`avalonia_ui_layer.md` section 2.2, `docs/design/dev-environment.md` section 6); or a Mac with the pinned Xcode is at hand (`docs/design/dev-environment.md`). Both `.ipa` artifacts of the `ios` job are downloaded from the pull request's last CI run and unpacked.
 
 Main app:
 
@@ -81,7 +81,7 @@ Main app:
 
 Device test flavor:
 
-11. Install the test flavor's `.ipa` the same way. **Expected:** it replaces the main app, since both share one bundle identifier (D12, plan section 7.3). There is one icon, named Paneport Test, and no extra app slot is used.
+11. Install the test flavor's `.ipa` the same way. **Expected:** it replaces the main app, since both share one bundle identifier (D12, plan section 7.3). There is one icon, named Paneport Test, which the home screen may shorten, and no extra app slot is used.
 12. Open it, then its Developer entry. **Expected:** the navigation shows Library, Settings, Diagnostics and Developer, and the Developer page lists Interface conformance, Token store and Crash record. In Diagnostics, Build shows the commit and N of step 4, with Version "0.1.0 (N), device test flavor" and Host import "Framework, the ios-device-test build".
 13. Open Interface conformance and tap Run. **Expected:** "PASS: every struct size and member offset matches (6 structs)." Every struct size and member offset matches between the host and Paneport.Interop (C-0005 section 5, C-0011 section 1).
 14. Open Token store. Tap Write test item, then Read. **Expected:** "Written: 32 bytes.", then "match, 32 bytes; accessible after first unlock, this device only; not synchronizable." (C-0004 section 4). Tap Delete, then Read. **Expected:** "Deleted.", then "No item."
@@ -125,14 +125,17 @@ Device test flavor:
 
 **Session log.**
 
-- **2026-11-16 (UTC), integration session.** Branch `feat/l1-app-on-iphone`, from `main` at `32386e5`.
+- **2026-11-16 (UTC), integration session.** Pull request: [#24](https://github.com/recelilious/Paneport/pull/24), from `main` at `32386e5`.
   - **Dependencies.** L0 is Accepted, and M1.1, M1.2 and M1.3 are Done and merged into `main`. D1 (no local Mac), D2 (a free account), D3, D7 and D12 are recorded in plan section 4.2.
   - **Done.**
     - S1.0.1: the evidence record template, [2026-11-16-l1-app-on-iphone.md](../../evidence/2026-11-16-l1-app-on-iphone.md), with every field of C-0012 section 4, one row per acceptance step, a Metrics section for the limit timeline, the peak footprint, the thermal state and the import, and the list of what must never appear; its row in the Records table of `docs/evidence/README.md`.
     - S1.0.2, drafted: the install route from Windows in `docs/design/dev-environment.md` section 6, from AltStore's documentation and the documents of M1.1 and M1.3: the tools and their versions, the free account and its limits, the setup, the steps for a CI artifact, trusting the developer, and the seven-day re-sign. AltStore's documentation describes only AltServer's Sideload .ipa for an `.ipa` that comes from no AltStore source, and says nothing about whether that path keeps `increased-memory-limit`, which AltStore 2.2 states for its own sideloading. So the route tries AltServer first and falls back to AltStore's My Apps, and the run records which path worked. AltStore 2.3.1 added an experimental Randomize Bundle IDs setting, which must stay off for D12.
     - Integration step 4: the acceptance steps and the record quote the labels and texts of Diagnostics and the developer pages as M1.3 built them: the rows of the Host, Build and Device sections, the warning below 5,632 MB, the timeline and its rows, the entitlements with their sources, the storage rows, Run on Interface conformance with its six structs, the results of Token store and Crash record, and the message that replaces the shell when the host does not load or start (step 2). Step 5 also accepts about 8,192 MB when Game Mode engaged before the first sample, as on an iPhone Air with iOS 27.0 in two of four launches (`process_and_memory_model.md`), and step 7 expects "absent" for extended-virtual-addressing, as the page shows a value that neither source names.
     - Integration step 5 is skipped: there is no local Mac (D1), and the route is AltStore from Windows with the free account (D2).
-  - **Verification.** On the workstation, the personal-data scan finds nothing in the new record, and the relative links of the changed documents resolve; the new links to AltStore's documentation answered 200.
+  - **Verification.** On the workstation, the personal-data scan finds nothing, the new record included; the format checks of `eng/ci.slnf` and `tools/` pass; the relative links of the changed documents resolve, and the new links to AltStore's documentation answered 200. gitleaks, REUSE and lychee are not installed on the workstation and run in `checks`. In CI on `7723834` ([run](https://github.com/recelilious/Paneport/actions/runs/43942784414)), `dotnet` passed on both runners, `native` passed, and `checks` passed with lychee and the personal-data scan over the new record, which is S1.0.1's check; so S1.0.1 is set to Done in the branch's last commit, as plan section 3.3 asks. This stage changes no code, and the `ios` job of the pull request's last run is the integration run of step 2, which builds, signs, checks, packages, scans and uploads both flavors from one commit; the pull request records its result.
+  - **Not yet verified on device.** Everything the acceptance steps check: that Avalonia renders and takes touches in the head's own view controller, the framework import under Mono, the host's readings and the memory limit, the entitlements after AltStore re-signs the ad-hoc build, the keychain attributes, the backup marks and the folder in the Files app, the crash record's round trip, and the two flavors replacing each other.
+  - **Left.** recelilious runs the acceptance steps on the iPhone, with both `.ipa` files of the pull request's last CI run. A continuation session then fills in the record from the report, renames it if the run's UTC date differs, completes S1.0.2 with the install path that worked and the tools' versions, and sets L1 to Accepted once recelilious accepts the run and the record merges (plan section 2.4). A failed step leaves L1 In progress or Blocked, and its fix goes to the stage that owns the part, M1.3 for the app head.
+  - **Proposed follow-up.** For M1.3: `EntitlementReport` shows a code signature without an XML entitlements blob as "the app is not signed". A re-signing tool that writes only the DER form of the entitlements would trigger that; AltStore's signer is not known to, so step 7 records the text as it appears.
 
 ## M1.1 macOS build environment and the iOS CI job
 

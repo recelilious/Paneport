@@ -43,3 +43,4 @@ Every record has a row here. The commit that fills in a record gives its row the
 | Record | Stage | Gate | Verdict |
 |---|---|---|---|
 | [2026-10-30-l0-foundation.md](2026-10-30-l0-foundation.md) | L0 Foundation | None | Pass |
+| [2026-11-16-l1-app-on-iphone.md](2026-11-16-l1-app-on-iphone.md) | L1 Paneport on the iPhone | None | Template; the acceptance run is pending |

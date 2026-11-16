@@ -1,0 +1,125 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<Project>
+  <!--
+  The build of the iOS app head, which Paneport.iOS.csproj and the device test flavor in
+  tests/device both import, so that the two flavors differ only where the flavor sets a property
+  before the import: the display name, the host build it embeds and the name of the flavor
+  (docs/design/ios-app-head.md section 10). The head is on Mono, the default runtime of
+  net10.0-ios (C-0010 section 1), for devices only, as arm64, with iOS 26.0 as the oldest version
+  it supports (C-0001 section 2).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <RuntimeIdentifier>ios-arm64</RuntimeIdentifier>
+    <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
+    <UseMonoRuntime>true</UseMonoRuntime>
+  </PropertyGroup>
+
+  <!--
+  The bundle identifier is recelilious's decision D3 (plan section 4.2), and the device test
+  flavor shares it (D12), so that it replaces the main app on the device. Development builds take
+  the version from here and the build number from CI's run number, which grows with every run;
+  release versions come from tags (C-0009 section 6).
+  -->
+  <PropertyGroup>
+    <ApplicationId>io.github.recelilious.paneport</ApplicationId>
+    <ApplicationTitle Condition="'$(ApplicationTitle)' == ''">Paneport</ApplicationTitle>
+    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <ApplicationVersion Condition="'$(PaneportBuildNumber)' != ''">$(PaneportBuildNumber)</ApplicationVersion>
+    <ApplicationVersion Condition="'$(ApplicationVersion)' == ''">1</ApplicationVersion>
+  </PropertyGroup>
+
+  <!--
+  Device builds compile everything ahead of time, with the interpreter off (C-0009 section 3).
+  The build signs nothing: CI never holds an Apple identity (C-0009 section 5), and
+  eng/mac/sign-adhoc.sh signs the app ad hoc with Entitlements.plist afterwards. The SDK picks
+  up an Entitlements.plist next to the project file by itself, after this file, and then asks
+  for a provisioning profile (MT7139), so an unsigned build turns that off and clears the
+  property. A build on a Mac with a development profile can sign itself with
+  -p:EnableCodeSigning=true.
+  -->
+  <PropertyGroup>
+    <UseInterpreter>false</UseInterpreter>
+    <EnableCodeSigning Condition="'$(EnableCodeSigning)' == ''">false</EnableCodeSigning>
+    <EnableDefaultCodesignEntitlements Condition="'$(EnableCodeSigning)' != 'true'">false</EnableDefaultCodesignEntitlements>
+    <CodesignEntitlements Condition="'$(EnableCodeSigning)' != 'true'"></CodesignEntitlements>
+    <CodesignEntitlements Condition="'$(EnableCodeSigning)' == 'true'">$(MSBuildThisFileDirectory)Entitlements.plist</CodesignEntitlements>
+  </PropertyGroup>
+
+  <!--
+  The native host (C-0009 section 4): a framework that the ios job builds before the app,
+  embedded with a NativeReference of kind Framework and imported as
+  @rpath/paneport_host.framework/paneport_host. The main app embeds the build of the ios-device
+  preset, the device test flavor the build of ios-device-test.
+  -->
+  <PropertyGroup>
+    <PaneportHostPreset Condition="'$(PaneportHostPreset)' == ''">ios-device</PaneportHostPreset>
+    <PaneportHostFramework>$(MSBuildThisFileDirectory)../../build/native/$(PaneportHostPreset)/paneport_host.framework</PaneportHostFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <NativeReference Include="$(PaneportHostFramework)">
+      <Kind>Framework</Kind>
+      <SmartLink>False</SmartLink>
+    </NativeReference>
+  </ItemGroup>
+
+  <!--
+  The build stamp of Diagnostics (ios-app-head.md section 6), as values of the runtime's
+  configuration, which AppContext.GetData reads; the trimmer of iOS builds removes every
+  AssemblyMetadataAttribute, so assembly metadata would be lost (IL2045). CI passes the
+  pull request's head commit as PaneportCommit, because it checks out the merge commit; a local
+  build records none.
+  -->
+  <PropertyGroup>
+    <PaneportCommit Condition="'$(PaneportCommit)' == ''">Not recorded: a local build</PaneportCommit>
+    <PaneportFlavor Condition="'$(PaneportFlavor)' == ''">main app</PaneportFlavor>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="Paneport.Commit" Value="$(PaneportCommit)" />
+    <RuntimeHostConfigurationOption Include="Paneport.Configuration" Value="$(Configuration)" />
+    <RuntimeHostConfigurationOption Include="Paneport.Interpreter" Value="$(UseInterpreter)" />
+    <RuntimeHostConfigurationOption Include="Paneport.HostPreset" Value="$(PaneportHostPreset)" />
+    <RuntimeHostConfigurationOption Include="Paneport.Flavor" Value="$(PaneportFlavor)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.iOS" />
+  </ItemGroup>
+
+  <!--
+  Avalonia.DesignerSupport serves only the XAML previewer of an IDE, and the app never loads it.
+  The SDK keeps every assembly that is not marked trimmable whole, which makes the trimmer
+  analyze all of it (IL2104); marked trimmable, it is removed with the rest of the unused code.
+  -->
+  <ItemGroup>
+    <TrimmableAssembly Include="Avalonia.DesignerSupport" />
+  </ItemGroup>
+
+  <!--
+  Avalonia.iOS is kept whole. When .NET for iOS trims an assembly with NSObject subclasses, its
+  MarkNSObjectsStep preserves their members through dynamic dependencies by name, and the names
+  of explicitly implemented protocol members, such as those of Avalonia's text input responder,
+  do not resolve (IL2037). Those members would then be trimmed away and the keyboard's input lost.
+  Copied whole, the assembly keeps every member and gets no such dependency.
+  -->
+  <Target Name="PaneportKeepAvaloniaIOSWhole" BeforeTargets="_ComputeManagedAssemblyToLink">
+    <ItemGroup>
+      <ResolvedFileToPublish Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'Avalonia.iOS.dll'">
+        <TrimMode>copy</TrimMode>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Core/Paneport.Core.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Steam/Paneport.Steam.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.UI/Paneport.UI.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Interop/Paneport.Interop.csproj" />
+  </ItemGroup>
+</Project>

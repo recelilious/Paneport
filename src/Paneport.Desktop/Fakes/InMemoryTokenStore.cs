@@ -5,30 +5,30 @@ using Paneport.Core.Security;
 
 namespace Paneport.Desktop.Fakes;
 
-// Keeps a Steam token in memory for one run and nowhere else: the desktop head never writes a
+// Keeps a Steam sign-in in memory for one run and nowhere else: the desktop head never writes a
 // token to disk (C-0004 section 2, C-0007 section 3).
 internal sealed class InMemoryTokenStore : ITokenStore
 {
-    private Secret? _token;
+    private SavedSignIn? _signIn;
 
-    public Task<Secret?> ReadAsync(CancellationToken cancellationToken)
+    public Task<SavedSignIn?> ReadAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(Volatile.Read(ref _token));
+        return Task.FromResult(Volatile.Read(ref _signIn));
     }
 
-    public Task WriteAsync(Secret token, CancellationToken cancellationToken)
+    public Task WriteAsync(SavedSignIn signIn, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(token);
+        ArgumentNullException.ThrowIfNull(signIn);
         cancellationToken.ThrowIfCancellationRequested();
-        Volatile.Write(ref _token, token);
+        Volatile.Write(ref _signIn, signIn);
         return Task.CompletedTask;
     }
 
     public Task DeleteAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        Volatile.Write(ref _token, null);
+        Volatile.Write(ref _signIn, null);
         return Task.CompletedTask;
     }
 }

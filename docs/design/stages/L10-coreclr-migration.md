@@ -407,6 +407,7 @@ Out:
 **Notes from earlier stages.**
 
 - M1.1 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-01): since C-0009 1.1 the iOS workload set is pinned in `eng/toolchain.json` as `ios-workload-set`, not in `global.json`, so S10.2.1 moves that pin; `sdk.workloadVersion` in `global.json` would bring back MSB4242 on every machine without the workload set (`docs/design/dev-environment.md` section 2).
+- M1.3 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-15): the Mono settings of the head are in `src/Paneport.iOS/AppHead.props` (`UseMonoRuntime`, `UseInterpreter`), which the device test flavor imports too, and `BuildInfo` names the runtime as Mono; the import stays `@rpath/paneport_host.framework/paneport_host` (`docs/design/ios-app-head.md` sections 4 and 6).
 
 **Session log.**
 

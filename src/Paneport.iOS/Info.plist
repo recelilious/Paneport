@@ -40,5 +40,23 @@ SPDX-License-Identifier: MIT
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
+  <!--
+  The keys of C-0009 section 4: a game, Apple's Game Mode opt-ins for iOS 18.6 and later and for
+  18.0 to 18.5, 120 Hz presentation on ProMotion iPhones, and file sharing through the Files app,
+  which shows Documents/ with its Import folder. BGTaskSchedulerPermittedIdentifiers comes with
+  the background download task of M7.1.
+  -->
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.games</string>
+  <key>LSSupportsGameMode</key>
+  <true/>
+  <key>GCSupportsGameMode</key>
+  <true/>
+  <key>CADisableMinimumFrameDurationOnPhone</key>
+  <true/>
+  <key>UIFileSharingEnabled</key>
+  <true/>
+  <key>LSSupportsOpeningDocumentsInPlace</key>
+  <true/>
 </dict>
 </plist>

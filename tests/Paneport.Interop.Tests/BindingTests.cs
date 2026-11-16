@@ -28,6 +28,17 @@ public sealed class BindingTests(HostFixture host)
         Assert.True(NativeHost.GetMemoryBudget().GameModeLevelReached);
     }
 
+    // Version 1.1: on macOS the host reports the machine's architecture, as hw.machine gives it.
+    [Fact]
+    public void TheDeviceModelIsReadOnAnyThread()
+    {
+        var model = NativeHost.ReadDeviceModel();
+
+        Assert.False(string.IsNullOrWhiteSpace(model));
+        Assert.True(model.Length < 64);
+        Assert.DoesNotContain('\0', model);
+    }
+
     [Fact]
     public void AFailedCallThrowsWithTheHostsStatusAndMessage()
     {

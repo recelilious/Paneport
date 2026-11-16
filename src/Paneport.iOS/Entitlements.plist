@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+The entitlements of C-0009 section 4 that the app declares itself. increased-memory-limit is
+declared explicitly, because the .NET build does not copy it from the profile. get-task-allow
+comes from the development profile when the user's sideloading tool re-signs the app, so it is
+not here. extended-virtual-addressing is added only when the build property
+PaneportExtendedVirtualAddressing is true (eng/mac/sign-adhoc.sh).
+-->
+<dict>
+  <key>com.apple.developer.kernel.increased-memory-limit</key>
+  <true/>
+</dict>
+</plist>

@@ -30,6 +30,12 @@ SPDX-License-Identifier: MIT
             </DataTemplate>
           </ComboBox.ItemTemplate>
         </ComboBox>
+        <TextBlock x:Name="SaveError"
+                   Classes="error"
+                   Margin="0"
+                   Text="{Binding SaveError}"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding SaveError, Converter={x:Static ObjectConverters.IsNotNull}}" />
       </StackPanel>
 
       <StackPanel Spacing="6">

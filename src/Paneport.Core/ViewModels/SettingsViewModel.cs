@@ -45,6 +45,13 @@ public sealed partial class SettingsViewModel : PageViewModel
     [ObservableProperty]
     public partial LocaleOption? SelectedLocale { get; set; }
 
+    /// <summary>
+    /// Gets a message for the user when the latest save failed; otherwise null. The next save that
+    /// works clears it (docs/design/ios-app-head.md section 5).
+    /// </summary>
+    [ObservableProperty]
+    public partial string? SaveError { get; private set; }
+
     /// <summary>Gets whether the user is signed in to Steam, as text.</summary>
     public string SteamAccountText => _steam.SignInState == SteamSignInState.SignedIn ? "Signed in" : "Signed out";
 
@@ -79,6 +86,7 @@ public sealed partial class SettingsViewModel : PageViewModel
         try
         {
             await _store.SaveAsync(settings, cancellationToken);
+            SaveError = null;
             Log.Write(LogLevel.Information, nameof(SettingsViewModel), $"Saved the settings, locale {settings.Locale}.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -88,6 +96,7 @@ public sealed partial class SettingsViewModel : PageViewModel
         catch (Exception exception)
         {
             // Only the exception type is logged; its message can hold a local path.
+            SaveError = "The settings could not be saved.";
             Log.Write(LogLevel.Error, nameof(SettingsViewModel), $"Saving the settings failed with {exception.GetType().Name}.");
         }
     }

@@ -42,6 +42,7 @@ Every binding imports one name, `NativeHost.LibraryName`, which is `@rpath/panep
 | `NativeHost.SetLogHandler(handler)` | `pp_set_log_callback` | Main |
 | `NativeHost.SetCallbackFailureHandler(handler)` | None | Any |
 | `NativeHost.GetMemoryBudget()` | `pp_memory_get_budget` | Any |
+| `NativeHost.ReadDeviceModel()` | `pp_device_get_model`, which version 1.1 added, with a buffer of 64 bytes on the stack | Any |
 | `HostTestExports` | The exports of `paneport/testing.h` | Any |
 | `HostAbi` | `PP_ABI_VERSION_MAJOR` and `PP_ABI_VERSION_MINOR` as these bindings know them, and how to unpack and compare versions | Any |
 
@@ -81,7 +82,7 @@ C-0005 section 5 asks that every struct's size and member offsets match between 
 
 ## 9. Hand-over
 
-- **M1.3** adapts `NativeHost` to `IRuntimeHost`: `ImplementationName` names the native host, `AbiVersion` comes from `ReadAbiVersion`, and `GetMemoryBudget` maps to Paneport.Core's `MemoryBudget`. It checks the version before `Initialize`, passes `Library/Caches/Paneport/` as the crash record folder, sets the handlers on the main thread and dispatches events to the UI thread, and points the failure handler at its log. Its crash record reader follows the table in [native-host.md](native-host.md) section 8, and its developer pages call `LayoutConformance.Check` and `HostTestExports.WriteTestCrashRecord`.
+- **M1.3** did this ([ios-app-head.md](ios-app-head.md) section 4): it adapts `NativeHost` to `IRuntimeHost`: `ImplementationName` names the native host, `AbiVersion` comes from `ReadAbiVersion`, and `GetMemoryBudget` maps to Paneport.Core's `MemoryBudget`. It checks the version before `Initialize`, passes `Library/Caches/Paneport/` as the crash record folder, sets the handlers on the main thread and dispatches events to the UI thread, and points the failure handler at its log. Its crash record reader follows the table in [native-host.md](native-host.md) section 8, and its developer pages call `LayoutConformance.Check` and `HostTestExports.WriteTestCrashRecord`.
 - **M2.2 and later groups** add their bindings here with their functions, their structs with their measurements in `ManagedLayouts`, and their event kinds.
 
 ## 10. Sources

@@ -19,15 +19,34 @@ namespace Paneport.Core.ViewModels;
 public sealed partial class ShellViewModel : ObservableObject, INavigator
 {
     private readonly AppServices _services;
+    private readonly Func<INavigator, PageViewModel>? _developerPage;
     private readonly Stack<PageViewModel> _backStack = new();
 
     /// <summary>Creates the shell on the Library section. Its page loads when the shell starts.</summary>
     /// <param name="services">The services that the head provides.</param>
     public ShellViewModel(AppServices services)
+        : this(services, null)
+    {
+    }
+
+    /// <summary>
+    /// Creates the shell on the Library section, with a Developer section when a developer menu is
+    /// given, as the device test flavor gives it (plan section 7.3). The Library page loads when
+    /// the shell starts.
+    /// </summary>
+    /// <param name="services">The services that the head provides.</param>
+    /// <param name="developerPage">
+    /// Creates the developer menu's page over the shell, which it opens its pages with; or null for no
+    /// Developer section.
+    /// </param>
+    public ShellViewModel(AppServices services, Func<INavigator, PageViewModel>? developerPage)
     {
         ArgumentNullException.ThrowIfNull(services);
         _services = services;
-        Sections = [new(ShellSection.Library), new(ShellSection.Settings), new(ShellSection.Diagnostics)];
+        _developerPage = developerPage;
+        Sections = developerPage is null
+            ? [new(ShellSection.Library), new(ShellSection.Settings), new(ShellSection.Diagnostics)]
+            : [new(ShellSection.Library), new(ShellSection.Settings), new(ShellSection.Diagnostics), new(ShellSection.Developer)];
         MarkSection(ShellSection.Library);
         CurrentPage = CreatePage(ShellSection.Library);
     }
@@ -94,6 +113,19 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         }
     }
 
+    // A page that leaves the screen stops following its live sources, and the page that takes its
+    // place starts; a page on the back stack starts again when the shell returns to it. The
+    // generator types the old value as the property's type, but it is null on the first change.
+    partial void OnCurrentPageChanged(PageViewModel oldValue, PageViewModel newValue)
+    {
+        if (oldValue is not null)
+        {
+            oldValue.NotifyHidden();
+        }
+
+        newValue.NotifyShown();
+    }
+
     private void MarkSection(ShellSection section)
     {
         SelectedSection = section;
@@ -130,7 +162,8 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     {
         ShellSection.Library => new LibraryViewModel(_services.Library, this, _services.Log),
         ShellSection.Settings => new SettingsViewModel(_services.Settings, _services.Steam, _services.Log),
-        ShellSection.Diagnostics => new DiagnosticsViewModel(_services.Host, _services.Log),
+        ShellSection.Diagnostics => new DiagnosticsViewModel(_services.Host, _services.Diagnostics, _services.Log),
+        ShellSection.Developer when _developerPage is not null => _developerPage(this),
         _ => throw new ArgumentOutOfRangeException(nameof(section), section, "The section is not defined."),
     };
 }

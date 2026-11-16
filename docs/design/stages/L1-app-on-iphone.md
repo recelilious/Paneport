@@ -30,17 +30,17 @@ Back to the [development plan](../development-plan.md).
 | S1.2.8 | Layout table and conformance test | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
 | S1.2.9 | Native format and analysis configuration | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
 | S1.2.10 | Host framework packaging | Small | Done | [#18](https://github.com/recelilious/Paneport/pull/18) | 2026-11-10 |
-| M1.3 | iOS app head | Medium | Planned | | |
-| S1.3.1 | Scene and root view controller | Small | Planned | | |
-| S1.3.2 | Native host embedding and host adapter | Small | Planned | | |
-| S1.3.3 | Info.plist and entitlements | Small | Planned | | |
-| S1.3.4 | Storage layout bootstrap | Small | Planned | | |
-| S1.3.5 | Settings store on disk | Small | Planned | | |
-| S1.3.6 | Keychain token store | Small | Planned | | |
-| S1.3.7 | Diagnostics wiring | Small | Planned | | |
-| S1.3.8 | Crash record reader | Small | Planned | | |
-| S1.3.9 | Ad-hoc signing, packaging and scan | Small | Planned | | |
-| S1.3.10 | Device test flavor skeleton | Small | Planned | | |
+| M1.3 | iOS app head | Medium | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.1 | Scene and root view controller | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.2 | Native host embedding and host adapter | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.3 | Info.plist and entitlements | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.4 | Storage layout bootstrap | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.5 | Settings store on disk | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.6 | Keychain token store | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.7 | Diagnostics wiring | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.8 | Crash record reader | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.9 | Ad-hoc signing, packaging and scan | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
+| S1.3.10 | Device test flavor skeleton | Small | Done | [#21](https://github.com/recelilious/Paneport/pull/21) | 2026-11-16 |
 
 ## L1 Paneport on the iPhone
 
@@ -117,6 +117,10 @@ Device test flavor:
 |---|---|---|---|
 | S1.0.1 | Evidence record template: every field of C-0012 section 4, one row per acceptance step, and the list of what must never appear | `docs/evidence/YYYY-MM-DD-l1-app-on-iphone.md` | The personal-data check and lychee pass on it (C-0011 section 2). Review: one entry per field and per step. |
 | S1.0.2 | Recorded install route: the tool and its version, the account type, the steps for a CI artifact, trusting the developer, and the seven-day re-sign on a free account. L2 and L6 install through it as the route recorded for L1. | `docs/design/dev-environment.md` | Review: it matches the evidence record and holds no Apple ID, device name or local path. lychee passes. |
+
+**Notes from earlier stages.**
+
+- M1.3 (session log of 2026-11-15): the `ios` job uploads the artifacts `Paneport-main-<commit>` and `Paneport-test-<commit>`, each a zip around the ad-hoc-signed `.ipa`; `docs/design/dev-environment.md` section 6 says how to install them, as a base for S1.0.2. Diagnostics has the sections Host, Memory, Entitlements, Crash record, Storage, Build and Device, with the rows that `docs/design/ios-app-head.md` section 8 lists, a warning below 5,632 MB, and a Dismiss button for the crash record. The developer menu has Interface conformance (Run), Token store (Write test item, Read, Delete) and Crash record (Write test record). The step texts match these labels (integration step 4). recelilious accepted the C-0011 1.1 clarification for the ad-hoc signature on 2026-11-15; its pull request, [#23](https://github.com/recelilious/Paneport/pull/23), merges before M1.3's.
 
 **Session log.**
 
@@ -494,4 +498,21 @@ Scripts this stage creates: `eng/mac/sign-adhoc.sh`, `eng/mac/package-ipa.sh`, `
 
 **Session log.**
 
-_No sessions yet._
+- **2026-11-15 (UTC), first session.** Pull request: [#21](https://github.com/recelilious/Paneport/pull/21), a draft until the contract proposal below is accepted.
+  - **Done.** S1.3.1 to S1.3.10, with the design in `docs/design/ios-app-head.md`.
+    - Paneport.iOS as the app head: the composition root on the main thread (log, storage bootstrap, previous crash record, Avalonia's platform through `UseiOS().SetupWithoutStarting()` without any delegate of Avalonia's, the host's version check, `pp_init`, the shell), a root view controller with an idle `CAMetalLayer` under one `AvaloniaView` kept out of the safe area, or the startup's message, also when any step throws; the framework embedded with a `NativeReference` of kind `Framework`; Info.plist with the keys of C-0009 section 4 and the bundle identifier of D3; `Entitlements.plist` with `increased-memory-limit` only; the build stamp; the keychain, backup marks and device facts. Its build is `src/Paneport.iOS/AppHead.props`.
+    - Paneport.Core: the host adapter and startup over `INativeHost`, with events posted to the UI thread; the storage layout and bootstrap; the settings file; the token store over a secure-item interface, with the account name beside the refresh token in `SavedSignIn`; the crash record reader and store; the entitlement readers for the code signature and the embedded profile; the memory timeline; the log file; and Diagnostics with seven sections and the warning below 5,632 MB. The shell tells a page when it is shown or hidden and takes a developer menu, and the Settings page shows a failed save.
+    - The native host gains `pp_device_get_model` for the model identifier, so the interface is 1.1; the framework's identifier is `io.github.recelilious.paneport.host`.
+    - `tests/device`, the device test flavor, built from the head's sources with the head's build, with the developer menu: Interface conformance, Token store and Crash record.
+    - `eng/mac/sign-adhoc.sh`, `eng/mac/package-ipa.sh`, `eng/mac/check-app.sh`, `tools/ScanPackage.cs` with a self-test of 12 cases, and the `ios` job steps that build, sign, check, package, scan and upload both flavors; the `checks` job runs the new self-test.
+    - The lock files of both iOS projects, as the `ios` job printed them; the D3 row of plan section 4.2; the updates of `app-shell.md`, which settle four of its open questions, `dev-environment.md`, `native-host.md`, `interop.md`, `repository-checks.md`, `solution-and-build.md` and the READMEs.
+  - **Verification.** On the workstation, `eng/ci.slnf` builds without a warning, 471 tests pass (102 new), the format checks pass, the trimmed publish shows no warning, the four tools' self-tests pass, the personal-data scan finds nothing, the license check passes, and `bash -n` passes on the three new scripts; the native change was compiled and format-checked in the workstation's Linux environment. In CI on `2a4a659` ([run](https://github.com/recelilious/Paneport/actions/runs/43693743004)), `dotnet` passed on both runners and `native` passed, with the new CTest case and binding test. In `ios`, both flavors built in Release with full AOT and the interpreter off without a warning, in 5 min 43 s and 5 min 22 s; `sign-adhoc.sh` signed `paneport_host.framework`, `libSkiaSharp.framework`, `libHarfBuzzSharp.framework` and each app; `check-app.sh` passed both, with version 0.1.0 (178), no test export in the main app's host and six in the test flavor's, and exactly `increased-memory-limit` as the entitlements; `ScanPackage.cs` found nothing in either `.ipa`; and both were uploaded, at 17.6 and 17.7 MB. `checks` passed every step but lychee, whose online run failed only on four links to cmake.org in `native-host.md`, because cmake.org served an expired TLS certificate; this branch does not change them.
+  - **Found in CI.** CA1822 on the keychain's attribute read. MT7139: the SDK takes an `Entitlements.plist` next to the project as the signing entitlements after the project's own properties, and then asks for a profile, which `EnableDefaultCodesignEntitlements=false` turns off for an unsigned build. And the trimmer's first run: IL2045, because the trimmer of iOS builds removes every `AssemblyMetadataAttribute`, so the build stamp moved to `RuntimeHostConfigurationOption` values; IL2104 for `Avalonia.DesignerSupport`, which the app never loads, now marked trimmable; and IL2037, eleven times, from the dynamic dependencies by name that .NET for iOS's `MarkNSObjectsStep` gives the explicitly implemented protocol members of Avalonia.iOS, which is now kept whole with `TrimMode` `copy`. No warning is suppressed (`ios-app-head.md` section 12).
+  - **Confirmed in this stage.** Avalonia's platform starts and the head builds without any delegate of Avalonia's; the `NativeReference` of kind `Framework` links and embeds the host with the run path `@executable_path/Frameworks`; SkiaSharp and HarfBuzzSharp come as frameworks of their own, which the signing covers; the entitlements are read from both the signature and the profile (the brief's question). The `ios` job takes 18 minutes now, against 6.5 before this stage, which D7 may want to know.
+  - **Contract proposal.** `contract/m1-3-ios-adhoc-signing`, committed locally and not pushed (C-0012 section 2): C-0011 1.1 names the ad-hoc signature, the check, the scan and both flavors in the `ios` job's row, and adds that an ad-hoc signature holds no Apple identity and that the job never holds an Apple certificate or profile.
+  - **Not yet verified on device.** Everything the app does on the iPhone: that Avalonia renders and takes touches in the head's own view controller, the framework import under Mono, the host's readings, the entitlements after AltStore re-signs the ad-hoc build, the keychain attributes, the backup marks and the crash record's round trip. L1's acceptance checks them.
+  - **Left.** recelilious reviews the contract proposal. Once it is accepted, the contract branch is pushed and merged first; then `checks` must pass, which needs cmake.org's certificate renewed or a decision on those links; M1.3 and S1.3.1 to S1.3.10 are set to Done in the branch's last commit, and recelilious merges #21.
+  - **For later sessions.** Notes left in the briefs of L1, M2.1, M2.2, M2.3, M3.1, M4.4, M6.3, M6.5, M7.1, M9.1 and M10.2.
+- **2026-11-15 (UTC), contract acceptance.** recelilious accepted the C-0011 1.1 proposal as it stands. The acceptance commit on `contract/m1-3-ios-adhoc-signing` applies it to section 4 and the change log, drops the proposal section and the index's note, and the branch is pushed with its pull request, [#23](https://github.com/recelilious/Paneport/pull/23), which merges before #21. `ios-app-head.md`, `dev-environment.md` and the note for L1 no longer list the clarification as open.
+  - **Left.** recelilious merges #23. Then `checks` must pass on #21: its lychee step still fails only because cmake.org serves an expired TLS certificate, which a check from the workstation confirmed too, for four links of `native-host.md` that this branch does not change; once cmake.org renews it, a rerun of the job is enough. M1.3 and S1.3.1 to S1.3.10 are then set to Done in the branch's last commit, and recelilious merges #21.
+- **2026-11-16 (UTC), checks rerun.** cmake.org serves a valid certificate again, and its four links answered 200 from the workstation. On recelilious's choice to wait for the renewal, the failed `checks` jobs of #21 at `445d4db` and of #23 at `555016f` were run again, push and pull request alike, and passed; every other job had passed on those commits, `ios` among them. The verification is complete, and only the merges are left, #23 first and then #21, so M1.3 and S1.3.1 to S1.3.10 are set to Done in this commit, as plan section 3.3 asks. A background check of the certificate, started after the previous entry, had stopped early, when the workstation could no longer start processes; a check on resuming found the renewal.

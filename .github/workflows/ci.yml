@@ -134,6 +134,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/CheckLicenses.cs -- --self-test
 
+      - name: Self-test the package scan
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/ScanPackage.cs -- --self-test
+
       - name: Check license headers and texts (REUSE)
         if: ${{ !cancelled() }}
         run: reuse lint
@@ -505,14 +509,19 @@ jobs:
           meson setup --cross-file external/Paneport-dxmt/build-win32.txt \
             -Dwine_build_path="$RUNNER_TEMP/wine" "$RUNNER_TEMP/dxmt-i386" external/Paneport-dxmt
 
-      - name: Restore Paneport.iOS from its lock file
+      # Both flavors of the app (M1.3): the main app in src/Paneport.iOS, and the device test flavor
+      # in tests/device, which builds the same head with the developer menu and the host's test
+      # build (docs/design/ios-app-head.md section 10).
+      - name: Restore Paneport.iOS and the device test flavor from their lock files
         if: ${{ !cancelled() }}
-        run: dotnet restore src/Paneport.iOS/Paneport.iOS.csproj --locked-mode
+        run: |
+          dotnet restore src/Paneport.iOS/Paneport.iOS.csproj --locked-mode
+          dotnet restore tests/device/Paneport.DeviceTest.csproj --locked-mode
 
       # As in the dotnet job: locked mode writes a missing lock file instead of failing. The
-      # step prints a written lock file, which is how the lock file of Paneport.iOS is made
-      # without a Mac (docs/design/dev-environment.md section 5). NuGet ends the file without
-      # a line break, so the step adds one, which keeps the printed file whole and the error
+      # step prints a written lock file, which is how the lock files of the iOS projects are made
+      # without a Mac (docs/design/dev-environment.md section 5). NuGet ends the file without a
+      # line break, so the step adds one, which keeps the printed file whole and the error
       # command on a line of its own.
       - name: Check that no lock file was written
         if: ${{ !cancelled() }}
@@ -529,68 +538,91 @@ jobs:
             exit 1
           fi
 
-      - name: Build Paneport.iOS for ios-arm64 in Release, without signing
+      # Release with full ahead-of-time compilation and the interpreter off (C-0009 section 3),
+      # without signing. The build stamp gets the pull request's head commit, because the job
+      # checks out the merge commit, and the run number as the build number; a push names its
+      # own commit.
+      - name: Build both flavors for ios-arm64 in Release, without signing
         if: ${{ !cancelled() }}
-        run: dotnet build src/Paneport.iOS/Paneport.iOS.csproj -c Release --no-restore
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          status=0
+          for project in src/Paneport.iOS/Paneport.iOS.csproj tests/device/Paneport.DeviceTest.csproj; do
+            dotnet build "$project" -c Release --no-restore \
+              -p:PaneportCommit="$HEAD_SHA" -p:PaneportBuildNumber="$RUN_NUMBER" || status=1
+          done
+          exit "$status"
 
-      - name: Check the formatting of Paneport.iOS
+      - name: Check the formatting of both flavors
         if: ${{ !cancelled() }}
-        run: dotnet format src/Paneport.iOS/Paneport.iOS.csproj --verify-no-changes --no-restore
+        run: |
+          dotnet format src/Paneport.iOS/Paneport.iOS.csproj --verify-no-changes --no-restore
+          dotnet format tests/device/Paneport.DeviceTest.csproj --verify-no-changes --no-restore
 
-      # The app names the scene delegate of its own Info.plist, supports iOS 26.0 and later
-      # (C-0001 section 2), holds arm64 code only, and carries no signature and no profile
-      # (C-0009 section 5). Apple's linker may give arm64 code an ad-hoc signature of its own,
-      # marked linker-signed, which holds no identity; that one is accepted. Only an app that
-      # passes every check is zipped, and the upload also needs every earlier step to have
-      # passed. A push has no pull request, so its own commit names the artifact.
-      - name: Check the app bundle
-        id: app
+      # S1.3.9: each embedded framework, then each app, ad hoc, with the app's Entitlements.plist;
+      # no Apple identity is used (C-0009 section 5). Then the checks of eng/mac/check-app.sh, the
+      # .ipa of each flavor, named by flavor and short commit hash, and the package scan.
+      - name: Sign both flavors ad hoc (eng/mac/sign-adhoc.sh)
+        id: apps
         if: ${{ !cancelled() }}
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          app=$(find src/Paneport.iOS/bin/Release -maxdepth 4 -type d -name '*.app' | head -n 1)
-          if [ -z "$app" ]; then
-            echo "::error title=App bundle::The build made no .app bundle."
+          main=$(find src/Paneport.iOS/bin/Release -maxdepth 4 -type d -name 'Paneport.iOS.app' | head -n 1)
+          test=$(find tests/device/bin/Release -maxdepth 4 -type d -name 'Paneport.DeviceTest.app' | head -n 1)
+          if [ -z "$main" ] || [ -z "$test" ]; then
+            echo "::error title=App bundle::A build made no .app bundle: main '$main', test '$test'."
             exit 1
           fi
-          scene_key=UIApplicationSceneManifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication.0.UISceneDelegateClassName
-          expected_scene=$(plutil -extract "$scene_key" raw -o - src/Paneport.iOS/Info.plist)
-          scene=$(plutil -extract "$scene_key" raw -o - "$app/Info.plist" || echo "(none)")
-          minimum=$(plutil -extract MinimumOSVersion raw -o - "$app/Info.plist" || echo "(none)")
-          executable=$(plutil -extract CFBundleExecutable raw -o - "$app/Info.plist")
-          architectures=$(lipo -archs "$app/$executable")
-          signature=$(codesign -dv "$app" 2>&1 || true)
-          echo "App: $app"
-          echo "Scene delegate: $scene"
-          echo "Minimum iOS version: $minimum"
-          lipo -info "$app/$executable"
-          echo "codesign -dv: $signature"
-          problems=0
-          [ "$scene" = "$expected_scene" ] || { echo "::error title=App bundle::The scene delegate is $scene, not $expected_scene."; problems=1; }
-          [ "$minimum" = 26.0 ] || { echo "::error title=App bundle::The minimum iOS version is $minimum, not 26.0."; problems=1; }
-          [ "$architectures" = arm64 ] || { echo "::error title=App bundle::The executable holds $architectures, not arm64 alone."; problems=1; }
-          if grep -F -q "is not signed at all" <<< "$signature"; then
-            echo "Signature: none."
-          elif grep -F -q "linker-signed" <<< "$signature" && grep -F -q "Signature=adhoc" <<< "$signature" \
-              && grep -F -q "TeamIdentifier=not set" <<< "$signature"; then
-            echo "Signature: only the linker's ad-hoc signature, with no identity."
-          else
-            echo "::error title=App bundle::The app carries a signature beyond the linker's own."
-            problems=1
-          fi
-          [ ! -e "$app/embedded.mobileprovision" ] || { echo "::error title=App bundle::The app holds a provisioning profile."; problems=1; }
-          [ "$problems" -eq 0 ] || exit 1
-          ditto -c -k --keepParent "$app" "$RUNNER_TEMP/$(basename "$app").zip"
-          echo "zip=$RUNNER_TEMP/$(basename "$app").zip" >> "$GITHUB_OUTPUT"
-          echo "commit=${HEAD_SHA:0:12}" >> "$GITHUB_OUTPUT"
+          eng/mac/sign-adhoc.sh "$main" src/Paneport.iOS/Entitlements.plist
+          eng/mac/sign-adhoc.sh "$test" src/Paneport.iOS/Entitlements.plist
+          {
+            echo "main=$main"
+            echo "test=$test"
+            echo "commit=${HEAD_SHA:0:12}"
+          } >> "$GITHUB_OUTPUT"
 
-      # The zip keeps the bundle's name and the executable's file mode, which an artifact of
-      # the bare folder would lose.
-      - name: Upload the app
-        if: ${{ success() && steps.app.outputs.zip != '' }}
+      - name: Check both apps (eng/mac/check-app.sh)
+        if: ${{ !cancelled() && steps.apps.outputs.main != '' }}
+        run: |
+          status=0
+          eng/mac/check-app.sh "${{ steps.apps.outputs.main }}" main || status=1
+          eng/mac/check-app.sh "${{ steps.apps.outputs.test }}" test || status=1
+          exit "$status"
+
+      - name: Package both apps as .ipa files (eng/mac/package-ipa.sh)
+        id: packages
+        if: ${{ !cancelled() && steps.apps.outputs.main != '' }}
+        run: |
+          main_ipa="$RUNNER_TEMP/Paneport-main-${{ steps.apps.outputs.commit }}.ipa"
+          test_ipa="$RUNNER_TEMP/Paneport-test-${{ steps.apps.outputs.commit }}.ipa"
+          eng/mac/package-ipa.sh "${{ steps.apps.outputs.main }}" "$main_ipa"
+          eng/mac/package-ipa.sh "${{ steps.apps.outputs.test }}" "$test_ipa"
+          {
+            echo "main=$main_ipa"
+            echo "test=$test_ipa"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Scan both packages (tools/ScanPackage.cs)
+        if: ${{ !cancelled() && steps.packages.outputs.main != '' }}
+        run: dotnet run tools/ScanPackage.cs -- "${{ steps.packages.outputs.main }}" "${{ steps.packages.outputs.test }}"
+
+      # Only when every earlier step passed. The .ipa keeps the bundle's name and the
+      # executable's file mode, which an artifact of the bare folder would lose.
+      - name: Upload the main app
+        if: ${{ success() && steps.packages.outputs.main != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: Paneport.iOS-ios-arm64-${{ steps.app.outputs.commit }}
-          path: ${{ steps.app.outputs.zip }}
+          name: Paneport-main-${{ steps.apps.outputs.commit }}
+          path: ${{ steps.packages.outputs.main }}
+          if-no-files-found: error
+
+      - name: Upload the device test flavor
+        if: ${{ success() && steps.packages.outputs.test != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Paneport-test-${{ steps.apps.outputs.commit }}
+          path: ${{ steps.packages.outputs.test }}
           if-no-files-found: error

@@ -9,6 +9,7 @@ Paneport's automated tests (C-0011 section 1). They use xunit.v3 on Microsoft.Te
 
 | Folder | What it holds |
 |---|---|
+| [device](device/README.md) | The device test flavor of the iOS app head, with the developer menu that later stages extend. It runs on the iPhone only, outside `eng/ci.slnf` (C-0011 section 4). |
 | [Paneport.Core.Tests](Paneport.Core.Tests/README.md) | Tests of Paneport.Core |
 | [Paneport.Interop.Tests](Paneport.Interop.Tests/README.md) | Tests of Paneport.Interop, which run on macOS against the host test library, outside `eng/ci.slnf` (C-0011 section 4) |
 | [Paneport.Steam.Tests](Paneport.Steam.Tests/README.md) | Tests of Paneport.Steam |
@@ -29,4 +30,4 @@ Everything in this folder passes the personal-data scan of `tools/ScanPersonalDa
 
 `eng/ci.slnf` covers the .NET tests that run on Windows and Linux. The `native` CI job runs `native` and `Paneport.Interop.Tests` on macOS; [native-host.md](../docs/design/native-host.md) section 11 and [interop.md](../docs/design/interop.md) section 8 say how to run them on a Mac.
 
-The last folder of the C-0004 layout, `device`, comes with M1.3.
+The `ios` job builds `device` and checks its bundle; L1 runs its developer pages on the iPhone ([ios-app-head.md](../docs/design/ios-app-head.md) section 10).

@@ -20,6 +20,9 @@ Engineering configuration (C-0004 section 3). Build output never goes here: `bui
 | `mac/select-xcode.sh` | Selects the pinned Xcode on a GitHub-hosted runner image for the later steps of a job, through `DEVELOPER_DIR`, and refuses a version-named folder that resolves to a release candidate or a beta. CI only. |
 | `mac/check-native-style.sh` | Checks our own C, Objective-C and C++ code with the pinned clang-format, in check mode, and with clang-tidy on the compile databases of given build folders. |
 | `mac/check-framework.sh` | Checks the two builds of `paneport_host.framework`: the install name, arm64 code for iOS devices, the Info.plist, and that the exports are exactly the functions that the public headers declare. |
+| `mac/sign-adhoc.sh` | Signs an app bundle ad hoc, with no Apple identity: each framework and library it embeds, then the app with its `Entitlements.plist`, as C-0009 section 6 describes. With `PANEPORT_EXTENDED_VIRTUAL_ADDRESSING=true` the app also declares `extended-virtual-addressing`. |
+| `mac/package-ipa.sh` | Packages a signed app as an `.ipa`, with `Payload/` as its only top-level folder. |
+| `mac/check-app.sh` | Checks a signed app of the `ios` job, as `main` or `test`: Info.plist and the keys of C-0009 section 4, the executable, the embedded host framework and its build, the ad-hoc signatures without a team identifier, no provisioning profile, and exactly `increased-memory-limit` as the entitlements. |
 | `cmake/base-presets.json` | The hidden CMake presets that `src/native/CMakePresets.json` builds on: the generator, the build folder `build/native/<preset>/`, the compile databases, and the two toolchains. |
 | `cmake/ios.cmake`, `cmake/macos.cmake` | The toolchain files of the native host: `arm64-apple-ios` from iOS 26.0, and arm64 macOS for the test builds. |
 

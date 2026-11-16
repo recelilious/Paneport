@@ -1,0 +1,164 @@
+# iOS App Head
+
+| Author | Timestamp (UTC) |
+|---|---|
+| Claude (Anthropic), for the Paneport project | 2026-11-15T09:30Z |
+
+Back to the [design index](README.md).
+
+This document describes Paneport.iOS, the iOS app head of C-0004 section 2, and the device test flavor in `tests/device`, as stage M1.3 built them (see the [L1 brief](stages/L1-app-on-iphone.md)): the scene and view tree, startup, the host adapter, the stores on the device, Diagnostics, the build stamp, Info.plist and entitlements, the test flavor, and the packaging, ad-hoc signing and scan of the `ios` job. [app-shell.md](app-shell.md) describes the shell that the head shows, [native-host.md](native-host.md) and [interop.md](interop.md) the host and its bindings, and [dev-environment.md](dev-environment.md) how the head is built and installed. Where this document and a contract differ, the [contracts](../contracts/README.md) win.
+
+## 1. Components
+
+| Part | Project | What it holds |
+|---|---|---|
+| The head | `src/Paneport.iOS` | The app and scene delegates, the root view controller and game view, the composition root, and the device's side of the stores: the keychain, backup marks, the device facts and the build stamp. Its build is `AppHead.props`, which the test flavor imports too. |
+| The logic | `src/Paneport.Core` | Everything that Windows can test: the startup sequence, the host adapter, the storage layout and bootstrap, the settings file, the token store, the crash record reader, the entitlement readers, the memory timeline, the log file and the Diagnostics page's view model. |
+| The views | `src/Paneport.UI` | The Diagnostics page and the Settings page's message for a failed save, beside the shell of M0.3. |
+| The bindings | `src/Paneport.Interop` | `NativeHost`, with `ReadDeviceModel` for version 1.1 of the interface. |
+| The test flavor | `tests/device` | The head's sources, built with the developer menu and the host's test build. |
+
+The head depends on Core, Steam, UI and Interop, and nothing depends on it (C-0004 section 2). Its classes are internal, and its namespace is `Paneport.IOS` ([solution-and-build.md](solution-and-build.md) section 2).
+
+## 2. The scene and the view tree
+
+- **Delegates.** `Program` starts UIKit with `AppDelegate`, whose `FinishedLaunching` composes the app (section 3). Info.plist's scene manifest names `PaneportSceneDelegate`, which gives the window scene a window with `RootViewController`. Apps built with Xcode 27 must use scenes (`avalonia_ui_layer.md` section 2.2).
+- **The view tree.** `RootViewController` owns two full-screen views, in this order: `GameView`, a `UIView` whose layer class is `CAMetalLayer`, opaque, black and idle; and one `AvaloniaView`, whose content is a `Border` around the shell's `MainView`. Nothing draws into the game view until M2.1 and M5.1, which receive its layer through `pp_display_attach` (C-0005 section 2). The Avalonia view is opaque for now, because the Fluent theme paints its background; transparency and pass-through come with M2.1 (`avalonia_ui_layer.md` section 3.1).
+- **Avalonia without its delegates.** Avalonia 12 has no API for an app-supplied root view controller, and its maintainers advise hosting `AvaloniaView`, a public `UIView`, in one's own controller (`avalonia_ui_layer.md` section 2.1). The head therefore uses neither `AvaloniaAppDelegate` nor Avalonia's scene delegate, and copies neither (C-0001 section 6). It starts Avalonia's platform with the public `AppBuilder.Configure<App>().UseiOS().SetupWithoutStarting()`: `UseiOS()` without an app delegate registers the iOS windowing, the dispatcher on the main thread, the render timer, HarfBuzz and Skia, and `SetupWithoutStarting` creates the application and loads its styles without a lifetime. `AvaloniaView` then needs only that platform. Avalonia's own app delegate also binds the activation events of `IActivatableLifetime`, such as opening a URL; the head does without them until a stage needs them, such as the URL opener of L3. This answers the question of the brief of how Avalonia's platform starts without its own scene delegate; it builds, and L1 confirms it on the device.
+- **The safe area.** The views fill the screen, and the status bar is hidden, as a game's view is. The controller tracks the safe area and gives the `Border` its insets as padding, so the shell's content keeps clear of the Dynamic Island and the home indicator. `AvaloniaView.InitWithController`, which would do the same through Avalonia's insets manager, needs an interface that Avalonia marks unstable, so the head does not use it.
+- **A failed start.** When the native host does not start (section 3), the controller shows the startup's message in a `UILabel` instead of the shell, which works even when Avalonia does not.
+
+## 3. Startup
+
+`CompositionRoot.Compose` runs once, in `FinishedLaunching`, on the main thread:
+
+1. Find the app container's root, the folder above the user domain's `Library` folder.
+2. Open the log file (section 9), or the console when it cannot be opened, and give Avalonia's logger `AvaloniaLogForwarder` over it.
+3. Run the storage bootstrap (section 9).
+4. Read the previous run's crash record (section 9). `pp_init` never touches an existing record, so the order of this step and step 6 does not matter ([native-host.md](native-host.md) section 8).
+5. Start Avalonia's platform (section 2).
+6. Start the host with `HostStartup.Start`: read `pp_abi_version`; when its major version differs from the bindings' (`HostAbi.Major`), stop with a message and never call `pp_init` (C-0005 section 1); otherwise call `pp_init` with `Library/Caches/Paneport/` as the crash record folder, then set the failure handler, the log handler and the event handler. A host that cannot be loaded, that refuses to start or that refuses its handlers stops startup with a message as well. The messages name versions, never paths.
+7. Build the services and the shell (section 4), with the developer menu in the test flavor (section 10).
+
+An exception at any step ends the composition with a message that names the exception's type, in place of the shell (section 2), and the log keeps the type; the app never ends before anything is on screen.
+
+The root view controller starts the shell once its view has appeared, which runs the shell's first load on the UI thread with Avalonia's synchronization context in place, and starts the memory timeline's timer at the same time (section 8).
+
+## 4. The host adapter and the services
+
+- **Two layers.** Paneport.Core cannot reference Paneport.Interop (C-0004 section 2), so Core defines `INativeHost`, the host's calls as the bindings offer them, and the head implements it as `InteropNativeHost`, which maps the records and turns a `HostException` into a `NativeHostException` with the status's name and the host's own message. On top, Core's `NativeRuntimeHost` is the adapter that the view models see as `IRuntimeHost`: the implementation's name, the interface version with the bindings' version beside it, the import, the memory budget, and the host's events.
+- **Threads.** The host's handlers run on the host event thread and must not wait for the UI thread (interop.md section 5). The event handler posts each event through `IUiDispatcher`, which the head implements with Avalonia's `Dispatcher.UIThread.Post`; the adapter counts it and raises `EventReceived` on the UI thread. The log handler writes to the log, which accepts any thread. The failure handler logs an exception's type, never its message. Version 1.1 of the interface defines no event kind yet, so Diagnostics shows the count and the last event's kind and code, which later stages fill.
+- **The import.** The bindings import `@rpath/paneport_host.framework/paneport_host` (C-0009 section 4). The head embeds the framework with a `NativeReference` of kind `Framework`, which links the executable against it and copies it into `Frameworks/`; `check-app.sh` confirms both in every build (section 11). The `__Internal` fallback is not built: it would need the host linked into the executable and a resolver (interop.md section 2), and L1 shows first whether the framework resolves under Mono on the device.
+- **The services.** The host adapter; the empty library of `EmptyLibraryService` until M7.1 and M6.5; the Steam stub of M0.3; the settings file and the token store of section 5; the log file; and the sources of Diagnostics (section 8).
+- **Interface version 1.1.** No public .NET for iOS API gives the device's model identifier, and only Paneport.Interop may bind native code (C-0010 section 2), so the host gained `pp_device_get_model`, which reads `hw.machine` into the caller's buffer ([native-host.md](native-host.md) section 2). A new function raises the minor version (C-0005 section 1).
+
+## 5. Settings and the token store
+
+- **The settings file.** `FileSettingsStore` keeps `settings.json` in `Library/Application Support/Paneport/settings/`: a version and the locale, with System.Text.Json source generation (C-0010 section 2), two-space indents and LF line endings. A save writes `settings.json.tmp`, flushes it to storage and moves it over the file in one step, so a save that fails or is interrupted leaves the previous file and removes its temporary one. The store runs one operation at a time, in order: a load waits for a pending save, and a save that a newer change cancels before its move stops without replacing the file, which settles the open question of app-shell.md section 10. A file that cannot be read, or holds another version or an empty locale, gives the defaults and a log line.
+- **A failed save.** The Settings page shows "The settings could not be saved." under the locale until a later save works, and the log keeps the exception's type, which settles the other open question of app-shell.md section 10.
+- **The token store.** `ITokenStore` now keeps a `SavedSignIn`: the account name, which signing in with a refresh token also needs (`avalonia_ui_layer.md` section 2.3), and the refresh token as M0.3's `Secret`. Its text form names neither. `SecureTokenStore` keeps it as one item of `ISecureItemStore` under the key `steam-sign-in`: a small JSON document with a version, the account name and the token. An item that is not such a document is reported in the log, without its content, and removed, so the user signs in again. M7.1 proposes the same layout.
+- **The keychain.** `KeychainItemStore` keeps each item as one generic-password item with the service `Paneport` and the key as its account, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, and not synchronizable (C-0004 section 4), through `SecKeyChain` and `SecRecord`. A write updates the item in place and adds it only when it is missing, so a failed write never loses the previous value. An error names the keychain's status, never the item's bytes.
+
+## 6. The build stamp and the versions
+
+- **The stamp.** `AppHead.props` records the commit, the configuration, the interpreter setting, the host build and the flavor as values of the runtime's configuration (`RuntimeHostConfigurationOption`), which `AppContext.GetData` reads; the trimmer of iOS builds removes every `AssemblyMetadataAttribute`, so assembly metadata would be lost (IL2045). CI passes the pull request's head commit as `PaneportCommit`, because the job checks out the merge commit; a push names its own commit, and a local build records none. `BuildInfo` adds the versions of the bundle's Info.plist and the compilation mode as the runtime reports it: "Full ahead-of-time" when `RuntimeFeature.IsDynamicCodeSupported` is false, as it is with full AOT and the interpreter off (C-0009 section 3). The runtime is Mono (C-0010 section 1), and the host import is the framework of section 4.
+- **Development versions.** `CFBundleShortVersionString` is the next release, `0.1.0`, from `ApplicationDisplayVersion`, and `CFBundleVersion` is the CI run number from `PaneportBuildNumber`, an integer that grows with every run; a local build uses 1. Release versions come from tags (C-0009 section 6, M9.1).
+
+## 7. Info.plist and entitlements
+
+- **Info.plist.** The scene manifest; the six keys of C-0009 section 4 from `LSApplicationCategoryType` to `LSSupportsOpeningDocumentsInPlace`, which make the app a game, opt into Game Mode on iOS 18.6 and later and on 18.0 to 18.5, allow 120 Hz presentation, and show `Documents/` with its `Import` folder in the Files app; and the bundle identifier of D3, `io.github.recelilious.paneport`, which the test flavor shares (D12). The host framework's identifier is derived from it: `io.github.recelilious.paneport.host`. `BGTaskSchedulerPermittedIdentifiers` waits for M7.1.
+- **Entitlements.plist.** Exactly `com.apple.developer.kernel.increased-memory-limit`, set to true, which the .NET build does not copy from the profile. `get-task-allow` comes from the development profile of the sideloading tool. `extended-virtual-addressing` is declared only when the build property `PaneportExtendedVirtualAddressing` is true, which `sign-adhoc.sh` reads as `PANEPORT_EXTENDED_VIRTUAL_ADDRESSING`; the default build does not declare it (C-0009 section 4). The SDK takes an `Entitlements.plist` next to the project file as the signing entitlements by itself, after the project's own properties, and then fails with MT7139 because no provisioning profile grants `increased-memory-limit`; the unsigned build therefore sets `EnableDefaultCodesignEntitlements` to false and clears `CodesignEntitlements`.
+- **Reading them on the device.** This answers the question of the brief: the app reads both sources, because iOS honors an entitlement only when the signature carries it and the profile grants it. `CodeSignatureReader` follows the `LC_CODE_SIGNATURE` load command of the app's own executable to its super blob and reads the XML entitlements blob (slot 5, magic `0xfade7171`), as Apple's open-source `mach-o/loader.h`, `mach-o/fat.h` and `cs_blobs.h` define them, seeking only to those structures. `ProvisioningProfileReader` locates the XML property list inside `embedded.mobileprovision`, which a re-signing tool embeds and an ad-hoc build lacks. `PlistBooleans` then reads the three Boolean values of C-0009 section 4, from the top-level dictionary of the signature's list and from the profile's `Entitlements` dictionary, with the DTD ignored and never fetched. Every other key and value of either source, such as the team identifier, the application identifier and the device list of a profile, is discarded unread and never logged. A source that cannot be read is logged with its exception's type and shows as such; when neither can be read, Diagnostics shows "unknown", and the memory limit stands in for `increased-memory-limit` (section 8).
+
+## 8. Diagnostics
+
+The page has seven sections. It never shows a device name, a team identifier, an application-identifier prefix or a bundle identifier: no source it reads gives one (C-0012 section 4).
+
+| Section | What it shows | Source |
+|---|---|---|
+| Host | The implementation, the interface version and whether it is compatible with the bindings' version, the import, and the host's events | `IRuntimeHost` |
+| Memory | The current limit, available memory, footprint and Game Mode level; the first and highest limit, when the Game Mode level was first reached, the peak footprint, the thermal state and its highest value, the number of samples; the latest twelve samples, newest first; and the warning below | `MemoryMonitor` |
+| Entitlements | `get-task-allow`, `increased-memory-limit` and `extended-virtual-addressing`, each with its value in the code signature and in the profile | `EntitlementReport` (section 7) |
+| Crash record | The previous run's record with its fields and a Dismiss button, a malformed record with its problem, or "No crash record from a previous run." | `CrashRecordStore` (section 9) |
+| Storage | Each folder of C-0004 section 4 with its backup mark | `StorageBootstrap.Inspect` (section 9) |
+| Build | The build stamp | `BuildInfo` (section 6) |
+| Device | The model identifier, the iOS version and the iOS build | `DeviceInfo` |
+
+- **The timeline.** `MemoryMonitor` samples `pp_memory_get_budget` and the thermal state of `NSProcessInfo` once a second from the shell's first appearance, on the UI thread, through a `DispatcherTimer` of the head, so it starts again with every launch. It keeps the last 600 samples, ten minutes, and the aggregates of the whole run. A reading that fails is skipped and logged once. C-0011 section 1 asks every device test to record the peak footprint and the thermal state over time, which this section shows. The sampling cadence and pressure events of the native host stay with M6.3.
+- **Following while shown.** The shell now tells a page when it starts and stops being shown, also when it returns to a page on its back stack (app-shell.md section 5), so the Diagnostics page follows the timeline and the host's events only while it is on screen and leaves no subscription behind.
+- **The warning.** The page warns when the current limit is below 5,632 MB, 512 MB below the 6,144 MB that a 12 GB iPhone gives an app with `increased-memory-limit` before Game Mode (`process_and_memory_model.md`), and far above the 3.3 GB measured without the entitlement on 8 GB iPhones (`ios_platform_constraints.md` section 4). The host's estimate moves by a few MB between readings, so the margin keeps a normal limit clear of the warning, and Game Mode only raises the limit. The warning names a dropped `increased-memory-limit` as the likely cause. What a 12 GB iPhone gives without the entitlement is not measured yet; L1 records it if it happens.
+- **The desktop head** shows the same page over stand-ins that say they are not a device: no entitlements, no crash record and no storage folders, and its fake host's budget sampled once a second.
+
+## 9. Storage, crash records and the log
+
+- **The layout.** `StorageLayout` lists every folder of C-0004 section 4 with its "In backups" mark, and a test reads the contract's table and compares the two. The keychain, the table's last row, is not a folder.
+- **The bootstrap.** At launch, `StorageBootstrap` creates every folder and marks the folders that say "No" as excluded from backup, through the folder's `NSURLIsExcludedFromBackupKey`: `prefixes/`, `library/`, `downloads/` and `runtime/`, and `Library/Caches/Paneport/`, which iOS excludes by itself; C-0004 section 4 asks for the mark on every folder that says "No", so it is set there too, and Diagnostics notes that iOS excludes the folder anyway. `MarkAgain` renews a mark after files in a folder were replaced, as the contract asks; the stages that replace files call it. `compat/` and `settings/` are backed up, and `Documents/Import/` is the user's choice. A folder that cannot be created or marked is logged with the exception's type, and the others are still set up.
+- **Crash records.** `CrashRecordReader` parses the 128 bytes of `crash-record.bin` by the table of [native-host.md](native-host.md) section 8, not by the C code: it rejects a file that is not exactly 128 bytes long, or has another magic, version or size, nanoseconds out of range, a time out of range or a message without its terminator. `CrashRecordStore` reads the record at launch; it shows on Diagnostics until the user dismisses it, which deletes the file. A record written during the run, such as the developer menu's test record, replaces the file but not what Diagnostics shows; dismissing deletes the file only while it still holds the launch's bytes, so the newer record shows at the next launch. A malformed record is shown with its problem, logged, and dismissed the same way; it never stops the app.
+- **The log.** `FileLog` writes `Library/Caches/Paneport/logs/paneport.log`, one file per run, and keeps the previous run's file once as `paneport.previous.log`. A line is `time level source: message`, with the time in UTC. `Write` returns at once from any thread: a background task appends the queued lines and flushes whenever the queue runs empty. A run's file stops growing at 4 MiB, with one last line that says so. No line holds a password, token or other secret (C-0010 section 2); exporting the log needs the scrubbing of C-0004 section 4 and comes later.
+
+## 10. The device test flavor
+
+- **The build.** `tests/device/Paneport.DeviceTest.csproj` sets its display name, Paneport Test, the host build `ios-device-test` and its flavor's name, imports the head's `AppHead.props`, and compiles every source file of `src/Paneport.iOS` with the head's Info.plist. It references Core, Steam, UI and Interop, as the head does, but not the head's project, on which nothing may depend (C-0004 section 2); this answers the brief's question of the mechanism. It shares the main app's bundle identifier (D12), so installing it replaces the main app on the device and keeps the free account's three apps.
+- **The developer menu.** `CompositionRoot` declares a partial method, `AddDeveloperMenu`, that only the flavor's `DeveloperMenu.cs` implements, so the main app compiles the same composition root without a Developer section. The flavor gives the shell a Developer section whose page lists the developer pages, each opened on top of the menu; their views are built in code and matched by type, as the shell's are (app-shell.md section 5). Later stages extend the menu.
+- **Its first pages.**
+
+| Page | What it does |
+|---|---|
+| Interface conformance | Runs `LayoutConformance.Check`, the class that `tests/Paneport.Interop.Tests` runs on macOS, against the `ios-device-test` framework, and shows PASS with the number of structs, or every difference (C-0005 section 5, C-0011 section 1). |
+| Token store | Writes a test item of 32 random bytes under the key `developer-test-item`, never the sign-in's, reads it back with its length and its two attributes, and deletes it. |
+| Crash record | Writes a crash record marked as a test through `pp_test_write_crash_record`, which only the test build exports (interop.md section 3). Diagnostics shows it after the next launch. |
+
+## 11. Packaging, signing and the scan
+
+The `ios` job builds both flavors in Release with full AOT and the interpreter off, and without signing, then:
+
+1. `eng/mac/sign-adhoc.sh` signs each framework and library in `Frameworks/` with `codesign --force --sign -`, then the app with `codesign --force --sign - --entitlements Entitlements.plist --generate-entitlement-der`, and verifies the result. An ad-hoc signature holds no Apple identity and no provisioning profile (C-0009 section 5), and embeds the entitlements that the user's sideloading tool requests when it re-signs the app, as C-0009 section 6 describes for releases. C-0011 section 4 has named this signature since version 1.1, which recelilious accepted on 2026-11-15 as plan section 8 expected.
+2. `eng/mac/check-app.sh` checks each app: the bundle identifier, the flavor's display name, iOS 26.0, the scene delegate and every key of C-0009 section 4 in Info.plist, a version of three numbers and an integer build number; arm64 code only, a link to `@rpath/paneport_host.framework/paneport_host` and the run path `@executable_path/Frameworks`; the framework in `Frameworks/` with its derived identifier and the flavor's host build, without test exports in the main app and with them in the test flavor; every signature ad hoc, without a team identifier and more than the linker's, and verified; no provisioning profile; and exactly `increased-memory-limit`, set to true, as the app's entitlements.
+3. `eng/mac/package-ipa.sh` puts the app into `Payload/` and zips it with `ditto`, which keeps the executable's file mode and the bundle's links and writes no resource forks.
+4. `tools/ScanPackage.cs` scans each `.ipa` and fails on a provisioning profile anywhere in it, and on a property list, XML or binary, or a code signature's entitlements that name a team identifier under one of the team keys (`TeamIdentifier`, `com.apple.developer.team-identifier`, `AppIdentifierPrefix`, `ApplicationIdentifierPrefix`, `DEVELOPMENT_TEAM`), or hold a team identifier in front of a bundle identifier or appended to one, as `application-identifier`, `keychain-access-groups` and re-signed identifiers do. A property list or signature that it cannot read fails too. It lists the entitlements of every signature, printing Boolean values only, and names a finding by package, file and rule, never by its value. Its self-test builds packages in memory, with a binary property list writer of its own, and the `checks` job runs it. M9.1 extends the tool for releases and keeps its name.
+5. Both `.ipa` files are uploaded, named by flavor and short commit hash: `Paneport-main-<commit>` and `Paneport-test-<commit>`, only when every earlier step passed. [dev-environment.md](dev-environment.md) section 6 says how to install them.
+
+## 12. Trimming
+
+The Release build of the head is the first to trim Avalonia.Skia, SkiaSharp, HarfBuzzSharp and Avalonia.iOS together with an app (repository-checks.md section 7). The SDK trims an assembly that is marked trimmable and keeps every other one whole, and the trimmer analyzes what it keeps. Its first run found three causes, each fixed without a suppression (C-0010 section 2):
+
+- **IL2045, ours.** The trimmer of iOS builds removes every `AssemblyMetadataAttribute`, so the build stamp moved to the runtime's configuration (section 6).
+- **IL2104 for `Avalonia.DesignerSupport`.** It serves only the XAML previewer and the app never loads it, but it is not marked trimmable, so the SDK kept it whole and the trimmer analyzed all of it. `AppHead.props` marks it trimmable, and it goes with the rest of the unused code.
+- **IL2037, eleven times, for Avalonia.iOS.** When .NET for iOS trims an assembly with NSObject subclasses, its `MarkNSObjectsStep` preserves their members through dynamic dependencies by name, and the names of explicitly implemented protocol members, such as those of Avalonia's `AvaloniaAppDelegate<TApp>`, `DefaultAvaloniaViewController` and the text input responder of `AvaloniaView`, do not resolve. Those members would then be trimmed away, and the keyboard's input with them. `AppHead.props` keeps Avalonia.iOS whole, with the `TrimMode` metadata `copy` on its item of `ResolvedFileToPublish`, the extension point that the SDK reads, so it keeps every member and gets no such dependency. The cost is the assembly's unused code in the app.
+
+## 13. Tests
+
+| Small stage | Tests |
+|---|---|
+| S1.3.2 | `HostStartupTests`: a major mismatch stops startup with its message before `pp_init`; a matching major version starts the host and then sets the handlers in order; a host that refuses to start or cannot be loaded gives a message and logs its status or type; events reach the Diagnostics page only through the UI dispatcher, and not after the page is hidden; log lines and handler failures reach the log. |
+| S1.3.4 | `StorageBootstrapTests`: the layout table against C-0004 section 4 itself; the bootstrap creates every folder and marks exactly the five that say "No"; a failed folder is logged and the others are set up; `MarkAgain`. |
+| S1.3.5 | `FileSettingsStoreTests`: round trip and file format; an interrupted write leaves the previous file; unreadable files of five kinds give the defaults with a log line; a cancelled save leaves the file; a load waits for a pending save. `SettingsViewModelTests`: a failed save shows until a save works. |
+| S1.3.6 | `SecureTokenStoreTests`: a missing item, round trip, overwrite, delete; corrupt items of five kinds are reported and removed; neither the token nor the account name reaches the log or a text form. |
+| S1.3.7 | `MemoryMonitorTests` with a fake host and clock: the samples and their times, the window and the aggregates, the peak, the Game Mode transition, the warning threshold on both sides, the thermal state and a failed reading. `EntitlementReportTests` on synthetic signatures and profiles, thin and fat, unsigned and broken. `DiagnosticsSectionsTests` for every section's text. `DiagnosticsPageTests`, headless: every section on a phone-sized window, with no team identifier, application identifier or device identifier from the sample inputs in its text; the warning; dismissing the record. |
+| S1.3.8 | `CrashRecordReaderTests` on records built from the documented layout: valid, test, a message of 63 bytes, truncated, longer, wrong version, empty, another magic or size, nanoseconds and time out of range, and an unterminated message. `CrashRecordStoreTests`: dismissal deletes, a record of the run waits for the next launch, a malformed or unreadable record is reported and dismissed. |
+
+The account values of the tests are made up and assembled at run time, so that no file holds an identifier's shape (C-0011 section 1). The `ios` job covers S1.3.1, S1.3.3, S1.3.9 and S1.3.10, which need the iOS workload, and L1 checks the device behavior.
+
+## 14. Confirmed in this stage
+
+- Avalonia's platform starts with `UseiOS()` and `SetupWithoutStarting()` without any delegate of Avalonia's, and the head builds with `AvaloniaView` in its own root view controller (section 2). Whether it renders and takes touches on the device is for L1.
+- The `NativeReference` of kind `Framework` links the executable against the framework and embeds it, and the executable carries the run path `@executable_path/Frameworks`, as `check-app.sh` checks.
+- The SDK takes an `Entitlements.plist` next to the project as the signing entitlements by itself, after the project's properties, and an unsigned build then fails with MT7139 unless `EnableDefaultCodesignEntitlements` is false (section 7).
+- The lock files of the two iOS projects name `net10.0-ios27.1` and its `ios-arm64` runtime, and hold Avalonia.iOS with the iOS native assets of SkiaSharp and HarfBuzzSharp, which the register's Avalonia, SkiaSharp and HarfBuzzSharp rows cover.
+
+## 15. Open items
+
+- **On the device, for L1.** The framework import under Mono, the readings of the host, the entitlements after AltStore re-signs the ad-hoc build, the keychain attributes, the backup marks and the crash record's round trip. If the import fails, the `__Internal` fallback of section 4 is built.
+- **The Avalonia view's transparency, the overlay and pass-through** come with M2.1, and the activation events of Avalonia's app delegate with the stage that first needs one.
+
+## 16. Sources
+
+Public material consulted (C-0001 section 6). Avalonia's and .NET for iOS's sources were read to learn their public API, not copied.
+
+- Avalonia 12.1.4, `AvaloniaView`, the iOS platform and `UseiOS`, `AppBuilder`, and the app delegate whose role the head takes on: <https://github.com/AvaloniaUI/Avalonia/blob/12.1.4/src/iOS/Avalonia.iOS/AvaloniaView.cs>, <https://github.com/AvaloniaUI/Avalonia/blob/12.1.4/src/iOS/Avalonia.iOS/Platform.cs>, <https://github.com/AvaloniaUI/Avalonia/blob/12.1.4/src/Avalonia.Controls/AppBuilder.cs> and <https://github.com/AvaloniaUI/Avalonia/blob/12.1.4/src/iOS/Avalonia.iOS/AvaloniaAppDelegate.cs>
+- .NET for iOS, `SecKeyChain` and `SecRecord`, `NSUrl` resource values, and the default `CodesignEntitlements`: <https://github.com/dotnet/macios/blob/release/10.0.1xx/src/Security/Items.cs>, <https://github.com/dotnet/macios/blob/release/10.0.1xx/src/Foundation/NSUrl.cs> and <https://github.com/dotnet/macios/blob/release/10.0.1xx/msbuild/Xamarin.Shared/Xamarin.Shared.props>
+- Apple's open-source Mach-O and code signing headers: <https://github.com/apple-oss-distributions/xnu/blob/main/EXTERNAL_HEADERS/mach-o/loader.h>, <https://github.com/apple-oss-distributions/xnu/blob/main/EXTERNAL_HEADERS/mach-o/fat.h> and <https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/kern/cs_blobs.h>
+- Apple's open-source binary property list format: <https://github.com/apple-oss-distributions/CF/blob/main/CFBinaryPList.c>
+- The increased memory limit entitlement: <https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.kernel.increased-memory-limit>
+- `CADisableMinimumFrameDurationOnPhone`: <https://developer.apple.com/documentation/bundleresources/information-property-list/cadisableminimumframedurationonphone>
+- Research notes: [avalonia_ui_layer.md](../research/avalonia_ui_layer.md) sections 2.1 to 2.3, 3.1 and 3.2; [ios_platform_constraints.md](../research/ios_platform_constraints.md) section 4; [process_and_memory_model.md](../research/process_and_memory_model.md)

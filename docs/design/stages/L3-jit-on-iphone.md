@@ -179,6 +179,7 @@ _No sessions yet._
 **Notes from earlier stages.**
 
 - M1.2 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-10): a new public header, such as the JIT group's, goes into the header lists of `eng/mac/check-framework.sh`, which fails on a header it does not know; each new struct goes into the layout table of `src/native/host/test_exports.c` and into `LayoutConformance.ManagedLayouts`; and the group raises `PP_ABI_VERSION_MINOR` and `HostAbi.Minor` together (`docs/design/native-host.md` sections 2 and 9).
+- M1.3 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-15): the iOS head starts Avalonia with `UseiOS()` and no app delegate of Avalonia's, so Avalonia binds no `IActivatableLifetime` and opens no URL by itself; the URL opener handles the URL in the head's own app or scene delegate. The developer menu of `tests/device` takes the JIT self-test (`docs/design/ios-app-head.md` sections 2 and 10).
 
 **Session log.**
 

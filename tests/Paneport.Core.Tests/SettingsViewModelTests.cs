@@ -79,6 +79,26 @@ public sealed class SettingsViewModelTests
         Assert.DoesNotContain("detail", error.Message, StringComparison.Ordinal);
     }
 
+    // The page says so when a save fails, and the next save that works clears it.
+    [Fact]
+    public async Task AFailedSaveIsShownUntilASaveWorks()
+    {
+        var fakes = new FakeServices();
+        fakes.Settings.SaveFailure = new IOException("detail that must stay off the page");
+        var settings = await LoadAsync(fakes);
+        Assert.Null(settings.SaveError);
+
+        settings.SelectedLocale = LocaleOption.Find("pl-PL");
+        await (settings.SaveCommand.ExecutionTask ?? Task.CompletedTask);
+        Assert.Equal("The settings could not be saved.", settings.SaveError);
+
+        fakes.Settings.SaveFailure = null;
+        settings.SelectedLocale = LocaleOption.Find("it-IT");
+        await (settings.SaveCommand.ExecutionTask ?? Task.CompletedTask);
+        Assert.Null(settings.SaveError);
+        Assert.Equal("it-IT", fakes.Settings.Saved?.Locale);
+    }
+
     // While the page loads, what it shows is not yet the saved value, so a choice then would be
     // overwritten by the load. The view keeps the choice disabled; the view model ignores it too.
     [Fact]

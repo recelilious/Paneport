@@ -21,19 +21,22 @@ public sealed class AppServicesTests
         Assert.Same(fakes.Settings, services.Settings);
         Assert.Same(fakes.Tokens, services.Tokens);
         Assert.Same(fakes.Log, services.Log);
+        Assert.Same(fakes.Memory, services.Diagnostics.Memory);
     }
 
     [Fact]
     public void RejectsAMissingService()
     {
         var fakes = new FakeServices();
+        var diagnostics = fakes.ToDiagnosticsSources();
 
-        AssertRejects("host", () => new AppServices(null!, fakes.Library, fakes.Steam, fakes.Settings, fakes.Tokens, fakes.Log));
-        AssertRejects("library", () => new AppServices(fakes.Host, null!, fakes.Steam, fakes.Settings, fakes.Tokens, fakes.Log));
-        AssertRejects("steam", () => new AppServices(fakes.Host, fakes.Library, null!, fakes.Settings, fakes.Tokens, fakes.Log));
-        AssertRejects("settings", () => new AppServices(fakes.Host, fakes.Library, fakes.Steam, null!, fakes.Tokens, fakes.Log));
-        AssertRejects("tokens", () => new AppServices(fakes.Host, fakes.Library, fakes.Steam, fakes.Settings, null!, fakes.Log));
-        AssertRejects("log", () => new AppServices(fakes.Host, fakes.Library, fakes.Steam, fakes.Settings, fakes.Tokens, null!));
+        AssertRejects("host", () => new AppServices(null!, fakes.Library, fakes.Steam, fakes.Settings, fakes.Tokens, fakes.Log, diagnostics));
+        AssertRejects("library", () => new AppServices(fakes.Host, null!, fakes.Steam, fakes.Settings, fakes.Tokens, fakes.Log, diagnostics));
+        AssertRejects("steam", () => new AppServices(fakes.Host, fakes.Library, null!, fakes.Settings, fakes.Tokens, fakes.Log, diagnostics));
+        AssertRejects("settings", () => new AppServices(fakes.Host, fakes.Library, fakes.Steam, null!, fakes.Tokens, fakes.Log, diagnostics));
+        AssertRejects("tokens", () => new AppServices(fakes.Host, fakes.Library, fakes.Steam, fakes.Settings, null!, fakes.Log, diagnostics));
+        AssertRejects("log", () => new AppServices(fakes.Host, fakes.Library, fakes.Steam, fakes.Settings, fakes.Tokens, null!, diagnostics));
+        AssertRejects("diagnostics", () => new AppServices(fakes.Host, fakes.Library, fakes.Steam, fakes.Settings, fakes.Tokens, fakes.Log, null!));
     }
 
     private static void AssertRejects(string parameter, Func<AppServices> create)

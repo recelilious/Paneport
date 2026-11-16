@@ -7,8 +7,8 @@ namespace Paneport.Core.Settings;
 /// Keeps the app settings.
 /// </summary>
 /// <remarks>
-/// The desktop head keeps them in memory for one run. Saving them to the settings folder of
-/// C-0004 section 4 comes with a later stage, starting with the iOS head.
+/// The iOS head keeps them in a file in the settings folder of C-0004 section 4
+/// (<see cref="FileSettingsStore"/>); the desktop head keeps them in memory for one run.
 /// </remarks>
 public interface ISettingsStore
 {

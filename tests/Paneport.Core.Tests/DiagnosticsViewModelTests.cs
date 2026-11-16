@@ -17,11 +17,11 @@ public sealed class DiagnosticsViewModelTests
     {
         var fakes = new FakeServices();
 
-        var diagnostics = new DiagnosticsViewModel(fakes.Host, fakes.Log);
+        var diagnostics = new DiagnosticsViewModel(fakes.Host, fakes.ToDiagnosticsSources(), fakes.Log);
 
         Assert.Equal("Diagnostics", diagnostics.Header);
         Assert.Equal("Fake host for tests", diagnostics.HostName);
-        Assert.Equal("1.0", diagnostics.AbiVersion);
+        Assert.Equal("1.1", diagnostics.AbiVersion);
     }
 
     [Fact]
@@ -30,7 +30,7 @@ public sealed class DiagnosticsViewModelTests
         var fakes = new FakeServices();
         fakes.Host.Budget = new MemoryBudget(6_144 * Megabyte, 5_632 * Megabyte, 512 * Megabyte, gameModeLevelReached: false);
 
-        var diagnostics = new DiagnosticsViewModel(fakes.Host, fakes.Log);
+        var diagnostics = new DiagnosticsViewModel(fakes.Host, fakes.ToDiagnosticsSources(), fakes.Log);
 
         Assert.Equal("6,144 MB", diagnostics.MemoryLimit);
         Assert.Equal("5,632 MB", diagnostics.AvailableMemory);
@@ -44,7 +44,7 @@ public sealed class DiagnosticsViewModelTests
         var fakes = new FakeServices();
         fakes.Host.Budget = new MemoryBudget(8_192 * Megabyte, 7_168 * Megabyte, 1_024 * Megabyte, gameModeLevelReached: true);
 
-        var diagnostics = new DiagnosticsViewModel(fakes.Host, fakes.Log);
+        var diagnostics = new DiagnosticsViewModel(fakes.Host, fakes.ToDiagnosticsSources(), fakes.Log);
 
         Assert.Equal("8,192 MB", diagnostics.MemoryLimit);
         Assert.Equal("7,168 MB", diagnostics.AvailableMemory);
@@ -56,7 +56,7 @@ public sealed class DiagnosticsViewModelTests
     public void RefreshReadsTheBudgetAgainAndAnnouncesTheChange()
     {
         var fakes = new FakeServices();
-        var diagnostics = new DiagnosticsViewModel(fakes.Host, fakes.Log);
+        var diagnostics = new DiagnosticsViewModel(fakes.Host, fakes.ToDiagnosticsSources(), fakes.Log);
         var changed = new List<string?>();
         diagnostics.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
         fakes.Host.Budget = new MemoryBudget(8_192 * Megabyte, 4_096 * Megabyte, 4_096 * Megabyte, gameModeLevelReached: true);

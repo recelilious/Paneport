@@ -41,7 +41,7 @@ public sealed class MainViewTests
             library,
             new TitleDetailsViewModel(library.Titles[0], harness.Fakes.Log),
             new SettingsViewModel(harness.Fakes.Settings, harness.Fakes.Steam, harness.Fakes.Log),
-            new DiagnosticsViewModel(harness.Fakes.Host, harness.Fakes.Log),
+            new DiagnosticsViewModel(harness.Fakes.Host, harness.Fakes.ToDiagnosticsSources(), harness.Fakes.Log),
         ];
         Type[] views = [typeof(LibraryPage), typeof(TitleDetailsPage), typeof(SettingsPage), typeof(DiagnosticsPage)];
 

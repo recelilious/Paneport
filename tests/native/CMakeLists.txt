@@ -24,7 +24,7 @@ function(paneport_native_test name)
 endfunction()
 
 paneport_native_test(test_status CASES
-    abi_version last_error_per_thread free_host_memory)
+    abi_version last_error_per_thread free_host_memory device_model)
 paneport_native_test(test_event_queue CASES
     full_queue_refuses many_producers)
 paneport_native_test(test_event_thread CASES

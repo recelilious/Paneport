@@ -7,29 +7,103 @@ SPDX-License-Identifier: MIT
              xmlns:vm="using:Paneport.Core.ViewModels"
              x:Class="Paneport.UI.Views.DiagnosticsPage"
              x:DataType="vm:DiagnosticsViewModel">
-  <ScrollViewer>
-    <StackPanel Margin="16" Spacing="16">
-      <Grid Classes="facts" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
-        <TextBlock Grid.Row="0" Classes="label" Text="Host" />
-        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding HostName}" TextWrapping="Wrap" />
-
-        <TextBlock Grid.Row="1" Classes="label" Text="Host ABI version" />
-        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AbiVersion}" />
-
-        <TextBlock Grid.Row="2" Classes="label" Text="Memory limit" />
-        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MemoryLimit}" />
-
-        <TextBlock Grid.Row="3" Classes="label" Text="Available memory" />
-        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding AvailableMemory}" />
-
-        <TextBlock Grid.Row="4" Classes="label" Text="Current footprint" />
-        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Footprint}" />
-
-        <TextBlock Grid.Row="5" Classes="label" Text="Game Mode level" />
-        <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding GameModeLevel}" />
+  <!--
+  The sections of docs/design/ios-app-head.md section 8, each a heading over label and value pairs.
+  The row lists share one template, which keeps every value selectable and wrapped on a phone.
+  -->
+  <UserControl.DataTemplates>
+    <DataTemplate DataType="vm:DiagnosticsRow">
+      <Grid Classes="row" ColumnDefinitions="Auto,*">
+        <TextBlock Classes="label" Text="{Binding Label}" />
+        <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
       </Grid>
+    </DataTemplate>
+  </UserControl.DataTemplates>
 
-      <Button HorizontalAlignment="Left" Content="Refresh" Command="{Binding RefreshCommand}" />
+  <ScrollViewer>
+    <StackPanel Margin="16" Spacing="20">
+      <StackPanel x:Name="HostSection" Spacing="8">
+        <TextBlock Classes="section" Text="Host" />
+        <Grid Classes="facts" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+          <TextBlock Grid.Row="0" Classes="label" Text="Host" />
+          <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding HostName}" TextWrapping="Wrap" />
+
+          <TextBlock Grid.Row="1" Classes="label" Text="Host ABI version" />
+          <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AbiVersion}" />
+
+          <TextBlock Grid.Row="2" Classes="label" Text="Compatibility" />
+          <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding AbiCompatibility}" TextWrapping="Wrap" />
+
+          <TextBlock Grid.Row="3" Classes="label" Text="Import" />
+          <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding HostImport}" TextWrapping="Wrap" />
+
+          <TextBlock Grid.Row="4" Classes="label" Text="Host events" />
+          <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding HostEvents}" TextWrapping="Wrap" />
+        </Grid>
+      </StackPanel>
+
+      <StackPanel x:Name="MemorySection" Spacing="8">
+        <TextBlock Classes="section" Text="Memory" />
+        <TextBlock x:Name="LimitWarning"
+                   Classes="warning"
+                   Text="{Binding LimitWarning}"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding LimitWarning, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <Grid Classes="facts" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+          <TextBlock Grid.Row="0" Classes="label" Text="Memory limit" />
+          <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding MemoryLimit}" />
+
+          <TextBlock Grid.Row="1" Classes="label" Text="Available memory" />
+          <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AvailableMemory}" />
+
+          <TextBlock Grid.Row="2" Classes="label" Text="Current footprint" />
+          <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Footprint}" />
+
+          <TextBlock Grid.Row="3" Classes="label" Text="Game Mode level" />
+          <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding GameModeLevel}" />
+        </Grid>
+        <ItemsControl x:Name="MemoryRows" ItemsSource="{Binding MemoryRows}" />
+        <TextBlock Classes="label" Text="Timeline, newest first" />
+        <ItemsControl x:Name="Timeline" ItemsSource="{Binding Timeline}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <TextBlock Classes="timeline" Text="{Binding}" TextWrapping="Wrap" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Button HorizontalAlignment="Left" Content="Refresh" Command="{Binding RefreshCommand}" />
+      </StackPanel>
+
+      <StackPanel x:Name="EntitlementsSection" Spacing="8">
+        <TextBlock Classes="section" Text="Entitlements" />
+        <ItemsControl x:Name="EntitlementRows" ItemsSource="{Binding EntitlementRows}" />
+      </StackPanel>
+
+      <StackPanel x:Name="CrashRecordSection" Spacing="8">
+        <TextBlock Classes="section" Text="Crash record" />
+        <TextBlock x:Name="CrashRecordSummary" Text="{Binding CrashRecordSummary}" TextWrapping="Wrap" />
+        <ItemsControl x:Name="CrashRecordRows" ItemsSource="{Binding CrashRecordRows}" />
+        <Button x:Name="DismissCrashRecord"
+                HorizontalAlignment="Left"
+                Content="Dismiss"
+                Command="{Binding DismissCrashRecordCommand}"
+                IsVisible="{Binding HasCrashRecord}" />
+      </StackPanel>
+
+      <StackPanel x:Name="StorageSection" Spacing="8">
+        <TextBlock Classes="section" Text="Storage" />
+        <ItemsControl x:Name="StorageRows" ItemsSource="{Binding StorageRows}" />
+      </StackPanel>
+
+      <StackPanel x:Name="BuildSection" Spacing="8">
+        <TextBlock Classes="section" Text="Build" />
+        <ItemsControl x:Name="BuildRows" ItemsSource="{Binding BuildRows}" />
+      </StackPanel>
+
+      <StackPanel x:Name="DeviceSection" Spacing="8">
+        <TextBlock Classes="section" Text="Device" />
+        <ItemsControl x:Name="DeviceRows" ItemsSource="{Binding DeviceRows}" />
+      </StackPanel>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

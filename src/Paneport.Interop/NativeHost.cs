@@ -162,6 +162,20 @@ public static unsafe class NativeHost
             budget.LimitBytes, budget.AvailableBytes, budget.FootprintBytes, budget.GameModeLevelReached != 0);
     }
 
+    /// <summary>
+    /// Reads the device's model identifier, such as <c>iPhone18,1</c>, which version 1.1 of the
+    /// interface added (<c>pp_device_get_model</c>). Any thread.
+    /// </summary>
+    /// <returns>The model identifier.</returns>
+    /// <exception cref="HostException">The system did not report it.</exception>
+    public static string ReadDeviceModel()
+    {
+        const int Size = 64;
+        var buffer = stackalloc byte[Size];
+        HostCalls.Check(NativeMethods.DeviceGetModel(buffer, Size));
+        return HostCalls.Text(buffer);
+    }
+
     // Keeps a new handler's handle once the host took it, and frees the one it replaced, which
     // the host no longer runs. A refused handle is freed instead.
     private static void Replace(ref GCHandle current, GCHandle replacement, int status)

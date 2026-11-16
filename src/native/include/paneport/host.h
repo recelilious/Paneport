@@ -5,7 +5,7 @@
  * @file
  * The life cycle and diagnostics groups of the host interface (C-0005 section 2): the
  * interface version, starting and stopping the host, its events and log lines, error
- * messages, and freeing host memory.
+ * messages, freeing host memory, and the device's model identifier, which version 1.1 added.
  *
  * Thread rules: a function marked [main] runs only on the process's main thread, and fails
  * with PP_E_WRONG_THREAD elsewhere. In test builds the thread that first calls pp_init()
@@ -178,6 +178,21 @@ PP_EXPORT pp_status_t pp_set_event_callback(pp_event_callback_t callback, void *
  * @return PP_OK; PP_E_NOT_INITIALIZED; PP_E_WRONG_THREAD.
  */
 PP_EXPORT pp_status_t pp_set_log_callback(pp_log_callback_t callback, void *user_data);
+
+/**
+ * Writes the device's model identifier, such as "iPhone18,1" on an iPhone 17 Pro, from the
+ * system's hw.machine value. It is a device fact that evidence records name (C-0012 section 4),
+ * never the device's name. On macOS it is the machine's architecture, such as "arm64".
+ * Version 1.1 of the interface added it.
+ *
+ * Thread rule: [any]. Memory: the caller owns the buffer; the host writes into it only.
+ *
+ * @param buffer The buffer for the identifier, UTF-8 and NUL-terminated.
+ * @param buffer_size The buffer's size in bytes; 64 is always enough.
+ * @return PP_OK; PP_E_INVALID_ARGUMENT for a NULL buffer or one too small, whose message names
+ *         the size needed; PP_E_SYSTEM when the system does not report the identifier.
+ */
+PP_EXPORT pp_status_t pp_device_get_model(char *buffer, uint32_t buffer_size);
 
 PP_EXTERN_C_END
 

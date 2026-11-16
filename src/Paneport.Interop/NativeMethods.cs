@@ -38,6 +38,9 @@ internal static unsafe partial class NativeMethods
     [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_memory_get_budget")]
     internal static partial int MemoryGetBudget(NativeMemoryBudget* budget);
 
+    [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_device_get_model")]
+    internal static partial int DeviceGetModel(byte* buffer, uint bufferSize);
+
     [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_get_layout_table")]
     internal static partial int TestGetLayoutTable(NativeLayoutStruct** table, uint* count);
 

@@ -15,6 +15,9 @@ public enum ShellSection
     /// <summary>The app settings.</summary>
     Settings,
 
-    /// <summary>The host's version and memory figures.</summary>
+    /// <summary>The host, the device and the build, as the app reads them.</summary>
     Diagnostics,
+
+    /// <summary>The developer menu, which only the device test flavor offers (plan section 7.3).</summary>
+    Developer,
 }

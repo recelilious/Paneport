@@ -255,6 +255,7 @@ Out: Direct3D 9, 10 and 12 (D11, plan section 10); the i686 triangle (L7); graph
 - M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-10): DXMT's ARM64EC Meson setup compiles its shader converter for the Mac, which needs LLVM 15 with its headers and static libraries. M4.1 set up only DXMT's 32-bit PE side; this stage pins LLVM 15 with its register row (plan section 8) and sets up the ARM64EC side (`docs/design/forks.md` section 7).
 - M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-10): the DXMT fork marks `external/nvapi` as `update = none`, because DXMT builds NVAPI only with `enable_nvapi`, which Paneport leaves off (forks.md section 5.3).
 - M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-10): check the linker map of the first DXMT build against the mingw-w64 runtime objects that forks.md section 9 reviewed; DXMT links its PE side with `-static`, like the reviewed C++ DLL.
+- M4.2 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-17): Arknights-MacOS-Runtime, a Wine and DXMT runtime for the game Arknights on macOS, is an existing product under C-0001 section 6. recelilious decided on 2026-11-15, and confirmed on 2026-11-17, that Paneport takes no code from it, nor from FEX-darwin or Hadron (C-0003 1.6). This stage does not open any of its patches either; its README and published results may be read as evidence only, and the DXMT fork's changes are written from DXMT's own code and Apple's documentation.
 
 **Session log.**
 

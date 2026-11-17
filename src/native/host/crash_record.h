@@ -30,11 +30,14 @@
 #define PP_CRASH_RECORD_FILE_NAME "crash-record.bin"
 #define PP_CRASH_RECORD_TEMPORARY_NAME "crash-record.tmp"
 
-// The roles a thread can have when it faults. Later stages add guest and translator threads.
+// The roles a thread can have when it faults. Guest and translator threads are the threads that
+// the signal dispatcher knows by their mark (signals/signals.h).
 enum {
     PP_THREAD_ROLE_OTHER = 0,
     PP_THREAD_ROLE_MAIN = 1,
     PP_THREAD_ROLE_EVENT = 2,
+    PP_THREAD_ROLE_GUEST = 3,
+    PP_THREAD_ROLE_TRANSLATOR = 4,
 };
 
 // What a record says about a fault.

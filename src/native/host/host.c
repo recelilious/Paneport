@@ -15,6 +15,7 @@
 #include "log.h"
 #include "paneport/host.h"
 #include "platform.h"
+#include "signals/signals.h"
 
 enum {
     PP_HOST_NOT_STARTED = 0,
@@ -99,14 +100,29 @@ PP_EXPORT pp_status_t pp_init(const pp_init_config_t *config) {
     if (folder != NULL) {
         status = pp_crash_record_prepare(folder);
     }
+    // The dispatcher comes after the crash record folder, so that a fault it ends the app with
+    // leaves a record, and before any guest thread can exist (C-0005 section 4).
+    if (status == PP_OK) {
+        status = pp_signals_install();
+    }
     if (status == PP_OK) {
         status = pp_event_thread_start();
         if (status != PP_OK) {
             (void)pp_error_set(status, "The host event thread could not start.");
         }
     }
+#ifdef PANEPORT_TEST_BUILD
+    // Test builds check that each signal still has the dispatcher's handler.
+    if (status == PP_OK) {
+        status = pp_signals_check_installed(NULL);
+        if (status != PP_OK) {
+            pp_event_thread_stop();
+        }
+    }
+#endif
     if (status != PP_OK) {
-        // A folder prepared before the failure must not outlive it.
+        // Nothing that pp_init set up before the failure may outlive it.
+        pp_signals_uninstall();
         pp_crash_record_reset();
         atomic_store_explicit(&s_host.state, PP_HOST_NOT_STARTED, memory_order_release);
         return status;

@@ -36,3 +36,15 @@ bool pp_platform_device_model(char *buffer, size_t size, size_t *needed) {
     *needed = written;
     return true;
 }
+
+bool pp_platform_stack_bounds(uintptr_t *low, uintptr_t *high) {
+    const pthread_t self = pthread_self();
+    const uintptr_t top = (uintptr_t)pthread_get_stackaddr_np(self);
+    const size_t size = pthread_get_stacksize_np(self);
+    if (top == 0U || size == 0U || size > top) {
+        return false;
+    }
+    *low = top - size;
+    *high = top;
+    return true;
+}

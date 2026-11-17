@@ -61,8 +61,12 @@ set(PANEPORT_HOST_SOURCES
     host/log.c
     host/memory_budget.c
     host/platform_darwin.c
+    host/signals/signal_handler.c
+    host/signals/signal_install.c
+    host/signals/signal_registry.c
+    host/signals/thread_control.c
 )
-set(PANEPORT_HOST_TEST_SOURCES host/test_exports.c)
+set(PANEPORT_HOST_TEST_SOURCES host/signal_harness.c host/test_exports.c)
 
 find_package(Threads REQUIRED)
 

@@ -17,6 +17,7 @@
 #include "paneport/host.h"
 #include "paneport/memory.h"
 #include "paneport/testing.h"
+#include "signals/signals.h"
 
 #define PP_MEMBER(type, member)                                                                    \
     {(uint32_t)sizeof(pp_test_layout_member_t), #member, (uint32_t)offsetof(type, member),         \
@@ -66,6 +67,24 @@ static const pp_test_layout_member_t k_layout_struct_members[] = {
     PP_MEMBER(pp_test_layout_struct_t, members),
 };
 
+static const pp_test_layout_member_t k_harness_config_members[] = {
+    PP_MEMBER(pp_test_signal_harness_config_t, struct_size),
+    PP_MEMBER(pp_test_signal_harness_config_t, marked_threads),
+    PP_MEMBER(pp_test_signal_harness_config_t, unmarked_threads),
+    PP_MEMBER(pp_test_signal_harness_config_t, pause_microseconds),
+};
+
+static const pp_test_layout_member_t k_signal_counters_members[] = {
+    PP_MEMBER(pp_test_signal_counters_t, struct_size),
+    PP_MEMBER(pp_test_signal_counters_t, running),
+    PP_MEMBER(pp_test_signal_counters_t, guest_faults_raised_by_mark),
+    PP_MEMBER(pp_test_signal_counters_t, guest_faults_handled_by_mark),
+    PP_MEMBER(pp_test_signal_counters_t, guest_faults_raised_by_address),
+    PP_MEMBER(pp_test_signal_counters_t, guest_faults_handled_by_address),
+    PP_MEMBER(pp_test_signal_counters_t, unexpected_faults),
+    PP_MEMBER(pp_test_signal_counters_t, runtime_faults),
+};
+
 // Every struct that crosses the interface (C-0005 section 5). A struct added to a header is
 // added here in the same change, and to the C# definitions of Paneport.Interop.
 static const pp_test_layout_struct_t k_layout_table[] = {
@@ -75,6 +94,8 @@ static const pp_test_layout_struct_t k_layout_table[] = {
     PP_STRUCT(pp_memory_budget_t, k_memory_budget_members),
     PP_STRUCT(pp_test_layout_member_t, k_layout_member_members),
     PP_STRUCT(pp_test_layout_struct_t, k_layout_struct_members),
+    PP_STRUCT(pp_test_signal_harness_config_t, k_harness_config_members),
+    PP_STRUCT(pp_test_signal_counters_t, k_signal_counters_members),
 };
 
 PP_EXPORT pp_status_t pp_test_get_layout_table(const pp_test_layout_struct_t **table,
@@ -171,4 +192,9 @@ PP_EXPORT pp_status_t pp_test_duplicate_text(const char *text, char **copy) {
     memcpy(duplicate, text, size);
     *copy = duplicate;
     return PP_OK;
+}
+
+PP_EXPORT pp_status_t pp_test_signals_check_installed(int32_t *replaced_signal) {
+    pp_error_clear();
+    return pp_signals_check_installed(replaced_signal);
 }

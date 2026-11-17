@@ -47,8 +47,12 @@ pp_status_t pp_thread_control_resume(uint32_t port);
 // state or a thread that has ended; PP_E_SYSTEM.
 pp_status_t pp_thread_control_get_state(uint32_t port, pp_thread_state_t *state);
 
-// Writes the registers of a suspended thread, which go on from them once it is resumed. The
-// results are those of pp_thread_control_get_state.
+// Writes the registers of a suspended thread. A thread stopped in user code goes on from them
+// once it is resumed. A thread suspended in a system call or a Mach trap first finishes or
+// restarts the call, and the kernel then rewrites x0 and x1, the carry flag of cpsr, or pc,
+// which a restart moves back one instruction: a caller aborts the wait first, for example
+// with thread_abort_safely, and reads the state again before it writes it. The results are
+// those of pp_thread_control_get_state.
 pp_status_t pp_thread_control_set_state(uint32_t port, const pp_thread_state_t *state);
 
 #endif // PANEPORT_HOST_THREAD_CONTROL_H

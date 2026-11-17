@@ -5,7 +5,7 @@
 // signal handler, so it calls only async-signal-safe functions: open, write, fsync, close,
 // rename, unlink and clock_gettime, and the host's own pp_utf8_cut. A CTest test lists the
 // undefined symbols of this file's object and fails on any other call
-// (tests/native/check_writer_calls.cmake). pp_crash_record_prepare, which is not
+// (tests/native/check_signal_safe_calls.cmake). pp_crash_record_prepare, which is not
 // async-signal-safe, lives in crash_record.c.
 
 #include <errno.h>

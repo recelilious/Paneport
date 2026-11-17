@@ -110,7 +110,7 @@ The page has seven sections. It never shows a device name, a team identifier, an
 | Token store | Writes a test item of 32 random bytes under the key `developer-test-item`, never the sign-in's, reads it back with its length and its two attributes, and deletes it. |
 | Crash record | Writes a crash record marked as a test through `pp_test_write_crash_record`, which only the test build exports (interop.md section 3). Diagnostics shows it after the next launch. |
 
-M2.2 added the **Signal gate** page of L2 steps 11 to 13: the startup check of the crash-chaining call and of the dispatcher's six signals, a run of four hours or of ten minutes with the host's stress harness, a managed null-reference loop, garbage collection pressure and a heartbeat, live counters, and the result with the verdict ([signals.md](signals.md) section 9). A menu entry now makes any page, not only an action page.
+M2.2 added the **Signal gate** page of L2 steps 11 to 13: the startup check of the crash-chaining call and of the dispatcher's six signals, a run of four hours or of ten minutes with the host's stress harness, a managed null-reference loop, garbage collection pressure and a heartbeat, live counters, and the result with the verdict ([signals.md](signals.md) section 9). A menu entry now makes any page, not only an action page. The menu keeps one signal gate page for the life of the app, so a run goes on when the tester leaves the page, and the page opened next shows it.
 
 ## 11. Packaging, signing and the scan
 

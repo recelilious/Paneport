@@ -219,8 +219,9 @@ static void write_record(int signal_number, const siginfo_t *info, const void *c
 }
 
 // Writes the crash record and ends the app by the same signal: the default action comes back,
-// and the signal, raised again, is delivered with it once the handler returns (C-0005 section
-// 2). A second fault while the first record is written waits for it and ends the app too.
+// and the signal, raised again, is delivered with it at once, because the dispatcher's action
+// leaves it unblocked, or once a handler that blocks it returns (C-0005 section 2). A second
+// fault while the first record is written waits for it and ends the app too.
 static void end_app(int signal_number, const siginfo_t *info, const void *context, uint32_t mark,
                     const char *message) {
     write_record(signal_number, info, context, mark, message);

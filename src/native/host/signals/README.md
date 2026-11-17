@@ -17,4 +17,4 @@ The signal dispatcher of C-0005 section 4: the process's single handler of SIGSE
 | `signal_context.h` | The program counter of a signal's context on arm64, and the single instructions with which the harness and the tests plant faults |
 | `thread_control.h`, `thread_control.c` | Suspending, reading, writing and resuming an arm64 thread through Mach calls |
 
-Everything here is our own code under the MIT License (C-0003 section 4). It holds no mutable global state except the documented process-wide singletons `pp_signal_state` and the registry's locks.
+Everything here is our own code under the MIT License (C-0003 section 4). It holds no mutable global state except the documented process-wide singletons `pp_signal_state`, the registry's locks and the main thread's alternate stack in `signal_install.c` (`s_main_stack`).

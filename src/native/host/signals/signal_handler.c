@@ -52,7 +52,11 @@ pp_signal_state_t pp_signal_state;
 
 // Whether the kernel raised the signal for the faulting instruction. Such a signal carries one
 // of the small positive codes of its signal, such as SEGV_MAPERR; a signal that a thread sent
-// carries SI_USER or one of its kin, which Darwin numbers from 0x10001, or 0.
+// carries SI_USER or one of its kin, which Darwin numbers from 0x10001, or 0. Darwin on arm64
+// gives every SIGSEGV, SIGBUS and SIGILL a fault code, though, a sent one too, with the address
+// of the thread's last fault for SIGSEGV and SIGBUS and the program counter for SIGILL, so a
+// sent one counts as a fault there and is routed by that address. Nothing in Paneport sends
+// these three signals (signals.md section 3).
 static bool from_instruction(const siginfo_t *info) {
     if (info == NULL || info->si_code <= 0) {
         return false;

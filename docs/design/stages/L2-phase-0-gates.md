@@ -181,6 +181,7 @@ If a gate fails, its record says Fail and what failed, and L2 becomes Blocked. r
 
 - L0 ([L0 brief](L0-foundation.md), session log of 2026-10-30): S0.0.1 created `docs/evidence/README.md` with the gate table, every gate at "No record yet" where S2.0.1 names "Not run", and with the fields and forbidden items of C-0012 section 4 as a list. S2.0.1 builds its record template on that file; the verdicts still come from step 30 and integration step 7.
 - M2.2 (session log of 2026-11-17): the signal gate page is "Signal gate" in the device test flavor's developer menu. Its startup check is step 11; its ten-minute run serves the smoke run of integration step 4; its result screen and counters can be selected and copied into the record. The hang threshold of step 13 is 2 seconds ([signals.md](../signals.md) section 9).
+- M2.2 (session log of 2026-11-17, fix check): the signal gate raises no fault that Mono chains or ends in its crash path, so a passing gate does not show that Mono chains a native SIGSEGV or SIGBUS to the last-resort handler, nor that it ends a SIGILL or a managed fault above 4 KiB in its crash path with the dispatcher's record still in place. A device check is proposed for the integration session, which decides whether to add it to the steps: in the test flavor, raise one such fault per launch on an unmarked thread, a native load from an unmapped address, a SIGILL and a managed load above 4 KiB, and read the record that the next launch shows on Diagnostics ([signals.md](../signals.md) section 5).
 
 **Session log.**
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
@@ -88,14 +89,17 @@ internal static class DeveloperViews
     }
 
     // The signal gate page: the startup check, the buttons, the status, the live counters and the
-    // result, whose texts can be selected and copied into the record.
+    // result, whose texts can be selected and copied into the record. The menu keeps one page for
+    // the life of the app, but each opening builds a new view, so a view follows the page only
+    // while it is shown: a view that stayed subscribed would stay alive, and be updated every
+    // second, until the app ends.
     private static ScrollViewer SignalGatePage(SignalGateViewModel page)
     {
-        var startup = new SelectableTextBlock { Text = page.StartupCheck, TextWrapping = TextWrapping.Wrap };
-        var status = new TextBlock { Text = page.Status, TextWrapping = TextWrapping.Wrap, Classes = { "name" } };
-        var counters = new SelectableTextBlock { Text = page.Counters, TextWrapping = TextWrapping.Wrap };
-        var result = new SelectableTextBlock { Text = page.Result, TextWrapping = TextWrapping.Wrap };
-        page.PropertyChanged += (_, e) =>
+        var startup = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap };
+        var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Classes = { "name" } };
+        var counters = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap };
+        var result = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap };
+        PropertyChangedEventHandler follow = (_, e) =>
         {
             switch (e.PropertyName)
             {
@@ -127,7 +131,7 @@ internal static class DeveloperViews
             },
         };
 
-        return new ScrollViewer
+        var view = new ScrollViewer
         {
             Content = new StackPanel
             {
@@ -144,5 +148,15 @@ internal static class DeveloperViews
                 },
             },
         };
+        view.AttachedToVisualTree += (_, _) =>
+        {
+            startup.Text = page.StartupCheck;
+            status.Text = page.Status;
+            counters.Text = page.Counters;
+            result.Text = page.Result;
+            page.PropertyChanged += follow;
+        };
+        view.DetachedFromVisualTree += (_, _) => page.PropertyChanged -= follow;
+        return view;
     }
 }

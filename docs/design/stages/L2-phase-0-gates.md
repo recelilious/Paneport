@@ -180,6 +180,7 @@ If a gate fails, its record says Fail and what failed, and L2 becomes Blocked. r
 **Notes from earlier stages.**
 
 - L0 ([L0 brief](L0-foundation.md), session log of 2026-10-30): S0.0.1 created `docs/evidence/README.md` with the gate table, every gate at "No record yet" where S2.0.1 names "Not run", and with the fields and forbidden items of C-0012 section 4 as a list. S2.0.1 builds its record template on that file; the verdicts still come from step 30 and integration step 7.
+- M2.2 (session log of 2026-11-17): the signal gate page is "Signal gate" in the device test flavor's developer menu. Its startup check is step 11; its ten-minute run serves the smoke run of integration step 4; its result screen and counters can be selected and copied into the record. The hang threshold of step 13 is 2 seconds ([signals.md](../signals.md) section 9).
 
 **Session log.**
 

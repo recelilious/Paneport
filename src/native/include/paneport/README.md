@@ -12,7 +12,7 @@ The public C17 headers of the host interface (C-0005 section 1). They compile as
 | `common.h` | The interface version (`PP_ABI_VERSION_MAJOR`, `PP_ABI_VERSION_MINOR`), `pp_status_t` and its codes, and the export and linkage macros |
 | `host.h` | The life cycle and diagnostics groups: `pp_abi_version`, `pp_last_error`, `pp_free`, `pp_init`, `pp_shutdown`, the event and log callbacks, their structs, and `pp_device_get_model`, which version 1.1 added |
 | `memory.h` | The memory group: `pp_memory_get_budget` and `pp_memory_budget_t` |
-| `testing.h` | The exports of the host's test builds only: the layout table of C-0005 section 5, a test crash record, the memory stub, and helpers for the binding tests |
+| `testing.h` | The exports of the host's test builds only: the layout table of C-0005 section 5, a test crash record, the memory stub, helpers for the binding tests, and, since version 1.2, the signal dispatcher's installed check and the stress harness of the signal gate |
 | `paneport.h` | Includes every header of the shipped interface, which leaves out `testing.h` |
 
 The Wine bridge header `wine_bridge.h` of C-0005 section 3 comes with the Wine session work. [native-host.md](../../../../docs/design/native-host.md) describes the conventions.

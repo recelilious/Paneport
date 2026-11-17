@@ -14,7 +14,7 @@ The iOS app head (C-0004 section 2): .NET for iOS on Mono (C-0010 section 1), bu
 | `SceneDelegate.cs` | The delegate of the window scene, registered as `PaneportSceneDelegate`, which Info.plist names. It gives the scene a window with the root view controller. |
 | `RootViewController.cs` | The root view controller: the game view under one `AvaloniaView` with the shell, kept out of the safe area, or the startup's message when the host did not start. |
 | `GameView.cs` | The full-screen view whose layer is an opaque, idle `CAMetalLayer`. |
-| `CompositionRoot.cs`, `AppComposition.cs` | The startup on the main thread and what it made: storage, log, crash record, Avalonia's platform, the native host and the shell. |
+| `CompositionRoot.cs`, `AppComposition.cs` | The startup on the main thread and what it made: storage, log, crash record, Avalonia's platform, the call that turns off Mono's crash chaining, the native host and the shell. |
 | `InteropNativeHost.cs` | Paneport.Core's `INativeHost` over the bindings of Paneport.Interop. |
 | `AvaloniaUiDispatcher.cs` | Runs the host's events on the UI thread. |
 | `KeychainItemStore.cs` | The secure items of the token store in the keychain. |

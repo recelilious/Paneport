@@ -2,14 +2,15 @@
 # SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 # SPDX-License-Identifier: MIT
 
-# Checks a signed app bundle of the ios job (S1.3.2, S1.3.3, S1.3.9, S1.3.10).
+# Checks a signed app bundle of the ios job (S1.3.2, S1.3.3, S1.3.9, S1.3.10, S2.2.5).
 #
 #   eng/mac/check-app.sh <app> <main|test>
 #
 # - Info.plist: the bundle identifier of D3, the flavor's display name, iOS 26.0, the scene
 #   delegate, and every key of C-0009 section 4 with its value.
 # - The executable: arm64 code only, linked against @rpath/paneport_host.framework/paneport_host
-#   with @executable_path/Frameworks among its run paths.
+#   with @executable_path/Frameworks among its run paths, and exporting Mono's
+#   mono_set_crash_chaining for the import of Paneport.Interop (S2.2.5).
 # - Frameworks/paneport_host.framework: present, with the bundle identifier derived from D3, and
 #   the host build of the flavor: no pp_test_ export in the main app, the test exports in the
 #   device test flavor.
@@ -91,6 +92,10 @@ if [ -f "$executable" ]; then
         || problem "the executable does not link @rpath/paneport_host.framework/paneport_host."
     otool -l "$executable" | awk '$1 == "path" { print $2 }' | grep -F -x -q "@executable_path/Frameworks" \
         || problem "the executable's run paths lack @executable_path/Frameworks."
+    # Paneport.Interop imports mono_set_crash_chaining from __Internal, the main program, so Mono,
+    # linked into the executable, must export it there (docs/design/signals.md section 5).
+    nm -gU "$executable" | awk '{ print $NF }' | grep -F -x -q _mono_set_crash_chaining \
+        || problem "the executable does not export mono_set_crash_chaining, which Paneport.Interop imports from __Internal."
 fi
 
 framework="$app/Frameworks/paneport_host.framework"

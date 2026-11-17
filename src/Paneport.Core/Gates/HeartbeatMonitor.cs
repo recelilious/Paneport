@@ -40,10 +40,14 @@ public sealed class HeartbeatMonitor
     {
         var now = _time.GetTimestamp();
         var gap = _time.GetElapsedTime(Volatile.Read(ref _lastBeat), now);
-        Volatile.Write(ref _lastBeat, now);
+
+        // The longest gap is stored before the new beat, so that a reader that sees the new beat
+        // also sees the gap that it closed.
         if (gap.Ticks > Interlocked.Read(ref _longestGapTicks))
         {
             Interlocked.Exchange(ref _longestGapTicks, gap.Ticks);
         }
+
+        Volatile.Write(ref _lastBeat, now);
     }
 }

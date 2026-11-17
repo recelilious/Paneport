@@ -64,7 +64,8 @@ paneport_native_test(test_signal_installed CASES
     passes_after_init fails_naming_replaced_signal fails_before_init stacks_follow_marks
     uninstall_takes_stack_away last_resort_installed_at_load last_resort_only_where_default)
 paneport_native_test(test_signal_harness CASES
-    runs_sixty_seconds start_refused_before_init start_checks_its_conditions)
+    runs_sixty_seconds start_refused_before_init start_checks_its_conditions
+    short_structs_follow_struct_size)
 
 # The main-thread rule of the shipped builds, on the host that src/native/CMakeLists.txt builds
 # without the test exports and without PANEPORT_TEST_BUILD.

@@ -26,6 +26,12 @@
 #define PP_HARNESS_MAX_THREADS_PER_KIND 16U
 #define PP_HARNESS_MAX_PAUSE_MICROSECONDS 1000000U
 
+// The members of a configuration that a caller built against an older paneport/testing.h does
+// not know take these values: the run of the signal gate page (signals.md section 9).
+#define PP_HARNESS_DEFAULT_MARKED_THREADS 4U
+#define PP_HARNESS_DEFAULT_UNMARKED_THREADS 4U
+#define PP_HARNESS_DEFAULT_PAUSE_MICROSECONDS 200U
+
 // The harness: a process-wide singleton (C-0010 section 3), because the device test page and
 // the CTest runner start and stop one run at a time. The mutex serializes start and stop; the
 // threads and the handler share only the atomics and the pages of pp_harness_faults, which
@@ -146,14 +152,41 @@ static void stop_locked(void) {
     atomic_store_explicit(&s_harness.active, false, memory_order_release);
 }
 
+// Whether a member at offset with size lies entirely inside the caller's struct_size, the
+// rule of docs/design/native-host.md section 2.
+static bool fits(uint32_t struct_size, size_t offset, size_t size) {
+    return offset + size <= (size_t)struct_size;
+}
+
+// Reads the members of a configuration that lie inside its struct_size into full, with the
+// defaults for the others.
+static void read_config(const pp_test_signal_harness_config_t *config,
+                        pp_test_signal_harness_config_t *full) {
+    full->struct_size = (uint32_t)sizeof *full;
+    full->marked_threads = PP_HARNESS_DEFAULT_MARKED_THREADS;
+    full->unmarked_threads = PP_HARNESS_DEFAULT_UNMARKED_THREADS;
+    full->pause_microseconds = PP_HARNESS_DEFAULT_PAUSE_MICROSECONDS;
+    if (fits(config->struct_size, offsetof(pp_test_signal_harness_config_t, marked_threads),
+             sizeof config->marked_threads)) {
+        full->marked_threads = config->marked_threads;
+    }
+    if (fits(config->struct_size, offsetof(pp_test_signal_harness_config_t, unmarked_threads),
+             sizeof config->unmarked_threads)) {
+        full->unmarked_threads = config->unmarked_threads;
+    }
+    if (fits(config->struct_size, offsetof(pp_test_signal_harness_config_t, pause_microseconds),
+             sizeof config->pause_microseconds)) {
+        full->pause_microseconds = config->pause_microseconds;
+    }
+}
+
 static pp_status_t check_config(const pp_test_signal_harness_config_t *config) {
-    if (config == NULL || config->struct_size < sizeof(pp_test_signal_harness_config_t) ||
-        config->marked_threads > PP_HARNESS_MAX_THREADS_PER_KIND ||
+    if (config->marked_threads > PP_HARNESS_MAX_THREADS_PER_KIND ||
         config->unmarked_threads > PP_HARNESS_MAX_THREADS_PER_KIND ||
         config->pause_microseconds > PP_HARNESS_MAX_PAUSE_MICROSECONDS) {
         return pp_error_set(PP_E_INVALID_ARGUMENT,
-                            "The harness needs a whole configuration with at most %u threads of "
-                            "each kind and a pause of at most one second.",
+                            "The harness needs at most %u threads of each kind and a pause of at "
+                            "most one second.",
                             PP_HARNESS_MAX_THREADS_PER_KIND);
     }
     if (pp_signals_check_installed(NULL) == PP_E_NOT_INITIALIZED) {
@@ -186,7 +219,13 @@ static pp_status_t start_threads(uint32_t marked, uint32_t unmarked) {
 
 PP_EXPORT pp_status_t pp_test_signal_harness_start(const pp_test_signal_harness_config_t *config) {
     pp_error_clear();
-    pp_status_t status = check_config(config);
+    if (config == NULL || config->struct_size < sizeof(uint32_t)) {
+        return pp_error_set(PP_E_INVALID_ARGUMENT,
+                            "The harness needs a configuration with a struct_size of at least 4.");
+    }
+    pp_test_signal_harness_config_t run;
+    read_config(config, &run);
+    pp_status_t status = check_config(&run);
     if (status != PP_OK) {
         return status;
     }
@@ -202,7 +241,7 @@ PP_EXPORT pp_status_t pp_test_signal_harness_start(const pp_test_signal_harness_
     }
 
     reset_counters();
-    s_harness.pause_microseconds = config->pause_microseconds;
+    s_harness.pause_microseconds = run.pause_microseconds;
     atomic_store_explicit(&s_harness.stopping, false, memory_order_release);
     status = map_pages();
     if (status == PP_OK) {
@@ -216,7 +255,7 @@ PP_EXPORT pp_status_t pp_test_signal_harness_start(const pp_test_signal_harness_
         (void)pp_signals_set_guest_handler(pp_harness_handle_fault, NULL);
         s_harness.running = true;
         atomic_store_explicit(&s_harness.active, true, memory_order_release);
-        status = start_threads(config->marked_threads, config->unmarked_threads);
+        status = start_threads(run.marked_threads, run.unmarked_threads);
     }
     if (status != PP_OK) {
         stop_locked();
@@ -240,20 +279,59 @@ PP_EXPORT pp_status_t pp_test_signal_harness_read(pp_test_signal_counters_t *cou
     if (counters == NULL) {
         return pp_error_set(PP_E_INVALID_ARGUMENT, "pp_test_signal_harness_read needs an output.");
     }
+    const uint32_t struct_size = counters->struct_size;
+    if (struct_size < sizeof(uint32_t)) {
+        return pp_error_set(
+            PP_E_INVALID_ARGUMENT,
+            "pp_test_signal_harness_read needs a struct_size of at least 4, not %u.",
+            (unsigned)struct_size);
+    }
     pp_signal_counters_t dispatcher;
     pp_signals_read_counters(&dispatcher);
-    counters->struct_size = (uint32_t)sizeof(pp_test_signal_counters_t);
-    counters->running = atomic_load_explicit(&s_harness.active, memory_order_acquire) ? 1U : 0U;
-    counters->guest_faults_raised_by_mark =
-        atomic_load_explicit(&s_harness.raised_by_mark, memory_order_relaxed);
-    counters->guest_faults_handled_by_mark =
-        atomic_load_explicit(&pp_harness_faults.handled_by_mark, memory_order_relaxed);
-    counters->guest_faults_raised_by_address =
-        atomic_load_explicit(&s_harness.raised_by_address, memory_order_relaxed);
-    counters->guest_faults_handled_by_address =
-        atomic_load_explicit(&pp_harness_faults.handled_by_address, memory_order_relaxed);
-    counters->unexpected_faults =
-        atomic_load_explicit(&pp_harness_faults.unexpected, memory_order_relaxed);
-    counters->runtime_faults = dispatcher.runtime;
+    pp_test_signal_counters_t full = {
+        .struct_size = struct_size,
+        .running = atomic_load_explicit(&s_harness.active, memory_order_acquire) ? 1U : 0U,
+        .guest_faults_raised_by_mark =
+            atomic_load_explicit(&s_harness.raised_by_mark, memory_order_relaxed),
+        .guest_faults_handled_by_mark =
+            atomic_load_explicit(&pp_harness_faults.handled_by_mark, memory_order_relaxed),
+        .guest_faults_raised_by_address =
+            atomic_load_explicit(&s_harness.raised_by_address, memory_order_relaxed),
+        .guest_faults_handled_by_address =
+            atomic_load_explicit(&pp_harness_faults.handled_by_address, memory_order_relaxed),
+        .unexpected_faults =
+            atomic_load_explicit(&pp_harness_faults.unexpected, memory_order_relaxed),
+        .runtime_faults = dispatcher.runtime,
+    };
+
+    // A caller built against an older header knows fewer members; write only those, and leave
+    // its struct_size as it set it.
+    if (fits(struct_size, offsetof(pp_test_signal_counters_t, running), sizeof full.running)) {
+        counters->running = full.running;
+    }
+    if (fits(struct_size, offsetof(pp_test_signal_counters_t, guest_faults_raised_by_mark),
+             sizeof full.guest_faults_raised_by_mark)) {
+        counters->guest_faults_raised_by_mark = full.guest_faults_raised_by_mark;
+    }
+    if (fits(struct_size, offsetof(pp_test_signal_counters_t, guest_faults_handled_by_mark),
+             sizeof full.guest_faults_handled_by_mark)) {
+        counters->guest_faults_handled_by_mark = full.guest_faults_handled_by_mark;
+    }
+    if (fits(struct_size, offsetof(pp_test_signal_counters_t, guest_faults_raised_by_address),
+             sizeof full.guest_faults_raised_by_address)) {
+        counters->guest_faults_raised_by_address = full.guest_faults_raised_by_address;
+    }
+    if (fits(struct_size, offsetof(pp_test_signal_counters_t, guest_faults_handled_by_address),
+             sizeof full.guest_faults_handled_by_address)) {
+        counters->guest_faults_handled_by_address = full.guest_faults_handled_by_address;
+    }
+    if (fits(struct_size, offsetof(pp_test_signal_counters_t, unexpected_faults),
+             sizeof full.unexpected_faults)) {
+        counters->unexpected_faults = full.unexpected_faults;
+    }
+    if (fits(struct_size, offsetof(pp_test_signal_counters_t, runtime_faults),
+             sizeof full.runtime_faults)) {
+        counters->runtime_faults = full.runtime_faults;
+    }
     return PP_OK;
 }

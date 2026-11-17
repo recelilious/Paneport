@@ -50,6 +50,7 @@ static void *fault_for_runtime(void *argument) {
 
 static void read_counters(pp_test_signal_counters_t *counters) {
     memset(counters, 0, sizeof *counters);
+    counters->struct_size = (uint32_t)sizeof *counters;
     PP_CHECK_EQUAL(pp_test_signal_harness_read(counters), PP_OK);
     PP_CHECK_EQUAL(counters->struct_size, sizeof(pp_test_signal_counters_t));
 }
@@ -129,7 +130,7 @@ static void start_checks_its_conditions(void) {
         .pause_microseconds = 1000U,
     };
     PP_CHECK_EQUAL(pp_test_signal_harness_start(NULL), PP_E_INVALID_ARGUMENT);
-    config.struct_size = 12U;
+    config.struct_size = 3U;
     PP_CHECK_EQUAL(pp_test_signal_harness_start(&config), PP_E_INVALID_ARGUMENT);
     config.struct_size = (uint32_t)sizeof(pp_test_signal_harness_config_t);
     config.marked_threads = 17U;
@@ -159,11 +160,48 @@ static void start_checks_its_conditions(void) {
                    counters.guest_faults_raised_by_address);
 }
 
+// A caller that knows fewer members passes a smaller struct_size: the host reads and writes only
+// the members inside it, keeps the caller's struct_size, and gives a configuration's other
+// members their defaults (docs/design/native-host.md section 2).
+static void short_structs_follow_struct_size(void) {
+    pp_start_host(NULL);
+    pp_test_signal_counters_t counters;
+    memset(&counters, 0xA5, sizeof counters);
+    counters.struct_size = 3U;
+    PP_CHECK_EQUAL(pp_test_signal_harness_read(&counters), PP_E_INVALID_ARGUMENT);
+    counters.struct_size = 16U;
+    PP_CHECK_EQUAL(pp_test_signal_harness_read(&counters), PP_OK);
+    PP_CHECK_EQUAL(counters.struct_size, 16U);
+    PP_CHECK_EQUAL(counters.running, 0U);
+    PP_CHECK_EQUAL(counters.guest_faults_raised_by_mark, 0U);
+    const unsigned char *bytes = (const unsigned char *)&counters;
+    for (size_t index = 16U; index < sizeof counters; index++) {
+        PP_CHECK_EQUAL(bytes[index], 0xA5U);
+    }
+
+    // Eight bytes carry the marked threads; the unmarked threads and the pause, whose value
+    // here would be refused, lie past the struct_size and take their defaults.
+    const pp_test_signal_harness_config_t config = {
+        .struct_size = 8U,
+        .marked_threads = 2U,
+        .unmarked_threads = 99U,
+        .pause_microseconds = 5000000U,
+    };
+    PP_CHECK_EQUAL(pp_test_signal_harness_start(&config), PP_OK);
+    pp_sleep_milliseconds(200);
+    PP_CHECK_EQUAL(pp_test_signal_harness_stop(), PP_OK);
+    read_counters(&counters);
+    PP_CHECK(counters.guest_faults_raised_by_mark > 0U);
+    PP_CHECK(counters.guest_faults_raised_by_address > 0U);
+    PP_CHECK_EQUAL(counters.unexpected_faults, 0U);
+}
+
 int main(int argc, char **argv) {
     static const pp_test_case_t cases[] = {
         {"runs_sixty_seconds", runs_sixty_seconds},
         {"start_refused_before_init", start_refused_before_init},
         {"start_checks_its_conditions", start_checks_its_conditions},
+        {"short_structs_follow_struct_size", short_structs_follow_struct_size},
     };
     return pp_run_case(argc, argv, cases, PP_CASE_COUNT(cases));
 }

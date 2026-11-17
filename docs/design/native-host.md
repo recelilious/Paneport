@@ -133,7 +133,7 @@ The presets `ios-device-test`, `macos-test`, `asan-ubsan` and `tsan` define `PAN
 | `pp_test_post_event`, `pp_test_log` | An event or a log line from the calling thread, as the host's components post them, for the binding tests. |
 | `pp_test_duplicate_text` | A copy of a text in host memory, which the caller frees with `pp_free`. |
 | `pp_test_signals_check_installed` | Version 1.2: the signal dispatcher's installed check, which names the first signal whose handler was replaced ([signals.md](signals.md) section 7). |
-| `pp_test_signal_harness_start`, `pp_test_signal_harness_stop`, `pp_test_signal_harness_read` | Version 1.2: the native part of the signal gate's stress harness, with `pp_test_signal_harness_config_t` and `pp_test_signal_counters_t`, which the layout table lists too ([signals.md](signals.md) section 9). |
+| `pp_test_signal_harness_start`, `pp_test_signal_harness_stop`, `pp_test_signal_harness_read` | Version 1.2: the native part of the signal gate's stress harness, with `pp_test_signal_harness_config_t` and `pp_test_signal_counters_t`, which the layout table lists too and which follow the `struct_size` rule of section 2: the host reads a configuration's members inside the caller's `struct_size`, with defaults for the others, and writes only the counters inside it ([signals.md](signals.md) section 9). |
 
 A struct added to a header is added to the layout table and to Paneport.Interop in the same change.
 

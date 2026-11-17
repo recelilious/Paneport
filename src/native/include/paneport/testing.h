@@ -141,13 +141,22 @@ PP_EXPORT pp_status_t pp_test_signals_check_installed(int32_t *replaced_signal);
  * How the stress harness of the signal gate runs (docs/design/signals.md section 9).
  */
 typedef struct pp_test_signal_harness_config_t {
-    /** sizeof(pp_test_signal_harness_config_t) in the caller. */
+    /**
+     * sizeof(pp_test_signal_harness_config_t) as the caller knows it, at least 4; the host reads
+     * only the members inside it, and a member past it takes its default.
+     */
     uint32_t struct_size;
-    /** Threads marked as guest threads that fault on a guard page and a read-only page; 0 to 16. */
+    /**
+     * Threads marked as guest threads that fault on a guard page and a read-only page; 0 to 16,
+     * by default 4.
+     */
     uint32_t marked_threads;
-    /** Unmarked threads that fault inside a registered guest reservation; 0 to 16. */
+    /** Unmarked threads that fault inside a registered guest reservation; 0 to 16, by default 4. */
     uint32_t unmarked_threads;
-    /** The pause of each thread between two faults, in microseconds; at most 1,000,000. */
+    /**
+     * The pause of each thread between two faults, in microseconds; at most 1,000,000, by
+     * default 200.
+     */
     uint32_t pause_microseconds;
 } pp_test_signal_harness_config_t;
 
@@ -155,7 +164,10 @@ typedef struct pp_test_signal_harness_config_t {
  * The counters of the stress harness and of the signal dispatcher.
  */
 typedef struct pp_test_signal_counters_t {
-    /** sizeof(pp_test_signal_counters_t) in the host. */
+    /**
+     * sizeof(pp_test_signal_counters_t) as the caller knows it, at least 4. Set by the caller:
+     * the host writes only the members inside it and leaves it as it is.
+     */
     uint32_t struct_size;
     /** 1 while the harness runs, else 0. */
     uint8_t running;
@@ -180,10 +192,10 @@ typedef struct pp_test_signal_counters_t {
  *
  * Thread rule: [any]. Memory: none.
  *
- * @param config How it runs; a struct_size of at least 16.
- * @return PP_OK; PP_E_INVALID_ARGUMENT for NULL or a value out of range; PP_E_NOT_INITIALIZED
- *         before pp_init(); PP_E_BUSY while it runs, or while another guest fault handler is
- *         set; PP_E_OUT_OF_MEMORY; PP_E_SYSTEM.
+ * @param config How it runs; a struct_size of at least 4.
+ * @return PP_OK; PP_E_INVALID_ARGUMENT for NULL, a struct_size below 4 or a value out of
+ *         range; PP_E_NOT_INITIALIZED before pp_init(); PP_E_BUSY while it runs, or while
+ *         another guest fault handler is set; PP_E_OUT_OF_MEMORY; PP_E_SYSTEM.
  */
 PP_EXPORT pp_status_t pp_test_signal_harness_start(const pp_test_signal_harness_config_t *config);
 
@@ -202,8 +214,8 @@ PP_EXPORT pp_status_t pp_test_signal_harness_stop(void);
  *
  * Thread rule: [any]. Memory: none.
  *
- * @param counters Receives the counters.
- * @return PP_OK; PP_E_INVALID_ARGUMENT for NULL.
+ * @param counters Receives the counters; its struct_size, set by the caller, is at least 4.
+ * @return PP_OK; PP_E_INVALID_ARGUMENT for NULL or a struct_size below 4.
  */
 PP_EXPORT pp_status_t pp_test_signal_harness_read(pp_test_signal_counters_t *counters);
 

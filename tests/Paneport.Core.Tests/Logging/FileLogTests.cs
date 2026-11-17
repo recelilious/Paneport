@@ -84,4 +84,105 @@ public sealed class FileLogTests
         Assert.True(new FileInfo(path).Length <= FileLog.MaxBytes + 256);
         Assert.Equal("The log reached its size limit; later lines are dropped.", File.ReadLines(path).Last());
     }
+
+    [Fact]
+    public async Task AFailedWriteStopsTheLogAndDropsLaterLines()
+    {
+        // A full device, as a stream whose writes fail: the log closes its queue rather than
+        // keeping every later line in memory, and neither Write nor Dispose throws.
+        using var folder = new TemporaryFolder();
+        var stream = new FailingStream();
+        var log = new FileLog(folder.Path, new FakeTimeProvider(), _ => stream);
+
+        log.Write(LogLevel.Information, "Run", "the line whose flush fails");
+        await log.Closed.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+        Assert.True(stream.WriteAttempted);
+        for (var line = 0; line < 1000; line++)
+        {
+            log.Write(LogLevel.Information, "Run", "a line that is dropped");
+        }
+
+        Assert.True(log.Closed.IsCompletedSuccessfully);
+        log.Dispose();
+    }
+
+    [Fact]
+    public async Task LinesQueuedDuringAFailingWriteAreDroppedWithTheQueue()
+    {
+        // A busy run on a slow, full device: lines keep arriving while the failing write is still
+        // in progress. The log empties the queue when the write fails, so Closed completes and no
+        // line stays in memory. The lines are written only once the write has started, because the
+        // writer would read earlier ones in the batch that fails.
+        using var folder = new TemporaryFolder();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stream = new FailingStream(release.Task);
+        var log = new FileLog(folder.Path, new FakeTimeProvider(), _ => stream);
+
+        log.Write(LogLevel.Information, "Run", "the line whose flush fails");
+        await stream.Entered.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        for (var line = 0; line < 500; line++)
+        {
+            log.Write(LogLevel.Information, "Run", "a line queued while the write fails");
+        }
+
+        release.SetResult();
+        await log.Closed.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        log.Dispose();
+    }
+
+    // A stream that accepts nothing, as a file on a full device does. With a release, a write
+    // waits for it before it fails, as on a slow device.
+    private sealed class FailingStream(Task? release = null) : Stream
+    {
+        private readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool WriteAttempted { get; private set; }
+
+        // Completes when the first write starts.
+        public Task Entered => _entered.Task;
+
+        public override bool CanRead => false;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => true;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            WriteAttempted = true;
+            _entered.TrySetResult();
+            throw new IOException("No space left on device.");
+        }
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            WriteAttempted = true;
+            _entered.TrySetResult();
+            if (release is not null)
+            {
+                await release.ConfigureAwait(false);
+            }
+
+            throw new IOException("No space left on device.");
+        }
+    }
 }

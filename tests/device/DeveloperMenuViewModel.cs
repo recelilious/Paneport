@@ -9,7 +9,7 @@ namespace Paneport.DeviceTest;
 
 // The developer menu, the page of the Developer section: one entry per developer page, each of
 // which opens on top of the menu.
-internal sealed class DeveloperMenuViewModel : PageViewModel
+internal sealed partial class DeveloperMenuViewModel : PageViewModel
 {
     private readonly INavigator _navigator;
 
@@ -18,15 +18,13 @@ internal sealed class DeveloperMenuViewModel : PageViewModel
     {
         _navigator = navigator;
         Entries = entries;
-        OpenCommand = new AsyncRelayCommand<DeveloperEntry>(OpenAsync);
     }
 
     public override string Header => "Developer";
 
     public IReadOnlyList<DeveloperEntry> Entries { get; }
 
-    public IAsyncRelayCommand<DeveloperEntry> OpenCommand { get; }
-
+    [RelayCommand]
     private Task OpenAsync(DeveloperEntry? entry, CancellationToken cancellationToken) =>
         entry is null ? Task.CompletedTask : _navigator.PushAsync(entry.Create(), cancellationToken);
 }

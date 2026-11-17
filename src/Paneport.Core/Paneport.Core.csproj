@@ -14,8 +14,7 @@ SPDX-License-Identifier: MIT
   </ItemGroup>
 
   <!--
-  The tests check two internals directly: CompatPath's redaction of the serializer's paths, which no
-  file reaches, and the bounds of IntRange, which the title schema must match.
+  The tests see the internals, and use them only where no public path reaches what they check.
   -->
   <ItemGroup>
     <InternalsVisibleTo Include="Paneport.Core.Tests" />

@@ -10,7 +10,7 @@ The public C17 headers of the host interface (C-0005 section 1). They compile as
 | Header | What it declares |
 |---|---|
 | `common.h` | The interface version (`PP_ABI_VERSION_MAJOR`, `PP_ABI_VERSION_MINOR`), `pp_status_t` and its codes, and the export and linkage macros |
-| `host.h` | The life cycle and diagnostics groups: `pp_abi_version`, `pp_last_error`, `pp_free`, `pp_init`, `pp_shutdown`, the event and log callbacks, and their structs |
+| `host.h` | The life cycle and diagnostics groups: `pp_abi_version`, `pp_last_error`, `pp_free`, `pp_init`, `pp_shutdown`, the event and log callbacks, their structs, and `pp_device_get_model`, which version 1.1 added |
 | `memory.h` | The memory group: `pp_memory_get_budget` and `pp_memory_budget_t` |
 | `testing.h` | The exports of the host's test builds only: the layout table of C-0005 section 5, a test crash record, the memory stub, and helpers for the binding tests |
 | `paneport.h` | Includes every header of the shipped interface, which leaves out `testing.h` |

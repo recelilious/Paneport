@@ -15,7 +15,10 @@
 #   device test flavor.
 # - Signatures: every one ad hoc, with no team identifier, none merely the linker's, and each
 #   verifies; no provisioning profile in the bundle.
-# - Entitlements: exactly com.apple.developer.kernel.increased-memory-limit, set to true.
+# - Entitlements: exactly com.apple.developer.kernel.increased-memory-limit, set to the Boolean
+#   true, and com.apple.developer.kernel.extended-virtual-addressing, set to it, as well when
+#   PANEPORT_EXTENDED_VIRTUAL_ADDRESSING is true, the switch that eng/mac/sign-adhoc.sh reads
+#   (C-0009 section 4).
 #
 # Every problem is reported before the script fails. Bash 3.2 (C-0010 section 1).
 
@@ -79,8 +82,11 @@ echo "Version: $short_version ($build_number)"
 executable="$app/$(value "$plist" CFBundleExecutable)"
 [ -f "$executable" ] || problem "the bundle has no executable $executable."
 if [ -f "$executable" ]; then
-    architectures=$(lipo -archs "$executable")
-    [ "$architectures" = arm64 ] || problem "the executable holds $architectures, not arm64 alone."
+    if architectures=$(lipo -archs "$executable"); then
+        [ "$architectures" = arm64 ] || problem "the executable holds $architectures, not arm64 alone."
+    else
+        problem "lipo cannot read the executable's architectures."
+    fi
     otool -L "$executable" | grep -F -q "@rpath/paneport_host.framework/paneport_host" \
         || problem "the executable does not link @rpath/paneport_host.framework/paneport_host."
     otool -l "$executable" | awk '$1 == "path" { print $2 }' | grep -F -x -q "@executable_path/Frameworks" \
@@ -124,15 +130,27 @@ for item in "${signed[@]}"; do
     codesign --verify --strict "$item" 2>/dev/null || problem "the signature of $(basename "$item") does not verify."
 done
 
+# The keys in jq's order, which sorts them, each followed by a space.
+expected_keys="com.apple.developer.kernel.increased-memory-limit "
+if [ "${PANEPORT_EXTENDED_VIRTUAL_ADDRESSING:-false}" = true ]; then
+    expected_keys="com.apple.developer.kernel.extended-virtual-addressing $expected_keys"
+fi
+
 entitlements=$(mktemp)
 trap 'rm -f "$entitlements"' EXIT
 if codesign -d --entitlements - --xml "$app" > "$entitlements" 2>/dev/null && [ -s "$entitlements" ]; then
-    keys=$(plutil -convert json -o - "$entitlements" | jq -r 'keys[]' | tr '\n' ' ')
-    echo "Entitlements: $keys"
-    [ "$keys" = "com.apple.developer.kernel.increased-memory-limit " ] \
-        || problem "the app's entitlements are $keys, not exactly com.apple.developer.kernel.increased-memory-limit."
-    [ "$(plutil -convert json -o - "$entitlements" | jq -r '."com.apple.developer.kernel.increased-memory-limit"')" = true ] \
-        || problem "increased-memory-limit is not true."
+    if keys=$(plutil -convert json -o - "$entitlements" | jq -r 'keys[]' | tr '\n' ' '); then
+        echo "Entitlements: $keys"
+        [ "$keys" = "$expected_keys" ] || problem "the app's entitlements are ${keys% }, not exactly ${expected_keys% }."
+        # iOS honors these entitlements only as Booleans, and jq -r would print the text "true"
+        # as it prints the Boolean, so jq tests the value itself.
+        for key in $expected_keys; do
+            plutil -convert json -o - "$entitlements" | jq -e --arg key "$key" '.[$key] == true' > /dev/null \
+                || problem "$key is not the Boolean true."
+        done
+    else
+        problem "the app's entitlements cannot be read as a property list."
+    fi
 else
     problem "the app's signature holds no entitlements."
 fi

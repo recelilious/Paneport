@@ -14,7 +14,7 @@ Source-generated bindings to the native host interface (C-0004 section 2, C-0005
 
 | File | What it holds |
 |---|---|
-| `NativeHost.cs` | The safe API: the interface version, `Initialize` and `Shutdown`, the event and log handlers, the failure handler for exceptions in them, and the memory budget |
+| `NativeHost.cs` | The safe API: the interface version, `Initialize` and `Shutdown`, the event and log handlers, the failure handler for exceptions in them, the memory budget, and the device's model identifier (`ReadDeviceModel`, version 1.1) |
 | `HostTestExports.cs` | The exports of the host's test builds: the layout table, a test crash record, the memory stub, and helpers for the binding tests |
 | `LayoutConformance.cs` | The interface conformance test of C-0005 section 5, with `StructLayoutBuilder.cs`, `FieldAccessor.cs`, `StructLayoutRecord.cs` and `MemberLayoutRecord.cs` |
 | `HostAbi.cs`, `HostStatus.cs`, `HostException.cs`, `HostAbiMismatchException.cs` | The interface version these bindings know, the host's status codes, and the two exceptions |

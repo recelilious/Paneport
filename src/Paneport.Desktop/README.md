@@ -10,8 +10,8 @@ The Avalonia desktop head, for working on the Paneport UI from Windows without a
 | File or folder | What it is |
 |---|---|
 | `Program.cs` | The entry point. It creates the desktop application lifetime, so that Paneport.UI holds no desktop-only concept. |
-| `CompositionRoot.cs` | Wires the head by hand: the log, Paneport.UI's forwarder of Avalonia's warnings to it, the fakes, the shell over them, and the window titled Paneport that hosts the shell's view. |
-| `Fakes/` | The fake runtime host, the fictional sample library, the in-memory settings and token stores, and a log sink that writes to the terminal. |
+| `CompositionRoot.cs` | Wires the head by hand: the log, Paneport.UI's forwarder of Avalonia's warnings to it, the fakes, the memory timeline over the fake host, the shell over them, and the window titled Paneport that hosts the shell's view; the window's Opened handler starts the run through `AppStart`. |
+| `Fakes/` | The fake runtime host, the fictional sample library, the in-memory settings and token stores, `DesktopDevice`, which says that it is not a device, and a log sink that writes to the terminal. |
 | `LocalFolders.cs` | The folders that stand in for the app bundle and the container: the snapshot of `compat/`, which the build copies next to the program, and a local folder for the device layer of the compatibility database. No page reads the database yet. |
 
 Run it from the repository root:

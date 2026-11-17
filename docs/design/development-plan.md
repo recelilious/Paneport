@@ -184,7 +184,7 @@ The last column holds recelilious's answer and the date it was given. A stage se
 | M1.3 | iOS app head | L1 | M1.1, M1.2, M0.3; D3, D12 | L | The `ios` CI job produces an ad-hoc-signed `.ipa` |
 | M2.1 | Overlay gate | L2 | L1 | M | Hit-test unit tests; the device gate |
 | M2.2 | Signal dispatcher | L2 | M1.2, M1.3 | L | Routing and Mach tests with CTest on macOS; the device gate |
-| M2.3 | SteamKit2 on the device | L2 | M1.3, M0.3; D13 | L | Unit tests with fakes; a desktop run; the device gate |
+| M2.3 | SteamKit2 on the device | L2 | M1.3, M0.3; D13; merges after S9.1.1 | L | Unit tests with fakes; a desktop run; the device gate |
 | M3.1 | JIT provider and broker script | L3 | M2.2, M1.3 | L | macOS tests with a MAP_JIT provider; device acceptance |
 | M4.1 | Forks, submodules and toolchains | L4 | M1.1; D4, D5 | M | A fresh clone builds the first fork targets |
 | M4.2 | ARM64EC Wine with FEX on macOS | L4 | M4.1 | XL | Win32 test programs pass on the macOS harness |
@@ -205,7 +205,7 @@ The last column holds recelilious's answer and the date it was given. A stage se
 | M8.2 | Dock host | L8 | M8.1, M7.1, M7.2 | XL | Unit tests with fakes; device runs only |
 | M8.3 | Compatibility checks and reports | L8 | M6.4; D8 | M | The CI compatibility check, with failing fixtures |
 | M8.4 | AAA performance and launcher-service titles | L8 | M8.1, M8.2, M6.3; D6 | L | Measurements on the device |
-| M9.1 | Release workflow and compliance artifacts | L9 | M1.3 (the release itself waits for L8) | L | A dry-run release produces every artifact |
+| M9.1 | Release workflow and compliance artifacts | L9 | M1.3 (the release itself waits for L8); its S9.1.1 comes first, before M2.3 merges | L | A dry-run release produces every artifact |
 | M10.1 | Signals and threads on CoreCLR | L10 | L2, and .NET 11 for iOS released | M | Contract changes; dispatcher tests with CoreCLR on macOS |
 | M10.2 | Build and runtime migration | L10 | M10.1 | L | Every CI job on .NET 11; the device gate |
 
@@ -266,7 +266,8 @@ flowchart TD
     M6_4 --> M7_1
     M6_5 --> M7_2
     M6_4 --> M8_3["M8.3"]
-    M1_3 --> M9_1["M9.1"]
+    M1_3 --> S9_1_1["S9.1.1"] --> M9_1["M9.1"]
+    S9_1_1 -. "merged first" .-> M2_3
   end
   M6_1 --> M6_6["M6.6"]
   M6_2 --> M6_6
@@ -292,7 +293,7 @@ Stages in the same wave do not depend on each other and can run in parallel. A l
 | 4 | M1.1 |
 | 5 | M1.2, M4.1 |
 | 6 | M1.3, M4.2 |
-| 7 | L1, M2.2, M2.3 |
+| 7 | L1, M2.2, M2.3, S9.1.1 |
 | 8 | M2.1, M3.1, M4.3, M7.1, M8.3, M9.1 |
 | 9 | L2, L3, M4.4, M8.1 |
 | 10 | L4, M5.1, M6.2, M6.3, M7.3 |
@@ -304,6 +305,8 @@ Stages in the same wave do not depend on each other and can run in parallel. A l
 | 16 | L8 |
 | 17 | L9 |
 | Before 2027-05-11 | M10.1, M10.2, L10 |
+
+S9.1.1, the notices generator of M9.1, runs ahead of its stage as a session of its own. recelilious decided this on 2026-11-17, after the post-merge review of M1.3 found that the public artifacts of the `ios` job carry third-party binaries without their notices. S9.1.1 places the notices in every app bundle that the `ios` job builds, and M2.3 merges only after it ([L9 brief](stages/L9-first-release.md)).
 
 The critical path runs through the native runtime: M0.1, M1.1, M4.1, M4.2, M4.3, M4.4, M5.1, M5.2, M6.5, M6.6, L6, M7.2, L7, M8.2, M8.4, L8. M4.1 should start as soon as M1.1 is done, in parallel with the work on L1 to L3.
 

@@ -377,7 +377,7 @@ _No sessions yet._
 |---|---|
 | Level | Medium |
 | Parent | L2 |
-| Depends on | M1.3, M0.3 |
+| Depends on | M1.3, M0.3. It merges only after S9.1.1, the notices generator of the [L9 brief](L9-first-release.md), is merged: recelilious brought S9.1.1 forward on 2026-11-17 so that the public artifacts of the `ios` job carry the notices of what they ship. |
 | Decisions needed | A C-0003 change that registers SteamKit2's dependencies without a register row, such as ZstdSharp.Port (`avalonia_ui_layer.md` section 2.3), approved before they are added. D13, the QR code route for S2.3.10: a library registered through a C-0003 change or a small encoder of our own, decided by recelilious before S2.3.10 starts. recelilious uses an account and a test app of their own for the desktop run; neither is named in the repository. |
 | Size | L |
 | Branch | `feat/m2-3-steamkit2-device` |
@@ -439,7 +439,7 @@ Out: the library manager, downloads, resume and background work (M7.1); classifi
 |---|---|
 | `dotnet` job | The tests of S2.3.1 to S2.3.6 and S2.3.9 to S2.3.11 pass on Windows and Ubuntu, with no connection to Steam and only synthetic inputs (C-0011 section 1). The trimmed publish shows no warning from our code and only allowed suppressions, each justified (C-0010 section 2). |
 | `checks` job | After the C-0003 change, the license checker accepts SteamKit2 and its dependencies; the personal-data check finds nothing in `tests/`. |
-| `ios` job | Both flavors build in Release with full AOT and the interpreter setting from `eng/toolchain.json`. |
+| `ios` job | Both flavors build in Release with full AOT and the interpreter setting from `eng/toolchain.json`, and their bundles hold the notices of S9.1.1, SteamKit2 and its dependencies included. |
 | Desktop run, manual, by recelilious on Windows | With `dotnet run --project src/Paneport.Desktop`, the developer Steam page signs in by approval, reads the licenses and app information, gets a depot key and a manifest request code, and downloads a manifest and at least 10 chunks, none rejected. It reports the token as held in memory only (C-0007 section 3). |
 | Device check, by recelilious (S2.3.8) | A Release build of the test flavor runs every step on the iPhone; the interpreter setting it needed goes into `eng/toolchain.json` and `steam-service.md`. |
 
@@ -460,7 +460,7 @@ This stage creates no script beyond its tests. The full gate run is L2 steps 16 
 - L2: the Steam page for steps 16 to 28.
 - M7.1: the sign-in service and its flows, the token handling, the platform type, the interpreter setting, the QR rendering, the networking setup and chunk verification.
 - M8.2: a refresh token that Valve's client can use, and the sign-off and reconnect calls around a Dock session (C-0007 section 4).
-- M9.1: SteamKit2 and its dependencies for the notices.
+- M9.1: SteamKit2 and its dependencies for the notices, which the `ios` job already generates through S9.1.1.
 - M10.2: the WebSocket setup, the interpreter list and the suppressions, which change on .NET 11.
 
 **Notes from earlier stages.**

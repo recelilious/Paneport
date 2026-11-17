@@ -260,13 +260,13 @@ static void call_saved(const struct sigaction *saved, int signal_number, siginfo
                        void *context) {
     sigset_t previous;
     (void)pthread_sigmask(SIG_BLOCK, &saved->sa_mask, &previous);
-    if ((saved->sa_flags & SA_NODEFER) != 0) {
+    if (pp_signal_has_flag(saved->sa_flags, SA_NODEFER)) {
         sigset_t own;
         (void)sigemptyset(&own);
         (void)sigaddset(&own, signal_number);
         (void)pthread_sigmask(SIG_UNBLOCK, &own, NULL);
     }
-    if ((saved->sa_flags & SA_SIGINFO) != 0) {
+    if (pp_signal_has_flag(saved->sa_flags, SA_SIGINFO)) {
         saved->sa_sigaction(signal_number, info, context);
     } else {
         saved->sa_handler(signal_number);
@@ -274,10 +274,20 @@ static void call_saved(const struct sigaction *saved, int signal_number, siginfo
     (void)pthread_sigmask(SIG_SETMASK, &previous, NULL);
 }
 
+// Whether an ignored signal would come back at once: a fault of an instruction faults again
+// when the handler returns, and Darwin gives the SIGTRAP of a breakpoint instruction the code of
+// a sent signal, so an ignored SIGILL or SIGTRAP counts as one too.
+static bool ignoring_repeats(int signal_number, const siginfo_t *info) {
+    if (signal_number == SIGILL || signal_number == SIGTRAP) {
+        return true;
+    }
+    return from_instruction(info);
+}
+
 // Hands a fault to the action that the signal had before the dispatcher, with the original
-// arguments. The default action ends the app with a record; ignore returns for a signal that a
-// thread sent, and counts as the default action for a fault of an instruction, which would
-// otherwise fault again for ever.
+// arguments. The default action ends the app with a record; ignore returns, unless the signal
+// would come back at once, which counts as the default action. The handler of the action is
+// checked before its flags, which may be stale (pp_signal_is_default).
 static void to_runtime(int signal_number, siginfo_t *info, void *context) {
     if (stack_overflow(signal_number, info)) {
         end_app(signal_number, info, context, PP_THREAD_MARK_NONE, PP_MESSAGE_STACK_OVERFLOW);
@@ -291,21 +301,13 @@ static void to_runtime(int signal_number, siginfo_t *info, void *context) {
         return;
     }
     const struct sigaction *saved = &pp_signal_state.saved[index];
-    if ((saved->sa_flags & SA_SIGINFO) != 0) {
-        if (saved->sa_sigaction == pp_signal_dispatch || saved->sa_sigaction == NULL) {
-            end_app(signal_number, info, context, PP_THREAD_MARK_NONE, PP_MESSAGE_RUNTIME_DEFAULT);
-            return;
-        }
-        call_saved(saved, signal_number, info, context);
-        return;
-    }
-    if (saved->sa_handler == SIG_IGN) {
-        if (from_instruction(info)) {
+    if (pp_signal_is_ignored(saved)) {
+        if (ignoring_repeats(signal_number, info)) {
             end_app(signal_number, info, context, PP_THREAD_MARK_NONE, PP_MESSAGE_RUNTIME_DEFAULT);
         }
         return;
     }
-    if (saved->sa_handler == SIG_DFL) {
+    if (pp_signal_is_default(saved) || saved->sa_sigaction == pp_signal_dispatch) {
         end_app(signal_number, info, context, PP_THREAD_MARK_NONE, PP_MESSAGE_RUNTIME_DEFAULT);
         return;
     }
@@ -341,14 +343,13 @@ __attribute__((constructor)) static void install_last_resort(void) {
     for (size_t index = 0U; index < PP_SIGNAL_COUNT; index++) {
         const int signal_number = pp_signal_number(index);
         struct sigaction current;
-        if (sigaction(signal_number, NULL, &current) != 0 || (current.sa_flags & SA_SIGINFO) != 0 ||
-            current.sa_handler != SIG_DFL) {
+        if (sigaction(signal_number, NULL, &current) != 0 || !pp_signal_is_default(&current)) {
             continue;
         }
         struct sigaction action;
         (void)memset(&action, 0, sizeof action);
         action.sa_sigaction = pp_signal_last_resort;
-        action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+        action.sa_flags = pp_signal_action_flags();
         (void)sigemptyset(&action.sa_mask);
         (void)sigaction(signal_number, &action, NULL);
     }

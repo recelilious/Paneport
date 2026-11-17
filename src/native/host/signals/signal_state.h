@@ -127,4 +127,26 @@ static inline int pp_signal_index(int signal_number) {
     return -1;
 }
 
+// Whether flags of type int, such as sa_flags or ss_flags, hold a flag; the bits are compared
+// unsigned.
+static inline bool pp_signal_has_flag(int flags, int flag) {
+    return ((unsigned)flags & (unsigned)flag) != 0U;
+}
+
+// The flags of the dispatcher's and the last-resort handler's actions.
+static inline int pp_signal_action_flags(void) {
+    return (int)((unsigned)SA_SIGINFO | (unsigned)SA_ONSTACK);
+}
+
+// Whether an action is the default action. The handler alone tells: Darwin keeps SA_SIGINFO in
+// the flags of a signal whose handler exec reset to the default, so a process that another one
+// started with posix_spawn may find SIG_DFL with SA_SIGINFO set.
+static inline bool pp_signal_is_default(const struct sigaction *action) {
+    return action->sa_handler == SIG_DFL;
+}
+
+static inline bool pp_signal_is_ignored(const struct sigaction *action) {
+    return action->sa_handler == SIG_IGN;
+}
+
 #endif // PANEPORT_HOST_SIGNAL_STATE_H

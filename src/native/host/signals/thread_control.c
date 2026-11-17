@@ -20,9 +20,17 @@
 // A thread that has ended leaves a dead name or a terminated thread behind, which these
 // results report.
 static bool thread_ended(kern_return_t result) {
-    return result == KERN_TERMINATED || result == MACH_SEND_INVALID_DEST ||
-           result == MACH_SEND_INVALID_RIGHT || result == KERN_INVALID_ARGUMENT ||
-           result == KERN_INVALID_NAME || result == KERN_INVALID_RIGHT;
+    switch (result) {
+    case KERN_TERMINATED:
+    case MACH_SEND_INVALID_DEST:
+    case MACH_SEND_INVALID_RIGHT:
+    case KERN_INVALID_ARGUMENT:
+    case KERN_INVALID_NAME:
+    case KERN_INVALID_RIGHT:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static pp_status_t failed(kern_return_t result, const char *call) {

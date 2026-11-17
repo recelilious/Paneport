@@ -22,13 +22,9 @@
 // SIGSTKSZ.
 #define PP_SIGNAL_STACK_SIZE ((size_t)256U * 1024U)
 
+// Whether two actions name the same handler. sa_handler and sa_sigaction share their storage,
+// so the handler compares as one whatever the flags say.
 static bool same_action(const struct sigaction *first, const struct sigaction *second) {
-    if ((first->sa_flags & SA_SIGINFO) != (second->sa_flags & SA_SIGINFO)) {
-        return false;
-    }
-    if ((first->sa_flags & SA_SIGINFO) != 0) {
-        return first->sa_sigaction == second->sa_sigaction;
-    }
     return first->sa_handler == second->sa_handler;
 }
 
@@ -45,7 +41,7 @@ static pp_status_t install_dispatcher(void) {
     struct sigaction action;
     (void)memset(&action, 0, sizeof action);
     action.sa_sigaction = pp_signal_dispatch;
-    action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    action.sa_flags = pp_signal_action_flags();
     (void)sigemptyset(&action.sa_mask);
 
     for (size_t index = 0U; index < PP_SIGNAL_COUNT; index++) {
@@ -117,7 +113,7 @@ pp_status_t pp_signals_check_installed(int32_t *replaced_signal) {
         const int signal_number = pp_signal_number(index);
         struct sigaction current;
         const bool read = sigaction(signal_number, NULL, &current) == 0;
-        if (!read || (current.sa_flags & SA_SIGINFO) == 0 ||
+        if (!read || !pp_signal_has_flag(current.sa_flags, SA_SIGINFO) ||
             current.sa_sigaction != pp_signal_dispatch) {
             if (replaced_signal != NULL) {
                 *replaced_signal = signal_number;
@@ -157,7 +153,7 @@ pp_status_t pp_signal_stack_ensure(void **stack, size_t *size) {
     }
     // A stack that another part of the process set, such as a sanitizer's or the Wine fork's,
     // stays: whoever set it frees it.
-    if ((current.ss_flags & SS_DISABLE) == 0) {
+    if (!pp_signal_has_flag(current.ss_flags, SS_DISABLE)) {
         return PP_OK;
     }
 
@@ -199,7 +195,7 @@ void pp_signal_stack_release(void *stack, size_t size) {
     }
     stack_t current;
     const unsigned char *start = stack;
-    if (sigaltstack(NULL, &current) == 0 && (current.ss_flags & SS_DISABLE) == 0 &&
+    if (sigaltstack(NULL, &current) == 0 && !pp_signal_has_flag(current.ss_flags, SS_DISABLE) &&
         (const unsigned char *)current.ss_sp > start &&
         (const unsigned char *)current.ss_sp < start + size) {
         const stack_t disabled = {.ss_sp = NULL, .ss_size = 0U, .ss_flags = SS_DISABLE};

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Paneport.Core.Gates;
 using Paneport.Interop;
 
@@ -38,7 +39,6 @@ internal sealed class SignalGateRun
     private volatile bool _leftForeground;
     private long _thrown;
     private long _caught;
-    private string? _nothing;
     private volatile SignalGateCounters? _final;
 
     public SignalGateRun(TimeSpan target, TimeProvider time)
@@ -47,9 +47,6 @@ internal sealed class SignalGateRun
         _heartbeat = new HeartbeatMonitor(time);
         _collectionsAtStart = GC.CollectionCount(0);
         _runtimeFaultsAtStart = HostTestExports.ReadSignalHarness().RuntimeFaults;
-
-        // The loop reads through this reference, which stays null.
-        Volatile.Write(ref _nothing, null);
     }
 
     // How long the run must last to pass.
@@ -89,8 +86,9 @@ internal sealed class SignalGateRun
 
         HostTestExports.StopSignalHarness();
         _clock.Stop();
-        _final = Read(gap);
-        return _final;
+        var counters = Read(gap);
+        _final = counters;
+        return counters;
     }
 
     public SignalGateCounters Snapshot() => _final ?? Read(_heartbeat.LongestGap);
@@ -123,30 +121,49 @@ internal sealed class SignalGateRun
         thread.Start();
     }
 
-    // Reads the length of a string through a reference that is always null, so that the load
-    // faults and Mono turns the fault into a NullReferenceException (docs/design/signals.md
-    // section 5).
+    // Throws a few null-reference exceptions on the calling thread. The page calls it on the main
+    // thread once a second, because the main thread is the one whose faults the dispatcher
+    // handles on its alternate stack (docs/design/signals.md section 7).
+    public void ThrowOnCallingThread(int count)
+    {
+        for (var index = 0; index < count && !_stopping; index++)
+        {
+            ThrowOne();
+        }
+    }
+
     private void ThrowNullReferences()
     {
         var round = 0;
         while (!_stopping)
         {
-            Interlocked.Increment(ref _thrown);
-            try
-            {
-                _ = Volatile.Read(ref _nothing)!.Length;
-            }
-            catch (NullReferenceException)
-            {
-                Interlocked.Increment(ref _caught);
-            }
-
+            ThrowOne();
             if (++round % ExceptionsPerPause == 0)
             {
                 Thread.Sleep(1);
             }
         }
     }
+
+    // Reads the length of a string through a reference that is always null, so that the load
+    // faults and Mono turns the fault into a NullReferenceException (docs/design/signals.md
+    // section 5).
+    private void ThrowOne()
+    {
+        Interlocked.Increment(ref _thrown);
+        try
+        {
+            _ = Nothing()!.Length;
+        }
+        catch (NullReferenceException)
+        {
+            Interlocked.Increment(ref _caught);
+        }
+    }
+
+    // Always null; the compiler cannot see through it, because it is never inlined.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static string? Nothing() => null;
 
     private void MakeGarbage()
     {

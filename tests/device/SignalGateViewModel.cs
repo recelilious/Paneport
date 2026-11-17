@@ -23,6 +23,9 @@ internal sealed class SignalGateViewModel : PageViewModel
 {
     private const string LogSource = "SignalGate";
 
+    // The null-reference exceptions that each refresh throws on the main thread.
+    private const int MainThreadExceptions = 64;
+
     private static readonly TimeSpan s_refreshInterval = TimeSpan.FromSeconds(1);
 
     private readonly CrashChainingState _crashChaining;
@@ -190,6 +193,7 @@ internal sealed class SignalGateViewModel : PageViewModel
             return false;
         }
 
+        run.ThrowOnCallingThread(MainThreadExceptions);
         Counters = CountersText(run, run.Snapshot());
         return true;
     }

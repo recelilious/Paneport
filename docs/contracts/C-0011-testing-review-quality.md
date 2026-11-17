@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.1 |
-| Date | 2026-11-15 |
+| Version | 1.2 |
+| Date | 2026-11-17 |
 | Owner | recelilious |
 
 This contract defines how Paneport is tested, which tools check it, how changes are reviewed, and what continuous integration runs.
@@ -62,13 +62,14 @@ GitHub Actions runs these jobs on every pull request and every push.
 |---|---|---|
 | `dotnet` | Windows and Ubuntu | Locked restore, build, tests and format check of the solution filter `eng/ci.slnf`, which leaves out Paneport.iOS, `tests/device` and `tests/Paneport.Interop.Tests`; publish the trimmed test app. |
 | `native` | macOS | clang-format and clang-tidy; configure, build and run CTest twice, with the CMake presets `asan-ubsan` and `tsan`; build the host's test library and run `tests/Paneport.Interop.Tests` against it. |
-| `ios` | macOS | C-0009 stages 1 to 4 without an Apple identity: the forks, the native host, the Dock host, and both flavors of the app, the main app and the device test flavor of `tests/device`. Each app and every framework it embeds is signed ad hoc, as C-0009 section 6 describes for releases, and each `.ipa` is checked and scanned as C-0009 section 6 describes, then uploaded. |
+| `ios` | macOS | C-0009 stages 1 to 4 without an Apple identity: the forks, the native host, the Dock host, and both flavors of the app, the main app and the device test flavor of `tests/device`. Each app and every framework it embeds is signed ad hoc, as C-0009 section 6 describes for releases. Each `.ipa` is checked, scanned for provisioning profiles and for team identifiers and application-identifier prefixes in its property lists and code signatures, and is uploaded only if the scan finds none of them. |
 | `checks` | Ubuntu | REUSE, gitleaks, personal-data and forbidden-file check, lychee, compatibility data, dependency licenses. |
 | `release` | macOS | Runs only for a `v*` tag. Builds and packages the release as C-0009 section 6 describes. |
 
 - While the repository is public, standard GitHub-hosted runners are free. If it becomes private, macOS minutes beyond the account's included minutes are billed.
-- recelilious decides whether the `ios` job runs on every pull request or only before merging, once its run time is known.
+- The `ios` job runs for every pull request and every push to `main` (plan decision D7).
 - An ad-hoc signature holds no Apple identity and no provisioning profile. It embeds the app's entitlements, so that a sideloading tool can read the ones it must request when it re-signs the app with the user's own Apple ID. The job never holds or uses an Apple-issued certificate or profile (C-0009 section 5).
+- The rest of the scan of C-0009 section 6, for UDIDs, ECIDs, serial numbers, e-mail addresses and local paths, with device model identifiers allowed, as C-0009 section 6 says, comes with stage M9.1. M9.1 completes the scan tool (S9.1.3) and adds its allow list, which names each allowed hit by file and by the SHA-256 of the matched text, each with a reason. From then on the `ios` job runs the whole scan of C-0009 section 6 on both flavors of the app, with the same allow list as releases, and fails on a finding that the allow list does not cover. The job's builds never involve a device or an Apple identity (C-0009 section 5).
 - Device tests cannot run in CI. They are recorded as evidence instead (C-0012).
 
 ## 5. Libraries and tools registered under C-0003
@@ -91,16 +92,6 @@ Registered as under review, and not used until recelilious decides:
 
 Not allowed: FluentAssertions 8 and later. They are under Xceed's proprietary Community License, which is free only for non-commercial use (it counts open-source development as non-commercial) and needs a paid license for any commercial use. That makes it a non-commercial-only license, which C-0003 section 5 forbids.
 
-## Proposed changes for 1.2
-
-**Not yet accepted.** Version 1.1 above stays binding until recelilious approves these changes. They come from the review of stage M1.3 after its merge. Version 1.1 has the `ios` job scan each `.ipa` as C-0009 section 6 describes, but the scan tool that M1.3 wrote, `tools/ScanPackage.cs`, looks only for what a build step can leave of an Apple account. The rest of that scan needs an allow list by file and by the SHA-256 of each matched text, each entry with a reason, for the hits inside third-party binaries and in the upstream notices that must be kept. Stage M9.1 plans both the scan and the list (S9.1.3 and the risks of M9.1 in the L9 brief). Item 3 records decision D7 of the development plan, on when the `ios` job runs.
-
-1. **Section 4, the row of the `ios` job.** Replace its last sentence, "Each app and every framework it embeds is signed ad hoc, as C-0009 section 6 describes for releases, and each `.ipa` is checked and scanned as C-0009 section 6 describes, then uploaded.", with: "Each app and every framework it embeds is signed ad hoc, as C-0009 section 6 describes for releases. Each `.ipa` is checked, scanned for provisioning profiles and for team identifiers and application-identifier prefixes in its property lists and code signatures, and is uploaded only if the scan finds none of them."
-
-2. **Section 4, a new item after the item on ad-hoc signatures.** Add: "The rest of the scan of C-0009 section 6, for UDIDs, ECIDs, serial numbers, e-mail addresses and local paths, with device model identifiers allowed, as C-0009 section 6 says, comes with stage M9.1. M9.1 completes the scan tool (S9.1.3) and adds its allow list, which names each allowed hit by file and by the SHA-256 of the matched text, each with a reason. From then on the `ios` job runs the whole scan of C-0009 section 6 on both flavors of the app, with the same allow list as releases, and fails on a finding that the allow list does not cover. The job's builds never involve a device or an Apple identity (C-0009 section 5)."
-
-3. **Section 4, the item on when the `ios` job runs.** Replace "recelilious decides whether the `ios` job runs on every pull request or only before merging, once its run time is known." with: "The `ios` job runs for every pull request and every push to `main` (plan decision D7)."
-
 ## Change log
 
 | Version | Date | Notes |
@@ -108,3 +99,4 @@ Not allowed: FluentAssertions 8 and later. They are under Xceed's proprietary Co
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious |
 | 1.1 | 2026-11-15 | Accepted by recelilious. Comes from stage M1.3, whose `ios` job produces the `.ipa` files that L1 installs, as plan section 8 expects. Section 4 has the `ios` job sign each app and every framework it embeds ad hoc, as C-0009 section 6 describes for releases, and check, scan and upload the `.ipa` of both flavors of the app; an ad-hoc signature holds no Apple identity and embeds the entitlements that a sideloading tool requests when it re-signs the app, and the job never holds an Apple-issued certificate or profile. An unsigned app carries no entitlements, so the increased memory limit of C-0009 section 4 would be lost on the device. |
+| 1.2 | 2026-11-17 | Accepted by recelilious. Comes from the review of stage M1.3 after its merge. Section 4 narrows the scan of the `ios` job until M9.1 to what it looks for now: provisioning profiles, and team identifiers and application-identifier prefixes in property lists and code signatures, with no upload on a finding. From M9.1 on, the job runs the whole scan of C-0009 section 6 on both flavors of the app, with the same allow list as releases. Section 4 also records decision D7: the `ios` job runs for every pull request and every push to `main`. |

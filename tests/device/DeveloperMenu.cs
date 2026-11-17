@@ -22,6 +22,11 @@ internal static partial class CompositionRoot
 
         var log = services.Log;
         var keychain = new KeychainItemStore();
+
+        // One signal gate page for the life of the app: a run outlives the page that started it,
+        // so the page opened next shows that run, its Stop and its verdict, instead of a new page
+        // that cannot reach it (signals.md section 9).
+        var signalGate = new SignalGateViewModel(services.Diagnostics.CrashChaining, log);
         developerPage = navigator => new DeveloperMenuViewModel(
             navigator,
             [
@@ -40,7 +45,7 @@ internal static partial class CompositionRoot
                 new DeveloperEntry(
                     "Signal gate",
                     "Runs the signal dispatcher's stress test for four hours, or for ten minutes, and gives the verdict of L2 step 13.",
-                    () => new SignalGateViewModel(services.Diagnostics.CrashChaining, log)),
+                    () => signalGate),
             ],
             log);
     }

@@ -33,7 +33,7 @@ internal sealed class SignalGateRun
     private readonly HeartbeatMonitor _heartbeat;
     private readonly Stopwatch _clock = new();
     private readonly List<Thread> _threads = [];
-    private readonly int _collectionsAtStart;
+    private readonly long _collectionsAtStart;
     private readonly ulong _runtimeFaultsAtStart;
     private volatile bool _stopping;
     private volatile bool _leftForeground;
@@ -45,7 +45,7 @@ internal sealed class SignalGateRun
     {
         Target = target;
         _heartbeat = new HeartbeatMonitor(time);
-        _collectionsAtStart = GC.CollectionCount(0);
+        _collectionsAtStart = Collections();
         _runtimeFaultsAtStart = HostTestExports.ReadSignalHarness().RuntimeFaults;
     }
 
@@ -108,7 +108,7 @@ internal sealed class SignalGateRun
             GuestFaultsHandledByAddress = native.GuestFaultsHandledByAddress,
             UnexpectedFaults = native.UnexpectedFaults,
             RuntimeFaults = native.RuntimeFaults - _runtimeFaultsAtStart,
-            GarbageCollections = GC.CollectionCount(0) - _collectionsAtStart,
+            GarbageCollections = Collections() - _collectionsAtStart,
             LongestHeartbeatGap = longestGap,
             DispatcherInstalled = HostTestExports.CheckSignalsInstalled() == 0,
         };
@@ -164,6 +164,10 @@ internal sealed class SignalGateRun
     // Always null; the compiler cannot see through it, because it is never inlined.
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static string? Nothing() => null;
+
+    // The collections so far. On Mono, generation 0 counts the nursery collections and generation 1,
+    // the highest, the full ones that the pressure thread forces, so neither alone counts them all.
+    private static long Collections() => (long)GC.CollectionCount(0) + GC.CollectionCount(1);
 
     private void MakeGarbage()
     {

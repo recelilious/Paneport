@@ -17,10 +17,13 @@
 #include "signal_state.h"
 #include "signals.h"
 
-// The size of an alternate signal stack that the dispatcher allocates, without the guard page
-// below it. The handler may chain to the runtime's handler on it, so it is larger than
-// SIGSTKSZ.
-#define PP_SIGNAL_STACK_SIZE ((size_t)256U * 1024U)
+// The alternate stack that pp_signals_install gave the thread that installed the dispatcher,
+// the main thread, and that pp_signals_uninstall takes away again: a process-wide singleton
+// (C-0010 section 3), which only that thread reads and writes.
+static struct {
+    void *stack;
+    size_t size;
+} s_main_stack;
 
 // Whether two actions name the same handler. sa_handler and sa_sigaction share their storage,
 // so the handler compares as one whatever the flags say.
@@ -80,10 +83,9 @@ pp_status_t pp_signals_install(void) {
 
     pp_status_t status = install_dispatcher();
     if (status == PP_OK) {
-        // The main thread's stack stays for the life of the process.
-        void *stack = NULL;
-        size_t size = 0U;
-        status = pp_signal_stack_ensure(&stack, &size);
+        // The main thread's stack stays for the life of the process, unless pp_init fails
+        // after this and uninstalls the dispatcher again.
+        status = pp_signal_stack_ensure(&s_main_stack.stack, &s_main_stack.size);
         if (status != PP_OK) {
             restore_saved(PP_SIGNAL_COUNT);
         }
@@ -98,6 +100,9 @@ void pp_signals_uninstall(void) {
     if (atomic_load_explicit(&pp_signal_state.installed, memory_order_acquire)) {
         restore_saved(PP_SIGNAL_COUNT);
         atomic_store_explicit(&pp_signal_state.installed, false, memory_order_release);
+        pp_signal_stack_release(s_main_stack.stack, s_main_stack.size);
+        s_main_stack.stack = NULL;
+        s_main_stack.size = 0U;
     }
 }
 

@@ -93,7 +93,9 @@ typedef struct pp_signal_counters_t {
 // changed while the dispatcher was installed. On an error nothing stays installed.
 pp_status_t pp_signals_install(void);
 
-// Puts the saved actions back. pp_init calls it when it fails after pp_signals_install.
+// Puts the saved actions back and takes away the alternate stack that pp_signals_install gave
+// the calling thread. pp_init calls it, on the thread that installed the dispatcher, when it
+// fails after pp_signals_install.
 void pp_signals_uninstall(void);
 
 // Checks that each of the six signals still has the dispatcher's handler. Test builds run it

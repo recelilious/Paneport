@@ -100,6 +100,11 @@ extern pp_signal_state_t pp_signal_state;
 void pp_signal_dispatch(int signal_number, siginfo_t *info, void *context);
 void pp_signal_last_resort(int signal_number, siginfo_t *info, void *context);
 
+// The size of an alternate signal stack that the dispatcher allocates, without the guard page
+// below it. The handler may chain to the runtime's handler on it, so it is larger than
+// SIGSTKSZ.
+#define PP_SIGNAL_STACK_SIZE ((size_t)256U * 1024U)
+
 // Gives the calling thread an alternate signal stack unless it has one. Sets *stack and
 // *size to the stack it allocated, or to NULL and 0 when the thread had one already. Returns
 // PP_OK; PP_E_OUT_OF_MEMORY; PP_E_SYSTEM.

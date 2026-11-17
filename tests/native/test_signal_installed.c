@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
-// S2.2.5: the installed check, and the last-resort handler that the host installs when it is
-// loaded. The check passes after pp_init and fails, naming the signal, when a handler was
-// replaced; the last-resort handler takes only signals that still have the default action
-// (docs/design/signals.md sections 5 and 7).
+// S2.2.5: the installed check, the alternate stacks, and the last-resort handler that the host
+// installs when it is loaded. The check passes after pp_init and fails, naming the signal, when
+// a handler was replaced; the main thread has an alternate stack after pp_init, and a thread
+// has one while it carries a mark; the last-resort handler takes only signals that still have
+// the default action (docs/design/signals.md sections 5 and 7).
 
 #include <signal.h>
 #include <stdbool.h>
@@ -17,6 +18,7 @@
 #include "pp_check.h"
 #include "signal_test_support.h"
 #include "signals/signal_state.h"
+#include "signals/signals.h"
 #include "test_support.h"
 
 // The documented singleton of this program (C-0010 section 3): the path that the program
@@ -56,6 +58,53 @@ static void fails_before_init(void) {
     int32_t replaced = -1;
     PP_CHECK_EQUAL(pp_test_signals_check_installed(&replaced), PP_E_NOT_INITIALIZED);
     PP_CHECK_EQUAL(replaced, 0);
+}
+
+// Checks whether the calling thread has an alternate signal stack, of the dispatcher's size when
+// it has one. The presets keep the sanitizers from setting stacks of their own (signals.md
+// section 11), so every stack here is the dispatcher's.
+static void check_stack(bool expected) {
+    stack_t current;
+    PP_CHECK_EQUAL(sigaltstack(NULL, &current), 0);
+    if (expected) {
+        PP_CHECK(!pp_signal_has_flag(current.ss_flags, SS_DISABLE));
+        PP_CHECK_EQUAL(current.ss_size, PP_SIGNAL_STACK_SIZE);
+    } else {
+        PP_CHECK(pp_signal_has_flag(current.ss_flags, SS_DISABLE));
+    }
+}
+
+static void *mark_and_unmark(void *argument) {
+    (void)argument;
+    check_stack(false);
+    PP_CHECK_EQUAL(pp_signals_mark_thread(PP_THREAD_MARK_GUEST), PP_OK);
+    check_stack(true);
+    // A new mark of a marked thread changes the mark and keeps the stack.
+    PP_CHECK_EQUAL(pp_signals_mark_thread(PP_THREAD_MARK_TRANSLATOR), PP_OK);
+    check_stack(true);
+    PP_CHECK_EQUAL(pp_signals_unmark_thread(), PP_OK);
+    check_stack(false);
+    return NULL;
+}
+
+// The main thread gets its stack from pp_init, and a thread has one exactly while it carries a
+// mark.
+static void stacks_follow_marks(void) {
+    check_stack(false);
+    pp_start_host(NULL);
+    check_stack(true);
+    pp_run_on_thread(mark_and_unmark, NULL);
+    check_stack(true);
+}
+
+// Uninstalling takes the main thread's stack away again, so that a pp_init that fails after
+// installing the dispatcher leaves none behind.
+static void uninstall_takes_stack_away(void) {
+    check_stack(false);
+    PP_CHECK_EQUAL(pp_signals_install(), PP_OK);
+    check_stack(true);
+    pp_signals_uninstall();
+    check_stack(false);
 }
 
 static bool has_last_resort(int signal_number) {
@@ -107,6 +156,8 @@ int main(int argc, char **argv) {
         {"passes_after_init", passes_after_init},
         {"fails_naming_replaced_signal", fails_naming_replaced_signal},
         {"fails_before_init", fails_before_init},
+        {"stacks_follow_marks", stacks_follow_marks},
+        {"uninstall_takes_stack_away", uninstall_takes_stack_away},
         {"last_resort_installed_at_load", last_resort_installed_at_load},
         {"last_resort_only_where_default", last_resort_only_where_default},
     };

@@ -4,8 +4,9 @@
 // S2.2.6: the native part of the signal gate's stress harness, the runner that the device page
 // uses, here with the stand-in for the runtime's handler. For 60 seconds, marked threads fault
 // on their pages, unmarked threads fault in the reservation, and a thread that stands for the
-// managed null-reference loop faults on a page that the stand-in resolves. Every planted fault
-// must be handled on its route, and none may be unexpected (docs/design/signals.md section 9).
+// managed null-reference loop faults in the first page, as a null reference does, where the
+// stand-in resolves it and no record is due. Every planted fault must be handled on its route,
+// and none may be unexpected (docs/design/signals.md section 9).
 
 #include <pthread.h>
 #include <signal.h>
@@ -33,17 +34,18 @@ static void stand_in_handler(int signal_number, siginfo_t *info, void *context) 
 }
 
 typedef struct runtime_loop_t {
-    unsigned char *page;
     _Atomic(bool) stop;
     _Atomic(uint64_t) faults;
 } runtime_loop_t;
 
-// Stands for the managed null-reference loop: faults that the runtime resolves.
+// Stands for the managed null-reference loop: loads through a null reference, at a small
+// address, which the runtime resolves. Like the device's, they lie below Mono's 4 KiB limit, so
+// the dispatcher hands them on without writing a record first (signals.md section 5).
 static void *fault_for_runtime(void *argument) {
     runtime_loop_t *loop = argument;
     while (!atomic_load(&loop->stop)) {
         (void)atomic_fetch_add(&loop->faults, 1U);
-        pp_signal_plant_read(loop->page);
+        pp_signal_plant_read(pp_test_address(16U));
     }
     return NULL;
 }
@@ -58,9 +60,8 @@ static void read_counters(pp_test_signal_counters_t *counters) {
 static void runs_sixty_seconds(void) {
     runtime_loop_t loop;
     memset(&loop, 0, sizeof loop);
-    loop.page = pp_map_pages(1U);
     pp_stand_in_install(&s_stand_in, stand_in_handler);
-    pp_stand_in_own(&s_stand_in, loop.page, pp_test_page_size());
+    pp_stand_in_own(&s_stand_in, NULL, 4096U);
     pp_start_host(NULL);
 
     const pp_test_signal_harness_config_t config = {
@@ -97,9 +98,8 @@ static void runs_sixty_seconds(void) {
                    counters.guest_faults_raised_by_address);
     PP_CHECK_EQUAL(counters.unexpected_faults, 0U);
     PP_CHECK_EQUAL(counters.runtime_faults, atomic_load(&loop.faults));
-    PP_CHECK_EQUAL(pp_stand_in_count(&s_stand_in, SIGBUS), atomic_load(&loop.faults));
+    PP_CHECK_EQUAL(pp_stand_in_count(&s_stand_in, SIGSEGV), atomic_load(&loop.faults));
     PP_CHECK_EQUAL(pp_test_signals_check_installed(NULL), PP_OK);
-    pp_unmap_pages(loop.page, 1U);
 }
 
 static uint32_t other_handler(pp_guest_fault_t *fault, void *user_data) {

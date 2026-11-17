@@ -12,7 +12,7 @@ Back to the [development plan](../development-plan.md).
 |---|---|---|---|---|---|
 | L4 | First Windows program on the iPhone | Large | Planned | | |
 | M4.1 | Forks, submodules and toolchains | Medium | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| M4.2 | ARM64EC Wine with FEX on macOS | Medium | Blocked: its contract proposals await review | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-16 |
+| M4.2 | ARM64EC Wine with FEX on macOS | Medium | Blocked: its contract proposals await review | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-17 |
 | M4.3 | Single-process Wine on macOS | Medium | Planned | | |
 | M4.4 | Runtime on iOS | Medium | Planned | | |
 | S4.0.1 | In-app console and the Run sample program action | Small | Planned | | |
@@ -26,7 +26,7 @@ Back to the [development plan](../development-plan.md).
 | S4.2.3 | FEX ARM64EC build for Darwin | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-16 |
 | S4.2.4 | Win32 test programs | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-16 |
 | S4.2.5 | Harness, runner and expected outputs | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-16 |
-| S4.2.6 | Runtime CI job, layout proposal and build caching | Small | Blocked: C-0011 1.2, C-0004 1.1 and C-0003 1.6 await review | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-16 |
+| S4.2.6 | Runtime CI job, layout proposal and build caching | Small | Blocked: C-0011 1.3, C-0004 1.1, C-0003 1.6 and C-0010 1.1 await review | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-17 |
 | S4.3.1 | Single-process design document | Small | Planned | | |
 | S4.3.2 | wineserver thread and in-process connections | Small | Planned | | |
 | S4.3.3 | In-process start of the first process | Small | Planned | | |
@@ -243,7 +243,7 @@ In:
 
 - Wine's Unix side for arm64 macOS, built by `eng/mac/build-wine.sh` (Bash 3.2, C-0010 section 1). If the D5 base lacks merge request 11638, the fork carries it: a position-independent loader, operating-system-chosen addresses for the shared user data and the TEB, PE protections applied in two passes so that no page is writable and executable, and a TEB lookup that does not trust x18 (wine_on_ios.md KQ1 and KQ2).
 - Wine's PE side, built with the pinned llvm-mingw for `arm64ec`, `aarch64` and `i386` (C-0009 section 3). Only the 64-bit guest path runs before M7.3.
-- FEX's ARM64EC module for `arm64ec-w64-mingw32`, built by `eng/mac/build-fex.sh` and loaded by Wine as the x86-64 emulator named under `HKLM\Software\Microsoft\Wow64\amd64` (wine_on_ios.md KQ2). FEX-darwin's Darwin changes are merged on the FEX fork's stage branch, and the hooks it says Wine must provide (shared data, JIT write protection, native JIT allocation) go into the Wine fork (x86_to_arm_translation.md KQ3).
+- FEX's ARM64EC module for `arm64ec-w64-mingw32`, built by `eng/mac/build-fex.sh` and loaded by Wine as the x86-64 emulator named under `HKLM\Software\Microsoft\Wow64\amd64` (wine_on_ios.md KQ2). The FEX fork's own Darwin changes go on its stage branch, and the hooks that Wine must provide for them, such as JIT write protection and native JIT allocation (x86_to_arm_translation.md KQ3), go into the Wine fork. No code comes from FEX-darwin, Hadron or Arknights-MacOS-Runtime, which are read as evidence only (recelilious's decisions of 2026-11-15 and 2026-11-17, C-0003 1.6).
 - The Win32 test programs in `tests/win32/`, our own C17 code under MIT, built with the pinned llvm-mingw and `-Werror` by `eng/mac/build-win32-tests.sh`, which takes the target as a parameter. This stage builds x86-64; M7.3 adds the i686 builds of plan section 7.2. Each prints a fixed line format and exits with 0 only when every check passed:
   - `console.exe`, the console test program and L4's sample program: a greeting naming its architecture, the CPU feature, checksum, structured exception handling and threads checks, and a result line; an argument sets its exit code.
   - `cpu_features.exe` (vendor and feature flags from CPUID) and `checksum.exe` (a fixed 64 MiB buffer from a fixed formula, its checksum beside the expected value, and the throughput).
@@ -252,7 +252,7 @@ In:
 - The harness in `tests/runtime/`, our own C17 code under MIT, in `tests/runtime/harness/`. Each case is a JSON file in `tests/runtime/cases/` naming the program, arguments, timeout, exit code and expected output in `tests/runtime/expected/`. Here it starts Wine's loader as a child process with a fresh temporary prefix, captures the output and compares. Lines match exactly, except lines marked as patterns, such as the CPU feature and throughput lines. Expected files hold no host path.
 - `eng/mac/run-harness.sh`: builds what is missing, runs the selected cases, each in a fresh harness process, writes a summary, and exits non-zero on any failure.
 - Console programs need no display driver; how the harness tells Wine to run without one is to be confirmed in this stage.
-- Two contract changes on `contract/<summary>` branches (plan section 8): C-0011 gains a `runtime` job, and C-0004 adds `tests/runtime/` and `tests/win32/`. The job runs on an Apple silicon macOS runner, restores the cached fork builds, builds what is missing, runs `eng/mac/run-harness.sh` and uploads the logs. recelilious decides in the review whether it runs on every pull request and joins the jobs C-0011 section 3 requires.
+- Four contract changes on the branch `contract/m4-2-runtime-harness` (plan section 8): C-0011 1.3 adds the runtime tests and a `runtime` job; C-0004 1.1 adds `tests/runtime/` and `tests/win32/`; C-0003 1.6 registers actions/cache, says which changed fork files carry a notice and moves FEX-darwin to the reference-only list; and C-0010 1.1 says how such a file is marked. The job runs on an Apple silicon macOS runner, restores the cached fork builds, builds what is missing, runs `eng/mac/run-harness.sh` and uploads the logs. recelilious decided on 2026-11-17 that it runs for every pull request and every push to `main`, and that a merge waits for it (plan decision D14).
 - `docs/design/runtime-macos-harness.md`, and a `README.md` in `tests/runtime/` and `tests/win32/` (C-0004 section 3).
 
 Out: single-process mode, the native host and the bridge (M4.3); iOS builds (M4.4); graphics (M5.1, M5.2); the WoW64 module and i686 builds, which wait for D11 (M7.3); multi-process programs (M8.1).
@@ -265,7 +265,7 @@ Out: single-process mode, the native host and the bridge (M4.3); iOS builds (M4.
 - Changes on `paneport/M4.2` in `external/Paneport-wine` and `external/Paneport-FEX`, and the moved pointers.
 - `tests/win32/` with the six programs, and `tests/runtime/` with the harness, cases and expected outputs, each with its `README.md`.
 - The `runtime` job in `.github/workflows/`, once the C-0011 change is accepted.
-- `docs/design/runtime-macos-harness.md` and the two contract branches.
+- `docs/design/runtime-macos-harness.md` and the contract branch.
 
 **Small stages.**
 
@@ -273,10 +273,10 @@ Out: single-process mode, the native host and the bridge (M4.3); iOS builds (M4.
 |---|---|---|---|
 | S4.2.1 | Wine build script for macOS, carrying merge request 11638 if needed | `eng/mac/build-wine.sh`, `external/Paneport-wine` | It builds from a clean tree with the pinned tools, and the built loader prints its version |
 | S4.2.2 | PE-side build for `arm64ec`, `aarch64` and `i386` | `eng/mac/build-wine.sh` | Each architecture's module list is complete, and a sample of modules shows the machine type of its folder, read with the pinned llvm-mingw's object tools |
-| S4.2.3 | FEX ARM64EC build for Darwin, with FEX-darwin's changes and the Wine-side hooks | `eng/mac/build-fex.sh`, `external/Paneport-FEX`, `external/Paneport-wine` | With the module named as the x86-64 emulator, `console.exe` prints its greeting |
+| S4.2.3 | FEX ARM64EC build for Darwin, with the fork's Darwin changes and the Wine-side hooks | `eng/mac/build-fex.sh`, `external/Paneport-FEX`, `external/Paneport-wine` | With the module named as the x86-64 emulator, `console.exe` prints its greeting |
 | S4.2.4 | Win32 test programs | `tests/win32/`, `eng/mac/build-win32-tests.sh` | They build for x86-64 with `-Werror`; on Windows 11 they print their expected lines natively and exit with 0 (optional local check) |
 | S4.2.5 | Harness, runner and expected outputs | `tests/runtime/`, `eng/mac/run-harness.sh` | A planted case with one wrong expected line and one with a wrong exit code each make the runner exit non-zero and name the case; the clean set passes |
-| S4.2.6 | Runtime CI job, layout proposal and build caching | two `contract/<summary>` branches, `.github/workflows/` | Once accepted, the job passes on the branch, and a second run at the same submodule commits restores the fork builds from the cache, as its log shows |
+| S4.2.6 | Runtime CI job, layout proposal and build caching | `contract/m4-2-runtime-harness`, `.github/workflows/` | Once accepted, the job passes on the branch, and a second run at the same submodule commits restores the fork builds from the cache, as its log shows |
 
 **Verification.** All without recelilious's iPhone. This stage creates the build scripts, the harness with its cases and expected outputs, and `eng/mac/run-harness.sh`.
 
@@ -285,14 +285,14 @@ Out: single-process mode, the native host and the bridge (M4.3); iOS builds (M4.
 - `checks` job: REUSE, gitleaks, the personal-data check over `tests/`, lychee and `tools/CheckLicenses.cs` pass.
 - Until the C-0011 change is accepted, the harness runs on the local Mac, and the pull request carries its output and lists the CI check not yet run (C-0011 section 3).
 
-**Done when.** The deliverables exist, both contract changes are accepted (C-0012 section 1 item 3), the `runtime` job passes on the last commit, the design document is written, the definition of done in C-0012 section 1 holds, and recelilious has merged the branch. While a contract change waits for review, the stage is Blocked with that reason (plan section 2.4).
+**Done when.** The deliverables exist, the four contract changes are accepted (C-0012 section 1 item 3), the `runtime` job passes on the last commit, the design document is written, the definition of done in C-0012 section 1 holds, and recelilious has merged the branch. While a contract change waits for review, the stage is Blocked with that reason (plan section 2.4).
 
 **Risks and fallbacks.**
 
 - Merge request 11638 may not apply to the D5 base; the fallback is a base it applies to, or a port.
 - Wine 11's 4K-page simulation shares protections within a 16 KB host page, which collides with W^X where a section boundary mixes code and data (wine_on_ios.md KQ1). The two-pass protections address this, and our programs can use 16 KB section alignment (`-Wl,-section-alignment=16384`, x86_to_arm_translation.md KQ2).
-- If FEX-darwin's changes do not fit the D5 FEX version, the fork ports what it needs; they are MIT, so the fork stays MIT.
-- Whether the harness needs the `com.apple.security.cs.allow-jit` entitlement for FEX-darwin's `MAP_JIT` allocations, or runs without the hardened runtime, is to be confirmed in this stage, as for M3.1's tests.
+- Settled on 2026-11-15 and confirmed on 2026-11-17: no code comes from FEX-darwin, so the FEX fork writes its own Darwin changes from FEX's own code and Apple's documentation, and stays MIT.
+- Whether the harness needs the `com.apple.security.cs.allow-jit` entitlement for the forks' `MAP_JIT` allocations, or runs without the hardened runtime, is to be confirmed in this stage, as for M3.1's tests. Confirmed on 2026-11-16: without the hardened runtime, `MAP_JIT` memory runs code with no entitlement (runtime-macos-harness.md section 9).
 - If cold fork builds do not fit the job's time limit, the job splits into a cache-warming part and a test part; the runner's limits are to be confirmed in this stage.
 - Expected outputs must not depend on helpers such as `wineboot` and `services.exe` (process_and_memory_model.md Q1), because M4.3 starts one process only. No Microsoft, Valve or game binary is used (plan section 7.6).
 
@@ -307,7 +307,7 @@ Out: single-process mode, the native host and the bridge (M4.3); iOS builds (M4.
 
 - M4.1 (session log of 2026-11-10): the forks, their integration branches and the rules for fork branches, pointers and rebases are in `docs/design/forks.md` sections 1 to 5. This stage's fork changes go on `paneport/M4.2` in each fork, and `paneport/integration` is fast-forwarded only after recelilious merges (section 4.2).
 - M4.1 (session log of 2026-11-10): merge request 11638 changes `configure.ac`, so the fork's rebased copy regenerates Wine's `configure` with GNU Autoconf 2.73, the version that generated Wine 11.20's. Pin it in `eng/toolchain.json` with a `--fork-tools` check in `tools/CheckToolchain.cs`, and install it with the bootstrap's `--forks`; C-0003 registers Autoconf from version 1.4 on (forks.md section 2).
-- M4.1 (session log of 2026-11-10): the forks start at Wine 11.20, at FEX-2610 with two fixes of FEX-2611 to `CheckCall`, and at DXMT `6e69d0f94290` (forks.md section 2). FEX-darwin's patches are written against FEX-2610, so they apply as written; its patch imported from the Arknights runtime is MPL-2.0, a Conditional component, and stays out until the register covers it (forks.md section 11).
+- M4.1 (session log of 2026-11-10): the forks start at Wine 11.20, at FEX-2610 with two fixes of FEX-2611 to `CheckCall`, and at DXMT `6e69d0f94290` (forks.md section 2). FEX-darwin's patches are written against FEX-2610, so they apply as written; its patch imported from the Arknights runtime is MPL-2.0, a Conditional component, and stays out until the register covers it (forks.md section 11). Superseded by recelilious's decisions of 2026-11-15 and 2026-11-17: no code comes from FEX-darwin, Hadron or Arknights-MacOS-Runtime (C-0003 1.6).
 - M4.1 (session log of 2026-11-10): `eng/mac/bootstrap.sh --forks` installs the pinned build tools into `$PANEPORT_TOOLS_DIR` and hands `LLVM_MINGW` to the later CI steps, or prints its `export` line on a Mac; a build script puts `$LLVM_MINGW/bin` first on its own PATH. The first fork targets configured Wine with `--without-freetype`; the real build decides on FreeType (forks.md sections 6 and 7).
 - M4.1 (session log of 2026-11-10): on the `xcode-27` image, fetching the three forks at depth 1 took about 30 s (Wine's checkout is about 500 MB), Wine's `configure` 58 s and its build tools 10 s; the bootstrap's tools take about 100 s without a cache, most of it for building Bison (forks.md sections 7 and 8).
 - M4.1 (session log of 2026-11-10): caching needs `actions/cache`, which C-0003 does not register yet; register it before S4.2.6 uses it, with the keys of forks.md section 8.
@@ -363,6 +363,15 @@ Out: single-process mode, the native host and the bridge (M4.3); iOS builds (M4.
   - **Waiting on recelilious.** The review of the four contract proposals on `contract/m4-2-runtime-harness` (C-0011 1.2, C-0004 1.1, C-0003 1.6, C-0010 1.1) and of the move of the register rows to M4.4 (design section 10); the independent review of the pull request.
   - **Left.** S4.2.6: once C-0011 1.2, C-0004 1.1 and C-0003 1.6 are accepted, the `runtime` job in `.github/workflows/ci.yml` with `actions/cache`, its first run on the branch, and a second run at the same submodule commits that restores the fork builds from the cache. Deleting the three downloads when the stage's fork work ends.
   - **For later sessions.** Notes left in the briefs of M4.4 (register rows, GPL file, Cephes, the JIT pool on iOS) and M7.3 (WoW64 gaps).
+- **2026-11-17 (UTC), revision of the contract proposals.** The same branch and pull request. recelilious answered the two points that the brief leaves open, and the session that coordinates the stages checked the four proposals against `main` and this branch.
+  - **Decisions.** On 2026-11-17 recelilious decided that the `runtime` job runs for every pull request and every push to `main` and that a merge waits for it, with each fork build saved to the cache as soon as it is built, a 90-minute timeout and NuGet caches saved only on `main` (plan decision D14). recelilious also confirmed that FEX-darwin as a whole, its Wine patch and scripts included, and Arknights-MacOS-Runtime are reference only, as Hadron is; M5.2 does not open Arknights-MacOS-Runtime's patches either.
+  - **Done.**
+    - The contract branch, rebuilt on `main` at `4d883e6` with one commit for each contract, not pushed (C-0012 section 2): C-0011 1.3 (`15ae253`), which is 1.3 because M1.3's proposal for the scan scope takes 1.2 and merges first; C-0004 1.1 (`1780260`); C-0003 1.6 (`fc7f9a1`); C-0010 1.1 (`ee947d3`). Against the earlier proposals, C-0011 states the job's trigger on its own, names the keys of the tools cache and the fork caches, saves each build as soon as it is built, moves the build and analysis of the Win32 test programs into the `runtime` job, and says that the harness's unit tests run in the `native` job. C-0004 lists every folder of `tests/` and leaves the bundling of test programs to M4.4. C-0003 extends the dating sentence of section 6, covers a file under the LGPL in any fork, and lists FEX-darwin, Hadron and Arknights-MacOS-Runtime in section 7 with their licenses. C-0010 allows several dates on one line, keys the notice on the license of the file as well as the fork's, Apache-2.0 included, narrows the exemption of generated files, and says where the line goes, when it may follow carried work and when it goes.
+    - Wine fork: `f95f7a1` adds the notice lines to `configure` and `include/config.h.in`, which carry the request's hunks placed by hand, so the revised rule gives them lines of their own; this branch moves the pointer to it.
+    - This branch: decision D14 and two rows of plan section 8; the briefs of M4.2, M5.2 and M7.3, `forks.md` and the design document follow the decisions.
+  - **Found.** actions/cache v6.1.0, its newest release, is commit `55cc8345863c7cc4c66a329aec7e433d2d1c52a9`. Hadron's own code is under BSD-3-Clause, and each folder of its `patches/` under the license of the project it changes, as its license files say.
+  - **Waiting on recelilious.** The final acceptance of the four proposals.
+  - **Left.** S4.2.6, once the proposals are accepted: the `runtime` job, with the build and analysis of the Win32 test programs moved there from the `ios` job, actions/cache mapped in `eng/license-map.json` and pinned at v6.1.0, and NuGet caches saved only on `main`; its first run, and a second run that restores the fork builds. Rebasing this branch and the contract branch onto `main` once M1.3's C-0011 1.2 has merged. Deleting the three downloads when the stage's fork work ends.
 
 ## M4.3 Single-process Wine on macOS
 

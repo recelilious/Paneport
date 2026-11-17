@@ -198,13 +198,26 @@ void pp_signal_stack_release(void *stack, size_t size) {
     if (stack == NULL) {
         return;
     }
+    // The addresses are compared as integers: the stack that the system reports and the mapping
+    // are not one C object.
+    const uintptr_t low = (uintptr_t)stack;
     stack_t current;
-    const unsigned char *start = stack;
-    if (sigaltstack(NULL, &current) == 0 && !pp_signal_has_flag(current.ss_flags, SS_DISABLE) &&
-        (const unsigned char *)current.ss_sp > start &&
-        (const unsigned char *)current.ss_sp < start + size) {
-        const stack_t disabled = {.ss_sp = NULL, .ss_size = 0U, .ss_flags = SS_DISABLE};
-        (void)sigaltstack(&disabled, NULL);
+    if (sigaltstack(NULL, &current) != 0) {
+        return;
+    }
+    const uintptr_t base = (uintptr_t)current.ss_sp;
+    if (!pp_signal_has_flag(current.ss_flags, SS_DISABLE) && base >= low && base < low + size) {
+        // The thread still runs its handlers on this stack, so it is disabled before it is
+        // unmapped; when the system refuses, the mapping stays rather than leave a stack that
+        // the next signal could not use.
+        const stack_t disabled = {
+            .ss_sp = current.ss_sp,
+            .ss_size = current.ss_size,
+            .ss_flags = SS_DISABLE,
+        };
+        if (sigaltstack(&disabled, NULL) != 0) {
+            return;
+        }
     }
     (void)munmap(stack, size);
 }

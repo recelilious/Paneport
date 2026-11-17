@@ -10,7 +10,9 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/wait.h>
 
 #include "paneport/host.h"
@@ -99,6 +101,34 @@ static void stacks_follow_marks(void) {
     check_stack(true);
 }
 
+// A stack that pp_signal_stack_ensure gives a thread is gone once pp_signal_stack_release takes
+// it: disabled, and unmapped. The case prints each step, because macOS kept the stack enabled
+// after an earlier version of the release.
+static void *ensure_and_release(void *argument) {
+    (void)argument;
+    void *stack = NULL;
+    size_t size = 0U;
+    PP_CHECK_EQUAL(pp_signal_stack_ensure(&stack, &size), PP_OK);
+    PP_CHECK(stack != NULL);
+    stack_t current;
+    PP_CHECK_EQUAL(sigaltstack(NULL, &current), 0);
+    const uintptr_t low = (uintptr_t)stack;
+    const uintptr_t base = (uintptr_t)current.ss_sp;
+    (void)fprintf(stderr, "mapping %p, %zu bytes; stack %p, %zu bytes, flags %d; inside %d%c",
+                  stack, size, current.ss_sp, current.ss_size, current.ss_flags,
+                  base >= low && base < low + size, 10);
+    const size_t page = pp_test_page_size();
+    pp_signal_stack_release(stack, size);
+    const bool mapped = mprotect((unsigned char *)stack + page, page, PROT_READ) == 0;
+    (void)fprintf(stderr, "after the release the stack's page is %s%c",
+                  mapped ? "still mapped" : "unmapped", 10);
+    check_stack(false);
+    PP_CHECK(!mapped);
+    return NULL;
+}
+
+static void release_takes_stack_away(void) { pp_run_on_thread(ensure_and_release, NULL); }
+
 // Uninstalling takes the main thread's stack away again, so that a pp_init that fails after
 // installing the dispatcher leaves none behind.
 static void uninstall_takes_stack_away(void) {
@@ -159,6 +189,7 @@ int main(int argc, char **argv) {
         {"fails_naming_replaced_signal", fails_naming_replaced_signal},
         {"fails_before_init", fails_before_init},
         {"stacks_follow_marks", stacks_follow_marks},
+        {"release_takes_stack_away", release_takes_stack_away},
         {"uninstall_takes_stack_away", uninstall_takes_stack_away},
         {"last_resort_installed_at_load", last_resort_installed_at_load},
         {"last_resort_only_where_default", last_resort_only_where_default},

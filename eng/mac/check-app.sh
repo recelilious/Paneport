@@ -93,8 +93,9 @@ if [ -f "$executable" ]; then
     otool -l "$executable" | awk '$1 == "path" { print $2 }' | grep -F -x -q "@executable_path/Frameworks" \
         || problem "the executable's run paths lack @executable_path/Frameworks."
     # Paneport.Interop imports mono_set_crash_chaining from __Internal, the main program, so Mono,
-    # linked into the executable, must export it there (docs/design/signals.md section 5).
-    nm -gU "$executable" | awk '{ print $NF }' | grep -F -x -q _mono_set_crash_chaining \
+    # linked into the executable, must export it there (docs/design/signals.md section 5). awk
+    # reads the whole list, so pipefail cannot see a reader that stopped early.
+    nm -gU "$executable" | awk '$NF == "_mono_set_crash_chaining" { found = 1 } END { exit !found }' \
         || problem "the executable does not export mono_set_crash_chaining, which Paneport.Interop imports from __Internal."
 fi
 

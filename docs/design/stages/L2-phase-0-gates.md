@@ -21,14 +21,14 @@ Back to the [development plan](../development-plan.md).
 | S2.1.5 | Game view and overlay design document | Small | Planned | | |
 | S2.1.6 | Overlay gate page | Small | Planned | | |
 | S2.1.7 | Screenshot blend check | Small | Planned | | |
-| M2.2 | Signal dispatcher | Medium | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
-| S2.2.1 | Install, save and chain | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
-| S2.2.2 | Routing registries | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
-| S2.2.3 | Guest handler registration API | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
-| S2.2.4 | Mach thread control helpers | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
-| S2.2.5 | Crash-chaining call and installed check | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
-| S2.2.6 | Stress harness and screen | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
-| S2.2.7 | Signals design document | Small | In progress | `feat/m2-2-signal-dispatcher` | 2026-11-16 |
+| M2.2 | Signal dispatcher | Medium | Done | [#27](https://github.com/recelilious/Paneport/pull/27) | 2026-11-17 |
+| S2.2.1 | Install, save and chain | Small | Done | [#27](https://github.com/recelilious/Paneport/pull/27) | 2026-11-17 |
+| S2.2.2 | Routing registries | Small | Done | [#27](https://github.com/recelilious/Paneport/pull/27) | 2026-11-17 |
+| S2.2.3 | Guest handler registration API | Small | Done | [#27](https://github.com/recelilious/Paneport/pull/27) | 2026-11-17 |
+| S2.2.4 | Mach thread control helpers | Small | Done | [#27](https://github.com/recelilious/Paneport/pull/27) | 2026-11-17 |
+| S2.2.5 | Crash-chaining call and installed check | Small | Done | [#27](https://github.com/recelilious/Paneport/pull/27) | 2026-11-17 |
+| S2.2.6 | Stress harness and screen | Small | Done | [#27](https://github.com/recelilious/Paneport/pull/27) | 2026-11-17 |
+| S2.2.7 | Signals design document | Small | Done | [#27](https://github.com/recelilious/Paneport/pull/27) | 2026-11-17 |
 | M2.3 | SteamKit2 on the device | Medium | Planned | | |
 | S2.3.1 | Connection | Small | Planned | | |
 | S2.3.2 | Sign-in flows | Small | Planned | | |
@@ -370,7 +370,18 @@ Scripts this stage creates: the CTest cases and the native harness runner in `te
 
 **Session log.**
 
-_No sessions yet._
+- **2026-11-17 (UTC), first session.** Pull request: [#27](https://github.com/recelilious/Paneport/pull/27). The session set the status on 2026-11-16, paused for usage pacing, and resumed after rebasing onto `main` at `4d883e6` (#25).
+  - **Done.** S2.2.1 to S2.2.7, with the design in `docs/design/signals.md`.
+    - The signal dispatcher in `src/native/host/signals/`: installed by `pp_init` after the crash record folder and before the event thread, with each signal's previous action saved and an alternate stack for the main thread; chaining with the original arguments, honoring a `SA_SIGINFO` handler, a plain handler with its mask, the default action and ignore; routing by thread mark, JIT pool range (by address or program counter), guest reservation and probe mode, with lock-free reads and fixed capacities of 1,024 marked threads, 64 pool ranges and 256 reservations; guest and probe handler registration shaped for the bridge of M4.3, whose replacement waits for faults still inside the old handler; crash records for a declined guest fault, the default action and a stack overflow, with the roles guest (3) and translator (4), which Diagnostics names; the Mach thread control helpers on arm64; and the installed check, at the end of `pp_init` in test builds and on request.
+    - The brief's question of how the dispatcher tells a fault that the runtime resolves from one that ends the app: it hands every fault outside the guest path to the runtime, and a last-resort handler, which the host installs when its library is loaded and so before Mono saves the handlers it finds, is what Mono calls with crash chaining off for a fault it does not take; it writes the record. The coordinating session confirmed that this needs no contract change.
+    - The brief's question of the library that the crash-chaining import names: `__Internal`, the main program, into which Mono is linked on the device. `check-app.sh` checks that both flavors' executables export `mono_set_crash_chaining`; whether the import resolves at run time is a device check.
+    - Test-build exports for the installed check and the stress harness, so the interface is 1.2; their bindings, with the two structs in the layout conformance list; `MonoRuntime.TurnOffCrashChaining`, called by the iOS head before `pp_init`, with its outcome on Diagnostics; the verdict of L2 step 13 and the heartbeat in Paneport.Core, with the hang threshold of 2 seconds; and the signal gate page in `tests/device`, with runs of four hours and of ten minutes, null references on a background thread and on the main thread, garbage collection pressure, live counters and the result.
+    - CTest programs for S2.2.1 to S2.2.6, whose death cases run in child processes; the `nm` check of the handler's calls beside the crash record writer's (`tests/native/check_signal_safe_calls.cmake`, renamed from `check_writer_calls.cmake`); the presets' sanitizer options, which leave the six signals to the host; and `portability-no-assembler` off in `.clang-tidy`, with its reason.
+  - **Verification.** On the workstation: 486 tests of `tests/Paneport.Core.Tests` pass (27 new), `tests/Paneport.Interop.Tests` builds, and the format checks pass; in the workstation's Linux environment, with local stand-ins for the Darwin parts that were never committed, the signal cases that do not depend on Darwin passed under AddressSanitizer with UndefinedBehaviorSanitizer and under ThreadSanitizer, the 60-second harness included, and clang-tidy 22 reported nothing. In CI the `native` job passed: 57 CTest tests under `asan-ubsan` (69.7 s) and under `tsan` (110.3 s), with the 60-second harness in 63.3 s and 66.6 s, clang-tidy 23 with nothing to report, and 20 tests of `tests/Paneport.Interop.Tests`; `dotnet` and `checks` passed; and `ios` built both flavors, `check-framework.sh` found the four new test exports in the test build only, and `check-app.sh` found `mono_set_crash_chaining` exported from both executables, before signing, packaging and the scan passed too. These runs were on `d9db245`; the pull request records the run on its head.
+  - **Found in CI.** The first run on macOS found three behaviors of Darwin that the Linux runs could not show. `exec` keeps `SA_SIGINFO` on a signal whose handler it reset to the default action, so the death cases' children, started with `posix_spawn`, had no last-resort handler: the dispatcher and the load-time check now tell the default action and ignore by the handler alone. The SIGTRAP of a breakpoint instruction carries the code of a sent signal, so the stand-in, which skipped only faults with an instruction's code, made the six-signal case time out: the stand-in now goes by the signal, and the dispatcher counts an ignored SIGILL or SIGTRAP as the default action. AddressSanitizer keeps locals on a stack of its own, so the stack overflow case takes the frame address. clang-tidy 23 asked for unsigned flag tests, trailing commas and no inline assembly. The `lychee` step of one `checks` run failed on HTTP/2 errors of GitHub for links that this branch does not change; the next run passed.
+  - **Not yet verified on device.** Everything that needs Mono on the iPhone: that Mono, with crash chaining off, calls the last-resort handler for a fault it does not take; that the `__Internal` import resolves; how the garbage collector's stop of the world meets a thread inside the dispatcher on its alternate stack; whether the null-reference loop faults under full AOT; and the optional ten-minute run of the signal page, which does not gate the merge.
+  - **Left.** recelilious reviews and merges #27.
+  - **For later sessions.** Notes left in the briefs of L2, M3.1, M4.3, M6.3 and M10.1.
 
 ## M2.3 SteamKit2 on the device
 

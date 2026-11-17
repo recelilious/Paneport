@@ -9,7 +9,7 @@ SPDX-License-Identifier: MIT
              x:DataType="vm:DiagnosticsViewModel">
   <!--
   The sections of docs/design/ios-app-head.md section 8, each a heading over label and value pairs.
-  The row lists share one template, which keeps every value selectable and wrapped on a phone.
+  The row lists share one template, which wraps every value on a phone.
   -->
   <UserControl.DataTemplates>
     <DataTemplate DataType="vm:DiagnosticsRow">

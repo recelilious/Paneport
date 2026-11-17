@@ -27,7 +27,7 @@ Contracts are the binding documents of this project. Contracts come first; imple
 | [C-0011](C-0011-testing-review-quality.md) | Testing, review and quality tools | Accepted | 1.2 | 2026-11-17 |
 | [C-0012](C-0012-acceptance-process.md) | Acceptance process | Accepted | 1.0 | 2026-10-28 |
 
-C-0003 also carries proposed changes for version 1.6, C-0004 for version 1.1 and C-0011 for version 1.3, each in a section of its own. They are not binding until recelilious approves them.
+C-0003 also carries proposed changes for version 1.6, C-0004 and C-0010 for version 1.1, and C-0011 for version 1.3, each in a section of its own. They are not binding until recelilious approves them.
 
 ## Planned contracts
 

@@ -33,6 +33,7 @@
 // The messages of the crash records that the dispatcher writes, at most 63 bytes each.
 #define PP_MESSAGE_RUNTIME_DEFAULT "A fault outside the guest path that nothing handled."
 #define PP_MESSAGE_LAST_RESORT "A fault that the runtime did not handle."
+#define PP_MESSAGE_RUNTIME_CRASH "A fault that ended in the runtime's crash path."
 #define PP_MESSAGE_GUEST_DECLINED "The guest fault handler declined a fault."
 #define PP_MESSAGE_PROBE_DECLINED "The JIT probe handler declined a fault."
 #define PP_MESSAGE_STACK_OVERFLOW "A stack overflow outside the guest path."
@@ -155,11 +156,9 @@ static uint32_t thread_role(uint32_t mark) {
     }
 }
 
-// Writes the crash record and ends the app by the same signal: the default action comes back,
-// and the signal, raised again, is delivered with it once the handler returns (C-0005 section
-// 2). A second fault while the first is written finds the writer busy and ends the app too.
-static void end_app(int signal_number, const siginfo_t *info, const void *context, uint32_t mark,
-                    const char *message) {
+// Writes the crash record of a fault (C-0005 section 2).
+static void write_record(int signal_number, const siginfo_t *info, const void *context,
+                         uint32_t mark, const char *message) {
     const pp_crash_info_t crash = {
         .signal = signal_number,
         .code = info != NULL ? info->si_code : 0,
@@ -170,6 +169,14 @@ static void end_app(int signal_number, const siginfo_t *info, const void *contex
         .message = message,
     };
     (void)pp_crash_record_write(&crash);
+}
+
+// Writes the crash record and ends the app by the same signal: the default action comes back,
+// and the signal, raised again, is delivered with it once the handler returns (C-0005 section
+// 2). A second fault while the first is written finds the writer busy and ends the app too.
+static void end_app(int signal_number, const siginfo_t *info, const void *context, uint32_t mark,
+                    const char *message) {
+    write_record(signal_number, info, context, mark, message);
 
     struct sigaction action;
     (void)memset(&action, 0, sizeof action);
@@ -235,9 +242,8 @@ static void to_guest(uint32_t route, uint32_t mark, int signal_number, siginfo_t
     end_app(signal_number, info, context, mark, message);
 }
 
-// Whether a fault lies just below the calling thread's stack. The handler runs on the
-// alternate stack then, and no runtime can go on from such a fault, so it ends the app at once
-// rather than in a loop of faults.
+// Whether a fault lies just below the calling thread's stack: a stack overflow, which the
+// handler can only see on an alternate stack. The record names it, whichever handler writes it.
 static bool stack_overflow(int signal_number, const siginfo_t *info) {
     if ((signal_number != SIGSEGV && signal_number != SIGBUS) || !from_instruction(info)) {
         return false;
@@ -284,32 +290,55 @@ static bool ignoring_repeats(int signal_number, const siginfo_t *info) {
     return from_instruction(info);
 }
 
+// Whether the runtime's handler may end the app with a fault in its own crash path, which
+// writes no record: with crash chaining off, Mono does so for every SIGILL, and for a SIGSEGV or
+// SIGBUS in managed code above the page of its null-reference checks, a stack overflow among
+// them (signals.md section 5). Which code faulted, the handler cannot tell, so every such
+// SIGSEGV or SIGBUS counts.
+static bool runtime_may_end(int signal_number, const siginfo_t *info) {
+    if (signal_number == SIGILL) {
+        return true;
+    }
+    if ((signal_number != SIGSEGV && signal_number != SIGBUS) || !from_instruction(info)) {
+        return false;
+    }
+    return fault_address(info) > PP_SIGNAL_RUNTIME_NULL_LIMIT;
+}
+
 // Hands a fault to the action that the signal had before the dispatcher, with the original
 // arguments. The default action ends the app with a record; ignore returns, unless the signal
 // would come back at once, which counts as the default action. The handler of the action is
-// checked before its flags, which may be stale (pp_signal_is_default).
+// checked before its flags, which may be stale (pp_signal_is_default). A fault that the
+// runtime's crash path may end gets its record first; when the runtime chains to the
+// last-resort handler instead, that handler writes the record again.
 static void to_runtime(int signal_number, siginfo_t *info, void *context) {
-    if (stack_overflow(signal_number, info)) {
-        end_app(signal_number, info, context, PP_THREAD_MARK_NONE, PP_MESSAGE_STACK_OVERFLOW);
-        return;
-    }
     (void)atomic_fetch_add_explicit(&pp_signal_state.runtime_count, 1U, memory_order_relaxed);
+    const bool overflow = stack_overflow(signal_number, info);
+    const char *message = PP_MESSAGE_RUNTIME_DEFAULT;
+    const char *first_message = PP_MESSAGE_RUNTIME_CRASH;
+    if (overflow) {
+        message = PP_MESSAGE_STACK_OVERFLOW;
+        first_message = PP_MESSAGE_STACK_OVERFLOW;
+    }
 
     const int index = pp_signal_index(signal_number);
     if (index < 0 || !atomic_load_explicit(&pp_signal_state.installed, memory_order_acquire)) {
-        end_app(signal_number, info, context, PP_THREAD_MARK_NONE, PP_MESSAGE_RUNTIME_DEFAULT);
+        end_app(signal_number, info, context, PP_THREAD_MARK_NONE, message);
         return;
     }
     const struct sigaction *saved = &pp_signal_state.saved[index];
     if (pp_signal_is_ignored(saved)) {
         if (ignoring_repeats(signal_number, info)) {
-            end_app(signal_number, info, context, PP_THREAD_MARK_NONE, PP_MESSAGE_RUNTIME_DEFAULT);
+            end_app(signal_number, info, context, PP_THREAD_MARK_NONE, message);
         }
         return;
     }
     if (pp_signal_is_default(saved) || saved->sa_sigaction == pp_signal_dispatch) {
-        end_app(signal_number, info, context, PP_THREAD_MARK_NONE, PP_MESSAGE_RUNTIME_DEFAULT);
+        end_app(signal_number, info, context, PP_THREAD_MARK_NONE, message);
         return;
+    }
+    if (saved->sa_sigaction != pp_signal_last_resort && runtime_may_end(signal_number, info)) {
+        write_record(signal_number, info, context, PP_THREAD_MARK_NONE, first_message);
     }
     call_saved(saved, signal_number, info, context);
 }
@@ -328,10 +357,14 @@ void pp_signal_dispatch(int signal_number, siginfo_t *info, void *context) {
 
 // The handler that the runtime's own handler chains to for a fault it does not take, such as a
 // fault in native code: with Mono's crash chaining off, Mono calls the handler that it found
-// when it started and returns (signals.md section 5).
+// when it started, before its own crash path (signals.md section 5).
 void pp_signal_last_resort(int signal_number, siginfo_t *info, void *context) {
     const int saved_errno = errno;
-    end_app(signal_number, info, context, current_mark(), PP_MESSAGE_LAST_RESORT);
+    const char *message = PP_MESSAGE_LAST_RESORT;
+    if (stack_overflow(signal_number, info)) {
+        message = PP_MESSAGE_STACK_OVERFLOW;
+    }
+    end_app(signal_number, info, context, current_mark(), message);
     errno = saved_errno;
 }
 

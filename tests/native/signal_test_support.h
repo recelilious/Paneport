@@ -18,6 +18,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
@@ -34,10 +35,12 @@
 #define PP_ENVIRONMENT (*_NSGetEnviron())
 
 // The stand-in for the runtime's handler. It resolves a fault in the pages it owns, or one
-// that a thread sent, as the runtime resolves a managed null reference; a fault of an
-// instruction elsewhere it passes to the handler it found when it was installed, as Mono does
-// with crash chaining off. A handler receives no argument of the test, so each signal test
-// program keeps one of these as its documented singleton (C-0010 section 3).
+// that a thread sent, as the runtime resolves a managed null reference. A fault of an
+// instruction elsewhere it treats as Mono does with crash chaining off (signals.md section 5):
+// a SIGILL, and a fault in managed code when the test says the fault lies there, end in the
+// crash path, without chaining; any other fault it passes to the handler it found when it was
+// installed. A handler receives no argument of the test, so each signal test program keeps
+// one of these as its documented singleton (C-0010 section 3).
 typedef struct pp_stand_in_t {
     _Atomic(uint64_t) counts[PP_SIGNAL_COUNT]; // Faults received, per signal index.
     _Atomic(int) last_signal;
@@ -51,6 +54,7 @@ typedef struct pp_stand_in_t {
     _Atomic(bool) owns_all;         // Whether it resolves every fault of an instruction.
     _Atomic(uintptr_t) owned_start; // Else the pages that it resolves.
     _Atomic(uintptr_t) owned_end;
+    _Atomic(bool) in_managed_code; // Whether a fault that it does not own lies in managed code.
     struct sigaction previous[PP_SIGNAL_COUNT];
 } pp_stand_in_t;
 
@@ -83,6 +87,17 @@ static inline bool pp_test_planted_instruction(int signal_number) {
     }
 }
 
+// Mono's crash path with crash chaining off: SIGABRT goes back to the default action, which
+// takes the dispatcher away from it, and abort() ends the process without chaining.
+static inline void pp_stand_in_crash_path(void) {
+    struct sigaction action;
+    memset(&action, 0, sizeof action);
+    action.sa_handler = SIG_DFL;
+    (void)sigemptyset(&action.sa_mask);
+    (void)sigaction(SIGABRT, &action, NULL);
+    abort();
+}
+
 // The body of a stand-in's handler. Each test program's handler calls it with its singleton.
 static inline void pp_stand_in_handle(pp_stand_in_t *stand_in, int signal_number, siginfo_t *info,
                                       void *context) {
@@ -110,6 +125,9 @@ static inline void pp_stand_in_handle(pp_stand_in_t *stand_in, int signal_number
         pp_signal_context_set_pc(context,
                                  pp_signal_context_pc(context) + PP_SIGNAL_INSTRUCTION_SIZE);
         return;
+    }
+    if (signal_number == SIGILL || atomic_load(&stand_in->in_managed_code)) {
+        pp_stand_in_crash_path();
     }
     // A fault that nothing resolves would fault again for ever, so without a handler to pass
     // it to the process ends.
@@ -203,6 +221,18 @@ static inline void pp_raise_signal(int signal_number, uint64_t *address) {
     }
 }
 
+// Takes stack in steps of 1 KiB until the calling thread's stack runs out, as a runaway
+// recursion does. A loop of alloca needs no recursion, and the sanitizers leave this function
+// alone, so the fault comes from its own store just below the stack. It returns only if
+// *going_on turns false.
+__attribute__((noinline, no_sanitize("address", "thread"))) static inline void
+pp_exhaust_stack(const volatile bool *going_on) {
+    while (*going_on) {
+        volatile unsigned char *step = __builtin_alloca(1024U);
+        step[0] = 1U;
+    }
+}
+
 // The crash record of a folder, read at the offsets of docs/design/native-host.md section 8.
 typedef struct pp_test_record_t {
     int32_t signal;
@@ -239,6 +269,13 @@ static inline void pp_read_crash_record(const char *folder, pp_test_record_t *re
     record->message[sizeof record->message - 1U] = '\0';
 }
 
+// Whether a folder holds a crash record.
+static inline bool pp_has_crash_record(const char *folder) {
+    char path[1024];
+    PP_CHECK(snprintf(path, sizeof path, "%s/crash-record.bin", folder) > 0);
+    return access(path, F_OK) == 0;
+}
+
 static inline void pp_remove_record_folder(const char *folder) {
     pp_remove_file(folder, "crash-record.bin");
     pp_remove_file(folder, "crash-record.tmp");
@@ -265,13 +302,25 @@ static inline void pp_check_ended_by(int status, int signal_number) {
 
 // A child writes the address it is about to fault at into its folder, for its parent to compare
 // with the record.
-static inline void pp_write_planted(const char *folder, const volatile void *address) {
+static inline void pp_write_planted_value(const char *folder, uint64_t address) {
     char path[1024];
     PP_CHECK(snprintf(path, sizeof path, "%s/planted.txt", folder) > 0);
     FILE *file = fopen(path, "w");
     PP_CHECK(file != NULL);
-    PP_CHECK(fprintf(file, "%llu\n", (unsigned long long)(uintptr_t)address) > 0);
+    PP_CHECK(fprintf(file, "%llu\n", (unsigned long long)address) > 0);
     PP_CHECK_EQUAL(fclose(file), 0);
+}
+
+static inline void pp_write_planted(const char *folder, const volatile void *address) {
+    pp_write_planted_value(folder, (uint64_t)(uintptr_t)address);
+}
+
+// The pointer to an address that a test names by its number, such as one in the first page.
+static inline const volatile void *pp_test_address(uint64_t address) {
+    const volatile void *pointer = NULL;
+    const uintptr_t value = (uintptr_t)address;
+    memcpy((void *)&pointer, &value, sizeof pointer);
+    return pointer;
 }
 
 static inline uint64_t pp_read_planted(const char *folder) {
@@ -287,6 +336,64 @@ static inline uint64_t pp_read_planted(const char *folder) {
     PP_CHECK(pp_read_number(line, "", &address, NULL));
     return (uint64_t)address;
 }
+
+// How far below a thread's stack a test accepts the fault of an overflow; the dispatcher's
+// own reach is the same (signal_handler.c).
+#define PP_TEST_OVERFLOW_REACH ((uint64_t)1024U * 1024U)
+
+// How a child case must end, and the record it must leave. The child writes the address it
+// faults at with pp_write_planted, 0 when the test cannot know it, or the lowest address of
+// its stack before it overflows the stack.
+typedef struct pp_child_end_t {
+    int ended_by;        // The signal that ends the child, or 0 for the record's own signal.
+    int signal;          // The record's signal, or 0 for SIGSEGV or SIGBUS, whichever came.
+    uint32_t role;       // A PP_THREAD_ROLE_ value.
+    const char *message; // The record's message.
+    bool below_stack;    // Whether the planted address is the stack's, which the fault lies below.
+    bool any_code;       // Whether the code goes unchecked: Darwin gives a breakpoint code 0.
+} pp_child_end_t;
+
+// Runs a child case in a folder of its own and checks how it ended and the record it left.
+static inline void pp_check_child_end(const char *program, const char *child_case,
+                                      const pp_child_end_t *expected) {
+    char folder[64];
+    pp_make_folder(folder, sizeof folder);
+    const int status = pp_run_child(program, child_case, folder);
+    PP_CHECK(WIFSIGNALED(status));
+    const uint64_t planted = pp_read_planted(folder);
+    pp_test_record_t record;
+    pp_read_crash_record(folder, &record);
+    if (expected->signal != 0) {
+        PP_CHECK_EQUAL(record.signal, expected->signal);
+    } else {
+        PP_CHECK(record.signal == SIGSEGV || record.signal == SIGBUS);
+    }
+    pp_check_ended_by(status, expected->ended_by != 0 ? expected->ended_by : record.signal);
+    if (!expected->any_code) {
+        PP_CHECK(record.code > 0);
+    }
+    PP_CHECK_EQUAL(record.thread_role, expected->role);
+    if (expected->below_stack) {
+        PP_CHECK(record.fault_address < planted);
+        PP_CHECK(planted - record.fault_address <= PP_TEST_OVERFLOW_REACH);
+    } else if (planted != 0U) {
+        PP_CHECK_EQUAL(record.fault_address, planted);
+    }
+    PP_CHECK(record.program_counter != 0U);
+    PP_CHECK_TEXT(record.message, expected->message);
+    pp_remove_record_folder(folder);
+}
+
+// The messages of the dispatcher's crash records (signal_handler.c).
+#define PP_TEST_MESSAGE_DEFAULT "A fault outside the guest path that nothing handled."
+#define PP_TEST_MESSAGE_LAST_RESORT "A fault that the runtime did not handle."
+#define PP_TEST_MESSAGE_CRASH_PATH "A fault that ended in the runtime's crash path."
+#define PP_TEST_MESSAGE_OVERFLOW "A stack overflow outside the guest path."
+#define PP_TEST_MESSAGE_DECLINED "The guest fault handler declined a fault."
+
+// How long a child that might loop for ever runs before SIGALRM ends it, so that a test of a
+// fault that must end the app fails quickly instead of waiting for the CTest timeout.
+#define PP_TEST_CHILD_ALARM_SECONDS 20U
 
 // A child case: it receives the folder that its parent made for its crash record.
 typedef struct pp_child_case_t {

@@ -169,6 +169,65 @@ static void ignored_sent_signal_returns(void) {
     PP_CHECK_EQUAL(after.runtime - before.runtime, 1U);
 }
 
+// The same with SA_SIGINFO in the flags of the ignored action: the dispatcher judges an action
+// by its handler, which its flags may not match, so it never calls SIG_IGN as a function.
+static void ignored_with_siginfo_returns(void) {
+    struct sigaction action;
+    memset(&action, 0, sizeof action);
+    action.sa_handler = SIG_IGN;
+    action.sa_flags = SA_SIGINFO;
+    PP_CHECK_EQUAL(sigemptyset(&action.sa_mask), 0);
+    PP_CHECK_EQUAL(sigaction(SIGABRT, &action, NULL), 0);
+    struct sigaction current;
+    PP_CHECK_EQUAL(sigaction(SIGABRT, NULL, &current), 0);
+    PP_CHECK(pp_signal_is_ignored(&current));
+    PP_CHECK(pp_signal_has_flag(current.sa_flags, SA_SIGINFO));
+    pp_start_host(NULL);
+
+    pp_signal_counters_t before;
+    pp_signals_read_counters(&before);
+    pp_run_on_thread(send_abort, NULL);
+    pp_signal_counters_t after;
+    pp_signals_read_counters(&after);
+    PP_CHECK_EQUAL(after.runtime - before.runtime, 1U);
+}
+
+static void *fault_near_null(void *argument) {
+    (void)argument;
+    pp_signal_plant_read(pp_test_address(16U));
+    return NULL;
+}
+
+static void *fault_above_null(void *argument) {
+    (void)argument;
+    pp_signal_plant_read(pp_test_address((uint64_t)PP_SIGNAL_RUNTIME_NULL_LIMIT + 16U));
+    return NULL;
+}
+
+// A fault in the first page, which the runtime resolves as a managed null reference, needs no
+// record. A fault above it gets its record before it goes to the runtime, and the record stays
+// when the runtime resolves the fault after all, as here (signals.md section 5).
+static void first_page_fault_needs_no_record(void) {
+    pp_stand_in_own(&s_stand_in, NULL, 2U * (size_t)PP_SIGNAL_RUNTIME_NULL_LIMIT);
+    pp_stand_in_install(&s_stand_in, stand_in_handler);
+    char folder[64];
+    pp_make_folder(folder, sizeof folder);
+    pp_start_host(folder);
+
+    pp_run_on_thread(fault_near_null, NULL);
+    PP_CHECK_EQUAL(pp_stand_in_count(&s_stand_in, SIGSEGV), 1U);
+    PP_CHECK(!pp_has_crash_record(folder));
+
+    pp_run_on_thread(fault_above_null, NULL);
+    PP_CHECK_EQUAL(pp_stand_in_count(&s_stand_in, SIGSEGV), 2U);
+    pp_test_record_t record;
+    pp_read_crash_record(folder, &record);
+    PP_CHECK_EQUAL(record.signal, SIGSEGV);
+    PP_CHECK_EQUAL(record.fault_address, (uint64_t)PP_SIGNAL_RUNTIME_NULL_LIMIT + 16U);
+    PP_CHECK_TEXT(record.message, PP_TEST_MESSAGE_CRASH_PATH);
+    pp_remove_record_folder(folder);
+}
+
 // Child: SIGBUS has the default action when pp_init runs, so a fault on a page that cannot be
 // read ends the child with a record.
 static void child_default_action(const char *folder) {
@@ -183,10 +242,9 @@ static void child_default_action(const char *folder) {
     pp_signal_plant_read(page);
 }
 
-// Child: the stand-in owns no page, so it passes the fault to the handler it found, the
-// last-resort handler, as Mono does with crash chaining off.
+// Child: the stand-in owns no page, so it passes the fault, which lies in native code, to the
+// handler it found, the last-resort handler, as Mono does with crash chaining off.
 static void child_runtime_declines(const char *folder) {
-    atomic_store(&s_stand_in.owns_all, false);
     pp_stand_in_install(&s_stand_in, stand_in_handler);
     pp_start_host(folder);
     unsigned char *page = pp_map_pages(1U);
@@ -194,14 +252,49 @@ static void child_runtime_declines(const char *folder) {
     pp_signal_plant_read(page);
 }
 
-static void *overflow_stack(void *argument) {
+// Child: Mono ends a SIGILL in its crash path without chaining, so the dispatcher writes the
+// record before it hands the fault on.
+static void child_illegal_to_crash_path(const char *folder) {
+    pp_stand_in_install(&s_stand_in, stand_in_handler);
+    pp_start_host(folder);
+    pp_write_planted(folder, NULL);
+    pp_signal_plant_illegal();
+}
+
+// Child: Mono ends a fault in managed code above the first page in its crash path too.
+static void child_managed_fault_to_crash_path(const char *folder) {
+    atomic_store(&s_stand_in.in_managed_code, true);
+    pp_stand_in_install(&s_stand_in, stand_in_handler);
+    pp_start_host(folder);
+    unsigned char *page = pp_map_pages(1U);
+    pp_write_planted(folder, page);
+    pp_signal_plant_read(page);
+}
+
+// Child: SIGTRAP is ignored when pp_init runs. A breakpoint would trap again at once, so the
+// dispatcher takes the ignored SIGTRAP for the default action, whatever code Darwin gives it.
+// The alarm ends a child that loops instead.
+static void child_ignored_breakpoint(const char *folder) {
+    struct sigaction action;
+    memset(&action, 0, sizeof action);
+    action.sa_handler = SIG_IGN;
+    PP_CHECK_EQUAL(sigemptyset(&action.sa_mask), 0);
+    PP_CHECK_EQUAL(sigaction(SIGTRAP, &action, NULL), 0);
+    pp_start_host(folder);
+    pp_write_planted(folder, NULL);
+    (void)alarm(PP_TEST_CHILD_ALARM_SECONDS);
+    pp_signal_plant_breakpoint();
+}
+
+static void *fault_below_stack(void *argument) {
     const char *folder = argument;
     uintptr_t low = 0U;
     uintptr_t high = 0U;
     PP_CHECK(pp_platform_stack_bounds(&low, &high));
     // An address on the guard page below the thread's stack, where a deeper frame would have
-    // landed, reached from the frame of this function. A local variable would not do: with
-    // detect_stack_use_after_return, AddressSanitizer keeps locals on a stack of its own.
+    // landed, reached from the frame of this function, which has the whole stack to spare. A
+    // local variable would not do: with detect_stack_use_after_return, AddressSanitizer keeps
+    // locals on a stack of its own.
     const unsigned char *frame = __builtin_frame_address(0);
     PP_CHECK((uintptr_t)frame > low);
     PP_CHECK((uintptr_t)frame < high);
@@ -211,42 +304,89 @@ static void *overflow_stack(void *argument) {
     return NULL;
 }
 
-// Child: a fault just below a thread's stack ends the app as a stack overflow.
-static void child_stack_overflow(const char *folder) {
+// Child: a fault just below the stack of an unmarked thread, which has no alternate stack, is
+// told apart as a stack overflow. It simulates one: a real overflow there leaves the kernel no
+// stack to run the handler on (signals.md section 7).
+static void child_simulated_overflow(const char *folder) {
     pp_start_host(folder);
-    pp_run_on_thread(overflow_stack, (void *)folder);
+    pp_run_on_thread(fault_below_stack, (void *)folder);
 }
 
-static void check_child_record(const char *child_case, int signal_number, uint32_t role,
-                               const char *message) {
-    char folder[64];
-    pp_make_folder(folder, sizeof folder);
-    pp_check_ended_by(pp_run_child(s_program, child_case, folder), signal_number);
-    const uint64_t planted = pp_read_planted(folder);
-    pp_test_record_t record;
-    pp_read_crash_record(folder, &record);
-    PP_CHECK_EQUAL(record.signal, signal_number);
-    PP_CHECK(record.code > 0);
-    PP_CHECK_EQUAL(record.thread_role, role);
-    PP_CHECK_EQUAL(record.fault_address, planted);
-    PP_CHECK(record.program_counter != 0U);
-    PP_CHECK_TEXT(record.message, message);
-    pp_remove_record_folder(folder);
+// Child: the main thread runs out of stack. The dispatcher runs on the main thread's alternate
+// stack and hands the overflow to the last-resort handler, which writes its record.
+static void child_main_thread_overflow(const char *folder) {
+    pp_start_host(folder);
+    uintptr_t low = 0U;
+    uintptr_t high = 0U;
+    PP_CHECK(pp_platform_stack_bounds(&low, &high));
+    pp_write_planted_value(folder, (uint64_t)low);
+    volatile bool going_on = true;
+    pp_exhaust_stack(&going_on);
+}
+
+// Child: the same with a runtime that ends the overflow in its crash path, as Mono does in
+// managed code. The overflow goes to the runtime (C-0005 section 4), with its record first.
+static void child_main_thread_overflow_to_crash_path(const char *folder) {
+    atomic_store(&s_stand_in.in_managed_code, true);
+    pp_stand_in_install(&s_stand_in, stand_in_handler);
+    child_main_thread_overflow(folder);
 }
 
 static void default_action_ends_with_record(void) {
-    check_child_record("default_action", SIGBUS, PP_THREAD_ROLE_MAIN,
-                       "A fault outside the guest path that nothing handled.");
+    const pp_child_end_t expected = {
+        .signal = SIGBUS, .role = PP_THREAD_ROLE_MAIN, .message = PP_TEST_MESSAGE_DEFAULT};
+    pp_check_child_end(s_program, "default_action", &expected);
 }
 
 static void runtime_declined_fault_ends_with_record(void) {
-    check_child_record("runtime_declines", SIGBUS, PP_THREAD_ROLE_MAIN,
-                       "A fault that the runtime did not handle.");
+    const pp_child_end_t expected = {
+        .signal = SIGBUS, .role = PP_THREAD_ROLE_MAIN, .message = PP_TEST_MESSAGE_LAST_RESORT};
+    pp_check_child_end(s_program, "runtime_declines", &expected);
 }
 
-static void stack_overflow_ends_with_record(void) {
-    check_child_record("stack_overflow", SIGBUS, PP_THREAD_ROLE_OTHER,
-                       "A stack overflow outside the guest path.");
+static void crash_path_illegal_keeps_record(void) {
+    const pp_child_end_t expected = {.ended_by = SIGABRT,
+                                     .signal = SIGILL,
+                                     .role = PP_THREAD_ROLE_MAIN,
+                                     .message = PP_TEST_MESSAGE_CRASH_PATH,
+                                     .any_code = true};
+    pp_check_child_end(s_program, "illegal_to_crash_path", &expected);
+}
+
+static void crash_path_managed_fault_keeps_record(void) {
+    const pp_child_end_t expected = {.ended_by = SIGABRT,
+                                     .signal = SIGBUS,
+                                     .role = PP_THREAD_ROLE_MAIN,
+                                     .message = PP_TEST_MESSAGE_CRASH_PATH};
+    pp_check_child_end(s_program, "managed_fault_to_crash_path", &expected);
+}
+
+static void ignored_breakpoint_ends_with_record(void) {
+    const pp_child_end_t expected = {.signal = SIGTRAP,
+                                     .role = PP_THREAD_ROLE_MAIN,
+                                     .message = PP_TEST_MESSAGE_DEFAULT,
+                                     .any_code = true};
+    pp_check_child_end(s_program, "ignored_breakpoint", &expected);
+}
+
+static void simulated_overflow_ends_with_record(void) {
+    const pp_child_end_t expected = {
+        .signal = SIGBUS, .role = PP_THREAD_ROLE_OTHER, .message = PP_TEST_MESSAGE_OVERFLOW};
+    pp_check_child_end(s_program, "simulated_overflow", &expected);
+}
+
+static void main_thread_overflow_ends_with_record(void) {
+    const pp_child_end_t expected = {
+        .role = PP_THREAD_ROLE_MAIN, .message = PP_TEST_MESSAGE_OVERFLOW, .below_stack = true};
+    pp_check_child_end(s_program, "main_thread_overflow", &expected);
+}
+
+static void main_thread_overflow_reaches_runtime(void) {
+    const pp_child_end_t expected = {.ended_by = SIGABRT,
+                                     .role = PP_THREAD_ROLE_MAIN,
+                                     .message = PP_TEST_MESSAGE_OVERFLOW,
+                                     .below_stack = true};
+    pp_check_child_end(s_program, "main_thread_overflow_to_crash_path", &expected);
 }
 
 int main(int argc, char **argv) {
@@ -255,14 +395,26 @@ int main(int argc, char **argv) {
         {"every_signal_reaches_runtime_once", every_signal_reaches_runtime_once},
         {"plain_handler_gets_signal", plain_handler_gets_signal},
         {"ignored_sent_signal_returns", ignored_sent_signal_returns},
+        {"ignored_with_siginfo_returns", ignored_with_siginfo_returns},
+        {"first_page_fault_needs_no_record", first_page_fault_needs_no_record},
         {"default_action_ends_with_record", default_action_ends_with_record},
         {"runtime_declined_fault_ends_with_record", runtime_declined_fault_ends_with_record},
-        {"stack_overflow_ends_with_record", stack_overflow_ends_with_record},
+        {"crash_path_illegal_keeps_record", crash_path_illegal_keeps_record},
+        {"crash_path_managed_fault_keeps_record", crash_path_managed_fault_keeps_record},
+        {"ignored_breakpoint_ends_with_record", ignored_breakpoint_ends_with_record},
+        {"simulated_overflow_ends_with_record", simulated_overflow_ends_with_record},
+        {"main_thread_overflow_ends_with_record", main_thread_overflow_ends_with_record},
+        {"main_thread_overflow_reaches_runtime", main_thread_overflow_reaches_runtime},
     };
     static const pp_child_case_t children[] = {
         {"default_action", child_default_action},
         {"runtime_declines", child_runtime_declines},
-        {"stack_overflow", child_stack_overflow},
+        {"illegal_to_crash_path", child_illegal_to_crash_path},
+        {"managed_fault_to_crash_path", child_managed_fault_to_crash_path},
+        {"ignored_breakpoint", child_ignored_breakpoint},
+        {"simulated_overflow", child_simulated_overflow},
+        {"main_thread_overflow", child_main_thread_overflow},
+        {"main_thread_overflow_to_crash_path", child_main_thread_overflow_to_crash_path},
     };
     return pp_signal_test_main(argc, argv, cases, PP_CASE_COUNT(cases), children,
                                PP_CASE_COUNT(children));

@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "crash_record.h"
+#include "platform.h"
 #include "pp_check.h"
 #include "signal_test_support.h"
 #include "test_support.h"
@@ -158,25 +159,41 @@ static void child_without_handler(const char *folder) {
     pp_run_on_thread(fault_marked_in_child, &fault);
 }
 
+static void *overflow_as_guest(void *argument) {
+    const char *folder = argument;
+    PP_CHECK_EQUAL(pp_signals_mark_thread(PP_THREAD_MARK_GUEST), PP_OK);
+    uintptr_t low = 0U;
+    uintptr_t high = 0U;
+    PP_CHECK(pp_platform_stack_bounds(&low, &high));
+    pp_write_planted_value(folder, (uint64_t)low);
+    volatile bool going_on = true;
+    pp_exhaust_stack(&going_on);
+    return NULL;
+}
+
+// Child: a marked thread runs out of stack. The dispatcher runs on the alternate stack that
+// marking gave the thread, and the guest fault handler declines the overflow.
+static void child_marked_overflow(const char *folder) {
+    pp_start_host(folder);
+    PP_CHECK_EQUAL(pp_signals_set_guest_handler(declining_handler, NULL), PP_OK);
+    pp_run_on_thread(overflow_as_guest, (void *)folder);
+}
+
 static void check_declined(const char *child_case) {
-    char folder[64];
-    pp_make_folder(folder, sizeof folder);
-    pp_check_ended_by(pp_run_child(s_program, child_case, folder), SIGBUS);
-    const uint64_t planted = pp_read_planted(folder);
-    pp_test_record_t record;
-    pp_read_crash_record(folder, &record);
-    PP_CHECK_EQUAL(record.signal, SIGBUS);
-    PP_CHECK(record.code > 0);
-    PP_CHECK_EQUAL(record.thread_role, PP_THREAD_ROLE_GUEST);
-    PP_CHECK_EQUAL(record.fault_address, planted);
-    PP_CHECK(record.program_counter != 0U);
-    PP_CHECK_TEXT(record.message, "The guest fault handler declined a fault.");
-    pp_remove_record_folder(folder);
+    const pp_child_end_t expected = {
+        .signal = SIGBUS, .role = PP_THREAD_ROLE_GUEST, .message = PP_TEST_MESSAGE_DECLINED};
+    pp_check_child_end(s_program, child_case, &expected);
 }
 
 static void declined_fault_ends_with_record(void) { check_declined("declines"); }
 
 static void fault_without_handler_ends_with_record(void) { check_declined("without_handler"); }
+
+static void marked_thread_overflow_ends_with_record(void) {
+    const pp_child_end_t expected = {
+        .role = PP_THREAD_ROLE_GUEST, .message = PP_TEST_MESSAGE_DECLINED, .below_stack = true};
+    pp_check_child_end(s_program, "marked_overflow", &expected);
+}
 
 // Holds the first fault until the test releases it.
 static uint32_t holding_handler(pp_guest_fault_t *fault, void *user_data) {
@@ -237,10 +254,12 @@ int main(int argc, char **argv) {
         {"declined_fault_ends_with_record", declined_fault_ends_with_record},
         {"fault_without_handler_ends_with_record", fault_without_handler_ends_with_record},
         {"removal_waits_for_handler", removal_waits_for_handler},
+        {"marked_thread_overflow_ends_with_record", marked_thread_overflow_ends_with_record},
     };
     static const pp_child_case_t children[] = {
         {"declines", child_declines},
         {"without_handler", child_without_handler},
+        {"marked_overflow", child_marked_overflow},
     };
     return pp_signal_test_main(argc, argv, cases, PP_CASE_COUNT(cases), children,
                                PP_CASE_COUNT(children));

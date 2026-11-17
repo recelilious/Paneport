@@ -66,9 +66,12 @@ internal static partial class CompositionRoot
         // shell's AvaloniaView itself, so no app delegate or scene delegate of Avalonia's is used.
         AppBuilder.Configure<App>().UseiOS().SetupWithoutStarting();
 
-        // With Mono's crash chaining off, a fault that Mono does not take goes to the handler it
-        // found when it started, the host's last-resort handler, which writes the crash record
-        // (C-0005 section 4, signals.md section 5). The runtime runs; pp_init comes next.
+        // C-0005 section 4 turns Mono's crash chaining off. Mono then chains a fault in native
+        // code, or on a thread it does not know, to the handler it found when it started, the
+        // host's last-resort handler, which writes the crash record. A SIGILL, and a fault in
+        // managed code that is no null reference, end in Mono's own crash path instead, for which
+        // the dispatcher writes the record first (signals.md section 5). The runtime runs;
+        // pp_init comes next.
         var crashChaining = CrashChainingState.Run(MonoRuntime.TurnOffCrashChaining, log);
 
         var nativeHost = new InteropNativeHost();

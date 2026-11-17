@@ -22,6 +22,12 @@
 // empty, and how often it tries to enter a handler box while writers switch boxes.
 #define PP_SIGNAL_READ_ATTEMPTS 4
 
+// The highest fault address that Mono takes for a managed null reference. Its implicit null
+// check compares the address with mono_target_pagesize(), which is 4 KiB on every target, not
+// the system's page size; a SIGSEGV or SIGBUS above it that reaches Mono's crash path gets its
+// record before it goes to Mono (signals.md section 5).
+#define PP_SIGNAL_RUNTIME_NULL_LIMIT 4096U
+
 // One marked thread. Only the thread itself claims, changes and frees its slot, under the
 // mutex of the thread table; the handler on that thread compares the slot's thread with
 // pthread_self().

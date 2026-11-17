@@ -21,10 +21,13 @@ public static partial class MonoRuntime
     public const string LibraryName = "__Internal";
 
     /// <summary>
-    /// Turns Mono's crash chaining off (<c>mono_set_crash_chaining(FALSE)</c>), so that Mono hands
-    /// a fault it does not take to the handler it found when it started, the host's last-resort
-    /// handler, instead of writing its own crash report first. Main thread, at startup, after the
-    /// runtime started and before <c>pp_init</c>.
+    /// Turns Mono's crash chaining off (<c>mono_set_crash_chaining(FALSE)</c>), as C-0005 section 4
+    /// requires. Mono then chains a fault in native code, or on a thread it does not know, to the
+    /// handler it found when it started, the host's last-resort handler, before any report of its
+    /// own. A SIGILL, and a fault in managed code above the null-reference page, end in Mono's
+    /// crash path and <c>abort()</c> without chaining; the host's dispatcher writes their crash
+    /// record before it hands them to Mono (docs/design/signals.md section 5). Main thread, at
+    /// startup, after the runtime started and before <c>pp_init</c>.
     /// </summary>
     /// <exception cref="EntryPointNotFoundException">The runtime has no such function.</exception>
     /// <exception cref="DllNotFoundException">The main program cannot be opened.</exception>

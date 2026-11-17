@@ -324,7 +324,7 @@ Public material consulted (C-0001 section 6):
 - RFC 2606, reserved domain names such as `example.com`: <https://www.rfc-editor.org/rfc/rfc2606>
 - RFC 7519, JSON Web Tokens, including unsecured tokens with `"alg":"none"`: <https://www.rfc-editor.org/rfc/rfc7519>
 - The UDID format of devices from 2018 on: <https://developer.apple.com/forums/thread/108953> and <https://blog.diawi.com/2018/10/15/2018-apple-devices-and-their-new-udid-format/>
-- The ECID, in Apple's Platform Security guide: <https://support.apple.com/guide/security/aside/sec21774ef95/web>
+- The ECID, in the glossary of Apple's Platform Security guide: <https://help.apple.com/pdf/security/en_US/apple-platform-security-guide.pdf>
 - Team identifiers and App ID prefixes: <https://developer.apple.com/library/archive/technotes/tn2311/_index.html>
 - Randomized serial numbers: <https://www.macrumors.com/2021/03/09/apple-randomized-serial-numbers-early-2021/>
 - Steam ID formats, in SteamKit2: <https://github.com/SteamRE/SteamKit/blob/master/SteamKit2/SteamKit2/Types/SteamID.cs>

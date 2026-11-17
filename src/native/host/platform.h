@@ -25,10 +25,4 @@ void pp_platform_name_thread(const char *name);
 // system does not report it.
 bool pp_platform_device_model(char *buffer, size_t size, size_t *needed);
 
-// Reads the lowest and the highest address of the calling thread's stack, for the signal
-// dispatcher's stack overflow check. Async-signal-safe: Apple's pthread_get_stackaddr_np and
-// pthread_get_stacksize_np read the calling thread's own record, without a lock. Returns
-// false when the system reports no stack.
-bool pp_platform_stack_bounds(uintptr_t *low, uintptr_t *high);
-
 #endif // PANEPORT_HOST_PLATFORM_H

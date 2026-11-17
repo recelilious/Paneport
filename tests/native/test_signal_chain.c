@@ -16,10 +16,10 @@
 #include <time.h>
 
 #include "crash_record.h"
-#include "platform.h"
 #include "pp_check.h"
 #include "signal_test_support.h"
 #include "test_support.h"
+#include "thread_role.h"
 
 // The documented singletons of this program (C-0010 section 3): what the handlers saw, and how
 // long the crash record writer's hook holds a write, because a signal handler and the hook
@@ -299,7 +299,7 @@ static void *fault_below_stack(void *argument) {
     const char *folder = argument;
     uintptr_t low = 0U;
     uintptr_t high = 0U;
-    PP_CHECK(pp_platform_stack_bounds(&low, &high));
+    PP_CHECK(pp_thread_stack_bounds(&low, &high));
     // An address on the guard page below the thread's stack, where a deeper frame would have
     // landed, reached from the frame of this function, which has the whole stack to spare. A
     // local variable would not do: with detect_stack_use_after_return, AddressSanitizer keeps
@@ -327,7 +327,7 @@ static void child_main_thread_overflow(const char *folder) {
     pp_start_host(folder);
     uintptr_t low = 0U;
     uintptr_t high = 0U;
-    PP_CHECK(pp_platform_stack_bounds(&low, &high));
+    PP_CHECK(pp_thread_stack_bounds(&low, &high));
     pp_write_planted_value(folder, (uint64_t)low);
     volatile bool going_on = true;
     pp_exhaust_stack(&going_on);

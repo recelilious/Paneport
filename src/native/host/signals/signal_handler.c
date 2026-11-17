@@ -6,9 +6,9 @@
 // probe handlers, the chain to the saved actions, the end of the app with a crash record, and
 // the last-resort handler that the host installs when it is loaded. It calls only functions
 // that POSIX lists as async-signal-safe, the host's own crash record writer
-// (pp_crash_record_write and pp_crash_record_writer_idle), pp_host_thread_role and
-// pp_platform_stack_bounds, and the handlers it chains to. A CTest test lists the undefined
-// symbols of this file's object with nm and fails on any other call
+// (pp_crash_record_write and pp_crash_record_writer_idle), the thread role and stack bounds of
+// thread_role.c, and the handlers it chains to. A CTest test lists the undefined symbols of
+// this file's object and thread_role.c's with nm and fails on any other call
 // (tests/native/check_signal_safe_calls.cmake).
 
 #include <errno.h>
@@ -23,11 +23,10 @@
 #include <time.h>
 
 #include "crash_record.h"
-#include "host_state.h"
-#include "platform.h"
 #include "signal_context.h"
 #include "signal_state.h"
 #include "signals.h"
+#include "thread_role.h"
 
 // How far below the lowest address of a thread's stack a fault still counts as a stack overflow:
 // the guard pages, and the frame of a function that skipped them.
@@ -310,7 +309,7 @@ static bool stack_overflow(int signal_number, const siginfo_t *info) {
     }
     uintptr_t low = 0U;
     uintptr_t high = 0U;
-    if (!pp_platform_stack_bounds(&low, &high)) {
+    if (!pp_thread_stack_bounds(&low, &high)) {
         return false;
     }
     const uint64_t address = fault_address(info);

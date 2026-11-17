@@ -65,8 +65,10 @@ set(PANEPORT_HOST_SOURCES
     host/signals/signal_install.c
     host/signals/signal_registry.c
     host/signals/thread_control.c
+    host/thread_role.c
 )
-set(PANEPORT_HOST_TEST_SOURCES host/signal_harness.c host/test_exports.c)
+set(PANEPORT_HOST_TEST_SOURCES
+    host/signal_harness.c host/signal_harness_handler.c host/test_exports.c)
 
 find_package(Threads REQUIRED)
 

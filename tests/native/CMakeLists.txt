@@ -94,21 +94,25 @@ target_include_directories(test_headers PRIVATE "${PANEPORT_REPOSITORY_ROOT}/src
 target_link_libraries(test_headers PRIVATE paneport_host)
 add_test(NAME test_headers.c17_and_cxx20 COMMAND test_headers)
 
-# The crash record writer and the signal dispatcher's handler call only async-signal-safe
-# functions (docs/design/native-host.md section 8, docs/design/signals.md section 10). The check
-# reads each one's object with nm.
+# The crash record writer, the signal dispatcher's handler with the thread role it reads, and
+# the harness's guest fault handler call only async-signal-safe functions
+# (docs/design/native-host.md section 8, docs/design/signals.md section 10). The check reads
+# each group's objects with nm.
 if(APPLE)
     set(strip_underscore ON)
 else()
     set(strip_underscore OFF)
 endif()
-foreach(source IN ITEMS crash_record_writer.c signal_handler.c)
-    get_filename_component(source_name "${source}" NAME_WE)
+foreach(group IN ITEMS "crash_record_writer.c" "signal_handler.c|thread_role.c"
+                       "signal_harness_handler.c")
+    string(REPLACE "|" ";" group_sources "${group}")
+    list(GET group_sources 0 first_source)
+    get_filename_component(source_name "${first_source}" NAME_WE)
     add_test(NAME ${source_name}.async_signal_safe_calls
         COMMAND "${CMAKE_COMMAND}"
             "-DNM=${CMAKE_NM}"
             "-DOBJECTS=$<TARGET_OBJECTS:paneport_host_objects>"
             "-DSTRIP_UNDERSCORE=${strip_underscore}"
-            "-DSOURCE=${source}"
+            "-DSOURCES=${group}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/check_signal_safe_calls.cmake")
 endforeach()

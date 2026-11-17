@@ -18,6 +18,7 @@
 #include "paneport/memory.h"
 #include "paneport/testing.h"
 #include "signals/signals.h"
+#include "thread_role.h"
 
 #define PP_MEMBER(type, member)                                                                    \
     {(uint32_t)sizeof(pp_test_layout_member_t), #member, (uint32_t)offsetof(type, member),         \

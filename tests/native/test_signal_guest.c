@@ -15,10 +15,10 @@
 #include <string.h>
 
 #include "crash_record.h"
-#include "platform.h"
 #include "pp_check.h"
 #include "signal_test_support.h"
 #include "test_support.h"
+#include "thread_role.h"
 
 // The documented singletons of this program (C-0010 section 3): the stand-in, which the
 // runtime's handler reaches without an argument, and the path that the program started with,
@@ -164,7 +164,7 @@ static void *overflow_as_guest(void *argument) {
     PP_CHECK_EQUAL(pp_signals_mark_thread(PP_THREAD_MARK_GUEST), PP_OK);
     uintptr_t low = 0U;
     uintptr_t high = 0U;
-    PP_CHECK(pp_platform_stack_bounds(&low, &high));
+    PP_CHECK(pp_thread_stack_bounds(&low, &high));
     pp_write_planted_value(folder, (uint64_t)low);
     volatile bool going_on = true;
     pp_exhaust_stack(&going_on);

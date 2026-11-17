@@ -19,6 +19,7 @@
 #include "paneport/testing.h"
 #include "pp_check.h"
 #include "test_support.h"
+#include "thread_role.h"
 
 static uint64_t read_le(const unsigned char *record, size_t offset, size_t size) {
     uint64_t value = 0U;

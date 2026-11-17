@@ -100,22 +100,29 @@ add_test(NAME test_headers.c17_and_cxx20 COMMAND test_headers)
 # The crash record writer, the signal dispatcher's handler with the thread role it reads, and
 # the harness's guest fault handler call only async-signal-safe functions
 # (docs/design/native-host.md section 8, docs/design/signals.md section 10). The check reads
-# each group's objects with nm.
+# a group's objects with nm: <name>.async_signal_safe_calls reads them as the test build
+# compiles them, and <name>_shipped.async_signal_safe_calls, for the two groups that ship, as
+# paneport_host_shipped compiles them, without PANEPORT_TEST_BUILD, so that code that only the
+# shipped builds have, such as their main-thread test, is read too.
 if(APPLE)
     set(strip_underscore ON)
 else()
     set(strip_underscore OFF)
 endif()
-foreach(group IN ITEMS "crash_record_writer.c" "signal_handler.c|thread_role.c"
-                       "signal_harness_handler.c")
-    string(REPLACE "|" ";" group_sources "${group}")
-    list(GET group_sources 0 first_source)
-    get_filename_component(source_name "${first_source}" NAME_WE)
-    add_test(NAME ${source_name}.async_signal_safe_calls
+function(paneport_signal_safe_check name library group)
+    add_test(NAME ${name}.async_signal_safe_calls
         COMMAND "${CMAKE_COMMAND}"
             "-DNM=${CMAKE_NM}"
-            "-DOBJECTS=$<TARGET_OBJECTS:paneport_host_objects>"
+            "-DOBJECTS=$<TARGET_OBJECTS:${library}>"
             "-DSTRIP_UNDERSCORE=${strip_underscore}"
             "-DSOURCES=${group}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/check_signal_safe_calls.cmake")
-endforeach()
+endfunction()
+paneport_signal_safe_check(crash_record_writer paneport_host_objects "crash_record_writer.c")
+paneport_signal_safe_check(crash_record_writer_shipped paneport_host_shipped
+    "crash_record_writer.c")
+paneport_signal_safe_check(signal_handler paneport_host_objects "signal_handler.c|thread_role.c")
+paneport_signal_safe_check(signal_handler_shipped paneport_host_shipped
+    "signal_handler.c|thread_role.c")
+paneport_signal_safe_check(signal_harness_handler paneport_host_objects
+    "signal_harness_handler.c")

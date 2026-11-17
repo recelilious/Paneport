@@ -6,7 +6,8 @@
 # the group does not define itself and that is not on the group's list (docs/design/native-host.md
 # section 8, docs/design/signals.md section 10). A call from one object of the group to a
 # function of another is checked through the other's calls. tests/native/CMakeLists.txt runs
-# it as a CTest test for each group:
+# it as a CTest test for each group, on the test build's objects and, for the groups that ship,
+# on the shipped build's too:
 #
 #   cmake -DNM=<nm> -DOBJECTS=<objects of the host> -DSTRIP_UNDERSCORE=<ON on Apple>
 #         -DSOURCES=<the group's sources, separated by |> -P check_signal_safe_calls.cmake

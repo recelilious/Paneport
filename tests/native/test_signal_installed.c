@@ -66,6 +66,8 @@ static void fails_before_init(void) {
 static void check_stack(bool expected) {
     stack_t current;
     PP_CHECK_EQUAL(sigaltstack(NULL, &current), 0);
+    (void)fprintf(stderr, "stack: flags %d, start %p, size %zu; expected %s%c", current.ss_flags,
+                  current.ss_sp, current.ss_size, expected ? "one" : "none", 10);
     if (expected) {
         PP_CHECK(!pp_signal_has_flag(current.ss_flags, SS_DISABLE));
         PP_CHECK_EQUAL(current.ss_size, PP_SIGNAL_STACK_SIZE);

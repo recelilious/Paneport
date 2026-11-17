@@ -128,10 +128,10 @@ static uint32_t choose_route(const siginfo_t *info, const void *context, uint32_
     if (!pool) {
         pool = in_pool(pp_signal_context_pc(context));
     }
+    *mark = current_mark();
     if (pool && atomic_load_explicit(&pp_signal_state.probe_mode, memory_order_acquire) != 0U) {
         return PP_FAULT_ROUTE_JIT_PROBE;
     }
-    *mark = current_mark();
     if (*mark != PP_THREAD_MARK_NONE) {
         return PP_FAULT_ROUTE_THREAD_MARK;
     }

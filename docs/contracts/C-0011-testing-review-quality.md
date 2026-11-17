@@ -92,6 +92,30 @@ Registered as under review, and not used until recelilious decides:
 
 Not allowed: FluentAssertions 8 and later. They are under Xceed's proprietary Community License, which is free only for non-commercial use (it counts open-source development as non-commercial) and needs a paid license for any commercial use. That makes it a non-commercial-only license, which C-0003 section 5 forbids.
 
+## Proposed changes for 1.3
+
+**Not yet accepted.** Version 1.2 above stays binding until recelilious approves these changes. They come from stage M4.2, which builds the Wine and FEX forks for arm64 macOS and runs our own Win32 test programs on them through a harness: the way the Medium stages from M4.2 to M8.1 are verified by script (plan section 7.1, `docs/design/runtime-macos-harness.md`).
+
+1. **Section 1, a new row after "Interface conformance".** Add a test level:
+
+   | Level | What it covers | Tools | Runs on |
+   |---|---|---|---|
+   | Runtime tests | Our own Win32 test programs of `tests/win32`, run under the Wine and FEX forks, with their output and exit codes compared with expected outputs | The harness in `tests/runtime` | macOS in CI |
+
+2. **Section 1, the row of native unit tests.** At the end of "What it covers", add "; and the parts of the runtime tests' harness, in `tests/runtime/unit`". The harness's own unit tests then run with the other native unit tests in the `native` job, under both sanitizer builds, and the `runtime` job runs the harness itself.
+
+3. **Section 4, a new row after `ios`.** Add a job:
+
+   | Job | Runner | Steps |
+   |---|---|---|
+   | `runtime` | macOS | Installs the build tools of the forks with `eng/mac/bootstrap.sh --forks`, restoring them from a cache whose key is their pins in `eng/toolchain.json` and the bootstrap script. Builds the Wine and FEX forks for macOS, restoring each build from a cache whose key is the fork's revision; the pins in `eng/toolchain.json` of the macOS image and of the tools that build the forks: Xcode, llvm-mingw, CMake, Ninja, Python, GNU Bison and flex; the fork's build script; `eng/mac/bootstrap.sh`; and `eng/mac/select-xcode.sh`. Saves each fork's build to the cache as soon as it is built. Builds the Win32 test programs of `tests/win32` with warnings as errors and analyzes them with llvm-mingw's clang-tidy; builds the harness; runs the harness's cases, which must pass, and its planted cases, which must fail and be named; uploads the logs. |
+
+4. **Section 4, when it runs.** Add after the rule on the `ios` job: "The `runtime` job runs for every pull request and every push to `main`; a push to another branch skips it, because the pull request's run covers it."
+
+5. **Section 3, the jobs a merge needs.** Replace "the `dotnet`, `native`, `ios` and `checks` jobs" with "the `dotnet`, `native`, `ios`, `runtime` and `checks` jobs".
+
+Items 4 and 5 are the two points that the brief of M4.2 left to recelilious, who chose them on 2026-11-17 (plan decision D14). Without item 4 the job would run on every push and every pull request, as the opening of section 4 says of all jobs; without item 5 a merge would not wait for it, and a change could break the runtime unnoticed until the next stage that runs it. A pull request that changes no fork, none of the pins in the key and none of the scripts in it restores both fork builds from the cache of `main` and runs the harness in minutes, as long as `main`'s entries have been used in the last 7 days and GitHub has not evicted them. One that changes a fork rebuilds that fork in the pull request, and again on `main` after the merge, because a cache that a pull request saves is visible only to that pull request; with Wine, each of those runs takes about 40 minutes. The key leaves out the pins that no fork build uses, such as gitleaks', so that moving them rebuilds nothing.
+
 ## Change log
 
 | Version | Date | Notes |

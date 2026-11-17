@@ -19,6 +19,7 @@ internal static class DeveloperViews
     {
         application.DataTemplates.Add(new FuncDataTemplate<DeveloperMenuViewModel>((menu, _) => Menu(menu)));
         application.DataTemplates.Add(new FuncDataTemplate<DeveloperToolViewModel>((tool, _) => Tool(tool)));
+        application.DataTemplates.Add(new FuncDataTemplate<SignalGateViewModel>((page, _) => SignalGatePage(page)));
     }
 
     private static ScrollViewer Menu(DeveloperMenuViewModel menu)
@@ -80,6 +81,65 @@ internal static class DeveloperViews
                 {
                     new TextBlock { Text = tool.Description, TextWrapping = TextWrapping.Wrap, Classes = { "secondary" } },
                     buttons,
+                    result,
+                },
+            },
+        };
+    }
+
+    // The signal gate page: the startup check, the buttons, the status, the live counters and the
+    // result, whose texts can be selected and copied into the record.
+    private static ScrollViewer SignalGatePage(SignalGateViewModel page)
+    {
+        var startup = new SelectableTextBlock { Text = page.StartupCheck, TextWrapping = TextWrapping.Wrap };
+        var status = new TextBlock { Text = page.Status, TextWrapping = TextWrapping.Wrap, Classes = { "name" } };
+        var counters = new SelectableTextBlock { Text = page.Counters, TextWrapping = TextWrapping.Wrap };
+        var result = new SelectableTextBlock { Text = page.Result, TextWrapping = TextWrapping.Wrap };
+        page.PropertyChanged += (_, e) =>
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(SignalGateViewModel.StartupCheck):
+                    startup.Text = page.StartupCheck;
+                    break;
+                case nameof(SignalGateViewModel.Status):
+                    status.Text = page.Status;
+                    break;
+                case nameof(SignalGateViewModel.Counters):
+                    counters.Text = page.Counters;
+                    break;
+                case nameof(SignalGateViewModel.Result):
+                    result.Text = page.Result;
+                    break;
+                default:
+                    break;
+            }
+        };
+
+        var buttons = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                new Button { Content = "Start 4-hour run", Command = page.StartGateRunCommand, Margin = new Thickness(0, 0, 12, 12) },
+                new Button { Content = "Start 10-minute run", Command = page.StartShortRunCommand, Margin = new Thickness(0, 0, 12, 12) },
+                new Button { Content = "Stop", Command = page.StopCommand, Margin = new Thickness(0, 0, 12, 12) },
+            },
+        };
+
+        return new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 16,
+                Children =
+                {
+                    new TextBlock { Text = SignalGateViewModel.Description, TextWrapping = TextWrapping.Wrap, Classes = { "secondary" } },
+                    startup,
+                    buttons,
+                    status,
+                    counters,
                     result,
                 },
             },

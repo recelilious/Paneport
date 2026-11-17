@@ -37,6 +37,10 @@ internal static partial class CompositionRoot
                     "Crash record",
                     "Writes a crash record marked as a test, which Diagnostics shows after the next launch.",
                     () => DeveloperTools.CrashRecord(log)),
+                new DeveloperEntry(
+                    "Signal gate",
+                    "Runs the signal dispatcher's stress test for four hours, or for ten minutes, and gives the verdict of L2 step 13.",
+                    () => new SignalGateViewModel(services.Diagnostics.CrashChaining, log)),
             ],
             log);
     }

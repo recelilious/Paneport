@@ -15,8 +15,8 @@
 #   device test flavor.
 # - Signatures: every one ad hoc, with no team identifier, none merely the linker's, and each
 #   verifies; no provisioning profile in the bundle.
-# - Entitlements: exactly com.apple.developer.kernel.increased-memory-limit, set to true, and
-#   com.apple.developer.kernel.extended-virtual-addressing, set to true, as well when
+# - Entitlements: exactly com.apple.developer.kernel.increased-memory-limit, set to the Boolean
+#   true, and com.apple.developer.kernel.extended-virtual-addressing, set to it, as well when
 #   PANEPORT_EXTENDED_VIRTUAL_ADDRESSING is true, the switch that eng/mac/sign-adhoc.sh reads
 #   (C-0009 section 4).
 #
@@ -142,9 +142,11 @@ if codesign -d --entitlements - --xml "$app" > "$entitlements" 2>/dev/null && [ 
     if keys=$(plutil -convert json -o - "$entitlements" | jq -r 'keys[]' | tr '\n' ' '); then
         echo "Entitlements: $keys"
         [ "$keys" = "$expected_keys" ] || problem "the app's entitlements are ${keys% }, not exactly ${expected_keys% }."
+        # iOS honors these entitlements only as Booleans, and jq -r would print the text "true"
+        # as it prints the Boolean, so jq tests the value itself.
         for key in $expected_keys; do
-            [ "$(plutil -convert json -o - "$entitlements" | jq -r --arg key "$key" '.[$key]')" = true ] \
-                || problem "$key is not true."
+            plutil -convert json -o - "$entitlements" | jq -e --arg key "$key" '.[$key] == true' > /dev/null \
+                || problem "$key is not the Boolean true."
         done
     else
         problem "the app's entitlements cannot be read as a property list."

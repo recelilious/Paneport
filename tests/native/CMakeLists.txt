@@ -38,6 +38,27 @@ paneport_native_test(test_memory_budget CASES
 paneport_native_test(test_crash_record CASES
     encode_layout message_cut written_in_signal_handler test_record_flag)
 
+# The signal dispatcher (M2.2, docs/design/signals.md section 10). A case that ends by a signal
+# runs that part in a child process of its own program, and checks how the child ended and the
+# crash record it left.
+paneport_native_test(test_signal_chain CASES
+    every_signal_reaches_runtime_once plain_handler_gets_signal ignored_sent_signal_returns
+    default_action_ends_with_record runtime_declined_fault_ends_with_record
+    stack_overflow_ends_with_record)
+paneport_native_test(test_signal_routing CASES
+    routes_hold_while_writers_change pool_fault_goes_to_probe_only_in_probe_mode
+    mark_ends_with_its_thread tables_refuse_when_full marked_thread_table_full)
+paneport_native_test(test_signal_guest CASES
+    handler_sees_only_guest_faults declined_fault_ends_with_record
+    fault_without_handler_ends_with_record removal_waits_for_handler)
+paneport_native_test(test_thread_control CASES
+    register_change_seen_after_resume ended_thread_fails suspending_itself_refused)
+paneport_native_test(test_signal_installed CASES
+    passes_after_init fails_naming_replaced_signal fails_before_init
+    last_resort_installed_at_load last_resort_only_where_default)
+paneport_native_test(test_signal_harness CASES
+    runs_sixty_seconds start_refused_before_init start_checks_its_conditions)
+
 # The main-thread rule of the shipped builds, on the host that src/native/CMakeLists.txt builds
 # without the test exports and without PANEPORT_TEST_BUILD.
 paneport_native_test(test_main_thread LIBRARY paneport_host_shipped CASES
@@ -67,16 +88,21 @@ target_include_directories(test_headers PRIVATE "${PANEPORT_REPOSITORY_ROOT}/src
 target_link_libraries(test_headers PRIVATE paneport_host)
 add_test(NAME test_headers.c17_and_cxx20 COMMAND test_headers)
 
-# The crash record writer calls only async-signal-safe functions (docs/design/native-host.md
-# section 8). The check reads the writer's object with nm.
+# The crash record writer and the signal dispatcher's handler call only async-signal-safe
+# functions (docs/design/native-host.md section 8, docs/design/signals.md section 10). The check
+# reads each one's object with nm.
 if(APPLE)
     set(strip_underscore ON)
 else()
     set(strip_underscore OFF)
 endif()
-add_test(NAME crash_record_writer.async_signal_safe_calls
-    COMMAND "${CMAKE_COMMAND}"
-        "-DNM=${CMAKE_NM}"
-        "-DOBJECTS=$<TARGET_OBJECTS:paneport_host_objects>"
-        "-DSTRIP_UNDERSCORE=${strip_underscore}"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_writer_calls.cmake")
+foreach(source IN ITEMS crash_record_writer.c signal_handler.c)
+    get_filename_component(source_name "${source}" NAME_WE)
+    add_test(NAME ${source_name}.async_signal_safe_calls
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNM=${CMAKE_NM}"
+            "-DOBJECTS=$<TARGET_OBJECTS:paneport_host_objects>"
+            "-DSTRIP_UNDERSCORE=${strip_underscore}"
+            "-DSOURCE=${source}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/check_signal_safe_calls.cmake")
+endforeach()

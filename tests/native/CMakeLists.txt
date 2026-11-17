@@ -51,7 +51,8 @@ paneport_native_test(test_signal_chain CASES
     stuck_writer_wait_is_bounded)
 paneport_native_test(test_signal_routing CASES
     routes_hold_while_writers_change pool_fault_goes_to_probe_only_in_probe_mode
-    mark_ends_with_its_thread tables_refuse_when_full marked_thread_table_full)
+    pool_counts_by_program_counter mark_ends_with_its_thread tables_refuse_when_full
+    marked_thread_table_full)
 paneport_native_test(test_signal_guest CASES
     handler_sees_only_guest_faults declined_fault_ends_with_record
     fault_without_handler_ends_with_record removal_waits_for_handler

@@ -248,6 +248,60 @@ static void pool_fault_goes_to_probe_only_in_probe_mode(void) {
     PP_CHECK_EQUAL(counters.guest_handled, 3U);
 }
 
+// How much code after its start a pool range over a function covers: its whole body, the
+// sanitizers' instrumentation included, at every optimization level.
+#define POOL_CODE_SIZE 1024U
+
+// Two functions whose own bodies hold the faulting instruction, because the planting helpers are
+// always inlined: a load from an address that the test chooses, and a breakpoint.
+__attribute__((noinline)) static void read_from_pool_code(const volatile void *address) {
+    pp_signal_plant_read(address);
+}
+
+__attribute__((noinline)) static void break_in_pool_code(void) { pp_signal_plant_breakpoint(); }
+
+static void *fault_from_pool_code(void *argument) {
+    read_from_pool_code(argument);
+    break_in_pool_code();
+    return NULL;
+}
+
+// A fault whose program counter lies in a pool range takes the pool's route on an unmarked
+// thread, whatever its address, and so does a breakpoint there, which Darwin reports with the
+// code of a sent signal and the dispatcher routes by its program counter alone (signals.md
+// section 4).
+static void pool_counts_by_program_counter(void) {
+    routing_test_t test;
+    uint64_t pool = 0U;
+    uint64_t reservation = 0U;
+    set_up(&test, &pool, &reservation);
+    uint64_t read_code = 0U;
+    uint64_t break_code = 0U;
+    PP_CHECK_EQUAL(pp_signals_add_pool_range((uint64_t)(uintptr_t)read_from_pool_code,
+                                             POOL_CODE_SIZE, &read_code),
+                   PP_OK);
+    PP_CHECK_EQUAL(pp_signals_add_pool_range((uint64_t)(uintptr_t)break_in_pool_code,
+                                             POOL_CODE_SIZE, &break_code),
+                   PP_OK);
+    unsigned char *unregistered = pp_map_pages(1U);
+
+    pp_run_on_thread(fault_from_pool_code, unregistered);
+    PP_CHECK_EQUAL(guest_count(&test, PP_FAULT_ROUTE_JIT_POOL), 2U);
+    PP_CHECK_EQUAL(guest_count(&test, PP_FAULT_ROUTE_RUNTIME), 0U);
+    PP_CHECK_EQUAL(pp_signals_set_probe_mode(1U), PP_OK);
+    pp_run_on_thread(fault_from_pool_code, unregistered);
+    PP_CHECK_EQUAL(atomic_load(&test.probe.by_route[PP_FAULT_ROUTE_JIT_PROBE]), 2U);
+    PP_CHECK_EQUAL(guest_count(&test, PP_FAULT_ROUTE_JIT_POOL), 2U);
+    PP_CHECK_EQUAL(pp_signals_set_probe_mode(0U), PP_OK);
+
+    pp_signal_counters_t counters;
+    pp_signals_read_counters(&counters);
+    PP_CHECK_EQUAL(counters.runtime, 0U);
+    PP_CHECK_EQUAL(pp_signals_remove_pool_range(read_code), PP_OK);
+    PP_CHECK_EQUAL(pp_signals_remove_pool_range(break_code), PP_OK);
+    pp_unmap_pages(unregistered, 1U);
+}
+
 static void *mark_and_end(void *argument) {
     (void)argument;
     PP_CHECK_EQUAL(pp_signals_mark_thread(PP_THREAD_MARK_GUEST), PP_OK);
@@ -369,6 +423,7 @@ int main(int argc, char **argv) {
             "pool_fault_goes_to_probe_only_in_probe_mode",
             pool_fault_goes_to_probe_only_in_probe_mode,
         },
+        {"pool_counts_by_program_counter", pool_counts_by_program_counter},
         {"mark_ends_with_its_thread", mark_ends_with_its_thread},
         {"tables_refuse_when_full", tables_refuse_when_full},
         {"marked_thread_table_full", marked_thread_table_full},

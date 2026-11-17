@@ -39,21 +39,29 @@ static inline void pp_signal_context_set_pc(void *context, uint64_t program_coun
     }
 }
 
+// The planting functions are always inlined, so that the instruction lies in the caller's own
+// body at every optimization level, as a test of routing by program counter needs.
+
 // Reads one byte at address with a single load, which faults on a page that cannot be read.
-static inline void pp_signal_plant_read(const volatile void *address) {
+__attribute__((always_inline)) static inline void
+pp_signal_plant_read(const volatile void *address) {
     __asm__ volatile("ldrb w9, [%0]" : : "r"(address) : "x9", "memory");
 }
 
 // Writes a zero byte at address with a single store, which faults on a page that cannot be
 // written.
-static inline void pp_signal_plant_write(volatile void *address) {
+__attribute__((always_inline)) static inline void pp_signal_plant_write(volatile void *address) {
     __asm__ volatile("strb wzr, [%0]" : : "r"(address) : "memory");
 }
 
 // Executes a permanently undefined instruction, which raises SIGILL.
-static inline void pp_signal_plant_illegal(void) { __asm__ volatile("udf #0" : : : "memory"); }
+__attribute__((always_inline)) static inline void pp_signal_plant_illegal(void) {
+    __asm__ volatile("udf #0" : : : "memory");
+}
 
 // Executes a breakpoint instruction, which raises SIGTRAP.
-static inline void pp_signal_plant_breakpoint(void) { __asm__ volatile("brk #1" : : : "memory"); }
+__attribute__((always_inline)) static inline void pp_signal_plant_breakpoint(void) {
+    __asm__ volatile("brk #1" : : : "memory");
+}
 
 #endif // PANEPORT_HOST_SIGNAL_CONTEXT_H

@@ -170,7 +170,10 @@ pp_status_t pp_crash_record_write(const pp_crash_info_t *info) {
 }
 
 bool pp_crash_record_writer_idle(void) {
-    return !atomic_load_explicit(&s_crash.busy, memory_order_acquire);
+    if (atomic_load_explicit(&s_crash.busy, memory_order_acquire)) {
+        return false;
+    }
+    return true;
 }
 
 #ifdef PANEPORT_TEST_BUILD

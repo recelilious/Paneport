@@ -6,7 +6,9 @@
 
 # One test program per small stage. Each case runs in a process of its own, because pp_init
 # runs once per process, and CTest names it <program>.<case>. A program links the test build
-# of the host, or the host that LIBRARY names.
+# of the host, or the host that LIBRARY names. A case that cannot run in one of the builds
+# says so in the first line of its output, which starts with "Skipped: ", and CTest reports it
+# as skipped rather than passed.
 function(paneport_native_test name)
     cmake_parse_arguments(PARSE_ARGV 1 TEST "" "LIBRARY" "CASES")
     if(NOT TEST_LIBRARY)
@@ -19,7 +21,9 @@ function(paneport_native_test name)
         "${PANEPORT_REPOSITORY_ROOT}/src/native/host")
     foreach(test_case IN LISTS TEST_CASES)
         add_test(NAME ${name}.${test_case} COMMAND ${name} ${test_case})
-        set_tests_properties(${name}.${test_case} PROPERTIES TIMEOUT 300)
+        set_tests_properties(${name}.${test_case} PROPERTIES
+            TIMEOUT 300
+            SKIP_REGULAR_EXPRESSION "^Skipped: ")
     endforeach()
 endfunction()
 

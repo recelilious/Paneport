@@ -205,7 +205,10 @@ static void wait_for_writer(void) {
 }
 
 // Writes the crash record of a fault (C-0005 section 2). When another thread is writing a
-// record, its record stays: this fault waits for it and writes none of its own.
+// record, this fault waits for it and writes none of its own, which keeps that record for now.
+// A later write may still replace it: when the runtime chains this fault to the last-resort
+// handler, that handler writes the record of this fault, after a second wait if the writer is
+// busy again (signals.md section 3).
 static void write_record(int signal_number, const siginfo_t *info, const void *context,
                          uint32_t mark, const char *message) {
     const pp_crash_info_t crash = {

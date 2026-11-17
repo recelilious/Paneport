@@ -208,8 +208,9 @@ void pp_signal_stack_release(void *stack, size_t size) {
     const uintptr_t base = (uintptr_t)current.ss_sp;
     if (!pp_signal_has_flag(current.ss_flags, SS_DISABLE) && base >= low && base < low + size) {
         // The thread still runs its handlers on this stack, so it is disabled before it is
-        // unmapped; when the system refuses, the mapping stays rather than leave a stack that
-        // the next signal could not use.
+        // unmapped, with its own base and size: Apple's C library refuses any new stack smaller
+        // than MINSIGSTKSZ, a disabling one included. When the system refuses, the mapping
+        // stays rather than leave a stack that the next signal could not use.
         const stack_t disabled = {
             .ss_sp = current.ss_sp,
             .ss_size = current.ss_size,

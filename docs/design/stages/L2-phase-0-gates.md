@@ -409,6 +409,7 @@ Scripts this stage creates: the CTest cases and the native harness runner in `te
   - **Without a test that fails without the fix.** The signal gate page's view, code of the device test flavor; the documentation items.
   - **Left.** recelilious merges [#27](https://github.com/recelilious/Paneport/pull/27) and answers the question of the ThreadSanitizer exclusion.
   - **For later sessions.** Notes left in this brief's L2 section, which proposes a device check of Mono's chaining and crash path; in M3.1's, on a fault inside the probe handler and the routing of its `brk`; in M4.3's, never to send SIGSEGV, SIGBUS or SIGILL to a guest thread; and in M10.1's, on the record written before the runtime's crash path.
+- **2026-11-17 (UTC), docs after the fix check.** The three open points of the fix check are documented, as the coordinating session decided, with no change of behavior: `docs/design/signals.md` section 7 names the cause of the macOS stack bug, the `sigaltstack` of Apple's C library, which refuses a new stack smaller than `MINSIGSTKSZ`, a disabling one included; section 3 says that the record left after two faults may describe the second, and that one fault can wait twice, up to about 4 seconds; the comments of `write_record` and of the stack release say the same.
 
 ## M2.3 SteamKit2 on the device
 

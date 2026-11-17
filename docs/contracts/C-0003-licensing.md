@@ -191,6 +191,30 @@ Rules:
 
 If an explicit patent grant becomes necessary, our own code can move to `MIT OR Apache-2.0` dual licensing. MIT stays the default.
 
+## Proposed changes for 1.6
+
+**Not yet accepted.** Version 1.5 above stays binding until recelilious approves these changes, which are accepted together with C-0010 1.1. They come from stage M4.2, which caches the builds of the forks in its `runtime` CI job and makes the first changes to files of the Wine fork (`docs/design/runtime-macos-harness.md`), and from recelilious's decisions during that stage on FEX-darwin, Hadron and Arknights-MacOS-Runtime.
+
+1. **Section 6, a new row after actions/upload-artifact.** Add: "| actions/cache | GitHub Action that saves what CI jobs reuse between runs, such as the builds of the forks, the build tools of the Mac and NuGet packages, and restores it | MIT | Tool |". In the sentence above the table, replace "and on 2026-11-10 for the rows that version 1.4 added or changed" with "on 2026-11-10 for the rows that version 1.4 added or changed, and on 2026-11-15 for the row that version 1.6 added".
+
+2. **Section 4, the item on changed LGPL files.** Replace "A file that we change in a fork under the LGPL must carry a prominent notice that we changed it, with the date of the change (LGPL-2.1 section 2(b)). How we mark it is not settled yet, because C-0010 section 4 covers only the headers of new files; the first stage that changes such a file proposes the rule before it does." with "A file that we change in a fork under the LGPL, or a file under the LGPL that we change in any fork, must carry a prominent notice that we changed it, with the date of each change (LGPL-2.1 section 2(b)). C-0010 section 4 says how we mark it, and which other licenses ask for such a notice."
+
+3. **Section 12, a new source.** Add "actions/cache license: <https://github.com/actions/cache/blob/HEAD/LICENSE>".
+
+4. **Section 6, the row of FEX-darwin, moves to section 7.** Remove the row "FEX-darwin (dbc-hbin)" from section 6, which lists what the project uses. In section 7, replace the opening sentence, "These projects are either existing products, covered by section 6 of C-0001, or licensed incompatibly with this project.", with "These projects are existing products, covered by section 6 of C-0001, projects whose code comes from an existing product, or projects licensed incompatibly with this project.", and add three rows to its table:
+
+   | Project | License |
+   |---|---|
+   | FEX-darwin (dbc-hbin) | MIT, with patches imported from Hadron (MIT) and from Arknights-MacOS-Runtime (MPL-2.0), and a companion patch to Wine's ntdll that states no license |
+   | Hadron (Broyojo/hadron) | BSD-3-Clause for its own code; each folder of its `patches/` under the license of the project it changes: MIT for the FEX patches that FEX-darwin imported, LGPL-2.1-or-later for its Wine patches |
+   | Arknights-MacOS-Runtime (LuMiSxh/Arknights-MacOS-Runtime) | MPL-2.0 |
+
+   After the sentence below that table, add: "FEX-darwin's macOS support rests on five patches imported from Hadron, a Mac app that plays Windows games from a Steam library; they come first in its patch series, and its own patches build on them. Hadron, and Arknights-MacOS-Runtime, a Wine and DXMT runtime for the game Arknights on macOS, are existing products under C-0001 section 6. recelilious decided on 2026-11-15, and confirmed on 2026-11-17, that Paneport takes no code from FEX-darwin, its Wine patch and scripts included, from Hadron or from Arknights-MacOS-Runtime: their READMEs and published results are read as evidence, and the changes in the forks are written from the upstream projects' own code and Apple's documentation, without opening any of their patches."
+
+5. **Section 12, new sources.** Add "Hadron licenses: <https://github.com/Broyojo/hadron/blob/HEAD/LICENSE> and <https://github.com/Broyojo/hadron/blob/HEAD/LICENSE.hadron>" and "Arknights-MacOS-Runtime: <https://github.com/LuMiSxh/Arknights-MacOS-Runtime>".
+
+C-0010 1.1 carries the rule for marking a changed file, in the section on code inside the forks, beside the rule for the headers of new files, so the two versions are accepted together. Item 4 records recelilious's decisions; the register's row said that FEX-darwin is MIT apart from one patch, which no longer describes what its Darwin support is.
+
 ## 12. Sources
 
 - Wine license: <https://github.com/wine-mirror/wine/blob/HEAD/LICENSE>

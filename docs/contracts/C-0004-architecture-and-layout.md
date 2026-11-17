@@ -156,6 +156,30 @@ All paths are inside the app container.
 
 **Open item for recelilious.** Save files inside the prefixes are not backed up. Until cloud saves work (C-0007 section 7), the app tells the user so and offers to export a prefix's user folder to `Documents/`. Whether that is enough is recelilious's decision.
 
+## Proposed changes for 1.1
+
+**Not yet accepted.** Version 1.0 above stays binding until recelilious approves these changes. They come from stage M4.2, which adds the runtime harness and the Win32 test programs of our own that it runs (plan sections 7.1 and 7.2, `docs/design/runtime-macos-harness.md`).
+
+1. **Section 3, the tree.** Under `tests/`, add `Paneport.TrimTest/` and `Shared/`, which exist already, after `Paneport.Interop.Tests/`, and `runtime/` and `win32/` between `native/` and `device/`, so that the tree lists every folder of `tests/`:
+
+   ```
+   ├── tests/
+   │   ├── Paneport.Core.Tests/
+   │   ├── Paneport.Steam.Tests/
+   │   ├── Paneport.UI.Tests/
+   │   ├── Paneport.Interop.Tests/
+   │   ├── Paneport.TrimTest/
+   │   ├── Shared/
+   │   ├── native/
+   │   ├── runtime/
+   │   ├── win32/
+   │   └── device/
+   ```
+
+2. **Section 3, the table, the row of `tests/`.** Replace "Automated tests and the on-device test app (C-0011)." with "Automated tests, the runtime harness in `runtime/` with the Win32 test programs of our own in `win32/` that it runs, and the on-device test app (C-0011)."
+
+Both new folders hold only our own code under MIT (C-0003 section 4), and each has the `README.md` that the rules below the table ask for, as `Paneport.TrimTest/` and `Shared/` already do. Section 2 does not change: the harness and the test programs are tests, not components of the main app. From M4.4 on, the device test flavor of `tests/device` bundles test programs of `tests/win32`, so that its in-app console can run them; this version does not settle how they are bundled, which M4.4 decides.
+
 ## Change log
 
 | Version | Date | Notes |

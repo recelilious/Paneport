@@ -26,7 +26,8 @@ SPDX-License-Identifier: MIT
   The compatibility tests read their fixtures, the title schema, every file in compat/titles/ and
   the target devices of docs/design/compat-db.md. The README goes along, so that the folder of
   repository titles exists even while it holds no title file. The storage tests read the layout
-  table of C-0004 section 4.
+  table of C-0004 section 4, and the hosting tests the iOS head's InteropNativeHost.cs, which no
+  test can run.
   -->
   <ItemGroup>
     <None Update="Compat\Fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" />
@@ -34,5 +35,6 @@ SPDX-License-Identifier: MIT
     <None Include="..\..\compat\titles\*.json;..\..\compat\titles\README.md" LinkBase="Repository\compat\titles" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\docs\design\compat-db.md" Link="Repository\docs\design\compat-db.md" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\docs\contracts\C-0004-architecture-and-layout.md" Link="Repository\docs\contracts\C-0004-architecture-and-layout.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Paneport.iOS\InteropNativeHost.cs" Link="Repository\src\Paneport.iOS\InteropNativeHost.cs" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

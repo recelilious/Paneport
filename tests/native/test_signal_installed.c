@@ -61,7 +61,7 @@ static void fails_before_init(void) {
 static bool has_last_resort(int signal_number) {
     struct sigaction current;
     PP_CHECK_EQUAL(sigaction(signal_number, NULL, &current), 0);
-    if ((current.sa_flags & SA_SIGINFO) == 0) {
+    if (!pp_signal_has_flag(current.sa_flags, SA_SIGINFO)) {
         return false;
     }
     return current.sa_sigaction == pp_signal_last_resort;
@@ -81,7 +81,7 @@ static void child_keeps_ignored(const char *folder) {
     (void)folder;
     struct sigaction current;
     PP_CHECK_EQUAL(sigaction(SIGTRAP, NULL, &current), 0);
-    PP_CHECK((current.sa_flags & SA_SIGINFO) == 0 && current.sa_handler == SIG_IGN);
+    PP_CHECK(pp_signal_is_ignored(&current));
     for (size_t index = 0U; index < PP_SIGNAL_COUNT; index++) {
         const int signal_number = pp_test_signal_at(index);
         PP_CHECK(signal_number == SIGTRAP || has_last_resort(signal_number));

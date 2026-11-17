@@ -26,6 +26,7 @@
 #include "paneport/host.h"
 #include "pp_check.h"
 #include "signals/signal_context.h"
+#include "signals/signal_state.h"
 #include "signals/signals.h"
 #include "test_support.h"
 
@@ -68,11 +69,18 @@ static inline int pp_test_signal_index(int signal_number) {
     return -1;
 }
 
-static inline bool pp_test_from_instruction(const siginfo_t *info) {
-    if (info->si_code <= 0) {
+// Whether the tests raise a signal with an instruction: SIGSEGV, SIGBUS, SIGILL and SIGTRAP; they
+// send SIGFPE and SIGABRT with pthread_kill (pp_raise_signal). The stand-in tells the two apart
+// by the signal, not by si_code, because Darwin gives the SIGTRAP of a breakpoint instruction the
+// code of a sent signal.
+static inline bool pp_test_planted_instruction(int signal_number) {
+    switch (signal_number) {
+    case SIGFPE:
+    case SIGABRT:
         return false;
+    default:
+        return true;
     }
-    return info->si_code < 0x10000;
 }
 
 // The body of a stand-in's handler. Each test program's handler calls it with its singleton.
@@ -90,7 +98,7 @@ static inline void pp_stand_in_handle(pp_stand_in_t *stand_in, int signal_number
     if (atomic_load(&stand_in->keeps_info)) {
         memcpy(&stand_in->last_info, info, sizeof stand_in->last_info);
     }
-    if (!pp_test_from_instruction(info)) {
+    if (!pp_test_planted_instruction(signal_number)) {
         (void)atomic_fetch_add(&stand_in->counts[index], 1U);
         return;
     }
@@ -106,7 +114,8 @@ static inline void pp_stand_in_handle(pp_stand_in_t *stand_in, int signal_number
     // A fault that nothing resolves would fault again for ever, so without a handler to pass
     // it to the process ends.
     const struct sigaction *previous = &stand_in->previous[index];
-    if ((previous->sa_flags & SA_SIGINFO) == 0 || previous->sa_sigaction == NULL) {
+    if (pp_signal_is_default(previous) || pp_signal_is_ignored(previous) ||
+        !pp_signal_has_flag(previous->sa_flags, SA_SIGINFO)) {
         _exit(3);
     }
     previous->sa_sigaction(signal_number, info, context);
@@ -238,8 +247,9 @@ static inline void pp_remove_record_folder(const char *folder) {
 
 // Runs "<program> child <case> <folder>" and returns its wait status.
 static inline int pp_run_child(const char *program, const char *child_case, const char *folder) {
-    char *arguments[] = {(char *)program, (char *)"child", (char *)child_case, (char *)folder,
-                         NULL};
+    char *arguments[] = {
+        (char *)program, (char *)"child", (char *)child_case, (char *)folder, NULL,
+    };
     pid_t child = 0;
     PP_CHECK_EQUAL(posix_spawn(&child, program, NULL, NULL, arguments, PP_ENVIRONMENT), 0);
     int status = 0;

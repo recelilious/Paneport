@@ -365,8 +365,10 @@ static void marked_thread_table_full(void) {
 int main(int argc, char **argv) {
     static const pp_test_case_t cases[] = {
         {"routes_hold_while_writers_change", routes_hold_while_writers_change},
-        {"pool_fault_goes_to_probe_only_in_probe_mode",
-         pool_fault_goes_to_probe_only_in_probe_mode},
+        {
+            "pool_fault_goes_to_probe_only_in_probe_mode",
+            pool_fault_goes_to_probe_only_in_probe_mode,
+        },
         {"mark_ends_with_its_thread", mark_ends_with_its_thread},
         {"tables_refuse_when_full", tables_refuse_when_full},
         {"marked_thread_table_full", marked_thread_table_full},

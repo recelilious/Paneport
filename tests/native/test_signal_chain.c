@@ -202,10 +202,12 @@ static void *overflow_stack(void *argument) {
     uintptr_t high = 0U;
     PP_CHECK(pp_platform_stack_bounds(&low, &high));
     // An address on the guard page below the thread's stack, where a deeper frame would have
-    // landed, reached from a local variable on the stack.
-    const unsigned char *local = (const unsigned char *)&low;
-    PP_CHECK((uintptr_t)local > low && (uintptr_t)local < high);
-    const unsigned char *below = local - (((uintptr_t)local - low) + 64U);
+    // landed, reached from the frame of this function. A local variable would not do: with
+    // detect_stack_use_after_return, AddressSanitizer keeps locals on a stack of its own.
+    const unsigned char *frame = __builtin_frame_address(0);
+    PP_CHECK((uintptr_t)frame > low);
+    PP_CHECK((uintptr_t)frame < high);
+    const unsigned char *below = frame - (((uintptr_t)frame - low) + 64U);
     pp_write_planted(folder, below);
     pp_signal_plant_read(below);
     return NULL;

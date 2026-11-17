@@ -41,6 +41,13 @@ public static class SignalGate
                 counters.Duration >= requiredDuration,
                 $"{Clock(counters.Duration)} of at least {Clock(requiredDuration)}"),
             Equal("Managed null references", counters.ExceptionsThrown, "thrown", counters.ExceptionsCaught, "caught"),
+
+            // Each null reference must reach the runtime as a fault through the dispatcher; code that
+            // checked for null explicitly would throw without one.
+            new(
+                "Faults passed to the runtime",
+                counters.RuntimeFaults > 0 && counters.RuntimeFaults >= counters.ExceptionsThrown,
+                $"{Count(counters.RuntimeFaults)} passed, {Count(counters.ExceptionsThrown)} thrown"),
             Equal(
                 "Guest faults by mark",
                 counters.GuestFaultsRaisedByMark,

@@ -34,6 +34,8 @@ public sealed class SignalGateTests
         { "Duration", s_passing with { Duration = TimeSpan.FromHours(4) - TimeSpan.FromSeconds(1) } },
         { "Managed null references", s_passing with { ExceptionsCaught = 999_999 } },
         { "Managed null references", s_passing with { ExceptionsThrown = 0, ExceptionsCaught = 0 } },
+        { "Faults passed to the runtime", s_passing with { RuntimeFaults = 999_999 } },
+        { "Faults passed to the runtime", s_passing with { RuntimeFaults = 0 } },
         { "Guest faults by mark", s_passing with { GuestFaultsHandledByMark = 499_999 } },
         { "Guest faults by mark", s_passing with { GuestFaultsRaisedByMark = 0, GuestFaultsHandledByMark = 0 } },
         { "Guest faults by address", s_passing with { GuestFaultsHandledByAddress = 399_999 } },
@@ -54,8 +56,9 @@ public sealed class SignalGateTests
         Assert.All(result.Criteria, criterion => Assert.True(criterion.Met, criterion.Name));
         Assert.Equal(
             [
-                "Valid run", "Duration", "Managed null references", "Guest faults by mark", "Guest faults by address",
-                "Unexpected faults", "Garbage collections", "Longest heartbeat gap", "Dispatcher installed",
+                "Valid run", "Duration", "Managed null references", "Faults passed to the runtime",
+                "Guest faults by mark", "Guest faults by address", "Unexpected faults", "Garbage collections",
+                "Longest heartbeat gap", "Dispatcher installed",
             ],
             result.Criteria.Select(criterion => criterion.Name));
     }
@@ -89,6 +92,9 @@ public sealed class SignalGateTests
         Assert.Equal(
             "1,000,000 thrown, 1,000,000 caught",
             criteria.Single(item => item.Name == "Managed null references").Observed);
+        Assert.Equal(
+            "1,000,000 passed, 1,000,000 thrown",
+            criteria.Single(item => item.Name == "Faults passed to the runtime").Observed);
         Assert.Equal(
             "0.350 s, below 2 s to pass",
             criteria.Single(item => item.Name == "Longest heartbeat gap").Observed);

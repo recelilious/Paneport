@@ -151,8 +151,9 @@ The app is an arm64 process, not arm64e, so the thread state holds the registers
 **The signal gate page.** The device test flavor's developer menu opens it (L2 steps 11 to 13):
 
 - The startup check shows the crash-chaining state of section 5 and whether the dispatcher has all six signals.
-- A run lasts four hours for the gate, or ten minutes for the smoke run of the integration session and the optional device check of this stage. It runs the native harness with four threads of each kind and a pause of 200 microseconds; a managed loop that reads the length of a string through a reference that is always null and catches each `NullReferenceException`, with a pause of a millisecond after every 64, and 64 more on the main thread every second, because the main thread is the one whose faults the dispatcher handles on its alternate stack; a thread that allocates a 64 KiB block every millisecond, keeps the last 16 and asks for a full collection every 5,000 blocks; and a heartbeat every 100 milliseconds.
+- A run lasts four hours for the gate, or ten minutes for the smoke run of the integration session and the optional device check of this stage. It runs the native harness with four threads of each kind and a pause of 200 microseconds; a managed loop that reads the length of a string through a reference that is always null and catches each `NullReferenceException`, with a pause of a millisecond after every 64, and 64 more on the main thread every second, because the main thread is the one whose faults the dispatcher handles on its alternate stack; a thread that allocates a 64 KiB block every millisecond, keeps the last 16 and asks for a full collection every 5,000 blocks; and a heartbeat every 100 milliseconds. The run counts the collections of both of Mono's generations: generation 0 counts the nursery collections and generation 1, Mono's highest, the full ones, and the 64 KiB blocks, larger than SGen's 8,000-byte limit for small objects, go to its large-object space, so generation 0 alone would miss every forced collection.
 - The counters refresh every second. The page turns the idle timer off for the run, so the screen stays on, and the run turns invalid if the app enters the background. At its target the run ends and the result screen shows the verdict; Stop ends it early, which fails the duration.
+- The menu keeps one page for the life of the app. A run goes on when the tester leaves the page, and the page opened next shows that run, its Stop and its result; ending the run when the page is left would let one stray tap end a four-hour run.
 
 **The verdict.** `SignalGate.Evaluate` in Paneport.Core passes a run only when every criterion of L2 step 13 holds, and lists each one with what the run showed:
 
@@ -161,10 +162,11 @@ The app is an arm64 process, not arm64e, so the thread state holds the registers
 | Valid run | The app never left the foreground |
 | Duration | The run lasted at least its target: 4:00:00 for the gate |
 | Managed null references | As many exceptions were caught as were thrown, and more than none |
+| Faults passed to the runtime | The dispatcher passed at least as many faults to the runtime's handler as exceptions were thrown, and more than none: each null reference faulted, rather than being checked for null in code |
 | Guest faults by mark | As many were handled by the guest path as were raised, and more than none |
 | Guest faults by address | The same, for the reservation |
 | Unexpected faults | None |
-| Garbage collections | More than none |
+| Garbage collections | More than none, nursery and full collections together |
 | Longest heartbeat gap | Below the hang threshold |
 | Dispatcher installed | All six signals still have the dispatcher's handler at the end |
 

@@ -38,7 +38,10 @@ public sealed record SignalGateCounters
     /// <summary>Gets the faults that the dispatcher passed to the runtime's handler.</summary>
     public ulong RuntimeFaults { get; init; }
 
-    /// <summary>Gets the garbage collections during the run, of every generation.</summary>
+    /// <summary>
+    /// Gets the garbage collections during the run: on Mono the nursery collections, which
+    /// generation 0 counts, and the full collections, which generation 1, its highest, counts.
+    /// </summary>
     public long GarbageCollections { get; init; }
 
     /// <summary>Gets the longest time between two heartbeats, the current gap included.</summary>

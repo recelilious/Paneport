@@ -341,11 +341,14 @@ static inline uint64_t pp_read_planted(const char *folder) {
 // own reach is the same (signal_handler.c).
 #define PP_TEST_OVERFLOW_REACH ((uint64_t)1024U * 1024U)
 
+// A child that a SIGSEGV or a SIGBUS may end, whichever comes first.
+#define PP_TEST_ENDED_BY_FAULT (-1)
+
 // How a child case must end, and the record it must leave. The child writes the address it
 // faults at with pp_write_planted, 0 when the test cannot know it, or the lowest address of
 // its stack before it overflows the stack.
 typedef struct pp_child_end_t {
-    int ended_by;        // The signal that ends the child, or 0 for the record's own signal.
+    int ended_by;        // The signal that ends the child; 0: the record's own; or below.
     int signal;          // The record's signal, or 0 for SIGSEGV or SIGBUS, whichever came.
     uint32_t role;       // A PP_THREAD_ROLE_ value.
     const char *message; // The record's message.
@@ -368,7 +371,11 @@ static inline void pp_check_child_end(const char *program, const char *child_cas
     } else {
         PP_CHECK(record.signal == SIGSEGV || record.signal == SIGBUS);
     }
-    pp_check_ended_by(status, expected->ended_by != 0 ? expected->ended_by : record.signal);
+    if (expected->ended_by == PP_TEST_ENDED_BY_FAULT) {
+        PP_CHECK(WTERMSIG(status) == SIGSEGV || WTERMSIG(status) == SIGBUS);
+    } else {
+        pp_check_ended_by(status, expected->ended_by != 0 ? expected->ended_by : record.signal);
+    }
     if (!expected->any_code) {
         PP_CHECK(record.code > 0);
     }

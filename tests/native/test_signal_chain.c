@@ -7,11 +7,13 @@
 // it receives without the dispatcher. The cases that end by a signal run in a child process,
 // and their parent reads the crash record they leave (docs/design/signals.md section 10).
 
+#include <errno.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 
 #include "crash_record.h"
 #include "platform.h"
@@ -19,10 +21,12 @@
 #include "signal_test_support.h"
 #include "test_support.h"
 
-// The documented singletons of this program (C-0010 section 3): what the handlers saw, because
-// a signal handler receives no argument of the test, and the path that the program started
-// with, which a case needs to start a child.
+// The documented singletons of this program (C-0010 section 3): what the handlers saw, and how
+// long the crash record writer's hook holds a write, because a signal handler and the hook
+// receive no argument of the test, and the path that the program started with, which a case
+// needs to start a child.
 static pp_stand_in_t s_stand_in;
+static _Atomic(uint32_t) s_writer_hold_milliseconds;
 static struct {
     _Atomic(uint64_t) count;
     _Atomic(int) signal;
@@ -332,6 +336,88 @@ static void child_main_thread_overflow_to_crash_path(const char *folder) {
     child_main_thread_overflow(folder);
 }
 
+// The crash record writer's hook: it holds each write between its temporary file and the
+// rename, as a slow fsync would.
+static void hold_writer(void) {
+    const uint32_t milliseconds = atomic_load(&s_writer_hold_milliseconds);
+    struct timespec pause = {
+        .tv_sec = (time_t)(milliseconds / 1000U),
+        .tv_nsec = (long)(milliseconds % 1000U) * 1000000L,
+    };
+    while (nanosleep(&pause, &pause) != 0 && errno == EINTR) {
+    }
+}
+
+static void *fault_on_page(void *argument) {
+    pp_signal_plant_read(argument);
+    return NULL;
+}
+
+static void set_default_action(int signal_number) {
+    struct sigaction action;
+    memset(&action, 0, sizeof action);
+    action.sa_handler = SIG_DFL;
+    PP_CHECK_EQUAL(sigemptyset(&action.sa_mask), 0);
+    PP_CHECK_EQUAL(sigaction(signal_number, &action, NULL), 0);
+}
+
+// A thread's fault ends the app while the writer holds its record; then the main thread faults
+// too. Both signals have the default action, so each fault ends the app with a record.
+static void fault_while_writer_holds(const char *folder, uint32_t hold_milliseconds) {
+    set_default_action(SIGSEGV);
+    set_default_action(SIGBUS);
+    pp_start_host(folder);
+    atomic_store(&s_writer_hold_milliseconds, hold_milliseconds);
+    pp_crash_record_test_set_write_hook(hold_writer);
+    unsigned char *page = pp_map_pages(1U);
+    pp_write_planted(folder, page);
+    (void)pp_start_thread(fault_on_page, page);
+    while (pp_crash_record_writer_idle()) {
+        pp_sleep_milliseconds(1);
+    }
+    uint64_t address = 0U;
+    pp_raise_signal(SIGSEGV, &address);
+}
+
+// Child: the writer holds the first record for half a second. The main thread's fault waits for
+// it, so the first record stays.
+static void child_busy_writer(const char *folder) { fault_while_writer_holds(folder, 500U); }
+
+// Child: the writer holds the first record for longer than the wait, which gives up.
+static void child_stuck_writer(const char *folder) { fault_while_writer_holds(folder, 30000U); }
+
+static int64_t elapsed_milliseconds(const struct timespec *start) {
+    struct timespec now;
+    PP_CHECK_EQUAL(clock_gettime(CLOCK_MONOTONIC, &now), 0);
+    return (((int64_t)now.tv_sec - (int64_t)start->tv_sec) * 1000) +
+           (((int64_t)now.tv_nsec - (int64_t)start->tv_nsec) / 1000000);
+}
+
+static void busy_writer_keeps_first_record(void) {
+    const pp_child_end_t expected = {.ended_by = PP_TEST_ENDED_BY_FAULT,
+                                     .signal = SIGBUS,
+                                     .role = PP_THREAD_ROLE_OTHER,
+                                     .message = PP_TEST_MESSAGE_DEFAULT};
+    pp_check_child_end(s_program, "busy_writer", &expected);
+}
+
+// The second fault waits for the writer, but no longer than the dispatcher's bound of two
+// seconds, and ends the app without a record of its own while the first is still held.
+static void stuck_writer_wait_is_bounded(void) {
+    char folder[64];
+    pp_make_folder(folder, sizeof folder);
+    struct timespec start;
+    PP_CHECK_EQUAL(clock_gettime(CLOCK_MONOTONIC, &start), 0);
+    const int status = pp_run_child(s_program, "stuck_writer", folder);
+    const int64_t elapsed = elapsed_milliseconds(&start);
+    pp_check_ended_by(status, SIGSEGV);
+    PP_CHECK(elapsed >= 2000);
+    PP_CHECK(elapsed < 20000);
+    PP_CHECK(!pp_has_crash_record(folder));
+    (void)pp_read_planted(folder);
+    pp_remove_record_folder(folder);
+}
+
 static void default_action_ends_with_record(void) {
     const pp_child_end_t expected = {
         .signal = SIGBUS, .role = PP_THREAD_ROLE_MAIN, .message = PP_TEST_MESSAGE_DEFAULT};
@@ -405,6 +491,8 @@ int main(int argc, char **argv) {
         {"simulated_overflow_ends_with_record", simulated_overflow_ends_with_record},
         {"main_thread_overflow_ends_with_record", main_thread_overflow_ends_with_record},
         {"main_thread_overflow_reaches_runtime", main_thread_overflow_reaches_runtime},
+        {"busy_writer_keeps_first_record", busy_writer_keeps_first_record},
+        {"stuck_writer_wait_is_bounded", stuck_writer_wait_is_bounded},
     };
     static const pp_child_case_t children[] = {
         {"default_action", child_default_action},
@@ -415,6 +503,8 @@ int main(int argc, char **argv) {
         {"simulated_overflow", child_simulated_overflow},
         {"main_thread_overflow", child_main_thread_overflow},
         {"main_thread_overflow_to_crash_path", child_main_thread_overflow_to_crash_path},
+        {"busy_writer", child_busy_writer},
+        {"stuck_writer", child_stuck_writer},
     };
     return pp_signal_test_main(argc, argv, cases, PP_CASE_COUNT(cases), children,
                                PP_CASE_COUNT(children));

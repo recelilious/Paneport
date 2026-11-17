@@ -26,9 +26,10 @@ elseif(SOURCE STREQUAL "signal_handler.c")
     # calls the crash record writer, the thread role, which reads atomics and pthread_self, and
     # the stack bounds, which read the calling thread's own pthread record.
     set(allowed ${common_allowed}
-        memcpy memmove memset pthread_kill pthread_self pthread_sigmask raise sigaction sigaddset
-        sigemptyset
-        pp_crash_record_write pp_host_thread_role pp_platform_stack_bounds)
+        clock_gettime memcpy memmove memset pthread_kill pthread_self pthread_sigmask raise select
+        sigaction sigaddset sigemptyset
+        pp_crash_record_write pp_crash_record_writer_idle pp_host_thread_role
+        pp_platform_stack_bounds)
 else()
     message(FATAL_ERROR "No list of allowed calls for ${SOURCE}.")
 endif()
@@ -65,6 +66,11 @@ foreach(line IN LISTS lines)
     endif()
     # Apple's toolchain puts one underscore in front of every C name.
     if(STRIP_UNDERSCORE AND symbol MATCHES "^_(.+)$")
+        set(symbol "${CMAKE_MATCH_1}")
+    endif()
+    # Apple's headers may name a variant of a function after a dollar sign, such as
+    # select$DARWIN_EXTSN; the variant is the same call.
+    if(symbol MATCHES "^([^$]+)[$].+$")
         set(symbol "${CMAKE_MATCH_1}")
     endif()
     # The sanitizers' own symbols, such as __asan_report_load8 or __start_asan_globals.

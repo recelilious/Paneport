@@ -11,6 +11,7 @@
 #define PANEPORT_HOST_CRASH_RECORD_H
 
 #include <limits.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "paneport/common.h"
@@ -73,5 +74,17 @@ void pp_crash_record_encode(const pp_crash_info_t *info, int64_t seconds, int32_
 // Returns PP_OK; PP_E_NOT_INITIALIZED before pp_crash_record_prepare or after
 // pp_crash_record_reset; PP_E_BUSY while another thread writes; PP_E_IO.
 pp_status_t pp_crash_record_write(const pp_crash_info_t *info);
+
+// Returns whether no thread is writing a record now, so that a fault which found the writer
+// busy can wait for the record in progress. Async-signal-safe.
+bool pp_crash_record_writer_idle(void);
+
+#ifdef PANEPORT_TEST_BUILD
+// Test builds only: sets a function that each write calls once its temporary file is complete
+// and before it renames the file, so that a test can hold the writer busy as a slow fsync
+// would; NULL removes it. The function runs in the writer's signal context.
+typedef void (*pp_crash_record_hook_t)(void);
+void pp_crash_record_test_set_write_hook(pp_crash_record_hook_t hook);
+#endif
 
 #endif // PANEPORT_HOST_CRASH_RECORD_H

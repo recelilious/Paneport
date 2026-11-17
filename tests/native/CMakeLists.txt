@@ -47,7 +47,8 @@ paneport_native_test(test_signal_chain CASES
     runtime_declined_fault_ends_with_record crash_path_illegal_keeps_record
     crash_path_managed_fault_keeps_record ignored_breakpoint_ends_with_record
     simulated_overflow_ends_with_record main_thread_overflow_ends_with_record
-    main_thread_overflow_reaches_runtime)
+    main_thread_overflow_reaches_runtime busy_writer_keeps_first_record
+    stuck_writer_wait_is_bounded)
 paneport_native_test(test_signal_routing CASES
     routes_hold_while_writers_change pool_fault_goes_to_probe_only_in_probe_mode
     mark_ends_with_its_thread tables_refuse_when_full marked_thread_table_full)

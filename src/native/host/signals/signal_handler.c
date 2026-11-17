@@ -5,9 +5,10 @@
 // sections 3 to 6): the dispatcher's handler, the routing reads, the calls of the guest and
 // probe handlers, the chain to the saved actions, the end of the app with a crash record, and
 // the last-resort handler that the host installs when it is loaded. It calls only functions
-// that POSIX lists as async-signal-safe, the host's own pp_crash_record_write,
-// pp_host_thread_role and pp_platform_stack_bounds, and the handlers it chains to. A CTest
-// test lists the undefined symbols of this file's object with nm and fails on any other call
+// that POSIX lists as async-signal-safe, the host's own crash record writer
+// (pp_crash_record_write and pp_crash_record_writer_idle), pp_host_thread_role and
+// pp_platform_stack_bounds, and the handlers it chains to. A CTest test lists the undefined
+// symbols of this file's object with nm and fails on any other call
 // (tests/native/check_signal_safe_calls.cmake).
 
 #include <errno.h>
@@ -18,6 +19,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/select.h>
+#include <time.h>
 
 #include "crash_record.h"
 #include "host_state.h"
@@ -29,6 +32,12 @@
 // How far below the lowest address of a thread's stack a fault still counts as a stack overflow:
 // the guard pages, and the frame of a function that skipped them.
 #define PP_SIGNAL_STACK_OVERFLOW_REACH (UINT64_C(1024) * 1024U)
+
+// How long a fault that found the crash record writer busy waits for it at most, and how long
+// it sleeps between two looks.
+#define PP_SIGNAL_WRITER_WAIT_SECONDS INT64_C(2)
+#define PP_SIGNAL_WRITER_LOOK_MICROSECONDS 1000
+#define PP_SIGNAL_NANOSECONDS_PER_SECOND INT64_C(1000000000)
 
 // The messages of the crash records that the dispatcher writes, at most 63 bytes each.
 #define PP_MESSAGE_RUNTIME_DEFAULT "A fault outside the guest path that nothing handled."
@@ -156,7 +165,35 @@ static uint32_t thread_role(uint32_t mark) {
     }
 }
 
-// Writes the crash record of a fault (C-0005 section 2).
+// The nanoseconds from start to now.
+static int64_t nanoseconds_between(const struct timespec *start, const struct timespec *now) {
+    const int64_t seconds = (int64_t)now->tv_sec - (int64_t)start->tv_sec;
+    return (seconds * PP_SIGNAL_NANOSECONDS_PER_SECOND) + ((int64_t)now->tv_nsec - start->tv_nsec);
+}
+
+// Waits until no thread writes a crash record, at most PP_SIGNAL_WRITER_WAIT_SECONDS. A fault
+// that ended the app while another thread was writing its record would end the process before
+// that record was renamed into place, and neither record would remain. The bound covers a
+// writer that never finishes, such as this very thread when the fault interrupted its write.
+static void wait_for_writer(void) {
+    struct timespec start;
+    if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) {
+        return;
+    }
+    while (!pp_crash_record_writer_idle()) {
+        struct timespec now;
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0 ||
+            nanoseconds_between(&start, &now) >=
+                PP_SIGNAL_WRITER_WAIT_SECONDS * PP_SIGNAL_NANOSECONDS_PER_SECOND) {
+            return;
+        }
+        struct timeval pause = {.tv_sec = 0, .tv_usec = PP_SIGNAL_WRITER_LOOK_MICROSECONDS};
+        (void)select(0, NULL, NULL, NULL, &pause);
+    }
+}
+
+// Writes the crash record of a fault (C-0005 section 2). When another thread is writing a
+// record, its record stays: this fault waits for it and writes none of its own.
 static void write_record(int signal_number, const siginfo_t *info, const void *context,
                          uint32_t mark, const char *message) {
     const pp_crash_info_t crash = {
@@ -168,12 +205,14 @@ static void write_record(int signal_number, const siginfo_t *info, const void *c
         .is_test = 0U,
         .message = message,
     };
-    (void)pp_crash_record_write(&crash);
+    if (pp_crash_record_write(&crash) == PP_E_BUSY) {
+        wait_for_writer();
+    }
 }
 
 // Writes the crash record and ends the app by the same signal: the default action comes back,
 // and the signal, raised again, is delivered with it once the handler returns (C-0005 section
-// 2). A second fault while the first is written finds the writer busy and ends the app too.
+// 2). A second fault while the first record is written waits for it and ends the app too.
 static void end_app(int signal_number, const siginfo_t *info, const void *context, uint32_t mark,
                     const char *message) {
     write_record(signal_number, info, context, mark, message);

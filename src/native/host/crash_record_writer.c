@@ -3,8 +3,9 @@
 
 // The crash record's writer and the paths it writes to. Everything in this file may run in a
 // signal handler, so it calls only async-signal-safe functions: open, write, fsync, close,
-// rename, unlink and clock_gettime, and the host's own pp_utf8_cut. A CTest test lists the
-// undefined symbols of this file's object and fails on any other call
+// rename, unlink and clock_gettime, and the host's own pp_utf8_cut; test builds also call the
+// write hook that a test sets. A CTest test lists the undefined symbols of this file's object
+// and fails on any other call
 // (tests/native/check_signal_safe_calls.cmake). pp_crash_record_prepare, which is not
 // async-signal-safe, lives in crash_record.c.
 
@@ -23,13 +24,17 @@
 #include "log.h"
 
 // The two paths that pp_init prepares, and the writer's lock: a process-wide singleton
-// (C-0010 section 3). The paths are written before ready turns true, and only then read.
+// (C-0010 section 3). The paths are written before ready turns true, and only then read. busy
+// is true while a thread writes; a fault that finds it so may wait until it turns false.
 static struct {
     char record_path[PP_CRASH_RECORD_PATH_SIZE];
     char temporary_path[PP_CRASH_RECORD_PATH_SIZE];
     _Atomic(bool) ready;
-    atomic_flag busy;
-} s_crash = {.busy = ATOMIC_FLAG_INIT};
+    _Atomic(bool) busy;
+#ifdef PANEPORT_TEST_BUILD
+    _Atomic(pp_crash_record_hook_t) test_hook;
+#endif
+} s_crash;
 
 static void copy_path(char *target, const char *source) {
     size_t index = 0U;
@@ -124,6 +129,13 @@ static pp_status_t write_file(const unsigned char *record) {
     if (close(file) != 0) {
         failed = true;
     }
+#ifdef PANEPORT_TEST_BUILD
+    const pp_crash_record_hook_t hook =
+        atomic_load_explicit(&s_crash.test_hook, memory_order_acquire);
+    if (hook != NULL) {
+        hook();
+    }
+#endif
     if (!failed && rename(s_crash.temporary_path, s_crash.record_path) != 0) {
         failed = true;
     }
@@ -138,7 +150,9 @@ pp_status_t pp_crash_record_write(const pp_crash_info_t *info) {
     if (!atomic_load_explicit(&s_crash.ready, memory_order_acquire)) {
         return PP_E_NOT_INITIALIZED;
     }
-    if (atomic_flag_test_and_set_explicit(&s_crash.busy, memory_order_acquire)) {
+    bool expected = false;
+    if (!atomic_compare_exchange_strong_explicit(&s_crash.busy, &expected, true,
+                                                 memory_order_acquire, memory_order_relaxed)) {
         return PP_E_BUSY;
     }
 
@@ -151,6 +165,16 @@ pp_status_t pp_crash_record_write(const pp_crash_info_t *info) {
     const pp_status_t status = write_file(record);
 
     errno = saved_errno;
-    atomic_flag_clear_explicit(&s_crash.busy, memory_order_release);
+    atomic_store_explicit(&s_crash.busy, false, memory_order_release);
     return status;
 }
+
+bool pp_crash_record_writer_idle(void) {
+    return !atomic_load_explicit(&s_crash.busy, memory_order_acquire);
+}
+
+#ifdef PANEPORT_TEST_BUILD
+void pp_crash_record_test_set_write_hook(pp_crash_record_hook_t hook) {
+    atomic_store_explicit(&s_crash.test_hook, hook, memory_order_release);
+}
+#endif

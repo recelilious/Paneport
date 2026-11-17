@@ -201,38 +201,45 @@ static void ignored_with_siginfo_returns(void) {
     PP_CHECK_EQUAL(after.runtime - before.runtime, 1U);
 }
 
-static void *fault_near_null(void *argument) {
+// Mono's null-check limit, written out here rather than taken from PP_SIGNAL_RUNTIME_NULL_LIMIT,
+// so that a change of that constant fails the case below: mono_target_pagesize() is 4 KiB on
+// every target, not the system's page size, and Mono resolves a managed fault at an address of
+// at most that (signals.md section 5).
+#define MONO_NULL_LIMIT UINT64_C(4096)
+
+static void *fault_at_limit(void *argument) {
     (void)argument;
-    pp_signal_plant_read(pp_test_address(16U));
+    pp_signal_plant_read(pp_test_address(MONO_NULL_LIMIT));
     return NULL;
 }
 
-static void *fault_above_null(void *argument) {
+static void *fault_above_limit(void *argument) {
     (void)argument;
-    pp_signal_plant_read(pp_test_address((uint64_t)PP_SIGNAL_RUNTIME_NULL_LIMIT + 16U));
+    pp_signal_plant_read(pp_test_address(MONO_NULL_LIMIT + 16U));
     return NULL;
 }
 
-// A fault in the first page, which the runtime resolves as a managed null reference, needs no
-// record. A fault above it gets its record before it goes to the runtime, and the record stays
-// when the runtime resolves the fault after all, as here (signals.md section 5).
+// A fault at an address of at most Mono's limit, which the runtime resolves as a managed null
+// reference, needs no record, the limit itself included. A fault above it gets its record
+// before it goes to the runtime, and the record stays when the runtime resolves the fault after
+// all, as here (signals.md section 5).
 static void first_page_fault_needs_no_record(void) {
-    pp_stand_in_own(&s_stand_in, NULL, 2U * (size_t)PP_SIGNAL_RUNTIME_NULL_LIMIT);
+    pp_stand_in_own(&s_stand_in, NULL, (size_t)(2U * MONO_NULL_LIMIT));
     pp_stand_in_install(&s_stand_in, stand_in_handler);
     char folder[64];
     pp_make_folder(folder, sizeof folder);
     pp_start_host(folder);
 
-    pp_run_on_thread(fault_near_null, NULL);
+    pp_run_on_thread(fault_at_limit, NULL);
     PP_CHECK_EQUAL(pp_stand_in_count(&s_stand_in, SIGSEGV), 1U);
     PP_CHECK(!pp_has_crash_record(folder));
 
-    pp_run_on_thread(fault_above_null, NULL);
+    pp_run_on_thread(fault_above_limit, NULL);
     PP_CHECK_EQUAL(pp_stand_in_count(&s_stand_in, SIGSEGV), 2U);
     pp_test_record_t record;
     pp_read_crash_record(folder, &record);
     PP_CHECK_EQUAL(record.signal, SIGSEGV);
-    PP_CHECK_EQUAL(record.fault_address, (uint64_t)PP_SIGNAL_RUNTIME_NULL_LIMIT + 16U);
+    PP_CHECK_EQUAL(record.fault_address, MONO_NULL_LIMIT + 16U);
     PP_CHECK_TEXT(record.message, PP_TEST_MESSAGE_CRASH_PATH);
     pp_remove_record_folder(folder);
 }
@@ -409,7 +416,9 @@ static void busy_writer_keeps_first_record(void) {
 }
 
 // The second fault waits for the writer, but no longer than the dispatcher's bound of two
-// seconds, and ends the app without a record of its own while the first is still held.
+// seconds, and ends the app without a record of its own while the first is still held. The
+// child takes about 2.1 seconds in CI; the upper check leaves room for a slow runner and still
+// fails a bound several times as long.
 static void stuck_writer_wait_is_bounded(void) {
     char folder[64];
     pp_make_folder(folder, sizeof folder);
@@ -419,7 +428,7 @@ static void stuck_writer_wait_is_bounded(void) {
     const int64_t elapsed = elapsed_milliseconds(&start);
     pp_check_ended_by(status, SIGSEGV);
     PP_CHECK(elapsed >= 2000);
-    PP_CHECK(elapsed < 20000);
+    PP_CHECK(elapsed < 8000);
     PP_CHECK(!pp_has_crash_record(folder));
     (void)pp_read_planted(folder);
     pp_remove_record_folder(folder);

@@ -31,6 +31,17 @@
 #include "signals/signals.h"
 #include "test_support.h"
 
+// Whether the tests run under ThreadSanitizer, which runs every handler with all signals
+// blocked, so that a fault inside a handler never reaches the dispatcher again.
+#ifdef __has_feature
+#if __has_feature(thread_sanitizer)
+#define PP_TEST_UNDER_TSAN 1
+#endif
+#endif
+#ifndef PP_TEST_UNDER_TSAN
+#define PP_TEST_UNDER_TSAN 0
+#endif
+
 // The environment that a child inherits; Apple declares environ for programs only through this.
 #define PP_ENVIRONMENT (*_NSGetEnviron())
 
@@ -397,6 +408,8 @@ static inline void pp_check_child_end(const char *program, const char *child_cas
 #define PP_TEST_MESSAGE_CRASH_PATH "A fault that ended in the runtime's crash path."
 #define PP_TEST_MESSAGE_OVERFLOW "A stack overflow outside the guest path."
 #define PP_TEST_MESSAGE_DECLINED "The guest fault handler declined a fault."
+#define PP_TEST_MESSAGE_GUEST_FAULTED "A fault inside the guest fault handler."
+#define PP_TEST_MESSAGE_PROBE_FAULTED "A fault inside the JIT probe handler."
 
 // How long a child that might loop for ever runs before SIGALRM ends it, so that a test of a
 // fault that must end the app fails quickly instead of waiting for the CTest timeout.

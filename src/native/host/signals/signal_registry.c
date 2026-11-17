@@ -100,6 +100,7 @@ pp_status_t pp_signals_mark_thread(uint32_t mark) {
     }
     atomic_store_explicit(&slot->mark, mark, memory_order_relaxed);
     if (claimed) {
+        atomic_store_explicit(&slot->in_handler, PP_SIGNAL_IN_NONE, memory_order_relaxed);
         slot->stack = NULL;
         slot->stack_size = 0U;
         atomic_store_explicit(&slot->thread, self, memory_order_release);
@@ -227,7 +228,8 @@ pp_status_t pp_signals_set_probe_mode(uint8_t on) {
     return PP_OK;
 }
 
-// Waits until no caller is left in a box. A handler must return, so this ends.
+// Waits until no caller is left in a box. A handler must return, so this ends: a handler that
+// faults on a marked thread ends the app, and elsewhere its fault is routed again.
 static void wait_for_callers(pp_signal_handler_box_t *box) {
     while (atomic_load_explicit(&box->callers, memory_order_seq_cst) != 0U) {
         (void)sched_yield();

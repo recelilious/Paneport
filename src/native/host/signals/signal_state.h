@@ -28,12 +28,18 @@
 // record before it goes to Mono (signals.md section 5).
 #define PP_SIGNAL_RUNTIME_NULL_LIMIT 4096U
 
+// Which handler a marked thread's fault is in.
+enum { PP_SIGNAL_IN_NONE = 0, PP_SIGNAL_IN_GUEST = 1, PP_SIGNAL_IN_PROBE = 2 };
+
 // One marked thread. Only the thread itself claims, changes and frees its slot, under the
 // mutex of the thread table; the handler on that thread compares the slot's thread with
 // pthread_self().
 typedef struct pp_signal_thread_slot_t {
     _Atomic(uintptr_t) thread; // pthread_self() of the marked thread, or 0 when the slot is free.
     _Atomic(uint32_t) mark;    // A PP_THREAD_MARK_ value.
+    // The handler that the thread's own fault is in, a PP_SIGNAL_IN_ value; only the thread's
+    // handler writes it, so a fault inside that handler finds it set.
+    _Atomic(uint32_t) in_handler;
     // The alternate signal stack that pp_signals_mark_thread allocated for the thread, or NULL;
     // only the thread itself reads and writes these.
     void *stack;
@@ -139,9 +145,13 @@ static inline bool pp_signal_has_flag(int flags, int flag) {
     return ((unsigned)flags & (unsigned)flag) != 0U;
 }
 
-// The flags of the dispatcher's and the last-resort handler's actions.
+// The flags of the dispatcher's and the last-resort handler's actions. SA_NODEFER leaves the
+// signal unblocked while the handler runs, so that a fault inside a guest or probe handler
+// reaches the dispatcher again, which ends the app with a record; Darwin would otherwise hold
+// the blocked fault and run the faulting instruction for ever. The chain to a saved action
+// blocks the signal itself when that action asked for it (signals.md section 3).
 static inline int pp_signal_action_flags(void) {
-    return (int)((unsigned)SA_SIGINFO | (unsigned)SA_ONSTACK);
+    return (int)((unsigned)SA_SIGINFO | (unsigned)SA_ONSTACK | (unsigned)SA_NODEFER);
 }
 
 // Whether an action is the default action. The handler alone tells: Darwin keeps SA_SIGINFO in

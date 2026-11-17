@@ -179,9 +179,55 @@ static void child_marked_overflow(const char *folder) {
     pp_run_on_thread(overflow_as_guest, (void *)folder);
 }
 
+// Faults itself on the page in user_data, with the signal of the fault it handles.
+static uint32_t faulting_handler(pp_guest_fault_t *fault, void *user_data) {
+    (void)fault;
+    pp_signal_plant_read(user_data);
+    return PP_GUEST_FAULT_HANDLED;
+}
+
+static void *fault_into_faulting_handler(void *argument) {
+    const child_fault_t *fault = argument;
+    PP_CHECK_EQUAL(pp_signals_mark_thread(PP_THREAD_MARK_GUEST), PP_OK);
+    // Without the dispatcher's SA_NODEFER, Darwin would run the handler's faulting load for
+    // ever; the alarm ends such a child quickly.
+    (void)alarm(PP_TEST_CHILD_ALARM_SECONDS);
+    pp_signal_plant_read(fault->page);
+    return NULL;
+}
+
+// Child: the guest fault handler faults with the signal that it handles, on another page.
+static void child_guest_handler_faults(const char *folder) {
+    pp_start_host(folder);
+    unsigned char *handler_page = pp_map_pages(1U);
+    pp_write_planted(folder, handler_page);
+    PP_CHECK_EQUAL(pp_signals_set_guest_handler(faulting_handler, handler_page), PP_OK);
+    child_fault_t fault = {.page = pp_map_pages(1U), .folder = folder};
+    pp_run_on_thread(fault_into_faulting_handler, &fault);
+}
+
+// Child: the same with the JIT probe handler, for a fault in the pool while the probe mode is
+// on.
+static void child_probe_handler_faults(const char *folder) {
+    pp_start_host(folder);
+    unsigned char *handler_page = pp_map_pages(1U);
+    pp_write_planted(folder, handler_page);
+    PP_CHECK_EQUAL(pp_signals_set_probe_handler(faulting_handler, handler_page), PP_OK);
+    child_fault_t fault = {.page = pp_map_pages(1U), .folder = folder};
+    uint64_t pool = 0U;
+    PP_CHECK_EQUAL(
+        pp_signals_add_pool_range((uint64_t)(uintptr_t)fault.page, pp_test_page_size(), &pool),
+        PP_OK);
+    PP_CHECK_EQUAL(pp_signals_set_probe_mode(1U), PP_OK);
+    pp_run_on_thread(fault_into_faulting_handler, &fault);
+}
+
 static void check_declined(const char *child_case) {
     const pp_child_end_t expected = {
-        .signal = SIGBUS, .role = PP_THREAD_ROLE_GUEST, .message = PP_TEST_MESSAGE_DECLINED};
+        .signal = SIGBUS,
+        .role = PP_THREAD_ROLE_GUEST,
+        .message = PP_TEST_MESSAGE_DECLINED,
+    };
     pp_check_child_end(s_program, child_case, &expected);
 }
 
@@ -189,9 +235,40 @@ static void declined_fault_ends_with_record(void) { check_declined("declines"); 
 
 static void fault_without_handler_ends_with_record(void) { check_declined("without_handler"); }
 
+// A fault inside the handler reaches the dispatcher again and ends the app with a record of its
+// own. ThreadSanitizer blocks the signal inside every handler, so its run skips these cases.
+static void guest_handler_fault_ends_with_record(void) {
+#if PP_TEST_UNDER_TSAN
+    (void)puts("Skipped: ThreadSanitizer blocks every signal inside a handler.");
+#else
+    const pp_child_end_t expected = {
+        .signal = SIGBUS,
+        .role = PP_THREAD_ROLE_GUEST,
+        .message = PP_TEST_MESSAGE_GUEST_FAULTED,
+    };
+    pp_check_child_end(s_program, "guest_handler_faults", &expected);
+#endif
+}
+
+static void probe_handler_fault_ends_with_record(void) {
+#if PP_TEST_UNDER_TSAN
+    (void)puts("Skipped: ThreadSanitizer blocks every signal inside a handler.");
+#else
+    const pp_child_end_t expected = {
+        .signal = SIGBUS,
+        .role = PP_THREAD_ROLE_GUEST,
+        .message = PP_TEST_MESSAGE_PROBE_FAULTED,
+    };
+    pp_check_child_end(s_program, "probe_handler_faults", &expected);
+#endif
+}
+
 static void marked_thread_overflow_ends_with_record(void) {
     const pp_child_end_t expected = {
-        .role = PP_THREAD_ROLE_GUEST, .message = PP_TEST_MESSAGE_DECLINED, .below_stack = true};
+        .role = PP_THREAD_ROLE_GUEST,
+        .message = PP_TEST_MESSAGE_DECLINED,
+        .below_stack = true,
+    };
     pp_check_child_end(s_program, "marked_overflow", &expected);
 }
 
@@ -255,11 +332,15 @@ int main(int argc, char **argv) {
         {"fault_without_handler_ends_with_record", fault_without_handler_ends_with_record},
         {"removal_waits_for_handler", removal_waits_for_handler},
         {"marked_thread_overflow_ends_with_record", marked_thread_overflow_ends_with_record},
+        {"guest_handler_fault_ends_with_record", guest_handler_fault_ends_with_record},
+        {"probe_handler_fault_ends_with_record", probe_handler_fault_ends_with_record},
     };
     static const pp_child_case_t children[] = {
         {"declines", child_declines},
         {"without_handler", child_without_handler},
         {"marked_overflow", child_marked_overflow},
+        {"guest_handler_faults", child_guest_handler_faults},
+        {"probe_handler_faults", child_probe_handler_faults},
     };
     return pp_signal_test_main(argc, argv, cases, PP_CASE_COUNT(cases), children,
                                PP_CASE_COUNT(children));

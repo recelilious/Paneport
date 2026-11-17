@@ -31,6 +31,7 @@ static struct {
     _Atomic(uint64_t) count;
     _Atomic(int) signal;
     _Atomic(bool) mask_applied;
+    _Atomic(bool) own_signal_blocked;
 } s_plain;
 static const char *s_program;
 
@@ -38,11 +39,13 @@ static void stand_in_handler(int signal_number, siginfo_t *info, void *context) 
     pp_stand_in_handle(&s_stand_in, signal_number, info, context);
 }
 
-// A plain handler, without SA_SIGINFO, whose action blocks SIGUSR2 while it runs.
+// A plain handler, without SA_SIGINFO, whose action blocks SIGUSR2 while it runs; the kernel
+// would block its own signal too, as its action has no SA_NODEFER.
 static void plain_handler(int signal_number) {
     sigset_t blocked;
     (void)pthread_sigmask(SIG_BLOCK, NULL, &blocked);
     atomic_store(&s_plain.mask_applied, sigismember(&blocked, SIGUSR2) == 1);
+    atomic_store(&s_plain.own_signal_blocked, sigismember(&blocked, signal_number) == 1);
     atomic_store(&s_plain.signal, signal_number);
     (void)atomic_fetch_add(&s_plain.count, 1U);
 }
@@ -132,9 +135,10 @@ static void *send_fpe(void *argument) {
     return NULL;
 }
 
-// A plain handler gets the signal number, with its action's mask applied while it runs. Under
-// ThreadSanitizer, which runs every handler with all signals blocked, the mask check cannot
-// fail; the asan-ubsan run makes it count.
+// A plain handler gets the signal number, with its action's mask applied and its own signal
+// blocked while it runs, as the kernel would run it, although the dispatcher's own action leaves
+// the signal unblocked. Under ThreadSanitizer, which runs every handler with all signals
+// blocked, the mask checks cannot fail; the asan-ubsan run makes them count.
 static void plain_handler_gets_signal(void) {
     struct sigaction action;
     memset(&action, 0, sizeof action);
@@ -148,6 +152,7 @@ static void plain_handler_gets_signal(void) {
     PP_CHECK_EQUAL(atomic_load(&s_plain.count), 1U);
     PP_CHECK_EQUAL(atomic_load(&s_plain.signal), SIGFPE);
     PP_CHECK(atomic_load(&s_plain.mask_applied));
+    PP_CHECK(atomic_load(&s_plain.own_signal_blocked));
 }
 
 static void *send_abort(void *argument) {
@@ -394,10 +399,12 @@ static int64_t elapsed_milliseconds(const struct timespec *start) {
 }
 
 static void busy_writer_keeps_first_record(void) {
-    const pp_child_end_t expected = {.ended_by = PP_TEST_ENDED_BY_FAULT,
-                                     .signal = SIGBUS,
-                                     .role = PP_THREAD_ROLE_OTHER,
-                                     .message = PP_TEST_MESSAGE_DEFAULT};
+    const pp_child_end_t expected = {
+        .ended_by = PP_TEST_ENDED_BY_FAULT,
+        .signal = SIGBUS,
+        .role = PP_THREAD_ROLE_OTHER,
+        .message = PP_TEST_MESSAGE_DEFAULT,
+    };
     pp_check_child_end(s_program, "busy_writer", &expected);
 }
 
@@ -420,58 +427,78 @@ static void stuck_writer_wait_is_bounded(void) {
 
 static void default_action_ends_with_record(void) {
     const pp_child_end_t expected = {
-        .signal = SIGBUS, .role = PP_THREAD_ROLE_MAIN, .message = PP_TEST_MESSAGE_DEFAULT};
+        .signal = SIGBUS,
+        .role = PP_THREAD_ROLE_MAIN,
+        .message = PP_TEST_MESSAGE_DEFAULT,
+    };
     pp_check_child_end(s_program, "default_action", &expected);
 }
 
 static void runtime_declined_fault_ends_with_record(void) {
     const pp_child_end_t expected = {
-        .signal = SIGBUS, .role = PP_THREAD_ROLE_MAIN, .message = PP_TEST_MESSAGE_LAST_RESORT};
+        .signal = SIGBUS,
+        .role = PP_THREAD_ROLE_MAIN,
+        .message = PP_TEST_MESSAGE_LAST_RESORT,
+    };
     pp_check_child_end(s_program, "runtime_declines", &expected);
 }
 
 static void crash_path_illegal_keeps_record(void) {
-    const pp_child_end_t expected = {.ended_by = SIGABRT,
-                                     .signal = SIGILL,
-                                     .role = PP_THREAD_ROLE_MAIN,
-                                     .message = PP_TEST_MESSAGE_CRASH_PATH,
-                                     .any_code = true};
+    const pp_child_end_t expected = {
+        .ended_by = SIGABRT,
+        .signal = SIGILL,
+        .role = PP_THREAD_ROLE_MAIN,
+        .message = PP_TEST_MESSAGE_CRASH_PATH,
+        .any_code = true,
+    };
     pp_check_child_end(s_program, "illegal_to_crash_path", &expected);
 }
 
 static void crash_path_managed_fault_keeps_record(void) {
-    const pp_child_end_t expected = {.ended_by = SIGABRT,
-                                     .signal = SIGBUS,
-                                     .role = PP_THREAD_ROLE_MAIN,
-                                     .message = PP_TEST_MESSAGE_CRASH_PATH};
+    const pp_child_end_t expected = {
+        .ended_by = SIGABRT,
+        .signal = SIGBUS,
+        .role = PP_THREAD_ROLE_MAIN,
+        .message = PP_TEST_MESSAGE_CRASH_PATH,
+    };
     pp_check_child_end(s_program, "managed_fault_to_crash_path", &expected);
 }
 
 static void ignored_breakpoint_ends_with_record(void) {
-    const pp_child_end_t expected = {.signal = SIGTRAP,
-                                     .role = PP_THREAD_ROLE_MAIN,
-                                     .message = PP_TEST_MESSAGE_DEFAULT,
-                                     .any_code = true};
+    const pp_child_end_t expected = {
+        .signal = SIGTRAP,
+        .role = PP_THREAD_ROLE_MAIN,
+        .message = PP_TEST_MESSAGE_DEFAULT,
+        .any_code = true,
+    };
     pp_check_child_end(s_program, "ignored_breakpoint", &expected);
 }
 
 static void simulated_overflow_ends_with_record(void) {
     const pp_child_end_t expected = {
-        .signal = SIGBUS, .role = PP_THREAD_ROLE_OTHER, .message = PP_TEST_MESSAGE_OVERFLOW};
+        .signal = SIGBUS,
+        .role = PP_THREAD_ROLE_OTHER,
+        .message = PP_TEST_MESSAGE_OVERFLOW,
+    };
     pp_check_child_end(s_program, "simulated_overflow", &expected);
 }
 
 static void main_thread_overflow_ends_with_record(void) {
     const pp_child_end_t expected = {
-        .role = PP_THREAD_ROLE_MAIN, .message = PP_TEST_MESSAGE_OVERFLOW, .below_stack = true};
+        .role = PP_THREAD_ROLE_MAIN,
+        .message = PP_TEST_MESSAGE_OVERFLOW,
+        .below_stack = true,
+    };
     pp_check_child_end(s_program, "main_thread_overflow", &expected);
 }
 
 static void main_thread_overflow_reaches_runtime(void) {
-    const pp_child_end_t expected = {.ended_by = SIGABRT,
-                                     .role = PP_THREAD_ROLE_MAIN,
-                                     .message = PP_TEST_MESSAGE_OVERFLOW,
-                                     .below_stack = true};
+    const pp_child_end_t expected = {
+        .ended_by = SIGABRT,
+        .role = PP_THREAD_ROLE_MAIN,
+        .message = PP_TEST_MESSAGE_OVERFLOW,
+        .below_stack = true,
+    };
     pp_check_child_end(s_program, "main_thread_overflow_to_crash_path", &expected);
 }
 

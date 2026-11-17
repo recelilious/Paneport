@@ -45,6 +45,8 @@
 #define PP_MESSAGE_RUNTIME_CRASH "A fault that ended in the runtime's crash path."
 #define PP_MESSAGE_GUEST_DECLINED "The guest fault handler declined a fault."
 #define PP_MESSAGE_PROBE_DECLINED "The JIT probe handler declined a fault."
+#define PP_MESSAGE_GUEST_FAULTED "A fault inside the guest fault handler."
+#define PP_MESSAGE_PROBE_FAULTED "A fault inside the JIT probe handler."
 #define PP_MESSAGE_STACK_OVERFLOW "A stack overflow outside the guest path."
 
 pp_signal_state_t pp_signal_state;
@@ -63,18 +65,26 @@ static uint64_t fault_address(const siginfo_t *info) {
     return info != NULL ? (uint64_t)(uintptr_t)info->si_addr : 0U;
 }
 
-// The calling thread's mark. Only the thread itself writes its slot, so a thread that never
-// marked itself finds none, whatever other threads do meanwhile.
-static uint32_t current_mark(void) {
+// The calling thread's slot, or NULL for a thread without a mark. Only the thread itself
+// writes its slot, so a thread that never marked itself finds none, whatever other threads do
+// meanwhile.
+static pp_signal_thread_slot_t *own_slot(void) {
     const uintptr_t self = (uintptr_t)pthread_self();
     const uint32_t used = atomic_load_explicit(&pp_signal_state.threads_used, memory_order_acquire);
     for (uint32_t index = 0U; index < used && index < PP_SIGNAL_MARKED_THREADS; index++) {
-        const pp_signal_thread_slot_t *slot = &pp_signal_state.threads[index];
+        pp_signal_thread_slot_t *slot = &pp_signal_state.threads[index];
         if (atomic_load_explicit(&slot->thread, memory_order_acquire) == self) {
-            return atomic_load_explicit(&slot->mark, memory_order_relaxed);
+            return slot;
         }
     }
-    return PP_THREAD_MARK_NONE;
+    return NULL;
+}
+
+static uint32_t mark_of(const pp_signal_thread_slot_t *slot) {
+    if (slot == NULL) {
+        return PP_THREAD_MARK_NONE;
+    }
+    return atomic_load_explicit(&slot->mark, memory_order_relaxed);
 }
 
 // Reads a slot as a whole. A slot that a writer is changing, or changed while it was read, is
@@ -129,7 +139,7 @@ static bool in_reservation(uint64_t address) {
 // The route of C-0005 section 4. The address of a signal that a thread sent means nothing, so
 // such a signal follows the thread's mark and the program counter only. A fault in the pool
 // counts by its address or by its program counter, because translated code runs there.
-static uint32_t choose_route(const siginfo_t *info, const void *context, uint32_t *mark) {
+static uint32_t choose_route(const siginfo_t *info, const void *context, uint32_t mark) {
     uint64_t address = 0U;
     if (from_instruction(info)) {
         address = fault_address(info);
@@ -138,11 +148,10 @@ static uint32_t choose_route(const siginfo_t *info, const void *context, uint32_
     if (!pool) {
         pool = in_pool(pp_signal_context_pc(context));
     }
-    *mark = current_mark();
     if (pool && atomic_load_explicit(&pp_signal_state.probe_mode, memory_order_acquire) != 0U) {
         return PP_FAULT_ROUTE_JIT_PROBE;
     }
-    if (*mark != PP_THREAD_MARK_NONE) {
+    if (mark != PP_THREAD_MARK_NONE) {
         return PP_FAULT_ROUTE_THREAD_MARK;
     }
     if (pool) {
@@ -250,8 +259,11 @@ static uint32_t call_handler(pp_signal_handler_slot_t *slot, pp_guest_fault_t *f
     return PP_GUEST_FAULT_DECLINED;
 }
 
-static void to_guest(uint32_t route, uint32_t mark, int signal_number, siginfo_t *info,
-                     void *context) {
+// Calls the guest or the probe handler. On a marked thread the slot says, for as long as the
+// handler runs, that the thread is inside it, so that a fault in the handler ends the app.
+static void to_guest(uint32_t route, pp_signal_thread_slot_t *own, int signal_number,
+                     siginfo_t *info, void *context) {
+    const uint32_t mark = mark_of(own);
     pp_guest_fault_t fault = {
         .struct_size = (uint32_t)sizeof(pp_guest_fault_t),
         .route = route,
@@ -267,13 +279,22 @@ static void to_guest(uint32_t route, uint32_t mark, int signal_number, siginfo_t
     _Atomic(uint64_t) *handled = &pp_signal_state.guest_handled_count;
     _Atomic(uint64_t) *declined = &pp_signal_state.guest_declined_count;
     const char *message = PP_MESSAGE_GUEST_DECLINED;
+    uint32_t inside = PP_SIGNAL_IN_GUEST;
     if (route == PP_FAULT_ROUTE_JIT_PROBE) {
         slot = &pp_signal_state.probe;
         handled = &pp_signal_state.probe_handled_count;
         declined = &pp_signal_state.probe_declined_count;
         message = PP_MESSAGE_PROBE_DECLINED;
+        inside = PP_SIGNAL_IN_PROBE;
     }
-    if (call_handler(slot, &fault) == PP_GUEST_FAULT_HANDLED) {
+    if (own != NULL) {
+        atomic_store_explicit(&own->in_handler, inside, memory_order_relaxed);
+    }
+    const uint32_t result = call_handler(slot, &fault);
+    if (own != NULL) {
+        atomic_store_explicit(&own->in_handler, PP_SIGNAL_IN_NONE, memory_order_relaxed);
+    }
+    if (result == PP_GUEST_FAULT_HANDLED) {
         (void)atomic_fetch_add_explicit(handled, 1U, memory_order_relaxed);
         return;
     }
@@ -300,17 +321,16 @@ static bool stack_overflow(int signal_number, const siginfo_t *info) {
 }
 
 // Runs a saved action's handler as the kernel would have: with the action's mask added to the
-// blocked signals, and with the signal itself unblocked when the action asked for SA_NODEFER.
+// blocked signals, and the signal itself too unless the action asked for SA_NODEFER. The
+// dispatcher's own action has SA_NODEFER, so the kernel left the signal unblocked.
 static void call_saved(const struct sigaction *saved, int signal_number, siginfo_t *info,
                        void *context) {
-    sigset_t previous;
-    (void)pthread_sigmask(SIG_BLOCK, &saved->sa_mask, &previous);
-    if (pp_signal_has_flag(saved->sa_flags, SA_NODEFER)) {
-        sigset_t own;
-        (void)sigemptyset(&own);
-        (void)sigaddset(&own, signal_number);
-        (void)pthread_sigmask(SIG_UNBLOCK, &own, NULL);
+    sigset_t blocked = saved->sa_mask;
+    if (!pp_signal_has_flag(saved->sa_flags, SA_NODEFER)) {
+        (void)sigaddset(&blocked, signal_number);
     }
+    sigset_t previous;
+    (void)pthread_sigmask(SIG_BLOCK, &blocked, &previous);
     if (pp_signal_has_flag(saved->sa_flags, SA_SIGINFO)) {
         saved->sa_sigaction(signal_number, info, context);
     } else {
@@ -382,14 +402,35 @@ static void to_runtime(int signal_number, siginfo_t *info, void *context) {
     call_saved(saved, signal_number, info, context);
 }
 
+// A marked thread that faults again while its own fault is in the guest or the probe handler
+// ends the app: the handler faulted, or a signal came while it ran (signals.md section 6).
+static bool inside_own_handler(int signal_number, const siginfo_t *info, const void *context,
+                               const pp_signal_thread_slot_t *own) {
+    if (own == NULL) {
+        return false;
+    }
+    const uint32_t inside = atomic_load_explicit(&own->in_handler, memory_order_relaxed);
+    if (inside == PP_SIGNAL_IN_NONE) {
+        return false;
+    }
+    const char *message = PP_MESSAGE_GUEST_FAULTED;
+    if (inside == PP_SIGNAL_IN_PROBE) {
+        message = PP_MESSAGE_PROBE_FAULTED;
+    }
+    end_app(signal_number, info, context, mark_of(own), message);
+    return true;
+}
+
 void pp_signal_dispatch(int signal_number, siginfo_t *info, void *context) {
     const int saved_errno = errno;
-    uint32_t mark = PP_THREAD_MARK_NONE;
-    const uint32_t route = choose_route(info, context, &mark);
-    if (route == PP_FAULT_ROUTE_RUNTIME) {
-        to_runtime(signal_number, info, context);
-    } else {
-        to_guest(route, mark, signal_number, info, context);
+    pp_signal_thread_slot_t *own = own_slot();
+    if (!inside_own_handler(signal_number, info, context, own)) {
+        const uint32_t route = choose_route(info, context, mark_of(own));
+        if (route == PP_FAULT_ROUTE_RUNTIME) {
+            to_runtime(signal_number, info, context);
+        } else {
+            to_guest(route, own, signal_number, info, context);
+        }
     }
     errno = saved_errno;
 }
@@ -403,7 +444,7 @@ void pp_signal_last_resort(int signal_number, siginfo_t *info, void *context) {
     if (stack_overflow(signal_number, info)) {
         message = PP_MESSAGE_STACK_OVERFLOW;
     }
-    end_app(signal_number, info, context, current_mark(), message);
+    end_app(signal_number, info, context, mark_of(own_slot()), message);
     errno = saved_errno;
 }
 

@@ -71,7 +71,9 @@ typedef struct pp_guest_fault_t {
 // Handles a fault of the guest path in the faulting thread's signal context, so it may call
 // only async-signal-safe functions and must return. It returns PP_GUEST_FAULT_HANDLED when the
 // thread may go on with the context as the handler left it, or PP_GUEST_FAULT_DECLINED, which
-// ends the app with a crash record; a handler that declines leaves the context unchanged.
+// ends the app with a crash record; a handler that declines leaves the context unchanged. The
+// signal stays unblocked while it runs: a fault inside the handler on a marked thread ends the
+// app with a record of its own, and on another thread is routed again like any fault.
 typedef uint32_t (*pp_guest_fault_handler_t)(pp_guest_fault_t *fault, void *user_data);
 
 // How many faults the dispatcher has sent each way since the process started.
@@ -136,7 +138,8 @@ pp_status_t pp_signals_remove_reservation(uint64_t handle);
 pp_status_t pp_signals_set_probe_mode(uint8_t on);
 
 // Sets the guest fault handler, or removes it with NULL. When it returns, no fault is still in
-// the handler it replaced. Returns PP_OK.
+// the handler it replaced, so it waits for a handler that has not returned yet; a handler that
+// never returns, which the rules above forbid, makes it wait for ever. Returns PP_OK.
 pp_status_t pp_signals_set_guest_handler(pp_guest_fault_handler_t handler, void *user_data);
 
 // Sets the probe handler, or removes it with NULL, as pp_signals_set_guest_handler does.

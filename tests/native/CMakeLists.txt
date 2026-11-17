@@ -55,7 +55,8 @@ paneport_native_test(test_signal_routing CASES
 paneport_native_test(test_signal_guest CASES
     handler_sees_only_guest_faults declined_fault_ends_with_record
     fault_without_handler_ends_with_record removal_waits_for_handler
-    marked_thread_overflow_ends_with_record)
+    marked_thread_overflow_ends_with_record guest_handler_fault_ends_with_record
+    probe_handler_fault_ends_with_record)
 paneport_native_test(test_thread_control CASES
     register_change_seen_after_resume ended_thread_fails suspending_itself_refused)
 paneport_native_test(test_signal_installed CASES

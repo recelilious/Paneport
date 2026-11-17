@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // Scans app packages for what a build step may leave behind that names an Apple account
-// (C-0009 section 6, S1.3.9): a provisioning profile, and a property list, entitlement or code
-// directory that names a team identifier or an application-identifier prefix. It lists the
-// entitlements of every code signature it finds, and fails a package that holds no app. The
-// rest of the scan of C-0009 section 6 comes with M9.1, which extends this tool and keeps its
+// (C-0009 section 6, S1.3.9): a provisioning profile; a property list, XML or binary, or the
+// entitlements of a code signature, XML or DER, that name a team identifier or an
+// application-identifier prefix; and a code directory or CMS blob that names a team. Of each code
+// signature in every 64-bit Mach-O file, thin or in a fat file, it reads the code directories,
+// every entitlements blob and the CMS blob, but not the requirements, nor the code directory's
+// identifier or hashes. A Mach-O file of a kind that it does not parse fails as unreadable. It
+// lists the entitlements of every code signature it finds, and fails a package that holds no app.
+// The rest of the scan of C-0009 section 6 comes with M9.1, which extends this tool and keeps its
 // name.
 //
 //   dotnet run tools/ScanPackage.cs -- <package.ipa>...   scan packages
@@ -18,6 +22,7 @@
 #:property PublishAot=false
 
 using System.Buffers.Binary;
+using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -74,6 +79,13 @@ internal static class Rules
         "DEVELOPMENT_TEAM",
     };
 
+    // The keys of the DER entitlements that name an account, with the rule that each breaks:
+    // application-identifier holds a team identifier in front of the bundle identifier, and a team
+    // key holds a team identifier. DER keeps the keys as UTF-8 text, so a search of the blob's
+    // bytes finds each.
+    public static readonly (string Key, string Rule)[] DerKeys =
+        [("application-identifier", AppIdentifierPrefix), .. TeamKeys.Select(key => (Key: key, Rule: TeamIdentifier))];
+
     // A team identifier: ten capital letters and digits, with at least one of each.
     public static readonly Regex Team = new("^(?=[A-Z0-9]*[0-9])(?=[A-Z0-9]*[A-Z])[A-Z0-9]{10}$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
@@ -87,31 +99,56 @@ internal static class Rules
 
 internal static class Scanner
 {
-    public static int ScanPackages(IReadOnlyList<string> paths)
+    public static int ScanPackages(IReadOnlyList<string> paths) => ScanPackages(paths, File.OpenRead, Console.Out, Console.Error);
+
+    // Scans the packages in turn. One that cannot be read is reported and the scan goes on with
+    // the next, so that one run shows every package; the result is then 2, otherwise 1 for
+    // findings and 0 for none.
+    internal static int ScanPackages(IReadOnlyList<string> paths, Func<string, Stream> open, TextWriter output, TextWriter error)
     {
+        var annotate = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true";
         var total = 0;
+        var unreadable = 0;
         foreach (var path in paths)
         {
-            var report = Scan(File.OpenRead(path));
+            var package = Path.GetFileName(path);
+            PackageReport report;
+            try
+            {
+                using var stream = open(path);
+                report = Scan(stream);
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+            {
+                unreadable++;
+                error.WriteLine($"{package}: error: {exception.Message}");
+                if (annotate)
+                {
+                    output.WriteLine($"::error title=Package scan::{package}: cannot be read");
+                }
+
+                continue;
+            }
+
             foreach (var entitlement in report.Entitlements)
             {
-                Console.WriteLine($"{Path.GetFileName(path)}: {entitlement}");
+                output.WriteLine($"{package}: {entitlement}");
             }
 
             foreach (var finding in report.Findings)
             {
-                Console.WriteLine($"{Path.GetFileName(path)}: {finding.Entry}: {finding.Rule}");
-                if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+                output.WriteLine($"{package}: {finding.Entry}: {finding.Rule}");
+                if (annotate)
                 {
-                    Console.WriteLine($"::error title=Package scan::{Path.GetFileName(path)}: {finding.Entry}: {finding.Rule}");
+                    output.WriteLine($"::error title=Package scan::{package}: {finding.Entry}: {finding.Rule}");
                 }
             }
 
             total += report.Findings.Count;
-            Console.WriteLine($"{Path.GetFileName(path)}: {report.Findings.Count} findings.");
+            output.WriteLine($"{package}: {report.Findings.Count} findings.");
         }
 
-        return total == 0 ? 0 : 1;
+        return unreadable != 0 ? 2 : total == 0 ? 0 : 1;
     }
 
     // Scans one package, a zip archive such as an .ipa. A package needs an app: an Info.plist in
@@ -164,22 +201,15 @@ internal static class Scanner
             findings.Add(new Finding("Payload/", Rules.NoApp));
         }
 
-        return new PackageReport([.. findings.Distinct()], entitlements);
+        return new PackageReport([.. findings.Distinct()], [.. entitlements.Distinct()]);
     }
 
     private static void ScanSignature(string name, byte[] bytes, List<Finding> findings, List<string> entitlements)
     {
-        byte[]? xml;
+        Signature signature;
         try
         {
-            (xml, var namesTeam) = MachO.ReadSignatures(bytes);
-
-            // A code directory names a team only when an Apple identity signed it; an ad-hoc
-            // signature names none.
-            if (namesTeam)
-            {
-                findings.Add(new Finding($"{name} (code signature)", Rules.TeamIdentifier));
-            }
+            signature = MachO.ReadSignatures(bytes);
         }
         catch (InvalidDataException)
         {
@@ -187,29 +217,47 @@ internal static class Scanner
             return;
         }
 
-        if (xml is null)
+        var signed = $"{name} (code signature)";
+
+        // A code directory names a team, and the CMS blob holds a certificate, only when an Apple
+        // identity signed the file; an ad-hoc signature has neither.
+        if (signature.NamesTeam)
         {
-            return;
+            findings.Add(new Finding(signed, Rules.TeamIdentifier));
         }
 
-        try
+        foreach (var der in signature.DerEntitlements)
         {
-            var tree = Plist.Parse(xml);
-            if (tree is Dictionary<string, object> dictionary)
+            foreach (var (key, rule) in Rules.DerKeys)
             {
-                foreach (var (key, value) in dictionary.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                if (der.AsSpan().IndexOf(Encoding.UTF8.GetBytes(key)) >= 0)
                 {
-                    // Only a Boolean value is printed; any other value could name the account.
-                    var shown = value is bool flag ? (flag ? "true" : "false") : "(not shown)";
-                    entitlements.Add($"{name}: entitlement {key} = {shown}");
+                    findings.Add(new Finding(signed, rule));
                 }
             }
-
-            Check($"{name} (code signature)", tree, findings);
         }
-        catch (InvalidDataException)
+
+        foreach (var xml in signature.Entitlements)
         {
-            findings.Add(new Finding(name, Rules.UnreadableSignature));
+            try
+            {
+                var tree = Plist.Parse(xml);
+                if (tree is Dictionary<string, object> dictionary)
+                {
+                    foreach (var (key, value) in dictionary.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                    {
+                        // Only a Boolean value is printed; any other value could name the account.
+                        var shown = value is bool flag ? (flag ? "true" : "false") : "(not shown)";
+                        entitlements.Add($"{name}: entitlement {key} = {shown}");
+                    }
+                }
+
+                Check(signed, tree, findings);
+            }
+            catch (InvalidDataException)
+            {
+                findings.Add(new Finding(name, Rules.UnreadableSignature));
+            }
         }
     }
 
@@ -265,66 +313,106 @@ internal static class Scanner
     }
 }
 
-// The code signature of a Mach-O file, as Apple's open-source mach-o/loader.h, mach-o/fat.h and
-// the code signing blobs of cs_blobs.h describe it: LC_CODE_SIGNATURE points at a super blob,
-// whose index names the code directories and the entitlements blob, an XML property list. A code
-// directory of version 0x20200 or later holds the offset of a team identifier at byte 48, which an
-// ad-hoc signature leaves at zero. Mach-O headers are little-endian on arm64; fat headers and
-// signature blobs are big-endian.
+// What the code signatures of a Mach-O file hold that the scan reads: every entitlements blob, in
+// XML and in DER, and whether a code directory or a CMS blob names a team.
+internal sealed class Signature
+{
+    public List<byte[]> Entitlements { get; } = [];
+
+    public List<byte[]> DerEntitlements { get; } = [];
+
+    public bool NamesTeam { get; set; }
+}
+
+// The code signatures of a Mach-O file, as Apple's open-source mach-o/loader.h, mach-o/fat.h and
+// the code signing blobs of cs_blobs.h describe them. Each LC_CODE_SIGNATURE of a 64-bit slice,
+// thin or in a fat file, points at a super blob, whose index names the code directories, the
+// entitlements in XML and in DER, and the CMS blob. A code directory of version 0x20200 or later
+// holds the offset of a team identifier at byte 48, which an ad-hoc signature leaves at zero, and
+// only a signature by an identity fills the CMS blob, with a certificate that names the team. The
+// requirements, the code directory's identifier and hashes, and the other slots are not read. A
+// 32-bit or big-endian Mach-O file and a fat file with 64-bit offsets are not parsed, and so are
+// unreadable, as are more slices or blobs than a real file holds. Mach-O headers are
+// little-endian on arm64; fat headers and signature blobs are big-endian. Offsets are long, so
+// that no sum of the file's numbers overflows.
 internal static class MachO
 {
     private const uint Magic64 = 0xFEEDFACF;
+
+    // The other Mach-O headers, as a little-endian read sees them: 32-bit, and 32-bit or 64-bit in
+    // big-endian order.
+    private const uint Magic32 = 0xFEEDFACE;
+    private const uint Cigam32 = 0xCEFAEDFE;
+    private const uint Cigam64 = 0xCFFAEDFE;
     private const uint FatMagic = 0xCAFEBABE;
+    private const uint FatMagic64 = 0xCAFEBABF;
+    private const uint MaxSlices = 16;
+    private const uint MaxBlobs = 64;
     private const uint CodeSignatureCommand = 0x1D;
     private const uint SuperBlobMagic = 0xFADE0CC0;
-    private const uint EntitlementsMagic = 0xFADE7171;
-    private const uint EntitlementsSlot = 5;
     private const uint CodeDirectoryMagic = 0xFADE0C02;
+    private const uint EntitlementsMagic = 0xFADE7171;
+    private const uint DerEntitlementsMagic = 0xFADE7172;
+    private const uint CmsMagic = 0xFADE0B01;
     private const uint CodeDirectorySlot = 0;
+    private const uint EntitlementsSlot = 5;
+    private const uint DerEntitlementsSlot = 7;
     private const uint AlternateCodeDirectorySlot = 0x1000;
     private const uint AlternateCodeDirectories = 5;
+    private const uint CmsSlot = 0x10000;
     private const uint TeamOffsetVersion = 0x20200;
     private const int TeamOffsetField = 48;
+    private const uint BlobHeader = 8;
 
     public static bool IsMachO(byte[] bytes) =>
-        bytes.Length >= 32 && (BinaryPrimitives.ReadUInt32LittleEndian(bytes) == Magic64 || BinaryPrimitives.ReadUInt32BigEndian(bytes) == FatMagic);
+        bytes.Length >= 32
+        && (BinaryPrimitives.ReadUInt32LittleEndian(bytes) is Magic64 or Magic32 or Cigam32 or Cigam64
+            || BinaryPrimitives.ReadUInt32BigEndian(bytes) is FatMagic or FatMagic64);
 
-    // The entitlements of the first slice whose signature holds them, or null; and whether a code
-    // directory of any slice names a team.
-    public static (byte[]? Entitlements, bool NamesTeam) ReadSignatures(byte[] bytes)
+    // Reads the code signatures of every slice.
+    public static Signature ReadSignatures(byte[] bytes)
     {
-        if (BinaryPrimitives.ReadUInt32BigEndian(bytes) == FatMagic)
+        var signature = new Signature();
+        var magic = BinaryPrimitives.ReadUInt32BigEndian(bytes);
+        if (magic == FatMagic64)
         {
-            byte[]? entitlements = null;
-            var namesTeam = false;
-            var count = BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(4));
-            for (var index = 0; index < count && index < 16; index++)
-            {
-                var offset = (int)BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, 8 + (index * 20) + 8, 4));
-                var slice = ReadThin(bytes, offset);
-                entitlements ??= slice.Entitlements;
-                namesTeam |= slice.NamesTeam;
-            }
-
-            return (entitlements, namesTeam);
+            throw new InvalidDataException("a fat file with 64-bit offsets, which this reader does not parse");
         }
 
-        return ReadThin(bytes, 0);
+        if (magic != FatMagic)
+        {
+            ReadThin(bytes, 0, signature);
+            return signature;
+        }
+
+        var count = BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, 4, 4));
+        if (count > MaxSlices)
+        {
+            throw new InvalidDataException("the fat file has more slices than this reader reads");
+        }
+
+        for (var index = 0; index < count; index++)
+        {
+            ReadThin(bytes, BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, 8 + (index * 20) + 8, 4)), signature);
+        }
+
+        return signature;
     }
 
-    private static (byte[]? Entitlements, bool NamesTeam) ReadThin(byte[] bytes, int start)
+    private static void ReadThin(byte[] bytes, long start, Signature signature)
     {
         if (BinaryPrimitives.ReadUInt32LittleEndian(Slice(bytes, start, 4)) != Magic64)
         {
-            throw new InvalidDataException("not a 64-bit Mach-O file");
+            throw new InvalidDataException("not a 64-bit little-endian Mach-O file");
         }
 
+        // Every LC_CODE_SIGNATURE is read, although a valid file holds one.
         var commands = BinaryPrimitives.ReadUInt32LittleEndian(Slice(bytes, start + 16, 4));
         var offset = start + 32;
-        for (var index = 0; index < commands; index++)
+        for (var index = 0L; index < commands; index++)
         {
             var command = BinaryPrimitives.ReadUInt32LittleEndian(Slice(bytes, offset, 4));
-            var size = (int)BinaryPrimitives.ReadUInt32LittleEndian(Slice(bytes, offset + 4, 4));
+            var size = BinaryPrimitives.ReadUInt32LittleEndian(Slice(bytes, offset + 4, 4));
             if (size < 8)
             {
                 throw new InvalidDataException("a load command is too short");
@@ -332,50 +420,61 @@ internal static class MachO
 
             if (command == CodeSignatureCommand)
             {
-                var dataOffset = start + (int)BinaryPrimitives.ReadUInt32LittleEndian(Slice(bytes, offset + 8, 4));
-                return ReadBlob(bytes, dataOffset);
+                ReadSuperBlob(bytes, start + BinaryPrimitives.ReadUInt32LittleEndian(Slice(bytes, offset + 8, 4)), signature);
             }
 
             offset += size;
         }
-
-        return (null, false);
     }
 
-    private static (byte[]? Entitlements, bool NamesTeam) ReadBlob(byte[] bytes, int superBlob)
+    private static void ReadSuperBlob(byte[] bytes, long superBlob, Signature signature)
     {
         if (BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, superBlob, 4)) != SuperBlobMagic)
         {
             throw new InvalidDataException("the code signature is not a super blob");
         }
 
-        byte[]? entitlements = null;
-        var namesTeam = false;
         var count = BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, superBlob + 8, 4));
-        for (var index = 0; index < count && index < 64; index++)
+        if (count > MaxBlobs)
         {
-            var slot = BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, superBlob + 12 + (index * 8), 4));
-            var blob = superBlob + (int)BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, superBlob + 16 + (index * 8), 4));
-            if (slot == EntitlementsSlot)
-            {
-                if (BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, blob, 4)) != EntitlementsMagic)
-                {
-                    throw new InvalidDataException("the entitlements blob has another magic");
-                }
-
-                var length = (int)BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, blob + 4, 4));
-                entitlements = Slice(bytes, blob + 8, length - 8).ToArray();
-            }
-            else if (slot is CodeDirectorySlot or (>= AlternateCodeDirectorySlot and < AlternateCodeDirectorySlot + AlternateCodeDirectories))
-            {
-                namesTeam |= NamesTeam(bytes, blob);
-            }
+            throw new InvalidDataException("the code signature has more blobs than this reader reads");
         }
 
-        return (entitlements, namesTeam);
+        for (var index = 0; index < count; index++)
+        {
+            var slot = BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, superBlob + 12 + (index * 8), 4));
+            var blob = superBlob + BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, superBlob + 16 + (index * 8), 4));
+            switch (slot)
+            {
+                case EntitlementsSlot:
+                    signature.Entitlements.Add(Content(bytes, blob, EntitlementsMagic).ToArray());
+                    break;
+                case DerEntitlementsSlot:
+                    signature.DerEntitlements.Add(Content(bytes, blob, DerEntitlementsMagic).ToArray());
+                    break;
+                case CmsSlot:
+                    // An ad-hoc signature's CMS blob is its 8-byte header alone.
+                    signature.NamesTeam |= !Content(bytes, blob, CmsMagic).IsEmpty;
+                    break;
+                case CodeDirectorySlot or (>= AlternateCodeDirectorySlot and < AlternateCodeDirectorySlot + AlternateCodeDirectories):
+                    signature.NamesTeam |= NamesTeam(bytes, blob);
+                    break;
+            }
+        }
     }
 
-    private static bool NamesTeam(byte[] bytes, int codeDirectory)
+    // A blob's content, after its magic and its length.
+    private static ReadOnlySpan<byte> Content(byte[] bytes, long blob, uint magic)
+    {
+        if (BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, blob, 4)) != magic)
+        {
+            throw new InvalidDataException("a blob of the code signature has another magic");
+        }
+
+        return Slice(bytes, blob + BlobHeader, (long)BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, blob + 4, 4)) - BlobHeader);
+    }
+
+    private static bool NamesTeam(byte[] bytes, long codeDirectory)
     {
         if (BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, codeDirectory, 4)) != CodeDirectoryMagic)
         {
@@ -387,10 +486,10 @@ internal static class MachO
             && BinaryPrimitives.ReadUInt32BigEndian(Slice(bytes, codeDirectory + TeamOffsetField, 4)) != 0;
     }
 
-    private static ReadOnlySpan<byte> Slice(byte[] bytes, int offset, int length) =>
+    private static ReadOnlySpan<byte> Slice(byte[] bytes, long offset, long length) =>
         offset < 0 || length < 0 || offset + length > bytes.Length
             ? throw new InvalidDataException("a structure lies outside the file")
-            : bytes.AsSpan(offset, length);
+            : bytes.AsSpan((int)offset, (int)length);
 }
 
 // Property lists, XML or binary, read into dictionaries, lists, texts, Booleans and other values.
@@ -494,8 +593,19 @@ internal static class Plist
 
         private sealed class Reader(byte[] bytes, int[] offsets, int referenceSize)
         {
+            // An object is read again for each reference to it, which the format allows, so a
+            // list whose arrays each reference the next one twice would expand to 2^depth
+            // objects. The objects read are therefore counted, against 16 for each byte of the
+            // file; a list that a writer made expands to fewer objects than it has bytes.
+            private long _read;
+
             public object Read(int reference, int depth)
             {
+                if (++_read > 16L * bytes.Length)
+                {
+                    throw new InvalidDataException("the binary property list expands to more objects than its size allows");
+                }
+
                 if (depth > 64 || reference < 0 || reference >= offsets.Length || offsets[reference] >= bytes.Length)
                 {
                     throw new InvalidDataException("the binary property list is malformed");
@@ -593,13 +703,16 @@ internal static class Plist
 
 // Checks every rule on packages that it builds in memory: a clean package, whose signatures are ad
 // hoc, passes; a planted provisioning profile, team identifier or application-identifier prefix
-// each fails and names its file; a package without an app fails; and a malformed binary property
-// list is reported, never crashed on. The planted values are made up and exist only in memory.
+// each fails and names its file, in every part of a code signature that the scan reads; a package
+// without an app fails; a Mach-O file or binary property list that is malformed, hostile or of a
+// kind the scan does not parse is reported, never crashed on; and the scan goes on after a package
+// that it cannot read. The planted values are made up and exist only in memory.
 internal static class SelfTest
 {
     private const string App = "Payload/Paneport.app/";
     private const string Team = "AB12CD34EF";
     private const string BundleId = "io.github.recelilious.paneport";
+    private const string AppIdentifier = $"<key>application-identifier</key><string>{Team}.{BundleId}</string>";
 
     private static int s_failures;
 
@@ -655,6 +768,67 @@ internal static class SelfTest
         Expect("a framework's code directory that names a team fails",
             Files(("Frameworks/paneport_host.framework/paneport_host", MachO(Entitlements(string.Empty), Team))),
             [new Finding($"{App}Frameworks/paneport_host.framework/paneport_host (code signature)", Rules.TeamIdentifier)]);
+        Expect("an alternate code directory that names a team fails",
+            Files(("Paneport.iOS", Signed((0, CodeDirectory()), (5, XmlEntitlements(string.Empty)), (0x1000, CodeDirectory(Team))))),
+            [new Finding($"{App}Paneport.iOS (code signature)", Rules.TeamIdentifier)]);
+        Expect("a fat file whose second slice names a team fails",
+            Files(("Paneport.iOS", Fat(MachO(Entitlements(string.Empty)), MachO(Entitlements(string.Empty), Team)))),
+            [new Finding($"{App}Paneport.iOS (code signature)", Rules.TeamIdentifier)]);
+        Expect("a code directory of version 0x20200 that names a team fails",
+            Files(("Paneport.iOS", Signed((0, CodeDirectory(Team, 0x20200)), (5, XmlEntitlements(string.Empty))))),
+            [new Finding($"{App}Paneport.iOS (code signature)", Rules.TeamIdentifier)]);
+        Expect("a code directory of version 0x201FF has no team offset to read",
+            Files(("Paneport.iOS", Signed((0, CodeDirectory(Team, 0x201FF)), (5, XmlEntitlements(string.Empty))))),
+            []);
+        Expect("a code directory in slot 0x1005 is not one that the kernel reads",
+            Files(("Paneport.iOS", Signed((0, CodeDirectory()), (5, XmlEntitlements(string.Empty)), (0x1005, CodeDirectory(Team))))),
+            []);
+        Expect("a team in a second code signature of the file fails",
+            Files(("Paneport.iOS", Thin(SuperBlob(AdHoc(Entitlements(string.Empty))), SuperBlob((0, CodeDirectory(Team)))))),
+            [new Finding($"{App}Paneport.iOS (code signature)", Rules.TeamIdentifier)]);
+        Expect("a CMS blob that holds a signature fails",
+            Files(("Paneport.iOS", Signed((0, CodeDirectory()), (5, XmlEntitlements(string.Empty)), (0x10000, Blob(0xFADE0B01, [0x30, 0x80, 0x06, 0x09]))))),
+            [new Finding($"{App}Paneport.iOS (code signature)", Rules.TeamIdentifier)]);
+        Expect("prefixed entitlements in a fat file's second slice fail",
+            Files(("Paneport.iOS", Fat(MachO(Entitlements(string.Empty)), MachO(Entitlements(AppIdentifier))))),
+            [new Finding($"{App}Paneport.iOS (code signature)", Rules.AppIdentifierPrefix)]);
+        Expect("prefixed entitlements in the first of two entitlements blobs fail",
+            Files(("Paneport.iOS", Signed((0, CodeDirectory()), (5, XmlEntitlements(AppIdentifier)), (5, XmlEntitlements(string.Empty))))),
+            [new Finding($"{App}Paneport.iOS (code signature)", Rules.AppIdentifierPrefix)]);
+        Expect("DER entitlements that name a team fail without XML ones",
+            Files(("Paneport.iOS", Signed((0, CodeDirectory()), (7, DerEntitlements(
+                ("application-identifier", $"{Team}.{BundleId}"), ("com.apple.developer.team-identifier", Team)))))),
+            [new Finding($"{App}Paneport.iOS (code signature)", Rules.AppIdentifierPrefix),
+                new Finding($"{App}Paneport.iOS (code signature)", Rules.TeamIdentifier)]);
+        Expect("prefixed DER entitlements beside clean XML ones fail",
+            Files(("Paneport.iOS", Signed((0, CodeDirectory()), (5, XmlEntitlements(string.Empty)), (7, DerEntitlements(
+                ("com.apple.developer.kernel.increased-memory-limit", true), ("application-identifier", $"{Team}.{BundleId}")))))),
+            [new Finding($"{App}Paneport.iOS (code signature)", Rules.AppIdentifierPrefix)]);
+        Expect("32-bit and big-endian Mach-O files and a fat file with 64-bit offsets are unreadable",
+            Files(
+                ("Frameworks/A.framework/A", Little(0xFEEDFACE, 12, 0, 6, 0, 0, 0, 0)),
+                ("Frameworks/B.framework/B", Big(0xFEEDFACE, 18, 0, 6, 0, 0, 0, 0)),
+                ("Frameworks/C.framework/C", Big(0xFEEDFACF, 0x01000012, 0, 6, 0, 0, 0, 0)),
+                ("Frameworks/D.framework/D", [.. Big(0xCAFEBABF, 1), .. new byte[32]])),
+            [new Finding($"{App}Frameworks/A.framework/A", Rules.UnreadableSignature),
+                new Finding($"{App}Frameworks/B.framework/B", Rules.UnreadableSignature),
+                new Finding($"{App}Frameworks/C.framework/C", Rules.UnreadableSignature),
+                new Finding($"{App}Frameworks/D.framework/D", Rules.UnreadableSignature)]);
+        Expect("a fat file of more than 16 slices is unreadable",
+            Files(("Paneport.iOS", Fat([.. Enumerable.Repeat(MachO(Entitlements(string.Empty)), 17)]))),
+            [new Finding($"{App}Paneport.iOS", Rules.UnreadableSignature)]);
+        Expect("a code signature of more than 64 blobs is unreadable",
+            Files(("Paneport.iOS", Signed([.. Enumerable.Repeat((2U, Requirements()), 64), (0U, CodeDirectory(Team))]))),
+            [new Finding($"{App}Paneport.iOS", Rules.UnreadableSignature)]);
+        Expect("a fat slice at 0x7FFFFFFD is unreadable",
+            Files(("Paneport.iOS", [.. Big(0xCAFEBABE, 1, 0x0100000C, 0, 0x7FFFFFFD, 64, 4), 0, 0, 0, 0])),
+            [new Finding($"{App}Paneport.iOS", Rules.UnreadableSignature)]);
+        Expect("an entitlements blob that claims 0x7FFFFFF0 bytes is unreadable",
+            Files(("Paneport.iOS", Signed((0, CodeDirectory()), (5, Blob(0xFADE7171, Xml(Entitlements(string.Empty)), 0x7FFFFFF0))))),
+            [new Finding($"{App}Paneport.iOS", Rules.UnreadableSignature)]);
+        Expect("a code directory that the index puts at 0x7FFFFFFE is unreadable",
+            Files(("Paneport.iOS", FarCodeDirectory())),
+            [new Finding($"{App}Paneport.iOS", Rules.UnreadableSignature)]);
         Expect("an empty package fails", Package(), [new Finding("Payload/", Rules.NoApp)]);
         Expect("a package without an app fails", Package(("README.txt", "Paneport"u8.ToArray())),
             [new Finding("Payload/", Rules.NoApp)]);
@@ -666,6 +840,10 @@ internal static class SelfTest
         Expect("a binary property list whose array is longer than the file is unreadable",
             Files(("Long.plist", RawBinaryPlist([0xAF, 0x12, 0x7F, 0xFF, 0xFF, 0xFF], count: 1))),
             [new Finding($"{App}Long.plist", Rules.UnreadablePropertyList)]);
+        Expect("a binary property list of 40 arrays that share references is unreadable",
+            Files(("Shared.plist", SharedReferencePlist(40))),
+            [new Finding($"{App}Shared.plist", Rules.UnreadablePropertyList)]);
+        ExpectTheScanGoesOn();
 
         Console.WriteLine(s_failures == 0 ? "Self-test passed." : $"Self-test failed: {s_failures} cases.");
         return s_failures == 0 ? 0 : 1;
@@ -673,9 +851,22 @@ internal static class SelfTest
 
     private static void Expect(string name, byte[] package, Finding[] expected)
     {
-        var report = Scanner.Scan(new MemoryStream(package));
-        var found = report.Findings.OrderBy(finding => finding.Entry, StringComparer.Ordinal).ToList();
-        var wanted = expected.OrderBy(finding => finding.Entry, StringComparer.Ordinal).ToList();
+        PackageReport report;
+        try
+        {
+            report = Scanner.Scan(new MemoryStream(package));
+        }
+        catch (Exception exception)
+        {
+            s_failures++;
+            Console.WriteLine($"FAIL {name}: the scan threw {exception.GetType().Name}.");
+            return;
+        }
+
+        var found = report.Findings.OrderBy(finding => finding.Entry, StringComparer.Ordinal)
+            .ThenBy(finding => finding.Rule, StringComparer.Ordinal).ToList();
+        var wanted = expected.OrderBy(finding => finding.Entry, StringComparer.Ordinal)
+            .ThenBy(finding => finding.Rule, StringComparer.Ordinal).ToList();
         var leaks = report.Entitlements.Concat(found.Select(finding => $"{finding.Entry} {finding.Rule}"))
             .Where(line => line.Contains(Team, StringComparison.Ordinal)).ToList();
         if (!found.SequenceEqual(wanted) || leaks.Count != 0)
@@ -696,6 +887,41 @@ internal static class SelfTest
         {
             s_failures++;
             Console.WriteLine($"FAIL {name}: [{string.Join("; ", report.Entitlements)}].");
+            return;
+        }
+
+        Console.WriteLine($"ok   {name}");
+    }
+
+    // A scan of two packages, the first of which is no archive: it reports that one, scans the
+    // second and exits with 2.
+    private static void ExpectTheScanGoesOn()
+    {
+        var name = "the scan goes on after a package that it cannot read";
+        var packages = new Dictionary<string, byte[]>(StringComparer.Ordinal)
+        {
+            ["broken.ipa"] = "not a package"u8.ToArray(),
+            ["flagged.ipa"] = Files(("embedded.mobileprovision", [0x30])),
+        };
+        using var output = new StringWriter(CultureInfo.InvariantCulture);
+        using var error = new StringWriter(CultureInfo.InvariantCulture);
+        int result;
+        try
+        {
+            result = Scanner.ScanPackages(["broken.ipa", "flagged.ipa"], path => new MemoryStream(packages[path]), output, error);
+        }
+        catch (Exception exception)
+        {
+            s_failures++;
+            Console.WriteLine($"FAIL {name}: the scan threw {exception.GetType().Name}.");
+            return;
+        }
+
+        if (result != 2 || !error.ToString().StartsWith("broken.ipa: error: ", StringComparison.Ordinal)
+            || !output.ToString().Contains("flagged.ipa: 1 findings.", StringComparison.Ordinal))
+        {
+            s_failures++;
+            Console.WriteLine($"FAIL {name}: exit {result}, output [{output}], errors [{error}].");
             return;
         }
 
@@ -762,87 +988,168 @@ internal static class SelfTest
             + "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
             + $"<plist version=\"1.0\">{body}</plist>\n");
 
-    // A 64-bit Mach-O header with one LC_CODE_SIGNATURE command whose super blob holds a code
-    // directory of version 0x20400 and the entitlements, or with no load command for an unsigned
-    // binary. The code directory of an ad-hoc signature names no team; with a team, it names it
-    // after its fields, as an Apple identity's signature does.
-    private static byte[] MachO(string? entitlementsBody, string? team = null)
+    // A thin 64-bit Mach-O file signed ad hoc with the given entitlements, as eng/mac/sign-adhoc.sh
+    // signs the app, or with null an unsigned one. With a team, its first code directory names it,
+    // as an Apple identity's signature does.
+    private static byte[] MachO(string? entitlementsBody, string? team = null) =>
+        entitlementsBody is null ? Thin() : Signed(AdHoc(entitlementsBody, team));
+
+    // The blobs of an ad-hoc signature as codesign writes it: a code directory in slot 0 and one in
+    // slot 0x1000, an empty set of requirements, the entitlements in XML and in DER, and a CMS blob
+    // that is its header alone.
+    private static (uint Slot, byte[] Blob)[] AdHoc(string entitlementsBody, string? team = null) =>
+    [
+        (0, CodeDirectory(team)),
+        (2, Requirements()),
+        (5, Blob(0xFADE7171, Xml(entitlementsBody))),
+        (7, DerEntitlements(("com.apple.developer.kernel.increased-memory-limit", true))),
+        (0x1000, CodeDirectory()),
+        (0x10000, Blob(0xFADE0B01, [])),
+    ];
+
+    // A thin 64-bit Mach-O file signed with one super blob of the given blobs.
+    private static byte[] Signed(params (uint Slot, byte[] Blob)[] blobs) => Thin(SuperBlob(blobs));
+
+    // A thin 64-bit Mach-O header with an LC_CODE_SIGNATURE command for each given super blob, which
+    // follow the load commands; with none, an unsigned binary.
+    private static byte[] Thin(params byte[][] superBlobs)
     {
-        var bytes = new List<byte>();
-        void little(uint value)
+        const int Header = 32;
+        const int Command = 16;
+        var commands = new List<uint>();
+        var offset = Header + (superBlobs.Length * Command);
+        foreach (var superBlob in superBlobs)
         {
-            var buffer = new byte[4];
-            BinaryPrimitives.WriteUInt32LittleEndian(buffer, value);
-            bytes.AddRange(buffer);
+            commands.AddRange([0x1D, Command, (uint)offset, (uint)superBlob.Length]);
+            offset += superBlob.Length;
         }
 
-        void big(uint value)
+        return
+        [
+            .. Little(0xFEEDFACF, 0x0100000C, 0, 2, (uint)superBlobs.Length, (uint)(superBlobs.Length * Command), 0, 0),
+            .. Little([.. commands]),
+            .. superBlobs.SelectMany(superBlob => superBlob),
+        ];
+    }
+
+    // A super blob whose index names each blob under its slot, in the given order.
+    private static byte[] SuperBlob(params (uint Slot, byte[] Blob)[] blobs)
+    {
+        var index = new List<uint>();
+        var offset = 12 + (blobs.Length * 8);
+        foreach (var (slot, blob) in blobs)
         {
-            var buffer = new byte[4];
-            BinaryPrimitives.WriteUInt32BigEndian(buffer, value);
-            bytes.AddRange(buffer);
+            index.AddRange([slot, (uint)offset]);
+            offset += blob.Length;
         }
 
-        little(0xFEEDFACF);
-        little(0x0100000C);
-        little(0);
-        little(2);
-        little(entitlementsBody is null ? 0U : 1U);
-        little(entitlementsBody is null ? 0U : 16U);
-        little(0);
-        little(0);
-        if (entitlementsBody is null)
-        {
-            return [.. bytes];
-        }
+        return [.. Big(0xFADE0CC0, (uint)offset, (uint)blobs.Length), .. Big([.. index]), .. blobs.SelectMany(blob => blob.Blob)];
+    }
 
-        var xml = Xml(entitlementsBody);
+    // A code directory of the given version: ad hoc without a team, or naming the team after its
+    // fields, at byte 88, with that offset at byte 48.
+    private static byte[] CodeDirectory(string? team = null, uint version = 0x20400)
+    {
+        const int Fields = 88;
         byte[] teamBytes = team is null ? [] : [.. Encoding.ASCII.GetBytes(team), 0];
-        const uint SignatureOffset = 64;
-        const uint DirectoryStart = 28;
-        const uint DirectoryFields = 88;
-        var directoryLength = DirectoryFields + (uint)teamBytes.Length;
-        var blobLength = (uint)(8 + xml.Length);
-        var superLength = DirectoryStart + directoryLength + blobLength;
-        little(0x1D);
-        little(16);
-        little(SignatureOffset);
-        little(superLength);
-        while (bytes.Count < SignatureOffset)
+        var directory = new byte[Fields + teamBytes.Length];
+        Big(0xFADE0C02, (uint)directory.Length, version, team is null ? 0x2U : 0U).CopyTo(directory, 0);
+        if (team is not null)
         {
-            bytes.Add(0);
+            BinaryPrimitives.WriteUInt32BigEndian(directory.AsSpan(48), Fields);
         }
 
-        big(0xFADE0CC0);
-        big(superLength);
-        big(2);
-        big(0);
-        big(DirectoryStart);
-        big(5);
-        big(DirectoryStart + directoryLength);
+        teamBytes.CopyTo(directory, Fields);
+        return directory;
+    }
 
-        // The code directory: magic, length, version and flags (ad hoc without a team), the fields
-        // up to the scatter offset, then the team identifier's offset at byte 48.
-        big(0xFADE0C02);
-        big(directoryLength);
-        big(0x20400);
-        big(team is null ? 0x2U : 0U);
-        for (var field = 16; field < 48; field += 4)
+    // An empty set of requirements, as an ad-hoc signature holds.
+    private static byte[] Requirements() => Blob(0xFADE0C01, Big(0));
+
+    // The XML entitlements blob of the clean app, with the given keys added.
+    private static byte[] XmlEntitlements(string extra) => Blob(0xFADE7171, Xml(Entitlements(extra)));
+
+    // Entitlements in the DER form that codesign writes beside the XML form: a version, then a
+    // dictionary of keys as UTF-8 texts, with Boolean or text values.
+    private static byte[] DerEntitlements(params (string Key, object Value)[] entries)
+    {
+        static byte[] tlv(byte tag, byte[] content)
         {
-            big(0);
+            byte[] length = content.Length switch
+            {
+                < 0x80 => [(byte)content.Length],
+                < 0x100 => [0x81, (byte)content.Length],
+                _ => [0x82, (byte)(content.Length >> 8), (byte)content.Length],
+            };
+            return [tag, .. length, .. content];
         }
 
-        big(team is null ? 0U : DirectoryFields);
-        while (bytes.Count < SignatureOffset + DirectoryStart + DirectoryFields)
+        static byte[] item(object value) =>
+            value is bool flag ? tlv(0x01, [flag ? (byte)0xFF : (byte)0]) : tlv(0x0C, Encoding.UTF8.GetBytes((string)value));
+
+        var pairs = entries.SelectMany(entry => tlv(0x30, [.. tlv(0x0C, Encoding.UTF8.GetBytes(entry.Key)), .. item(entry.Value)])).ToArray();
+        return Blob(0xFADE7172, tlv(0x70, [.. tlv(0x02, [1]), .. tlv(0xB0, pairs)]));
+    }
+
+    // A blob of a code signature: its magic, its length, which a given value replaces, and its
+    // content.
+    private static byte[] Blob(uint magic, byte[] content, uint? length = null) =>
+        [.. Big(magic, length ?? (uint)(8 + content.Length)), .. content];
+
+    // A fat file of the given arm64 slices, each at a 16-byte boundary after the header.
+    private static byte[] Fat(params byte[][] slices)
+    {
+        static int align(int offset) => (offset + 15) & ~15;
+        var header = new List<uint> { 0xCAFEBABE, (uint)slices.Length };
+        var starts = new List<int>();
+        var end = align(8 + (slices.Length * 20));
+        foreach (var slice in slices)
         {
-            bytes.Add(0);
+            header.AddRange([0x0100000C, 0, (uint)end, (uint)slice.Length, 4]);
+            starts.Add(end);
+            end = align(end + slice.Length);
         }
 
-        bytes.AddRange(teamBytes);
-        big(0xFADE7171);
-        big(blobLength);
-        bytes.AddRange(xml);
-        return [.. bytes];
+        var file = new byte[end];
+        Big([.. header]).CopyTo(file, 0);
+        for (var index = 0; index < slices.Length; index++)
+        {
+            slices[index].CopyTo(file, starts[index]);
+        }
+
+        return file;
+    }
+
+    // A signed binary whose index puts its code directory at 0x7FFFFFFE. The super blob of Signed
+    // follows the header and its one load command, at byte 48, so the offset of its first blob is
+    // at byte 64.
+    private static byte[] FarCodeDirectory()
+    {
+        var bytes = Signed((0, CodeDirectory()), (5, XmlEntitlements(string.Empty)));
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(64), 0x7FFFFFFE - 48);
+        return bytes;
+    }
+
+    private static byte[] Big(params uint[] words)
+    {
+        var bytes = new byte[words.Length * 4];
+        for (var index = 0; index < words.Length; index++)
+        {
+            BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(index * 4), words[index]);
+        }
+
+        return bytes;
+    }
+
+    private static byte[] Little(params uint[] words)
+    {
+        var bytes = new byte[words.Length * 4];
+        for (var index = 0; index < words.Length; index++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(index * 4), words[index]);
+        }
+
+        return bytes;
     }
 
     // A bplist00 file of the given object bytes at offset 8, with offsets of four bytes, one-byte
@@ -857,6 +1164,32 @@ internal static class SelfTest
         trailer[6] = 4;
         trailer[7] = 1;
         BinaryPrimitives.WriteUInt64BigEndian(trailer.AsSpan(8), count);
+        BinaryPrimitives.WriteUInt64BigEndian(trailer.AsSpan(24), (ulong)table);
+        file.AddRange(trailer);
+        return [.. file];
+    }
+
+    // A well-formed bplist00 file of the given number of arrays, each holding two references to
+    // the next, and a Boolean last, with one-byte references and offsets of four bytes. Read in
+    // full, it would be 2^depth objects.
+    private static byte[] SharedReferencePlist(int depth)
+    {
+        var file = new List<byte>("bplist00"u8.ToArray());
+        var offsets = new List<uint>();
+        for (var index = 0; index < depth; index++)
+        {
+            offsets.Add((uint)file.Count);
+            file.AddRange([0xA2, (byte)(index + 1), (byte)(index + 1)]);
+        }
+
+        offsets.Add((uint)file.Count);
+        file.Add(0x09);
+        var table = file.Count;
+        file.AddRange(Big([.. offsets]));
+        var trailer = new byte[32];
+        trailer[6] = 4;
+        trailer[7] = 1;
+        BinaryPrimitives.WriteUInt64BigEndian(trailer.AsSpan(8), (ulong)offsets.Count);
         BinaryPrimitives.WriteUInt64BigEndian(trailer.AsSpan(24), (ulong)table);
         file.AddRange(trailer);
         return [.. file];

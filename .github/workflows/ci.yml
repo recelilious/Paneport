@@ -571,12 +571,8 @@ jobs:
           done
           exit "$status"
 
-      # S1.3.9: each embedded framework, then each app, ad hoc, with the app's Entitlements.plist;
-      # no Apple identity is used (C-0009 section 5). Then the checks of eng/mac/check-app.sh, the
-      # .ipa of each flavor, named by flavor and short commit hash, and the package scan. Each
-      # step goes on with the other flavor after a failure, and a flavor whose bundle exists is
-      # checked even when its signing failed, so that one run shows every failure.
-      - name: Sign both flavors ad hoc (eng/mac/sign-adhoc.sh)
+      # The bundle of each flavor, for the steps below, and the short commit hash that names its .ipa.
+      - name: Find both apps
         id: apps
         if: ${{ !cancelled() }}
         env:
@@ -588,17 +584,63 @@ jobs:
           test=$(find tests/device/bin/Release -maxdepth 4 -type d -name 'Paneport.DeviceTest.app' | head -n 1)
           if [ -n "$main" ]; then
             echo "main=$main" >> "$GITHUB_OUTPUT"
-            eng/mac/sign-adhoc.sh "$main" src/Paneport.iOS/Entitlements.plist || status=1
           else
             echo "::error title=App bundle::The main app's build made no .app bundle."
             status=1
           fi
           if [ -n "$test" ]; then
             echo "test=$test" >> "$GITHUB_OUTPUT"
-            eng/mac/sign-adhoc.sh "$test" src/Paneport.iOS/Entitlements.plist || status=1
           else
             echo "::error title=App bundle::The device test flavor's build made no .app bundle."
             status=1
+          fi
+          exit "$status"
+
+      - name: Self-test the notices generator (tools/GenerateNotices.cs)
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/GenerateNotices.cs -- --self-test
+
+      # S9.1.1: THIRD_PARTY_NOTICES.md, the license texts and their index in licenses/ at the root
+      # of each bundle, before it is signed, so that the signature seals them (C-0003 section 3,
+      # C-0009 section 6), and a copy in build/notices/, never in git. The generator attributes
+      # every file of the bundle through eng/release/bundle-components.json; here a file that it
+      # does not attribute is a warning, and a component that the register lacks or marks Under
+      # review or Forbidden, a missing license text and an LGPL component other than SteamKit2 in
+      # the main executable fail (docs/design/release-engineering.md).
+      - name: Place the third-party notices in both apps (tools/GenerateNotices.cs)
+        if: ${{ !cancelled() && (steps.apps.outputs.main != '' || steps.apps.outputs.test != '') }}
+        env:
+          MAIN_APP: ${{ steps.apps.outputs.main }}
+          TEST_APP: ${{ steps.apps.outputs.test }}
+        run: |
+          status=0
+          if [ -n "$MAIN_APP" ]; then
+            dotnet run tools/GenerateNotices.cs -- --mode ios --project src/Paneport.iOS/Paneport.iOS.csproj \
+              --app "$MAIN_APP" --out build/notices/main || status=1
+          fi
+          if [ -n "$TEST_APP" ]; then
+            dotnet run tools/GenerateNotices.cs -- --mode ios --project tests/device/Paneport.DeviceTest.csproj \
+              --app "$TEST_APP" --out build/notices/test || status=1
+          fi
+          exit "$status"
+
+      # S1.3.9: each embedded framework, then each app, ad hoc, with the app's Entitlements.plist;
+      # no Apple identity is used (C-0009 section 5). Then the checks of eng/mac/check-app.sh, the
+      # .ipa of each flavor, named by flavor and short commit hash, and the package scan. Each
+      # step goes on with the other flavor after a failure, and a flavor whose bundle exists is
+      # checked even when its signing failed, so that one run shows every failure.
+      - name: Sign both flavors ad hoc (eng/mac/sign-adhoc.sh)
+        if: ${{ !cancelled() && (steps.apps.outputs.main != '' || steps.apps.outputs.test != '') }}
+        env:
+          MAIN_APP: ${{ steps.apps.outputs.main }}
+          TEST_APP: ${{ steps.apps.outputs.test }}
+        run: |
+          status=0
+          if [ -n "$MAIN_APP" ]; then
+            eng/mac/sign-adhoc.sh "$MAIN_APP" src/Paneport.iOS/Entitlements.plist || status=1
+          fi
+          if [ -n "$TEST_APP" ]; then
+            eng/mac/sign-adhoc.sh "$TEST_APP" src/Paneport.iOS/Entitlements.plist || status=1
           fi
           exit "$status"
 
@@ -658,6 +700,45 @@ jobs:
             packages+=("$TEST_IPA")
           fi
           dotnet run tools/ScanPackage.cs -- "${packages[@]}"
+
+      # S9.1.1: each .ipa holds the notices of its app: THIRD_PARTY_NOTICES.md, the index and every
+      # text that the index names, in licenses/ at the root of the app.
+      - name: Check that both packages hold the notices
+        if: ${{ !cancelled() && (steps.packages.outputs.main != '' || steps.packages.outputs.test != '') }}
+        env:
+          MAIN_IPA: ${{ steps.packages.outputs.main }}
+          TEST_IPA: ${{ steps.packages.outputs.test }}
+        run: |
+          status=0
+          for ipa in "$MAIN_IPA" "$TEST_IPA"; do
+            [ -n "$ipa" ] || continue
+            package=$(basename "$ipa")
+            entries=$(zipinfo -1 "$ipa")
+            app=$(grep -E -m 1 '^Payload/[^/]+\.app/Info\.plist$' <<< "$entries" | sed 's|/Info\.plist$||' || true)
+            if [ -z "$app" ]; then
+              echo "::error title=Notices::$package holds no app."
+              status=1
+              continue
+            fi
+            texts=$(unzip -p "$ipa" "$app/licenses/index.json" 2>/dev/null | jq -r '.components[].text' 2>/dev/null || true)
+            missing=0
+            for file in THIRD_PARTY_NOTICES.md index.json $texts; do
+              if ! grep -F -x -q "$app/licenses/$file" <<< "$entries"; then
+                echo "::error title=Notices::$package lacks ${app#Payload/}/licenses/$file."
+                missing=1
+              fi
+            done
+            if [ -z "$texts" ]; then
+              echo "::error title=Notices::$package has no index of the notices that names a text."
+              missing=1
+            fi
+            if [ "$missing" -eq 0 ]; then
+              echo "$package holds ${app#Payload/}/licenses/ with THIRD_PARTY_NOTICES.md, index.json and $(wc -w <<< "$texts" | tr -d ' ') texts."
+            else
+              status=1
+            fi
+          done
+          exit "$status"
 
       # Only when every earlier step passed. The .ipa keeps the bundle's name and the
       # executable's file mode, which an artifact of the bare folder would lose.

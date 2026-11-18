@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.0 |
-| Date | 2026-10-28 |
+| Version | 1.1 |
+| Date | 2026-11-17 |
 | Owner | recelilious |
 
 This contract fixes how Paneport is split into components, who owns what at run time, and where every kind of file lives, both in the repository and on the device. Later contracts refine the individual interfaces. The reasoning behind these choices is in [the roadmap](../research/roadmap-2026-10.md).
@@ -92,7 +92,11 @@ Paneport/
 │   ├── Paneport.Steam.Tests/
 │   ├── Paneport.UI.Tests/
 │   ├── Paneport.Interop.Tests/
+│   ├── Paneport.TrimTest/
+│   ├── Shared/
 │   ├── native/
+│   ├── runtime/
+│   ├── win32/
 │   └── device/
 ├── external/
 ├── compat/
@@ -118,7 +122,7 @@ Paneport/
 | Folder | Holds |
 |---|---|
 | `src/` | Original code only, all MIT (C-0003 section 4). |
-| `tests/` | Automated tests and the on-device test app (C-0011). |
+| `tests/` | Automated tests, the runtime harness in `runtime/` with the Win32 test programs of our own in `win32/` that it runs, and the on-device test app (C-0011). |
 | `external/` | Git submodules only: our fork repositories (`Paneport-<upstream>`, C-0003 section 4), and unmodified upstream source dependencies registered under C-0003, each pinned to an upstream release tag. |
 | `compat/` | The compatibility database, the list of verified iOS builds, and their JSON schemas (C-0006, C-0008). |
 | `tools/` | C# file-based tools for building and checking the repository. |
@@ -156,33 +160,10 @@ All paths are inside the app container.
 
 **Open item for recelilious.** Save files inside the prefixes are not backed up. Until cloud saves work (C-0007 section 7), the app tells the user so and offers to export a prefix's user folder to `Documents/`. Whether that is enough is recelilious's decision.
 
-## Proposed changes for 1.1
-
-**Not yet accepted.** Version 1.0 above stays binding until recelilious approves these changes. They come from stage M4.2, which adds the runtime harness and the Win32 test programs of our own that it runs (plan sections 7.1 and 7.2, `docs/design/runtime-macos-harness.md`).
-
-1. **Section 3, the tree.** Under `tests/`, add `Paneport.TrimTest/` and `Shared/`, which exist already, after `Paneport.Interop.Tests/`, and `runtime/` and `win32/` between `native/` and `device/`, so that the tree lists every folder of `tests/`:
-
-   ```
-   ├── tests/
-   │   ├── Paneport.Core.Tests/
-   │   ├── Paneport.Steam.Tests/
-   │   ├── Paneport.UI.Tests/
-   │   ├── Paneport.Interop.Tests/
-   │   ├── Paneport.TrimTest/
-   │   ├── Shared/
-   │   ├── native/
-   │   ├── runtime/
-   │   ├── win32/
-   │   └── device/
-   ```
-
-2. **Section 3, the table, the row of `tests/`.** Replace "Automated tests and the on-device test app (C-0011)." with "Automated tests, the runtime harness in `runtime/` with the Win32 test programs of our own in `win32/` that it runs, and the on-device test app (C-0011)."
-
-Both new folders hold only our own code under MIT (C-0003 section 4), and each has the `README.md` that the rules below the table ask for, as `Paneport.TrimTest/` and `Shared/` already do. Section 2 does not change: the harness and the test programs are tests, not components of the main app. From M4.4 on, the device test flavor of `tests/device` bundles test programs of `tests/win32`, so that its in-app console can run them; this version does not settle how they are bundled, which M4.4 decides.
-
 ## Change log
 
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious |
+| 1.1 | 2026-11-17 | Accepted by recelilious. Comes from stage M4.2, which adds the runtime harness in `tests/runtime/` and the Win32 test programs of our own in `tests/win32/` that it runs. Section 3 lists both in the tree, together with `Paneport.TrimTest/` and `Shared/`, which existed already, so that the tree shows every folder of `tests/`, and the row of `tests/` says what the new folders hold. Section 2 does not change: the harness and the test programs are tests, not components of the main app. |

@@ -1,3 +1,4 @@
+#!/usr/bin/env dotnet
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
@@ -7,7 +8,9 @@
 // lines and container images of the workflows and actions, because actions are CI tools under
 // C-0003 section 5. eng/license-map.json maps each of them to the register row that covers
 // it. A way to bring in a package that no lock file records fails too, as does a project
-// without a lock file, because the checker would not see its packages.
+// without a lock file, because the checker would not see its packages. The register and the
+// map are read by the shared files in tools/Shared/, which tools/GenerateNotices.cs includes
+// too.
 //
 //   dotnet run tools/CheckLicenses.cs                 check the repository
 //   dotnet run tools/CheckLicenses.cs -- --self-test  check the parsers and rules on fixtures
@@ -15,6 +18,8 @@
 // Exit codes: 0 every dependency is covered, 1 something is not, 2 usage or configuration
 // error. docs/design/repository-checks.md describes the mapping policy.
 
+#:include Shared/Register.cs
+#:include Shared/LicenseMap.cs
 #:property PublishAot=false
 
 using System.ComponentModel;
@@ -47,18 +52,8 @@ internal static class Cli
     }
 }
 
-internal enum Kind
-{
-    Package,
-    Tool,
-    Action,
-    Submodule,
-}
-
 // One place where the repository uses a dependency.
 internal sealed record Use(Kind Kind, string Name, string File, int Line);
-
-internal sealed record RegisterRow(string Component, string License, string Category, int Line);
 
 internal enum Reason
 {
@@ -70,162 +65,6 @@ internal enum Reason
 }
 
 internal sealed record Problem(Reason Reason, Kind Kind, string Name, string File, int Line, string Message);
-
-// The register table of C-0003 section 6. If the table changes shape, parsing fails with a
-// message that says what changed, rather than guessing.
-internal static partial class Register
-{
-    public const string FilePath = "docs/contracts/C-0003-licensing.md";
-    public const string Heading = "## 6. Component register";
-
-    public static readonly string[] Categories = ["Allowed", "Conditional", "Forbidden", "Under review", "Tool"];
-
-    private static readonly string[] s_columns = ["Component", "Purpose", "License", "Category"];
-
-    public static List<RegisterRow> Parse(string markdown)
-    {
-        var lines = markdown.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
-        var heading = Array.FindIndex(lines, line => line.Trim() == Heading);
-        if (heading < 0)
-        {
-            throw new InvalidDataException($"{FilePath} has no heading \"{Heading}\".");
-        }
-
-        var header = heading + 1;
-        while (header < lines.Length
-            && !IsTableLine(lines[header])
-            && !lines[header].StartsWith("## ", StringComparison.Ordinal))
-        {
-            header++;
-        }
-
-        if (header >= lines.Length || !IsTableLine(lines[header]))
-        {
-            throw new InvalidDataException($"{FilePath}: section 6 holds no table.");
-        }
-
-        var columns = Cells(lines[header]);
-        if (!columns.SequenceEqual(s_columns, StringComparer.Ordinal))
-        {
-            throw new InvalidDataException(
-                $"{FilePath} line {header + 1}: the register's columns are \"{string.Join(" | ", columns)}\", "
-                    + $"not \"{string.Join(" | ", s_columns)}\". Update tools/CheckLicenses.cs to the new shape.");
-        }
-
-        var rows = new List<RegisterRow>();
-        for (var index = header + 2; index < lines.Length && IsTableLine(lines[index]); index++)
-        {
-            var cells = Cells(lines[index]);
-            if (cells.Length != s_columns.Length)
-            {
-                throw new InvalidDataException(
-                    $"{FilePath} line {index + 1}: a register row has {cells.Length} cells, not {s_columns.Length}.");
-            }
-
-            var category = CategoryOf(cells[3]) ?? throw new InvalidDataException(
-                $"{FilePath} line {index + 1}: the category \"{cells[3]}\" starts with none of "
-                    + $"{string.Join(", ", Categories)}.");
-            if (rows.Any(row => row.Component == cells[0]))
-            {
-                throw new InvalidDataException($"{FilePath} line {index + 1}: \"{cells[0]}\" is registered twice.");
-            }
-
-            rows.Add(new RegisterRow(cells[0], cells[2], category, index + 1));
-        }
-
-        return rows.Count > 0
-            ? rows
-            : throw new InvalidDataException($"{FilePath}: the register table has no rows.");
-    }
-
-    // A category cell starts with its category, and may go on after a comma, semicolon or colon,
-    // as in "Allowed, under FTL" or "Under review: collect the notices".
-    public static string? CategoryOf(string cell) => Categories.FirstOrDefault(
-        category => cell == category
-            || (cell.StartsWith(category, StringComparison.Ordinal) && ",;:".Contains(cell[category.Length])));
-
-    private static bool IsTableLine(string line) => line.TrimStart().StartsWith('|');
-
-    private static string[] Cells(string line)
-    {
-        var trimmed = line.Trim();
-        trimmed = trimmed.StartsWith('|') ? trimmed[1..] : trimmed;
-        trimmed = trimmed.EndsWith('|') ? trimmed[..^1] : trimmed;
-        return CellSeparator()
-            .Split(trimmed)
-            .Select(cell => cell.Trim().Replace(@"\|", "|", StringComparison.Ordinal))
-            .ToArray();
-    }
-
-    [GeneratedRegex(@"(?<!\\)\|")]
-    private static partial Regex CellSeparator();
-}
-
-// eng/license-map.json: for each package ID, tool, action and submodule, the register row that
-// covers it. Package IDs compare without regard to case, as NuGet compares them.
-internal sealed class LicenseMap(Dictionary<Kind, Dictionary<string, string>> sections)
-{
-    public const string FilePath = "eng/license-map.json";
-
-    private static readonly Dictionary<string, Kind> s_sectionNames = new(StringComparer.Ordinal)
-    {
-        ["packages"] = Kind.Package,
-        ["tools"] = Kind.Tool,
-        ["actions"] = Kind.Action,
-        ["submodules"] = Kind.Submodule,
-    };
-
-    public IEnumerable<(Kind Kind, string Name, string Component)> Entries =>
-        sections.SelectMany(section => section.Value.Select(entry => (section.Key, entry.Key, entry.Value)));
-
-    public static LicenseMap Parse(string json)
-    {
-        var sections = Enum.GetValues<Kind>()
-            .ToDictionary(kind => kind, _ => new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                throw new InvalidDataException($"{FilePath} must be a JSON object.");
-            }
-
-            foreach (var section in document.RootElement.EnumerateObject())
-            {
-                if (!s_sectionNames.TryGetValue(section.Name, out var kind)
-                    || section.Value.ValueKind != JsonValueKind.Object)
-                {
-                    throw new InvalidDataException(
-                        $"{FilePath}: \"{section.Name}\" is not one of the sections "
-                            + $"{string.Join(", ", s_sectionNames.Keys)}.");
-                }
-
-                foreach (var entry in section.Value.EnumerateObject())
-                {
-                    var component = entry.Value.ValueKind == JsonValueKind.String ? entry.Value.GetString() : null;
-                    if (string.IsNullOrWhiteSpace(component))
-                    {
-                        throw new InvalidDataException($"{FilePath}: \"{entry.Name}\" must name a register row.");
-                    }
-
-                    if (!sections[kind].TryAdd(entry.Name, component))
-                    {
-                        throw new InvalidDataException(
-                            $"{FilePath}: \"{entry.Name}\" is listed twice in \"{section.Name}\".");
-                    }
-                }
-            }
-        }
-        catch (JsonException exception)
-        {
-            throw new InvalidDataException($"{FilePath} is not valid JSON: {exception.Message}");
-        }
-
-        return new LicenseMap(sections);
-    }
-
-    public string? ComponentFor(Kind kind, string name) => sections[kind].GetValueOrDefault(name);
-}
 
 internal static partial class Inventory
 {
@@ -605,6 +444,31 @@ internal static partial class Unseen
                 {
                     problems.Add(Problem(tool, line, LockFilePathMessage));
                 }
+                else if (IncludeDirective().Match(text) is { Success: true } include
+                    && Included(folder, include.Groups[1].Value) is null)
+                {
+                    problems.Add(Problem(
+                        tool,
+                        line,
+                        "#:include names a file outside tools/Shared/, or a pattern. The SDK reads the #: directives of "
+                            + "an included file too, and the checker reads only those under tools/, so include only .cs "
+                            + "files from tools/Shared/."));
+                }
+            }
+        }
+
+        // The SDK applies the #: directives of an included file to the tool that includes it (checked
+        // with SDK 10.0.403). So a shared file carries none, and each tool states its own, where this
+        // checker and the lock-file rule above see them.
+        foreach (var shared in tracked.Where(IsShared))
+        {
+            foreach (var (line, _) in Inventory.HeaderDirectives(read(shared)))
+            {
+                problems.Add(Problem(
+                    shared,
+                    line,
+                    "a shared file in tools/Shared/ carries no #: directive. Put it in each tool that includes the "
+                        + "file, where the checker and the tool's lock file see it."));
             }
         }
 
@@ -635,7 +499,44 @@ internal static partial class Unseen
     }
 
     private static bool IsTool(string file) =>
-        file.StartsWith("tools/", StringComparison.Ordinal) && file.EndsWith(".cs", StringComparison.Ordinal);
+        file.StartsWith("tools/", StringComparison.Ordinal) && file.EndsWith(".cs", StringComparison.Ordinal)
+            && !IsShared(file);
+
+    // The source files that tools include with #:include (docs/design/repository-checks.md section 2).
+    private static bool IsShared(string file) =>
+        file.StartsWith("tools/Shared/", StringComparison.Ordinal) && file.EndsWith(".cs", StringComparison.Ordinal);
+
+    // The file that an #:include of a tool in the folder names, when it is a .cs file in tools/Shared/,
+    // and null for anything else: an absolute path, a path that leaves tools/Shared/ or a pattern.
+    private static string? Included(string folder, string path)
+    {
+        var parts = new List<string>(folder.Split('/', StringSplitOptions.RemoveEmptyEntries));
+        if (path.StartsWith('/') || path.StartsWith('\\') || path.Contains(':', StringComparison.Ordinal)
+            || path.IndexOfAny(['*', '?', '[', '"']) >= 0)
+        {
+            return null;
+        }
+
+        foreach (var part in path.Split('/', '\\'))
+        {
+            if (part == "..")
+            {
+                if (parts.Count == 0)
+                {
+                    return null;
+                }
+
+                parts.RemoveAt(parts.Count - 1);
+            }
+            else if (part is not ("" or "."))
+            {
+                parts.Add(part);
+            }
+        }
+
+        var file = string.Join('/', parts);
+        return IsShared(file) ? file : null;
+    }
 
     private static (string Folder, string Name) Split(string file)
     {
@@ -682,6 +583,9 @@ internal static partial class Unseen
 
     [GeneratedRegex(@"^#:property\s+NuGetLockFilePath\b", RegexOptions.IgnoreCase)]
     private static partial Regex LockFilePathProperty();
+
+    [GeneratedRegex(@"^#:include\s+(.*?)\s*$")]
+    private static partial Regex IncludeDirective();
 
     // MSBuild project files of any language, .props and .targets files, and response files such
     // as Directory.Build.rsp, which can set properties for every build below them.
@@ -801,8 +705,10 @@ internal static class LicenseCheck
 
         Console.WriteLine("Dependency licenses (C-0011 section 2)");
         Console.WriteLine($"Register: {register.Count} rows in {Register.FilePath} section 6.");
+        var shared = tools.Count(file => IsIn(file, "tools/Shared/"));
         Console.WriteLine(
-            $"Read {lockFiles.Count} lock files, the directives of {tools.Count} file-based tools, "
+            $"Read {lockFiles.Count} lock files, the directives of {tools.Count - shared} file-based tools and "
+                + $"{shared} source files they share, "
                 + $"{actionFiles.Count} workflow and action files, "
                 + $"{(toolchain ? "eng/toolchain.json" : "no eng/toolchain.json")} "
                 + $"and {(gitModules ? ".gitmodules" : "no .gitmodules")}.");
@@ -1239,6 +1145,14 @@ internal static class SelfTest
             ["tools/Shared.cs"] = "#:package Sample.Shared@1.0.0\nreturn 0;",
             ["tools/Moved.cs"] = "// A tool.\n#:property NuGetLockFilePath=elsewhere.json\nreturn 0;",
             ["tools/Spaced.cs"] = "#: property NuGetLockFilePath=elsewhere.json\n#:\tpackage Sample.Spaced\nreturn 0;",
+            ["tools/Including.cs"] =
+                "#!/usr/bin/env dotnet\n#:include Shared/Helper.cs\n#: include ./Shared/Other.cs\n"
+                    + "#:include Shared\\Helper.cs\nreturn 0;",
+            ["tools/Escaping.cs"] =
+                "#:include ../src/Helper.cs\n#:include Shared/../../src/Helper.cs\n#:include Shared/*.cs\n"
+                    + "#:include /tmp/Helper.cs\n#:include Shared/Helper.json\nreturn 0;",
+            ["tools/Shared/Helper.cs"] = "// A shared file.\ninternal static class Helper;",
+            ["tools/Shared/Other.cs"] = "// A shared file.\n#:package Sample.Hidden@1.0.0\ninternal static class Other;",
             ["tools/packages.lock.json"] = SampleLockFile,
             ["global.json"] = """{ "sdk": { "version": "1.0.0" }, "msbuild-sdks": { "Sample.Sdk": "1.0.0" } }""",
             [".config/dotnet-tools.json"] = """{ "version": 1, "isRoot": true, "tools": {} }""",
@@ -1255,6 +1169,15 @@ internal static class SelfTest
         (string File, int Line)[] moved =
             [("eng/Sample.props", 2), ("Directory.Build.rsp", 1), ("tools/Moved.cs", 2), ("tools/Spaced.cs", 1)];
         (string File, int Line)[] ownLockFiles = [("tools/Shared.cs", 0), ("tools/Spaced.cs", 0)];
+        (string File, int Line)[] includes =
+        [
+            ("tools/Escaping.cs", 1),
+            ("tools/Escaping.cs", 2),
+            ("tools/Escaping.cs", 3),
+            ("tools/Escaping.cs", 4),
+            ("tools/Escaping.cs", 5),
+        ];
+        (string File, int Line)[] sharedDirectives = [("tools/Shared/Other.cs", 2)];
         (string File, int Line)[] others = [("global.json", 0), (".config/dotnet-tools.json", 0)];
         tally.Expect(unlocked.All(found.Contains), "a project without a lock file fails");
         tally.Expect(
@@ -1275,9 +1198,17 @@ internal static class SelfTest
             ownLockFiles.All(found.Contains)
                 && !found.Any(problem => problem.File is "tools/Owned.cs" or "tools/Plain.cs"),
             "a tool with package directives, also as #: package, needs a lock file of its own; others share one");
+        tally.Expect(
+            includes.All(found.Contains) && !found.Any(problem => problem.File == "tools/Including.cs"),
+            "#:include of a .cs file in tools/Shared/ passes, also as #: include, with ./ and with a backslash; one "
+                + "that leaves tools/Shared/, a pattern, an absolute path and a file of another kind fail");
+        tally.Expect(
+            sharedDirectives.All(found.Contains)
+                && !found.Any(problem => problem.File == "tools/Shared/Helper.cs" || problem is ("tools/Shared/Other.cs", 0)),
+            "a #: directive in a shared file fails, and a shared file needs no lock file of its own");
         tally.Expect(others.All(found.Contains), "msbuild-sdks in global.json fails, and so does a tool manifest");
         var count = unlocked.Length + sdks.Length + otherSdks.Length + downloads.Length + moved.Length
-            + ownLockFiles.Length + others.Length;
+            + ownLockFiles.Length + includes.Length + sharedDirectives.Length + others.Length;
         tally.Expect(found.Count == count, $"exactly the {count} problems above are reported ({found.Count})");
     }
 

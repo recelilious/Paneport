@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.2 |
+| Version | 1.3 |
 | Date | 2026-11-17 |
 | Owner | recelilious |
 
@@ -15,8 +15,9 @@ This contract defines how Paneport is tested, which tools check it, how changes 
 |---|---|---|---|
 | C# unit tests | Paneport.Core, and Paneport.Steam with fakes | xUnit v3 | Windows and Linux in CI |
 | UI tests | View models, and views rendered headless | Avalonia.Headless with xUnit v3 | Windows and Linux in CI |
-| Native unit tests | Parts of the native host that also build for macOS: queues, governor logic, configuration parsing | CTest with a small assertion header kept in the repository. Two sanitizer builds: AddressSanitizer with UndefinedBehaviorSanitizer for all native tests, and ThreadSanitizer for the concurrent code. | macOS in CI |
+| Native unit tests | Parts of the native host that also build for macOS: queues, governor logic, configuration parsing; and the parts of the runtime tests' harness, in `tests/runtime/unit` | CTest with a small assertion header kept in the repository. Two sanitizer builds: AddressSanitizer with UndefinedBehaviorSanitizer for all native tests, and ThreadSanitizer for the concurrent code. | macOS in CI |
 | Interface conformance | Struct sizes and member offsets match between C and C# (C-0005 section 5) | `tests/Paneport.Interop.Tests`, run against the host's test build | macOS in CI, and on the device |
+| Runtime tests | Our own Win32 test programs of `tests/win32`, run under the Wine and FEX forks, with their output and exit codes compared with expected outputs | The harness in `tests/runtime` | macOS in CI |
 | Compatibility data | Every `*.json` file in `compat/titles/` matches the title schema; the file-name, launch and allow-list rules of C-0008 section 5 and the rating rule of C-0008 section 3 hold; `compat/ios-builds.json` matches its schema | A C# tool in `tools/` | CI |
 | Device tests | The phase gates, sample programs such as the Direct3D triangle, and smoke tests of real games | The test app in `tests/device`, with scripted steps where possible and written steps otherwise | recelilious's iPhone |
 
@@ -49,7 +50,7 @@ Claude runs the personal-data, secrets and format checks locally before every pu
 ## 3. Review
 
 - A change reaches `main` in one of three ways: recelilious merges it after review; recelilious asks for it to be committed directly to `main` (C-0002 section 2); or it falls under a standing exception that recelilious has accepted (C-0012 section 2).
-- A branch is merged only after the `dotnet`, `native`, `ios` and `checks` jobs have passed on its last commit, unless a standing exception in C-0012 section 2 names fewer jobs.
+- A branch is merged only after the `dotnet`, `native`, `ios`, `runtime` and `checks` jobs have passed on its last commit, unless a standing exception in C-0012 section 2 names fewer jobs.
 - Before handing a change over, Claude checks it against the definition of done in C-0012 section 1. The pull request lists any check that needs macOS and has not yet passed in CI, and marks device behavior as "not yet verified on device".
 - Claude may also run Claude Code's `/code-review` on the change. Each finding is either fixed or answered in the pull request.
 - Review comments are resolved before merging.
@@ -63,11 +64,13 @@ GitHub Actions runs these jobs on every pull request and every push.
 | `dotnet` | Windows and Ubuntu | Locked restore, build, tests and format check of the solution filter `eng/ci.slnf`, which leaves out Paneport.iOS, `tests/device` and `tests/Paneport.Interop.Tests`; publish the trimmed test app. |
 | `native` | macOS | clang-format and clang-tidy; configure, build and run CTest twice, with the CMake presets `asan-ubsan` and `tsan`; build the host's test library and run `tests/Paneport.Interop.Tests` against it. |
 | `ios` | macOS | C-0009 stages 1 to 4 without an Apple identity: the forks, the native host, the Dock host, and both flavors of the app, the main app and the device test flavor of `tests/device`. Each app and every framework it embeds is signed ad hoc, as C-0009 section 6 describes for releases. Each `.ipa` is checked, scanned for provisioning profiles and for team identifiers and application-identifier prefixes in its property lists and code signatures, and is uploaded only if the scan finds none of them. |
+| `runtime` | macOS | Installs the build tools of the forks with `eng/mac/bootstrap.sh --forks`, restoring them from a cache whose key is their pins in `eng/toolchain.json` and the bootstrap script. Builds the Wine and FEX forks for macOS, restoring each build from a cache whose key is the fork's revision; the pins in `eng/toolchain.json` of the macOS image and of the tools that build the forks: Xcode, llvm-mingw, CMake, Ninja, Python, GNU Bison and flex; the fork's build script; `eng/mac/bootstrap.sh`; and `eng/mac/select-xcode.sh`. Saves each fork's build to the cache as soon as it is built. Builds the Win32 test programs of `tests/win32` with warnings as errors and analyzes them with llvm-mingw's clang-tidy; builds the harness; runs the harness's cases, which must pass, and its planted cases, which must fail and be named; uploads the logs. |
 | `checks` | Ubuntu | REUSE, gitleaks, personal-data and forbidden-file check, lychee, compatibility data, dependency licenses. |
 | `release` | macOS | Runs only for a `v*` tag. Builds and packages the release as C-0009 section 6 describes. |
 
 - While the repository is public, standard GitHub-hosted runners are free. If it becomes private, macOS minutes beyond the account's included minutes are billed.
 - The `ios` job runs for every pull request and every push to `main` (plan decision D7).
+- The `runtime` job runs for every pull request and every push to `main`; a push to another branch skips it, because the pull request's run covers it.
 - An ad-hoc signature holds no Apple identity and no provisioning profile. It embeds the app's entitlements, so that a sideloading tool can read the ones it must request when it re-signs the app with the user's own Apple ID. The job never holds or uses an Apple-issued certificate or profile (C-0009 section 5).
 - The rest of the scan of C-0009 section 6, for UDIDs, ECIDs, serial numbers, e-mail addresses and local paths, with device model identifiers allowed, as C-0009 section 6 says, comes with stage M9.1. M9.1 completes the scan tool (S9.1.3) and adds its allow list, which names each allowed hit by file and by the SHA-256 of the matched text, each with a reason. From then on the `ios` job runs the whole scan of C-0009 section 6 on both flavors of the app, with the same allow list as releases, and fails on a finding that the allow list does not cover. The job's builds never involve a device or an Apple identity (C-0009 section 5).
 - Device tests cannot run in CI. They are recorded as evidence instead (C-0012).
@@ -92,30 +95,6 @@ Registered as under review, and not used until recelilious decides:
 
 Not allowed: FluentAssertions 8 and later. They are under Xceed's proprietary Community License, which is free only for non-commercial use (it counts open-source development as non-commercial) and needs a paid license for any commercial use. That makes it a non-commercial-only license, which C-0003 section 5 forbids.
 
-## Proposed changes for 1.3
-
-**Not yet accepted.** Version 1.2 above stays binding until recelilious approves these changes. They come from stage M4.2, which builds the Wine and FEX forks for arm64 macOS and runs our own Win32 test programs on them through a harness: the way the Medium stages from M4.2 to M8.1 are verified by script (plan section 7.1, `docs/design/runtime-macos-harness.md`).
-
-1. **Section 1, a new row after "Interface conformance".** Add a test level:
-
-   | Level | What it covers | Tools | Runs on |
-   |---|---|---|---|
-   | Runtime tests | Our own Win32 test programs of `tests/win32`, run under the Wine and FEX forks, with their output and exit codes compared with expected outputs | The harness in `tests/runtime` | macOS in CI |
-
-2. **Section 1, the row of native unit tests.** At the end of "What it covers", add "; and the parts of the runtime tests' harness, in `tests/runtime/unit`". The harness's own unit tests then run with the other native unit tests in the `native` job, under both sanitizer builds, and the `runtime` job runs the harness itself.
-
-3. **Section 4, a new row after `ios`.** Add a job:
-
-   | Job | Runner | Steps |
-   |---|---|---|
-   | `runtime` | macOS | Installs the build tools of the forks with `eng/mac/bootstrap.sh --forks`, restoring them from a cache whose key is their pins in `eng/toolchain.json` and the bootstrap script. Builds the Wine and FEX forks for macOS, restoring each build from a cache whose key is the fork's revision; the pins in `eng/toolchain.json` of the macOS image and of the tools that build the forks: Xcode, llvm-mingw, CMake, Ninja, Python, GNU Bison and flex; the fork's build script; `eng/mac/bootstrap.sh`; and `eng/mac/select-xcode.sh`. Saves each fork's build to the cache as soon as it is built. Builds the Win32 test programs of `tests/win32` with warnings as errors and analyzes them with llvm-mingw's clang-tidy; builds the harness; runs the harness's cases, which must pass, and its planted cases, which must fail and be named; uploads the logs. |
-
-4. **Section 4, when it runs.** Add after the rule on the `ios` job: "The `runtime` job runs for every pull request and every push to `main`; a push to another branch skips it, because the pull request's run covers it."
-
-5. **Section 3, the jobs a merge needs.** Replace "the `dotnet`, `native`, `ios` and `checks` jobs" with "the `dotnet`, `native`, `ios`, `runtime` and `checks` jobs".
-
-Items 4 and 5 are the two points that the brief of M4.2 left to recelilious, who chose them on 2026-11-17 (plan decision D14). Without item 4 the job would run on every push and every pull request, as the opening of section 4 says of all jobs; without item 5 a merge would not wait for it, and a change could break the runtime unnoticed until the next stage that runs it. A pull request that changes no fork, none of the pins in the key and none of the scripts in it restores both fork builds from the cache of `main` and runs the harness in minutes, as long as `main`'s entries have been used in the last 7 days and GitHub has not evicted them. One that changes a fork rebuilds that fork in the pull request, and again on `main` after the merge, because a cache that a pull request saves is visible only to that pull request; with Wine, each of those runs takes about 40 minutes. The key leaves out the pins that no fork build uses, such as gitleaks', so that moving them rebuilds nothing.
-
 ## Change log
 
 | Version | Date | Notes |
@@ -124,3 +103,4 @@ Items 4 and 5 are the two points that the brief of M4.2 left to recelilious, who
 | 1.0 | 2026-10-28 | Accepted by recelilious |
 | 1.1 | 2026-11-15 | Accepted by recelilious. Comes from stage M1.3, whose `ios` job produces the `.ipa` files that L1 installs, as plan section 8 expects. Section 4 has the `ios` job sign each app and every framework it embeds ad hoc, as C-0009 section 6 describes for releases, and check, scan and upload the `.ipa` of both flavors of the app; an ad-hoc signature holds no Apple identity and embeds the entitlements that a sideloading tool requests when it re-signs the app, and the job never holds an Apple-issued certificate or profile. An unsigned app carries no entitlements, so the increased memory limit of C-0009 section 4 would be lost on the device. |
 | 1.2 | 2026-11-17 | Accepted by recelilious. Comes from the review of stage M1.3 after its merge. Section 4 narrows the scan of the `ios` job until M9.1 to what it looks for now: provisioning profiles, and team identifiers and application-identifier prefixes in property lists and code signatures, with no upload on a finding. From M9.1 on, the job runs the whole scan of C-0009 section 6 on both flavors of the app, with the same allow list as releases. Section 4 also records decision D7: the `ios` job runs for every pull request and every push to `main`. |
+| 1.3 | 2026-11-17 | Accepted by recelilious. Comes from stage M4.2, which builds the Wine and FEX forks for arm64 macOS and runs our own Win32 test programs on them through a harness, the way the Medium stages from M4.2 to M8.1 are verified by script. Section 1 adds the runtime tests, and names the parts of their harness among the native unit tests, so that the harness's own unit tests run in the `native` job. Section 4 adds the `runtime` job, which restores the build tools and each fork's build from caches whose keys name what shapes them, saves each build as soon as it is built, builds and analyzes the Win32 test programs, and runs the harness's cases and its planted cases. It runs for every pull request and every push to `main` (plan decision D14), and section 3 adds it to the jobs that a merge needs. |

@@ -37,7 +37,7 @@ Each line of an expected file stands for one line of the program's standard outp
 eng/mac/run-harness.sh --mode multi
 ```
 
-It needs a Mac with Apple silicon and the fork tools of `eng/mac/bootstrap.sh --forks`. Names of cases, such as `console threads`, run those alone. `--planted` runs the planted cases, which must fail and be named; CI checks that. The logs of each case, its output, Wine's error output and the result, go to `build/runtime/logs/<case>/`, with a summary in `build/runtime/logs/summary.md`.
+It needs a Mac with Apple silicon and the fork tools of `eng/mac/bootstrap.sh --forks`. Names of cases, such as `console threads`, run those alone. `--planted` runs the planted cases, which must fail and be named; the `runtime` job of CI runs every case and then the planted ones (C-0011 section 4). The logs of each case, its output, Wine's error output and the result, go to `build/runtime/logs/<case>/`, with a summary in `build/runtime/logs/summary.md`.
 
 The harness itself is `paneport_harness`, which the CMake preset `macos-harness` of `src/native` builds:
 

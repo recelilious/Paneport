@@ -1,0 +1,143 @@
+{
+  "mainExecutable": {
+    "components": ["Paneport", ".NET runtime", ".NET for iOS (dotnet/macios)"],
+    "note": "The app's executable holds our code, the Mono runtime and the native code of .NET for iOS, which the build links into it, and the code of every package in the app's lock file, which full ahead-of-time compilation puts into it (C-0003 section 3, C-0009 section 3). tools/GenerateNotices.cs adds the component of each package through eng/license-map.json."
+  },
+  "files": [
+    {
+      "path": "Info.plist",
+      "components": ["Paneport"],
+      "note": "The build writes it from the head's Info.plist."
+    },
+    {
+      "path": "PkgInfo",
+      "components": ["Paneport"],
+      "note": "The build writes it."
+    },
+    {
+      "path": "runtimeconfig.bin",
+      "components": ["Paneport"],
+      "note": "The runtime's configuration, which the build writes from the head's project, the build stamp included."
+    },
+    {
+      "path": "Paneport.*",
+      "components": ["Paneport"],
+      "note": "Our assemblies, those of the head and of the device test flavor among them, and their ahead-of-time data."
+    },
+    {
+      "path": "Frameworks/paneport_host.framework/**",
+      "components": ["Paneport"],
+      "note": "The native host (C-0009 section 4)."
+    },
+    {
+      "path": "Avalonia.*",
+      "components": ["Avalonia"],
+      "note": "The assemblies of Avalonia's packages and their ahead-of-time data."
+    },
+    {
+      "path": "CommunityToolkit.Mvvm.*",
+      "components": ["CommunityToolkit.Mvvm"],
+      "note": "Its assembly and its ahead-of-time data."
+    },
+    {
+      "path": "MicroCom.Runtime.*",
+      "components": ["MicroCom.Runtime"],
+      "note": "Its assembly and its ahead-of-time data."
+    },
+    {
+      "path": "SkiaSharp.*",
+      "components": ["SkiaSharp"],
+      "note": "SkiaSharp's assembly and its ahead-of-time data."
+    },
+    {
+      "path": "Frameworks/libSkiaSharp.framework/**",
+      "components": ["SkiaSharp"],
+      "note": "The native library of SkiaSharp.NativeAssets.iOS, Skia among its contents."
+    },
+    {
+      "path": "HarfBuzzSharp.*",
+      "components": ["HarfBuzzSharp"],
+      "note": "HarfBuzzSharp's assembly and its ahead-of-time data."
+    },
+    {
+      "path": "Frameworks/libHarfBuzzSharp.framework/**",
+      "components": ["HarfBuzzSharp"],
+      "note": "The native library of HarfBuzzSharp.NativeAssets.iOS, HarfBuzz among its contents."
+    },
+    {
+      "path": "Microsoft.iOS.*",
+      "components": [".NET for iOS (dotnet/macios)"],
+      "note": "The iOS bindings of .NET for iOS and their ahead-of-time data. It comes before Microsoft.*, because the first rule that matches a file attributes it."
+    },
+    {
+      "path": "Microsoft.*",
+      "components": [".NET runtime"],
+      "note": "The runtime's libraries whose names start with Microsoft, and their ahead-of-time data."
+    },
+    {
+      "path": "System.*",
+      "components": [".NET runtime"],
+      "note": "The runtime's libraries, System.Private.CoreLib among them, and their ahead-of-time data."
+    },
+    {
+      "path": "mscorlib.*",
+      "components": [".NET runtime"],
+      "note": "The runtime's compatibility facade and its ahead-of-time data."
+    },
+    {
+      "path": "netstandard.*",
+      "components": [".NET runtime"],
+      "note": "The runtime's .NET Standard facade and its ahead-of-time data."
+    },
+    {
+      "path": "icudt*.dat",
+      "components": [".NET runtime"],
+      "note": "The ICU data of the runtime's globalization, whose notice the runtime's THIRD-PARTY-NOTICES.TXT holds."
+    }
+  ],
+  "components": {
+    ".NET for iOS (dotnet/macios)": {
+      "texts": [{ "runtimePack": "Microsoft.iOS", "file": "LICENSE" }],
+      "note": "The pack's LICENSE is that of dotnet/macios: the MIT license, then the notices of the third-party code that it carries."
+    },
+    ".NET runtime": {
+      "texts": [
+        { "runtimePack": "Microsoft.NETCore.App", "file": "LICENSE.TXT" },
+        { "runtimePack": "Microsoft.NETCore.App", "file": "THIRD-PARTY-NOTICES.TXT" }
+      ],
+      "note": "The runtime pack that the app's build uses, Mono's for iOS."
+    },
+    "Avalonia": {
+      "texts": [{ "package": "Avalonia", "license": "MIT" }],
+      "note": "Avalonia's packages declare MIT and ship no license file."
+    },
+    "Avalonia.BuildServices": {
+      "texts": [{ "package": "Avalonia.BuildServices", "license": "MIT" }],
+      "note": "It declares MIT and ships no license file."
+    },
+    "CommunityToolkit.Mvvm": {
+      "texts": [
+        { "package": "CommunityToolkit.Mvvm", "file": "License.md" },
+        { "package": "CommunityToolkit.Mvvm", "file": "ThirdPartyNotices.txt" }
+      ]
+    },
+    "HarfBuzzSharp": {
+      "texts": [
+        { "package": "HarfBuzzSharp", "file": "LICENSE.txt" },
+        { "package": "HarfBuzzSharp.NativeAssets.iOS", "file": "THIRD-PARTY-NOTICES.txt" }
+      ],
+      "note": "The native-asset package lists the further components of the native library in its THIRD-PARTY-NOTICES.txt (C-0003 section 6)."
+    },
+    "MicroCom.Runtime": {
+      "texts": [{ "package": "MicroCom.Runtime", "license": "MIT" }],
+      "note": "It declares MIT and ships no license file."
+    },
+    "SkiaSharp": {
+      "texts": [
+        { "package": "SkiaSharp", "file": "LICENSE.txt" },
+        { "package": "SkiaSharp.NativeAssets.iOS", "file": "THIRD-PARTY-NOTICES.txt" }
+      ],
+      "note": "The native-asset package lists the further components of the native library in its THIRD-PARTY-NOTICES.txt (C-0003 section 6)."
+    }
+  }
+}

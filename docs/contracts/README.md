@@ -17,7 +17,7 @@ Contracts are the binding documents of this project. Contracts come first; imple
 | [C-0001](C-0001-project-charter.md) | Project charter | Accepted | 1.1 | 2026-10-28 |
 | [C-0002](C-0002-repository-and-commits.md) | Repository and commits | Accepted | 1.1 | 2026-10-28 |
 | [C-0003](C-0003-licensing.md) | Open-source licensing | Accepted | 1.5 | 2026-11-11 |
-| [C-0004](C-0004-architecture-and-layout.md) | Architecture, components and layout | Accepted | 1.0 | 2026-10-28 |
+| [C-0004](C-0004-architecture-and-layout.md) | Architecture, components and layout | Accepted | 1.1 | 2026-11-17 |
 | [C-0005](C-0005-native-host-interface.md) | Native runtime host interface | Accepted | 1.0 | 2026-10-28 |
 | [C-0006](C-0006-jit-request-protocol.md) | JIT request protocol | Accepted | 1.0 | 2026-10-28 |
 | [C-0007](C-0007-steam-integration.md) | Steam integration | Accepted | 1.1 | 2026-11-01 |
@@ -27,7 +27,7 @@ Contracts are the binding documents of this project. Contracts come first; imple
 | [C-0011](C-0011-testing-review-quality.md) | Testing, review and quality tools | Accepted | 1.3 | 2026-11-17 |
 | [C-0012](C-0012-acceptance-process.md) | Acceptance process | Accepted | 1.0 | 2026-10-28 |
 
-C-0003 also carries proposed changes for version 1.6, and C-0004 and C-0010 for version 1.1, each in a section of its own. They are not binding until recelilious approves them.
+C-0003 also carries proposed changes for version 1.6, and C-0010 for version 1.1, each in a section of its own. They are not binding until recelilious approves them.
 
 ## Planned contracts
 

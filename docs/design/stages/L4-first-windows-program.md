@@ -12,7 +12,7 @@ Back to the [development plan](../development-plan.md).
 |---|---|---|---|---|---|
 | L4 | First Windows program on the iPhone | Large | Planned | | |
 | M4.1 | Forks, submodules and toolchains | Medium | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| M4.2 | ARM64EC Wine with FEX on macOS | Medium | Blocked: its contract proposals await review | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-17 |
+| M4.2 | ARM64EC Wine with FEX on macOS | Medium | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-18 |
 | M4.3 | Single-process Wine on macOS | Medium | Planned | | |
 | M4.4 | Runtime on iOS | Medium | Planned | | |
 | S4.0.1 | In-app console and the Run sample program action | Small | Planned | | |
@@ -26,7 +26,7 @@ Back to the [development plan](../development-plan.md).
 | S4.2.3 | FEX ARM64EC build for Darwin | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-16 |
 | S4.2.4 | Win32 test programs | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-16 |
 | S4.2.5 | Harness, runner and expected outputs | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-16 |
-| S4.2.6 | Runtime CI job, layout proposal and build caching | Small | Blocked: C-0011 1.3, C-0004 1.1, C-0003 1.6 and C-0010 1.1 await review | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-17 |
+| S4.2.6 | Runtime CI job, layout proposal and build caching | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-18 |
 | S4.3.1 | Single-process design document | Small | Planned | | |
 | S4.3.2 | wineserver thread and in-process connections | Small | Planned | | |
 | S4.3.3 | In-process start of the first process | Small | Planned | | |

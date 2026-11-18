@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
@@ -19,6 +20,7 @@ internal static class DeveloperViews
     {
         application.DataTemplates.Add(new FuncDataTemplate<DeveloperMenuViewModel>((menu, _) => Menu(menu)));
         application.DataTemplates.Add(new FuncDataTemplate<DeveloperToolViewModel>((tool, _) => Tool(tool)));
+        application.DataTemplates.Add(new FuncDataTemplate<SignalGateViewModel>((page, _) => SignalGatePage(page)));
     }
 
     private static ScrollViewer Menu(DeveloperMenuViewModel menu)
@@ -84,5 +86,77 @@ internal static class DeveloperViews
                 },
             },
         };
+    }
+
+    // The signal gate page: the startup check, the buttons, the status, the live counters and the
+    // result, whose texts can be selected and copied into the record. The menu keeps one page for
+    // the life of the app, but each opening builds a new view, so a view follows the page only
+    // while it is shown: a view that stayed subscribed would stay alive, and be updated every
+    // second, until the app ends.
+    private static ScrollViewer SignalGatePage(SignalGateViewModel page)
+    {
+        var startup = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap };
+        var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Classes = { "name" } };
+        var counters = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap };
+        var result = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap };
+        PropertyChangedEventHandler follow = (_, e) =>
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(SignalGateViewModel.StartupCheck):
+                    startup.Text = page.StartupCheck;
+                    break;
+                case nameof(SignalGateViewModel.Status):
+                    status.Text = page.Status;
+                    break;
+                case nameof(SignalGateViewModel.Counters):
+                    counters.Text = page.Counters;
+                    break;
+                case nameof(SignalGateViewModel.Result):
+                    result.Text = page.Result;
+                    break;
+                default:
+                    break;
+            }
+        };
+
+        var buttons = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                new Button { Content = "Start 4-hour run", Command = page.StartGateRunCommand, Margin = new Thickness(0, 0, 12, 12) },
+                new Button { Content = "Start 10-minute run", Command = page.StartShortRunCommand, Margin = new Thickness(0, 0, 12, 12) },
+                new Button { Content = "Stop", Command = page.StopCommand, Margin = new Thickness(0, 0, 12, 12) },
+            },
+        };
+
+        var view = new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 16,
+                Children =
+                {
+                    new TextBlock { Text = SignalGateViewModel.Description, TextWrapping = TextWrapping.Wrap, Classes = { "secondary" } },
+                    startup,
+                    buttons,
+                    status,
+                    counters,
+                    result,
+                },
+            },
+        };
+        view.AttachedToVisualTree += (_, _) =>
+        {
+            startup.Text = page.StartupCheck;
+            status.Text = page.Status;
+            counters.Text = page.Counters;
+            result.Text = page.Result;
+            page.PropertyChanged += follow;
+        };
+        view.DetachedFromVisualTree += (_, _) => page.PropertyChanged -= follow;
+        return view;
     }
 }

@@ -11,6 +11,7 @@
 
 #include "event_queue.h"
 #include "platform.h"
+#include "thread_role.h"
 
 // The event thread, its queues and its callbacks: a process-wide singleton (C-0010
 // section 3), which pp_init starts and pp_shutdown stops.
@@ -18,10 +19,6 @@ static struct {
     pp_queue_t events;
     pp_queue_t logs;
     pthread_t thread;
-
-    // The event thread's own identity, which it stores when it starts.
-    _Atomic(pthread_t) self;
-    _Atomic(bool) self_known;
 
     // Posts are accepted while this is true. posting counts the posts in progress, so that
     // stopping waits for a producer that saw it true before it turned false.
@@ -224,8 +221,7 @@ static void drain(void) {
 
 static void *thread_main(void *argument) {
     (void)argument;
-    atomic_store_explicit(&s_thread.self, pthread_self(), memory_order_relaxed);
-    atomic_store_explicit(&s_thread.self_known, true, memory_order_release);
+    pp_thread_role_set_event_thread();
     pp_platform_name_thread("paneport.host-events");
 
     for (;;) {
@@ -289,7 +285,7 @@ void pp_event_thread_stop(void) {
     atomic_store(&s_thread.stop_requested, true);
     wake_thread();
     (void)pthread_join(s_thread.thread, NULL);
-    atomic_store_explicit(&s_thread.self_known, false, memory_order_release);
+    pp_thread_role_clear_event_thread();
 
     (void)pthread_mutex_lock(&s_thread.callback_mutex);
     s_thread.event_callback = NULL;
@@ -369,8 +365,4 @@ void pp_event_thread_set_log_callback(pp_log_callback_t callback, void *user_dat
     }
 }
 
-bool pp_event_thread_is_current(void) {
-    return atomic_load_explicit(&s_thread.self_known, memory_order_acquire) &&
-           pthread_equal(pthread_self(),
-                         atomic_load_explicit(&s_thread.self, memory_order_relaxed)) != 0;
-}
+bool pp_event_thread_is_current(void) { return pp_thread_role_is_event_thread(); }

@@ -3,7 +3,6 @@
 
 // The life cycle group of C-0005 section 2, pp_abi_version and pp_free.
 
-#include <pthread.h>
 #include <stdatomic.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -15,6 +14,8 @@
 #include "log.h"
 #include "paneport/host.h"
 #include "platform.h"
+#include "signals/signals.h"
+#include "thread_role.h"
 
 enum {
     PP_HOST_NOT_STARTED = 0,
@@ -23,34 +24,12 @@ enum {
     PP_HOST_STOPPED = 3,
 };
 
-// The life cycle: a process-wide singleton (C-0010 section 3). main_thread is written before
-// state turns PP_HOST_RUNNING, and read only once state says so.
+// The life cycle: a process-wide singleton (C-0010 section 3).
 static struct {
     _Atomic(int) state;
-    pthread_t main_thread;
 } s_host;
 
-bool pp_host_on_main_thread(void) {
-#ifdef PANEPORT_TEST_BUILD
-    const int state = atomic_load_explicit(&s_host.state, memory_order_acquire);
-    if (state != PP_HOST_RUNNING && state != PP_HOST_STOPPED) {
-        return false;
-    }
-    return pthread_equal(pthread_self(), s_host.main_thread) != 0;
-#else
-    return pp_platform_is_main_thread();
-#endif
-}
-
-uint32_t pp_host_thread_role(void) {
-    if (pp_event_thread_is_current()) {
-        return PP_THREAD_ROLE_EVENT;
-    }
-    if (pp_host_on_main_thread()) {
-        return PP_THREAD_ROLE_MAIN;
-    }
-    return PP_THREAD_ROLE_OTHER;
-}
+bool pp_host_on_main_thread(void) { return pp_thread_role_is_main_thread(); }
 
 PP_EXPORT uint32_t pp_abi_version(void) {
     return ((uint32_t)PP_ABI_VERSION_MAJOR << 16U) | (uint32_t)PP_ABI_VERSION_MINOR;
@@ -99,20 +78,37 @@ PP_EXPORT pp_status_t pp_init(const pp_init_config_t *config) {
     if (folder != NULL) {
         status = pp_crash_record_prepare(folder);
     }
+    // The dispatcher comes after the crash record folder, so that a fault it ends the app with
+    // leaves a record, and before any guest thread can exist (C-0005 section 4).
+    if (status == PP_OK) {
+        status = pp_signals_install();
+    }
     if (status == PP_OK) {
         status = pp_event_thread_start();
         if (status != PP_OK) {
             (void)pp_error_set(status, "The host event thread could not start.");
         }
     }
+#ifdef PANEPORT_TEST_BUILD
+    // Test builds check that each signal still has the dispatcher's handler.
+    if (status == PP_OK) {
+        status = pp_signals_check_installed(NULL);
+        if (status != PP_OK) {
+            pp_event_thread_stop();
+        }
+    }
+#endif
     if (status != PP_OK) {
-        // A folder prepared before the failure must not outlive it.
+        // Nothing that pp_init set up before the failure may outlive it.
+        pp_signals_uninstall();
         pp_crash_record_reset();
         atomic_store_explicit(&s_host.state, PP_HOST_NOT_STARTED, memory_order_release);
         return status;
     }
 
-    s_host.main_thread = pthread_self();
+#ifdef PANEPORT_TEST_BUILD
+    pp_thread_role_set_main_thread();
+#endif
     atomic_store_explicit(&s_host.state, PP_HOST_RUNNING, memory_order_release);
     (void)pp_log(PP_LOG_INFO, "The native host started, with interface version %d.%d.",
                  PP_ABI_VERSION_MAJOR, PP_ABI_VERSION_MINOR);

@@ -17,6 +17,10 @@
 #   not provide.
 # - misc-include-cleaner: it maps a symbol to the header that declares it, and Apple's SDK
 #   declares many in internal headers, such as pthread_t in sys/_pthread/_pthread_t.h.
+# - portability-no-assembler: the host executes single machine instructions on purpose. The
+#   signal dispatcher's harness and tests plant faults with instructions whose size the
+#   handlers skip, the test of the Mach helpers spins on a register that only assembly reads,
+#   and M3.1 executes the JIT broker's brk #0xf00d (C-0006 section 3).
 # - readability-identifier-length: tests use short names such as the loop index of a table.
 # - readability-magic-numbers: the tests check documented values, such as the byte offsets
 #   of the crash record, and the host names its own limits in macros.
@@ -46,6 +50,7 @@ Checks: >
   -misc-include-cleaner,
   performance-*,
   portability-*,
+  -portability-no-assembler,
   readability-*,
   -readability-identifier-length,
   -readability-magic-numbers

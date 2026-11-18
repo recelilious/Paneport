@@ -1,0 +1,202 @@
+// SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+// SPDX-License-Identifier: MIT
+
+// S2.2.5: the installed check, the alternate stacks, and the last-resort handler that the host
+// installs when it is loaded. The check passes after pp_init and fails, naming the signal, when
+// a handler was replaced; the main thread has an alternate stack after pp_init, and a thread
+// has one while it carries a mark; the last-resort handler takes only signals that still have
+// the default action (docs/design/signals.md sections 5 and 7).
+
+#include <signal.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/wait.h>
+
+#include "paneport/host.h"
+#include "paneport/testing.h"
+#include "pp_check.h"
+#include "signal_test_support.h"
+#include "signals/signal_state.h"
+#include "signals/signals.h"
+#include "test_support.h"
+
+// The documented singleton of this program (C-0010 section 3): the path that the program
+// started with, which a case needs to start a child.
+static const char *s_program;
+
+static void replacement_handler(int signal_number) { (void)signal_number; }
+
+static void passes_after_init(void) {
+    pp_start_host(NULL);
+    int32_t replaced = -1;
+    PP_CHECK_EQUAL(pp_test_signals_check_installed(&replaced), PP_OK);
+    PP_CHECK_EQUAL(replaced, 0);
+    PP_CHECK_EQUAL(pp_test_signals_check_installed(NULL), PP_OK);
+}
+
+static void fails_naming_replaced_signal(void) {
+    pp_start_host(NULL);
+    struct sigaction action;
+    memset(&action, 0, sizeof action);
+    action.sa_handler = replacement_handler;
+    PP_CHECK_EQUAL(sigemptyset(&action.sa_mask), 0);
+    struct sigaction previous;
+    PP_CHECK_EQUAL(sigaction(SIGBUS, &action, &previous), 0);
+
+    int32_t replaced = 0;
+    PP_CHECK_EQUAL(pp_test_signals_check_installed(&replaced), PP_E_SYSTEM);
+    PP_CHECK_EQUAL(replaced, SIGBUS);
+    PP_CHECK(strstr(pp_last_error(), "SIGBUS") != NULL);
+
+    PP_CHECK_EQUAL(sigaction(SIGBUS, &previous, NULL), 0);
+    PP_CHECK_EQUAL(pp_test_signals_check_installed(&replaced), PP_OK);
+    PP_CHECK_EQUAL(replaced, 0);
+}
+
+static void fails_before_init(void) {
+    int32_t replaced = -1;
+    PP_CHECK_EQUAL(pp_test_signals_check_installed(&replaced), PP_E_NOT_INITIALIZED);
+    PP_CHECK_EQUAL(replaced, 0);
+}
+
+// Checks whether the calling thread has an alternate signal stack, of the dispatcher's size when
+// it has one. The presets keep the sanitizers from setting stacks of their own (signals.md
+// section 11), so every stack here is the dispatcher's.
+static void check_stack(bool expected) {
+    stack_t current;
+    PP_CHECK_EQUAL(sigaltstack(NULL, &current), 0);
+    (void)fprintf(stderr, "stack: flags %d, start %p, size %zu; expected %s%c", current.ss_flags,
+                  current.ss_sp, current.ss_size, expected ? "one" : "none", 10);
+    if (expected) {
+        PP_CHECK(!pp_signal_has_flag(current.ss_flags, SS_DISABLE));
+        PP_CHECK_EQUAL(current.ss_size, PP_SIGNAL_STACK_SIZE);
+    } else {
+        PP_CHECK(pp_signal_has_flag(current.ss_flags, SS_DISABLE));
+    }
+}
+
+static void *mark_and_unmark(void *argument) {
+    (void)argument;
+    check_stack(false);
+    PP_CHECK_EQUAL(pp_signals_mark_thread(PP_THREAD_MARK_GUEST), PP_OK);
+    check_stack(true);
+    // A new mark of a marked thread changes the mark and keeps the stack.
+    PP_CHECK_EQUAL(pp_signals_mark_thread(PP_THREAD_MARK_TRANSLATOR), PP_OK);
+    check_stack(true);
+    PP_CHECK_EQUAL(pp_signals_unmark_thread(), PP_OK);
+    check_stack(false);
+    return NULL;
+}
+
+// The main thread gets its stack from pp_init, and a thread has one exactly while it carries a
+// mark.
+static void stacks_follow_marks(void) {
+    check_stack(false);
+    pp_start_host(NULL);
+    check_stack(true);
+    pp_run_on_thread(mark_and_unmark, NULL);
+    check_stack(true);
+}
+
+// A stack that pp_signal_stack_ensure gives a thread is gone once pp_signal_stack_release takes
+// it: disabled, and unmapped. The case prints each step, because macOS kept the stack enabled
+// after an earlier version of the release.
+static void *ensure_and_release(void *argument) {
+    (void)argument;
+    void *stack = NULL;
+    size_t size = 0U;
+    PP_CHECK_EQUAL(pp_signal_stack_ensure(&stack, &size), PP_OK);
+    PP_CHECK(stack != NULL);
+    stack_t current;
+    PP_CHECK_EQUAL(sigaltstack(NULL, &current), 0);
+    const uintptr_t low = (uintptr_t)stack;
+    const uintptr_t base = (uintptr_t)current.ss_sp;
+    (void)fprintf(stderr, "mapping %p, %zu bytes; stack %p, %zu bytes, flags %d; inside %d%c",
+                  stack, size, current.ss_sp, current.ss_size, current.ss_flags,
+                  base >= low && base < low + size, 10);
+    const size_t page = pp_test_page_size();
+    pp_signal_stack_release(stack, size);
+    const bool mapped = mprotect((unsigned char *)stack + page, page, PROT_READ) == 0;
+    (void)fprintf(stderr, "after the release the stack's page is %s%c",
+                  mapped ? "still mapped" : "unmapped", 10);
+    check_stack(false);
+    PP_CHECK(!mapped);
+    return NULL;
+}
+
+static void release_takes_stack_away(void) { pp_run_on_thread(ensure_and_release, NULL); }
+
+// Uninstalling takes the main thread's stack away again, so that a pp_init that fails after
+// installing the dispatcher leaves none behind.
+static void uninstall_takes_stack_away(void) {
+    check_stack(false);
+    PP_CHECK_EQUAL(pp_signals_install(), PP_OK);
+    check_stack(true);
+    pp_signals_uninstall();
+    check_stack(false);
+}
+
+static bool has_last_resort(int signal_number) {
+    struct sigaction current;
+    PP_CHECK_EQUAL(sigaction(signal_number, NULL, &current), 0);
+    if (!pp_signal_has_flag(current.sa_flags, SA_SIGINFO)) {
+        return false;
+    }
+    return current.sa_sigaction == pp_signal_last_resort;
+}
+
+// Before pp_init, each of the six signals has the last-resort handler, because the presets
+// leave the fault signals to the host (signals.md section 11).
+static void last_resort_installed_at_load(void) {
+    for (size_t index = 0U; index < PP_SIGNAL_COUNT; index++) {
+        PP_CHECK(has_last_resort(pp_test_signal_at(index)));
+    }
+}
+
+// Child: it started with SIGTRAP ignored, which its parent arranged; the host left SIGTRAP
+// alone and took the other five.
+static void child_keeps_ignored(const char *folder) {
+    (void)folder;
+    struct sigaction current;
+    PP_CHECK_EQUAL(sigaction(SIGTRAP, NULL, &current), 0);
+    PP_CHECK(pp_signal_is_ignored(&current));
+    for (size_t index = 0U; index < PP_SIGNAL_COUNT; index++) {
+        const int signal_number = pp_test_signal_at(index);
+        PP_CHECK(signal_number == SIGTRAP || has_last_resort(signal_number));
+    }
+}
+
+static void last_resort_only_where_default(void) {
+    struct sigaction ignore;
+    memset(&ignore, 0, sizeof ignore);
+    ignore.sa_handler = SIG_IGN;
+    PP_CHECK_EQUAL(sigemptyset(&ignore.sa_mask), 0);
+    struct sigaction previous;
+    PP_CHECK_EQUAL(sigaction(SIGTRAP, &ignore, &previous), 0);
+    const int status = pp_run_child(s_program, "keeps_ignored", "-");
+    PP_CHECK_EQUAL(sigaction(SIGTRAP, &previous, NULL), 0);
+    PP_CHECK(WIFEXITED(status));
+    PP_CHECK_EQUAL(WEXITSTATUS(status), 0);
+}
+
+int main(int argc, char **argv) {
+    s_program = argv[0];
+    static const pp_test_case_t cases[] = {
+        {"passes_after_init", passes_after_init},
+        {"fails_naming_replaced_signal", fails_naming_replaced_signal},
+        {"fails_before_init", fails_before_init},
+        {"stacks_follow_marks", stacks_follow_marks},
+        {"release_takes_stack_away", release_takes_stack_away},
+        {"uninstall_takes_stack_away", uninstall_takes_stack_away},
+        {"last_resort_installed_at_load", last_resort_installed_at_load},
+        {"last_resort_only_where_default", last_resort_only_where_default},
+    };
+    static const pp_child_case_t children[] = {
+        {"keeps_ignored", child_keeps_ignored},
+    };
+    return pp_signal_test_main(argc, argv, cases, PP_CASE_COUNT(cases), children,
+                               PP_CASE_COUNT(children));
+}

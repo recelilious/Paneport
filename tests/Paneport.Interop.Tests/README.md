@@ -16,6 +16,7 @@ Tests of [Paneport.Interop](../../src/Paneport.Interop/README.md), which run on 
 | `AbiVersionTests.cs` | The host implements the version of the bindings, and versions decode as major and minor |
 | `LayoutConformanceTests.cs` | The interface conformance test of C-0005 section 5, with the planted wrong definition of `WrongMemoryBudget.cs`, which it reports by struct and member, and a check that the hand-written list of `ManagedLayouts` holds every `Native*` struct and field of the bindings |
 | `BindingTests.cs` | Every binding against the library: the memory budget, errors with their status and message, the main-thread rule, events and log lines on the event thread, not on the test's thread or the stand-in main thread, an exception in a handler caught and reported, host memory freed with `pp_free`, and a test crash record |
+| `SignalBindingTests.cs` | The signal dispatcher's bindings: the dispatcher holds all six signals in the test host, and the stress harness starts, reports its counters, refuses a second start and a bad configuration, and stops, without threads; the CTest suite plants the faults |
 
 Run them on a Mac from the repository root, once the library is built:
 

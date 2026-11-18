@@ -53,7 +53,7 @@ public sealed partial class DiagnosticsViewModel : PageViewModel
             : $"Not compatible: the app's bindings use version {host.BindingsVersion}";
         HostImport = host.ImportName;
         EntitlementRows = EntitlementRowsOf(sources.Entitlements);
-        BuildRows = BuildRowsOf(sources.Build);
+        BuildRows = [.. BuildRowsOf(sources.Build), new("Crash chaining", sources.CrashChaining.Description)];
         DeviceRows =
         [
             new("Model identifier", sources.Device.ModelIdentifier),
@@ -139,7 +139,7 @@ public sealed partial class DiagnosticsViewModel : PageViewModel
     [ObservableProperty]
     public partial IReadOnlyList<DiagnosticsRow> StorageRows { get; private set; } = [];
 
-    /// <summary>Gets the build stamp.</summary>
+    /// <summary>Gets the build stamp, and whether the call that turns off Mono's crash chaining returned.</summary>
     public IReadOnlyList<DiagnosticsRow> BuildRows { get; }
 
     /// <summary>Gets the device's model identifier and its system version and build.</summary>

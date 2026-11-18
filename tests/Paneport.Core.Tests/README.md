@@ -34,6 +34,8 @@ Tests of [Paneport.Core](../../src/Paneport.Core/README.md).
 | `Compat/DeviceLayerStoreTests.cs`, `Compat/CompatDatabaseTests.cs` | The device layer store in a temporary folder: one file per title named after its id, and an atomic replace that leaves the old file when a write fails and deletes its temporary file when the replace fails. The database over both layers, and every file in `compat/titles/`. |
 | `Compat/Fixtures/` | Not tests. Synthetic title files, valid and invalid, for each layer, with made-up titles and values only (C-0008 section 5). `TitleEntryJsonTests` lists each invalid one with the rule it breaks. |
 | `Compat/TestEntries.cs`, `Compat/CompatTestFiles.cs`, `Compat/TemporaryFolder.cs` | Not tests. Entries made in code, the places of the fixtures and of the repository files that the project copies into its output, and a temporary folder. |
+| `Gates/SignalGateTests.cs`, `Gates/HeartbeatMonitorTests.cs` | S2.2.6: on synthetic counters the signal gate's verdict is PASS only when every criterion of L2 step 13 holds, and each criterion alone fails it, named; the heartbeat keeps its longest gap, an open one included. |
+| `Diagnostics/CrashChainingStateTests.cs` | S2.2.5: every outcome of the call that turns off Mono's crash chaining is recorded and logged, none ends the startup, and a head without the call says so. |
 | `DependencyDirectionTests.cs` | Paneport.Core references no other project of the solution, and this test project references Paneport.Core only (C-0004 section 2). |
 
 The fakes of the services come from [Shared](../Shared/README.md).

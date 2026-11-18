@@ -124,6 +124,101 @@ PP_EXPORT pp_status_t pp_test_log(int32_t level, const char *text);
  */
 PP_EXPORT pp_status_t pp_test_duplicate_text(const char *text, char **copy);
 
+/**
+ * Checks that each of SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP and SIGABRT still has the signal
+ * dispatcher's handler (C-0005 section 4), as test builds do at the end of pp_init().
+ *
+ * Thread rule: [any]. Memory: none.
+ *
+ * @param replaced_signal Receives 0, or the number of the first signal whose handler was
+ *                        replaced; may be NULL.
+ * @return PP_OK; PP_E_NOT_INITIALIZED before pp_init(); PP_E_SYSTEM when a handler was
+ *         replaced, with a message that names the signal.
+ */
+PP_EXPORT pp_status_t pp_test_signals_check_installed(int32_t *replaced_signal);
+
+/**
+ * How the stress harness of the signal gate runs (docs/design/signals.md section 9).
+ */
+typedef struct pp_test_signal_harness_config_t {
+    /**
+     * sizeof(pp_test_signal_harness_config_t) as the caller knows it, at least 4; the host reads
+     * only the members inside it, and a member past it takes its default.
+     */
+    uint32_t struct_size;
+    /**
+     * Threads marked as guest threads that fault on a guard page and a read-only page; 0 to 16,
+     * by default 4.
+     */
+    uint32_t marked_threads;
+    /** Unmarked threads that fault inside a registered guest reservation; 0 to 16, by default 4. */
+    uint32_t unmarked_threads;
+    /**
+     * The pause of each thread between two faults, in microseconds; at most 1,000,000, by
+     * default 200.
+     */
+    uint32_t pause_microseconds;
+} pp_test_signal_harness_config_t;
+
+/**
+ * The counters of the stress harness and of the signal dispatcher.
+ */
+typedef struct pp_test_signal_counters_t {
+    /**
+     * sizeof(pp_test_signal_counters_t) as the caller knows it, at least 4. Set by the caller:
+     * the host writes only the members inside it and leaves it as it is.
+     */
+    uint32_t struct_size;
+    /** 1 while the harness runs, else 0. */
+    uint8_t running;
+    /** Faults that the marked threads planted. */
+    uint64_t guest_faults_raised_by_mark;
+    /** Faults that the harness's guest fault handler took by the thread's mark. */
+    uint64_t guest_faults_handled_by_mark;
+    /** Faults that the unmarked threads planted in the reservation. */
+    uint64_t guest_faults_raised_by_address;
+    /** Faults that the harness's guest fault handler took by their address. */
+    uint64_t guest_faults_handled_by_address;
+    /** Faults that took a route the harness did not plant them for. */
+    uint64_t unexpected_faults;
+    /** Faults of any thread that the dispatcher passed to the runtime's handler. */
+    uint64_t runtime_faults;
+} pp_test_signal_counters_t;
+
+/**
+ * Starts the stress harness: it maps its pages, registers its reservation and its guest fault
+ * handler, which counts each fault and skips the faulting instruction, and starts its threads.
+ * It needs pp_init(), and no other guest fault handler.
+ *
+ * Thread rule: [any]. Memory: none.
+ *
+ * @param config How it runs; a struct_size of at least 4.
+ * @return PP_OK; PP_E_INVALID_ARGUMENT for NULL, a struct_size below 4 or a value out of
+ *         range; PP_E_NOT_INITIALIZED before pp_init(); PP_E_BUSY while it runs, or while
+ *         another guest fault handler is set; PP_E_OUT_OF_MEMORY; PP_E_SYSTEM.
+ */
+PP_EXPORT pp_status_t pp_test_signal_harness_start(const pp_test_signal_harness_config_t *config);
+
+/**
+ * Stops the stress harness: its threads end, and its handler, reservation and pages go. Its
+ * counters keep their final values until the next start.
+ *
+ * Thread rule: [any]. Memory: none.
+ *
+ * @return PP_OK, also when it was not running.
+ */
+PP_EXPORT pp_status_t pp_test_signal_harness_stop(void);
+
+/**
+ * Reads the counters of the stress harness and of the signal dispatcher.
+ *
+ * Thread rule: [any]. Memory: none.
+ *
+ * @param counters Receives the counters; its struct_size, set by the caller, is at least 4.
+ * @return PP_OK; PP_E_INVALID_ARGUMENT for NULL or a struct_size below 4.
+ */
+PP_EXPORT pp_status_t pp_test_signal_harness_read(pp_test_signal_counters_t *counters);
+
 PP_EXTERN_C_END
 
 #endif /* PP_TESTING_H */

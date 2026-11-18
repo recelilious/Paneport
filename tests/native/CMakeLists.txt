@@ -6,7 +6,9 @@
 
 # One test program per small stage. Each case runs in a process of its own, because pp_init
 # runs once per process, and CTest names it <program>.<case>. A program links the test build
-# of the host, or the host that LIBRARY names.
+# of the host, or the host that LIBRARY names. A case that cannot run in one of the builds
+# says so in the first line of its output, which starts with "Skipped: ", and CTest reports it
+# as skipped rather than passed.
 function(paneport_native_test name)
     cmake_parse_arguments(PARSE_ARGV 1 TEST "" "LIBRARY" "CASES")
     if(NOT TEST_LIBRARY)
@@ -19,7 +21,9 @@ function(paneport_native_test name)
         "${PANEPORT_REPOSITORY_ROOT}/src/native/host")
     foreach(test_case IN LISTS TEST_CASES)
         add_test(NAME ${name}.${test_case} COMMAND ${name} ${test_case})
-        set_tests_properties(${name}.${test_case} PROPERTIES TIMEOUT 300)
+        set_tests_properties(${name}.${test_case} PROPERTIES
+            TIMEOUT 300
+            SKIP_REGULAR_EXPRESSION "^Skipped: ")
     endforeach()
 endfunction()
 
@@ -37,6 +41,36 @@ paneport_native_test(test_memory_budget CASES
     limit_is_sum game_mode_level smaller_struct_size invalid_arguments)
 paneport_native_test(test_crash_record CASES
     encode_layout message_cut written_in_signal_handler test_record_flag)
+
+# The signal dispatcher (M2.2, docs/design/signals.md section 10). A case that ends by a signal
+# runs that part in a child process of its own program, and checks how the child ended and the
+# crash record it left.
+paneport_native_test(test_signal_chain CASES
+    every_signal_reaches_runtime_once plain_handler_gets_signal ignored_sent_signal_returns
+    ignored_with_siginfo_returns first_page_fault_needs_no_record default_action_ends_with_record
+    runtime_declined_fault_ends_with_record crash_path_illegal_keeps_record
+    crash_path_managed_fault_keeps_record ignored_breakpoint_ends_with_record
+    simulated_overflow_ends_with_record main_thread_overflow_ends_with_record
+    main_thread_overflow_reaches_runtime busy_writer_keeps_first_record
+    stuck_writer_wait_is_bounded)
+paneport_native_test(test_signal_routing CASES
+    routes_hold_while_writers_change pool_fault_goes_to_probe_only_in_probe_mode
+    pool_counts_by_program_counter mark_ends_with_its_thread tables_refuse_when_full
+    marked_thread_table_full)
+paneport_native_test(test_signal_guest CASES
+    handler_sees_only_guest_faults declined_fault_ends_with_record
+    fault_without_handler_ends_with_record removal_waits_for_handler
+    marked_thread_overflow_ends_with_record guest_handler_fault_ends_with_record
+    probe_handler_fault_ends_with_record)
+paneport_native_test(test_thread_control CASES
+    register_change_seen_after_resume ended_thread_fails suspending_itself_refused)
+paneport_native_test(test_signal_installed CASES
+    passes_after_init fails_naming_replaced_signal fails_before_init stacks_follow_marks
+    release_takes_stack_away uninstall_takes_stack_away last_resort_installed_at_load
+    last_resort_only_where_default)
+paneport_native_test(test_signal_harness CASES
+    runs_sixty_seconds start_refused_before_init start_checks_its_conditions
+    short_structs_follow_struct_size)
 
 # The main-thread rule of the shipped builds, on the host that src/native/CMakeLists.txt builds
 # without the test exports and without PANEPORT_TEST_BUILD.
@@ -67,16 +101,32 @@ target_include_directories(test_headers PRIVATE "${PANEPORT_REPOSITORY_ROOT}/src
 target_link_libraries(test_headers PRIVATE paneport_host)
 add_test(NAME test_headers.c17_and_cxx20 COMMAND test_headers)
 
-# The crash record writer calls only async-signal-safe functions (docs/design/native-host.md
-# section 8). The check reads the writer's object with nm.
+# The crash record writer, the signal dispatcher's handler with the thread role it reads, and
+# the harness's guest fault handler call only async-signal-safe functions
+# (docs/design/native-host.md section 8, docs/design/signals.md section 10). The check reads
+# a group's objects with nm: <name>.async_signal_safe_calls reads them as the test build
+# compiles them, and <name>_shipped.async_signal_safe_calls, for the two groups that ship, as
+# paneport_host_shipped compiles them, without PANEPORT_TEST_BUILD, so that code that only the
+# shipped builds have, such as their main-thread test, is read too.
 if(APPLE)
     set(strip_underscore ON)
 else()
     set(strip_underscore OFF)
 endif()
-add_test(NAME crash_record_writer.async_signal_safe_calls
-    COMMAND "${CMAKE_COMMAND}"
-        "-DNM=${CMAKE_NM}"
-        "-DOBJECTS=$<TARGET_OBJECTS:paneport_host_objects>"
-        "-DSTRIP_UNDERSCORE=${strip_underscore}"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_writer_calls.cmake")
+function(paneport_signal_safe_check name library group)
+    add_test(NAME ${name}.async_signal_safe_calls
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNM=${CMAKE_NM}"
+            "-DOBJECTS=$<TARGET_OBJECTS:${library}>"
+            "-DSTRIP_UNDERSCORE=${strip_underscore}"
+            "-DSOURCES=${group}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/check_signal_safe_calls.cmake")
+endfunction()
+paneport_signal_safe_check(crash_record_writer paneport_host_objects "crash_record_writer.c")
+paneport_signal_safe_check(crash_record_writer_shipped paneport_host_shipped
+    "crash_record_writer.c")
+paneport_signal_safe_check(signal_handler paneport_host_objects "signal_handler.c|thread_role.c")
+paneport_signal_safe_check(signal_handler_shipped paneport_host_shipped
+    "signal_handler.c|thread_role.c")
+paneport_signal_safe_check(signal_harness_handler paneport_host_objects
+    "signal_harness_handler.c")

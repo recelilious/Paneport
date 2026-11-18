@@ -58,4 +58,16 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_duplicate_text", StringMarshalling = StringMarshalling.Utf8)]
     internal static partial int TestDuplicateText(string text, byte** copy);
+
+    [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_signals_check_installed")]
+    internal static partial int TestSignalsCheckInstalled(int* replacedSignal);
+
+    [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_signal_harness_start")]
+    internal static partial int TestSignalHarnessStart(NativeSignalHarnessConfig* config);
+
+    [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_signal_harness_stop")]
+    internal static partial int TestSignalHarnessStop();
+
+    [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_signal_harness_read")]
+    internal static partial int TestSignalHarnessRead(NativeSignalCounters* counters);
 }

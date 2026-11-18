@@ -10,7 +10,7 @@ namespace Paneport.Core.Diagnostics;
 /// <param name="Time">When the host wrote the record, in UTC.</param>
 /// <param name="Signal">The signal number; 0 for a test record.</param>
 /// <param name="SignalCode">The signal's code (<c>si_code</c>).</param>
-/// <param name="ThreadRole">The role of the thread that faulted: 0 other, 1 main, 2 host event thread.</param>
+/// <param name="ThreadRole">The role of the thread that faulted: 0 other, 1 main, 2 host event thread, 3 guest thread, 4 translator thread.</param>
 /// <param name="FaultAddress">The fault address (<c>si_addr</c>).</param>
 /// <param name="ProgramCounter">The program counter of the faulting instruction.</param>
 /// <param name="IsTest">Whether a test wrote the record.</param>
@@ -31,6 +31,8 @@ public sealed record CrashRecord(
         0 => "other",
         1 => "main thread",
         2 => "host event thread",
+        3 => "guest thread",
+        4 => "translator thread",
         _ => $"role {ThreadRole}",
     };
 

@@ -44,6 +44,19 @@ public sealed class CrashRecordReaderTests
         Assert.Equal("Test record", record.Message);
     }
 
+    // M2.2: the signal dispatcher writes the roles of marked threads (native-host.md section 8).
+    [Theory]
+    [InlineData(2U, "host event thread")]
+    [InlineData(3U, "guest thread")]
+    [InlineData(4U, "translator thread")]
+    [InlineData(7U, "role 7")]
+    public void EachThreadRoleHasItsName(uint role, string name)
+    {
+        var record = CrashRecordReader.Parse(CrashRecordBytes.Build(threadRole: role)).Record;
+
+        Assert.Equal(name, record?.ThreadRoleName);
+    }
+
     [Fact]
     public void AMessageOfSixtyThreeBytesIsReadWhole()
     {

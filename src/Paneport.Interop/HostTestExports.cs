@@ -110,4 +110,69 @@ public static unsafe class HostTestExports
             NativeMethods.Free(copy);
         }
     }
+
+    /// <summary>
+    /// Checks that each of SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP and SIGABRT still has the
+    /// signal dispatcher's handler (<c>pp_test_signals_check_installed</c>, C-0005 section 4).
+    /// Any thread.
+    /// </summary>
+    /// <returns>0 when all six have it, or the number of the first signal whose handler was replaced.</returns>
+    /// <exception cref="HostException">The host has not started, so the dispatcher is not installed.</exception>
+    public static int CheckSignalsInstalled()
+    {
+        var replaced = 0;
+        var status = NativeMethods.TestSignalsCheckInstalled(&replaced);
+        if (replaced != 0)
+        {
+            return replaced;
+        }
+
+        HostCalls.Check(status);
+        return 0;
+    }
+
+    /// <summary>
+    /// Starts the signal gate's native stress harness (<c>pp_test_signal_harness_start</c>,
+    /// docs/design/signals.md section 9). It needs a started host and no other guest fault handler.
+    /// Any thread.
+    /// </summary>
+    /// <param name="markedThreads">Threads marked as guest threads, which fault on a guard page and a read-only page; 0 to 16.</param>
+    /// <param name="unmarkedThreads">Unmarked threads, which fault inside a registered guest reservation; 0 to 16.</param>
+    /// <param name="pauseMicroseconds">Each thread's pause between two faults; at most one second.</param>
+    public static void StartSignalHarness(uint markedThreads, uint unmarkedThreads, uint pauseMicroseconds)
+    {
+        var config = new NativeSignalHarnessConfig
+        {
+            StructSize = (uint)sizeof(NativeSignalHarnessConfig),
+            MarkedThreads = markedThreads,
+            UnmarkedThreads = unmarkedThreads,
+            PauseMicroseconds = pauseMicroseconds,
+        };
+        HostCalls.Check(NativeMethods.TestSignalHarnessStart(&config));
+    }
+
+    /// <summary>
+    /// Stops the stress harness; its counters keep their final values until the next start
+    /// (<c>pp_test_signal_harness_stop</c>). Any thread.
+    /// </summary>
+    public static void StopSignalHarness() => HostCalls.Check(NativeMethods.TestSignalHarnessStop());
+
+    /// <summary>
+    /// Reads the counters of the stress harness and of the signal dispatcher
+    /// (<c>pp_test_signal_harness_read</c>). Any thread.
+    /// </summary>
+    /// <returns>The counters.</returns>
+    public static SignalHarnessCounters ReadSignalHarness()
+    {
+        var counters = new NativeSignalCounters { StructSize = (uint)sizeof(NativeSignalCounters) };
+        HostCalls.Check(NativeMethods.TestSignalHarnessRead(&counters));
+        return new SignalHarnessCounters(
+            counters.Running != 0,
+            counters.GuestFaultsRaisedByMark,
+            counters.GuestFaultsHandledByMark,
+            counters.GuestFaultsRaisedByAddress,
+            counters.GuestFaultsHandledByAddress,
+            counters.UnexpectedFaults,
+            counters.RuntimeFaults);
+    }
 }

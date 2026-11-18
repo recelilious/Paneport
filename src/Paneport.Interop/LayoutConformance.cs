@@ -51,6 +51,22 @@ public static class LayoutConformance
             .Member("member_count", (ref NativeLayoutStruct value) => ref value.MemberCount)
             .Member("members", (ref NativeLayoutStruct value) => ref value.Members)
             .Build(),
+        new StructLayoutBuilder<NativeSignalHarnessConfig>("pp_test_signal_harness_config_t")
+            .Member("struct_size", (ref NativeSignalHarnessConfig value) => ref value.StructSize)
+            .Member("marked_threads", (ref NativeSignalHarnessConfig value) => ref value.MarkedThreads)
+            .Member("unmarked_threads", (ref NativeSignalHarnessConfig value) => ref value.UnmarkedThreads)
+            .Member("pause_microseconds", (ref NativeSignalHarnessConfig value) => ref value.PauseMicroseconds)
+            .Build(),
+        new StructLayoutBuilder<NativeSignalCounters>("pp_test_signal_counters_t")
+            .Member("struct_size", (ref NativeSignalCounters value) => ref value.StructSize)
+            .Member("running", (ref NativeSignalCounters value) => ref value.Running)
+            .Member("guest_faults_raised_by_mark", (ref NativeSignalCounters value) => ref value.GuestFaultsRaisedByMark)
+            .Member("guest_faults_handled_by_mark", (ref NativeSignalCounters value) => ref value.GuestFaultsHandledByMark)
+            .Member("guest_faults_raised_by_address", (ref NativeSignalCounters value) => ref value.GuestFaultsRaisedByAddress)
+            .Member("guest_faults_handled_by_address", (ref NativeSignalCounters value) => ref value.GuestFaultsHandledByAddress)
+            .Member("unexpected_faults", (ref NativeSignalCounters value) => ref value.UnexpectedFaults)
+            .Member("runtime_faults", (ref NativeSignalCounters value) => ref value.RuntimeFaults)
+            .Build(),
     ];
 
     /// <summary>Compares the C# layouts with the host's and describes every difference.</summary>

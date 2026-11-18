@@ -214,6 +214,7 @@ public sealed class DiagnosticsSectionsTests
                 new DiagnosticsRow("Compilation", "Full ahead-of-time"),
                 new DiagnosticsRow("Interpreter", "Off"),
                 new DiagnosticsRow("Host import", "Framework"),
+                new DiagnosticsRow("Crash chaining", "Not called: this head does not run on Mono"),
             ],
             page.BuildRows);
         Assert.Equal(

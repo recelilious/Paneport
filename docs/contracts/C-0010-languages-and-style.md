@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.0 |
-| Date | 2026-10-28 |
+| Version | 1.1 |
+| Date | 2026-11-17 |
 | Owner | recelilious |
 
 This contract fixes which languages each part of Paneport uses and how code in them is written.
@@ -61,7 +61,13 @@ In either case this contract changes at the same time to add the language's vers
 
 ## 4. Code inside the forks
 
-- Follow the upstream project's coding style, so that our diff stays small and easy to rebase. The one deviation is the header of a new file: it keeps upstream's usual copyright and notice block, names recelilious and the Paneport contributors, and adds the SPDX license line that C-0003 section 4 requires.
+- Follow the upstream project's coding style, so that our diff stays small and easy to rebase. There are two deviations: the header of a new file, which keeps upstream's usual copyright and notice block, names recelilious and the Paneport contributors, and adds the SPDX license line that C-0003 section 4 requires; and the notice in a changed file that the next item describes.
+- A file that we change in a fork carries a notice that we changed it when the file, or the fork, is under the LGPL (LGPL-2.1 section 2(b)) or Apache-2.0 (its section 4(b)): every file of Wine or DXMT, for example, and the Wine headers in FEX-Emu's `Source/Windows/include`. Other files, such as FEX-Emu's own files under MIT or a file under MPL-2.0, need no notice, though their changes follow the same commit rules.
+  - **Form.** One line for each stage that changes the file, in the file's comment syntax: `Changed for Paneport on <dates>: <what changed, in a few words>.`, where `<dates>` names, in UTC, each date on which that stage changed the file, such as `2026-11-15 and 2026-11-16`. A date is the UTC date on which the fork commits the change, not the author date of work that the change carries, and a rebase that only moves a change keeps its dates (`docs/design/forks.md` sections 4.2 and 4.4). A change that carries another author's work, such as an upstream merge request that is not merged yet, says so on its line.
+  - **Place.** The file's first comment block, after upstream's copyright lines. A file that does not start with a comment block, such as one of Wine's `Makefile.in` files, gets the line as a comment of its own at the top.
+  - **Commit.** The line comes in the commit that makes the change. When that commit carries another author's work unchanged, the line may come in the commit right after it.
+  - **Generated files.** A file that a tool generates, such as Wine's `configure`, needs no line of its own only when the same commit regenerates it, with a tool that C-0003 registers, from a file that carries one. A generated file that we change by hand gets its own line.
+  - **Removal.** A line, or the part of it that describes one change, goes when the fork no longer carries that change, for example once upstream merges the request that the change carries.
 - Keep iOS-specific code in separate, clearly named files where the upstream structure allows it, for example files ending in `_ios.c`.
 - Fork commits follow the upstream project's subject convention, and their message explains why the change is needed for iOS.
 - The root `.clang-format`, `.clang-tidy` and `.editorconfig` apply only to `src/`, `tests/` and `tools/`. Each fork carries its own configuration that matches upstream, and the format and analysis checks in C-0011 exclude `external/`.
@@ -83,7 +89,7 @@ SPDX-License-Identifier: MIT
 
 - Files that cannot carry comments, such as JSON and images, and the documentation under `docs/`, are covered by `REUSE.toml` at the repository root, which declares the same copyright text and license.
 - `LICENSES/MIT.txt` is added together with the first file that carries these lines. `LICENSES/` holds only the licenses that files in this repository use; third-party license texts are generated into releases (C-0009 section 6). C-0003 section 4 sets the same rule.
-- New files inside a fork follow section 4.
+- New and changed files inside a fork follow section 4.
 
 ## 7. Text and file names
 
@@ -91,28 +97,10 @@ SPDX-License-Identifier: MIT
 - C# files, including file-based tools, use `PascalCase` names. C, C++ and Objective-C files use `snake_case`. Bash scripts and new documentation files use `kebab-case`.
 - Exceptions: conventional files keep their usual names (`README.md`, `CONTRIBUTING.md`, `CLAUDE.md`, `THIRD_PARTY_NOTICES.md`, license files); contracts are named `C-NNNN-<title>.md`; a Chinese copy adds the `_zh_CN` suffix (C-0002 section 7); and the research notes already published in `docs/research/` keep their names.
 
-## Proposed changes for 1.1
-
-**Not yet accepted.** Version 1.0 above stays binding until recelilious approves these changes, which are accepted together with C-0003 1.6. They come from stage M4.2, which makes the first changes to files of the Wine fork. LGPL-2.1 section 2(b) asks that a changed file carry a prominent notice that it was changed, with the date of each change, and C-0003 section 4 leaves the rule to the first stage that changes such a file.
-
-1. **Section 4, the first item.** Replace "The one deviation is the header of a new file: it keeps upstream's usual copyright and notice block, names recelilious and the Paneport contributors, and adds the SPDX license line that C-0003 section 4 requires." with "There are two deviations: the header of a new file, which keeps upstream's usual copyright and notice block, names recelilious and the Paneport contributors, and adds the SPDX license line that C-0003 section 4 requires; and the notice in a changed file that the next item describes."
-
-2. **Section 4, a new item after the first.** Add this item, with its sub-items:
-
-   - A file that we change in a fork carries a notice that we changed it when the file, or the fork, is under the LGPL (LGPL-2.1 section 2(b)) or Apache-2.0 (its section 4(b)): every file of Wine or DXMT, for example, and the Wine headers in FEX-Emu's `Source/Windows/include`. Other files, such as FEX-Emu's own files under MIT or a file under MPL-2.0, need no notice, though their changes follow the same commit rules.
-     - **Form.** One line for each stage that changes the file, in the file's comment syntax: `Changed for Paneport on <dates>: <what changed, in a few words>.`, where `<dates>` names, in UTC, each date on which that stage changed the file, such as `2026-11-15 and 2026-11-16`. A date is the UTC date on which the fork commits the change, not the author date of work that the change carries, and a rebase that only moves a change keeps its dates (`docs/design/forks.md` sections 4.2 and 4.4). A change that carries another author's work, such as an upstream merge request that is not merged yet, says so on its line.
-     - **Place.** The file's first comment block, after upstream's copyright lines. A file that does not start with a comment block, such as one of Wine's `Makefile.in` files, gets the line as a comment of its own at the top.
-     - **Commit.** The line comes in the commit that makes the change. When that commit carries another author's work unchanged, the line may come in the commit right after it.
-     - **Generated files.** A file that a tool generates, such as Wine's `configure`, needs no line of its own only when the same commit regenerates it, with a tool that C-0003 registers, from a file that carries one. A generated file that we change by hand gets its own line.
-     - **Removal.** A line, or the part of it that describes one change, goes when the fork no longer carries that change, for example once upstream merges the request that the change carries.
-
-3. **Section 6, the last item.** Replace "New files inside a fork follow section 4." with "New and changed files inside a fork follow section 4."
-
-The notice stays beside the upstream's own notices, so that it travels with the file through every rebase (`docs/design/forks.md` sections 4.2 and 4.4) and into the source archives that a release attaches (C-0003 section 3).
-
 ## Change log
 
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious |
+| 1.1 | 2026-11-17 | Accepted by recelilious, together with C-0003 1.6. Comes from stage M4.2, which makes the first changes to files of the Wine fork; LGPL-2.1 section 2(b) asks that a changed file carry a prominent notice with the date of each change. Section 4 says which changed fork files carry the notice: those under the LGPL or Apache-2.0, or in a fork under one of them. It gives the notice's form, one line for each stage with the UTC dates of its changes, its place, the commit it comes in, when a generated file needs a line of its own and when a line goes, and names the notice as the second deviation from upstream style. Section 6 applies section 4 to changed files as well as new ones. |

@@ -67,6 +67,7 @@
     "xcode": "Xcode"
   },
   "actions": {
+    "actions/cache": "actions/cache",
     "actions/checkout": "actions/checkout",
     "actions/setup-dotnet": "actions/setup-dotnet",
     "actions/upload-artifact": "actions/upload-artifact"

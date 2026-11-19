@@ -448,10 +448,12 @@ internal static partial class Unseen
         var problems = new List<Problem>();
 
         // Two paths that differ only in letter case or in Unicode normalization are one file on a
-        // checkout that ignores case, as macOS and Windows do by default, which then keeps only one of
-        // them: it can be the one that no rule reads, such as tools/shared/Register.CS beside
-        // tools/Shared/Register.cs on the Linux checks job.
-        var groups = tracked.GroupBy(Composed, StringComparer.OrdinalIgnoreCase);
+        // checkout that folds them, as macOS does for both and Windows for letter case alone, which then
+        // keeps only one of them: it can be the one that no rule reads, such as tools/shared/Register.CS
+        // beside tools/Shared/Register.cs on the Linux checks job. The key is the path in NFC, upper and
+        // then lower case, which also merges what OrdinalIgnoreCase keeps apart and APFS folds, such as
+        // U+017F with "s" and U+03F4 with U+03B8.
+        var groups = tracked.GroupBy(Folded, StringComparer.Ordinal);
         foreach (var same in groups.Where(group => group.Count() > 1))
         {
             foreach (var file in same.Skip(1))
@@ -460,9 +462,22 @@ internal static partial class Unseen
                     file,
                     0,
                     $"the path differs from {same.First()} only in letter case or Unicode normalization, so a checkout "
-                        + "that ignores case keeps one of the two, which may be the one that no rule reads. Rename "
+                        + "that folds them keeps one of the two, which may be the one that no rule reads. Rename "
                         + "one of them."));
             }
+        }
+
+        // A path under tools/ holds only the characters of an #:include path, so that no name there can
+        // fold, on any checkout, into a file that a rule reads.
+        foreach (var file in tracked.Where(file => file.StartsWith("tools/", StringComparison.Ordinal)
+            && !IncludePath().IsMatch(file)))
+        {
+            problems.Add(Problem(
+                file,
+                0,
+                "a path under tools/ may hold only letters, digits and \"_./-\", the characters of an #:include "
+                    + "path, since a checkout that folds case could make another name the file that a rule reads. "
+                    + "Rename it."));
         }
 
         foreach (var project in tracked.Where(file => file.EndsWith(".csproj", StringComparison.Ordinal)))
@@ -664,6 +679,10 @@ internal static partial class Unseen
 
     private static Problem Problem(string file, int line, string message) =>
         new(Reason.Unseen, Kind.Package, file, file, line, message);
+
+    // The key under which two paths are one file on a checkout that folds case: the path in NFC, in
+    // upper and then lower case.
+    private static string Folded(string file) => Composed(file).ToUpperInvariant().ToLowerInvariant();
 
     // A path in Unicode normalization form C, or as it is when it holds no valid Unicode.
     private static string Composed(string file)
@@ -1283,13 +1302,18 @@ internal static class SelfTest
             ["tools/shared/Helper.CS"] = "// The same path in another case.\n#:package Sample.Hidden@1.0.0\n",
             ["docs/caf" + (char)0x00E9 + ".md"] = "A name with a composed letter.",
             ["docs/cafe" + (char)0x0301 + ".md"] = "The same name, decomposed.",
+            ["tools/Shared/Helper.c" + (char)0x017F] =
+                "// A long s, which APFS folds to s.\n#:package Sample.Hidden@1.0.0\n",
+            ["docs/case.md"] = "A plain name.",
+            ["docs/ca" + (char)0x017F + "e.md"] = "The same name with a long s.",
+            ["docs/" + (char)0x03B8 + ".md"] = "A small theta.",
+            ["docs/" + (char)0x03F4 + ".md"] = "The capital theta symbol, which APFS folds to the small theta.",
             ["tools/packages.lock.json"] = SampleLockFile,
             ["global.json"] = """{ "sdk": { "version": "1.0.0" }, "msbuild-sdks": { "Sample.Sdk": "1.0.0" } }""",
             [".config/dotnet-tools.json"] = """{ "version": 1, "isRoot": true, "tools": {} }""",
         };
-        var found = Unseen.Find(repository.Keys, file => repository[file])
-            .Select(problem => (problem.File, problem.Line))
-            .ToList();
+        var problems = Unseen.Find(repository.Keys, file => repository[file]);
+        var found = problems.Select(problem => (problem.File, problem.Line)).ToList();
         (string File, int Line)[] unlocked = [("src/Unlocked/Unlocked.csproj", 0)];
         (string File, int Line)[] sdks =
             [("src/Sdk/Sdk.csproj", 1), ("src/Sdk/Sdk.csproj", 2), ("src/Sdk/Sdk.csproj", 3)];
@@ -1353,13 +1377,43 @@ internal static class SelfTest
                 && !found.Contains(("tools/Shared/Other.cs", 0)),
             "a #: directive in a shared file fails, and a shared file needs no lock file of its own");
         tally.Expect(others.All(found.Contains), "msbuild-sdks in global.json fails, and so does a tool manifest");
-        (string File, int Line)[] collisions = [("tools/shared/Helper.CS", 0), ("docs/caf" + (char)0x00E9 + ".md", 0)];
+        var longS = "tools/Shared/Helper.c" + (char)0x017F;
+        (string File, int Line)[] collisions =
+        [
+            ("tools/shared/Helper.CS", 0),
+            ("docs/caf" + (char)0x00E9 + ".md", 0),
+            (longS, 0),
+            ("docs/ca" + (char)0x017F + "e.md", 0),
+            ("docs/" + (char)0x03F4 + ".md", 0),
+        ];
         tally.Expect(
             collisions.All(found.Contains),
-            "two paths that differ only in letter case, or only in Unicode normalization, fail");
+            "two paths that differ only in letter case, or only in Unicode normalization, fail, and so do names that "
+                + "APFS folds together and OrdinalIgnoreCase keeps apart, a long s with s and U+03F4 with theta");
+        (string File, int Line)[] characters = [(longS, 0)];
+        tally.Expect(
+            problems.Count(problem => problem.File == longS) == 2
+                && problems.Any(problem => problem.File == longS
+                    && problem.Message.Contains("may hold only letters, digits", StringComparison.Ordinal)),
+            "a path under tools/ with a character outside those of an #:include path fails, as well as its collision");
+
+        // A path that is not valid Unicode, which no output of git holds, is compared as it is.
+        var lone = "docs/" + (char)0xD800;
+        List<Problem>? surrogates = null;
+        try
+        {
+            surrogates = Unseen.Find([lone + ".MD", lone + ".md"], _ => string.Empty);
+        }
+        catch (ArgumentException)
+        {
+        }
+
+        tally.Expect(
+            surrogates is [{ File: var named }] && named == lone + ".md",
+            "a path with a lone surrogate, which has no normalization form, is folded as it is");
         var count = unlocked.Length + sdks.Length + otherSdks.Length + downloads.Length + moved.Length
             + ownLockFiles.Length + includes.Length + directives.Length + terminated.Length + marked.Length
-            + sharedDirectives.Length + others.Length + collisions.Length;
+            + sharedDirectives.Length + others.Length + collisions.Length + characters.Length;
         tally.Expect(found.Count == count, $"exactly the {count} problems above are reported ({found.Count})");
     }
 

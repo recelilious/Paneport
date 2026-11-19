@@ -600,13 +600,48 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/GenerateNotices.cs -- --self-test
 
+      # S9.1.1: the texts that no package ships, which eng/release/bundle-components.json names by
+      # a raw.githubusercontent.com URL at a full commit and a SHA-256. The generator, which never
+      # uses the network, prints the list from the mapping; the step fetches each text over https
+      # only, with a size limit, into build/upstream/<sha256>, and fails on a hash that differs,
+      # naming the URL and both hashes. The generator checks each hash again when it reads the file.
+      - name: Fetch the license texts that no package ships
+        if: ${{ !cancelled() && (steps.apps.outputs.main != '' || steps.apps.outputs.test != '') }}
+        run: |
+          list=$(dotnet run tools/GenerateNotices.cs -- --list-upstream)
+          mkdir -p build/upstream
+          status=0
+          while read -r hash url; do
+            [ -n "$hash" ] || continue
+            file="build/upstream/$hash"
+            if ! curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 --max-filesize 1048576 \
+                -o "$file.part" "$url"; then
+              echo "::error title=Upstream texts::$url could not be fetched."
+              rm -f "$file.part"
+              status=1
+              continue
+            fi
+            actual=$(shasum -a 256 "$file.part" | cut -d ' ' -f 1)
+            if [ "$actual" != "$hash" ]; then
+              echo "::error title=Upstream texts::$url has the SHA-256 $actual, but eng/release/bundle-components.json gives $hash."
+              rm -f "$file.part"
+              status=1
+              continue
+            fi
+            mv "$file.part" "$file"
+            echo "Fetched $url ($hash)."
+          done <<< "$list"
+          exit "$status"
+
       # S9.1.1: THIRD_PARTY_NOTICES.md, the license texts and their index in licenses/ at the root
       # of each bundle, before it is signed, so that the signature seals them (C-0003 section 3,
       # C-0009 section 6), and a copy in build/notices/, never in git. The generator attributes
       # every file of the bundle through eng/release/bundle-components.json; here a file that it
-      # does not attribute is a warning, and a component that the register lacks or marks Under
-      # review or Forbidden, a missing license text and an LGPL component other than SteamKit2 in
-      # the main executable fail (docs/design/release-engineering.md).
+      # does not attribute and a text that the mapping lists as having no source yet are warnings,
+      # and a component that the register lacks or marks Under review or Forbidden, a missing license
+      # text, missing full terms of LGPL-2.1 or Apache-2.0, an upstream text that is missing or
+      # changed, and an LGPL component other than SteamKit2 in the main executable fail
+      # (docs/design/release-engineering.md).
       - name: Place the third-party notices in both apps (tools/GenerateNotices.cs)
         if: ${{ !cancelled() && (steps.apps.outputs.main != '' || steps.apps.outputs.test != '') }}
         env:
@@ -713,7 +748,7 @@ jobs:
           for ipa in "$MAIN_IPA" "$TEST_IPA"; do
             [ -n "$ipa" ] || continue
             package=$(basename "$ipa")
-            entries=$(zipinfo -1 "$ipa")
+            entries=$(zipinfo -1 "$ipa") || { echo "::error title=Notices::$package cannot be read."; status=1; continue; }
             app=$(grep -E -m 1 '^Payload/[^/]+\.app/Info\.plist$' <<< "$entries" | sed 's|/Info\.plist$||' || true)
             if [ -z "$app" ]; then
               echo "::error title=Notices::$package holds no app."

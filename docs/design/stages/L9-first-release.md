@@ -14,7 +14,7 @@ Back to the [development plan](../development-plan.md).
 | S9.0.1 | Open-source licenses screen | Small | Planned |  |  |
 | S9.0.2 | About section with version and source link | Small | Planned |  |  |
 | M9.1 | Release workflow and compliance artifacts | Medium | Planned |  |  |
-| S9.1.1 | Notices generator | Small | In progress | [#30](https://github.com/recelilious/Paneport/pull/30) | 2026-11-19 |
+| S9.1.1 | Notices generator | Small | Done | [#30](https://github.com/recelilious/Paneport/pull/30) | 2026-11-19 |
 | S9.1.2 | Source archiver | Small | Planned |  |  |
 | S9.1.3 | Full .ipa scanner | Small | Planned |  |  |
 | S9.1.4 | Release workflow | Small | Planned |  |  |

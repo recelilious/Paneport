@@ -1074,6 +1074,7 @@ internal sealed record Result(
     IReadOnlyList<string> MainComponents,
     IReadOnlyList<ComponentNotice> Components,
     IReadOnlyList<string> UnusedRules,
+    IReadOnlyList<string> OtherLicenseFiles,
     NoticeOutputs? Outputs);
 
 internal static partial class Notices
@@ -1189,8 +1190,15 @@ internal static partial class Notices
             .Select(rule => rule.Pattern)
             .Where(pattern => !used.Contains(pattern))
             .ToList();
+        var others = components
+            .SelectMany(component => OtherLicenseFiles(
+                component.Name,
+                configuration.Mapping.Components[component.Name],
+                build,
+                configuration))
+            .ToList();
         var outputs = failures.Count == 0 ? Render(bundle, components) : null;
-        return new Result(failures, warnings, coverage, main, components, unused, outputs);
+        return new Result(failures, warnings, coverage, main, components, unused, others, outputs);
     }
 
     private static string? Refusal(RegisterRow row) => row.Category switch
@@ -1367,6 +1375,56 @@ internal static partial class Notices
         Configuration configuration,
         List<string> failures)
     {
+        foreach (var (label, folder, kind, key) in SourceFolders(name, entry, build, configuration))
+        {
+            var files = Directory.EnumerateFiles(folder)
+                .Select(path => Path.GetFileName(path))
+                .Order(StringComparer.Ordinal);
+            foreach (var file in files)
+            {
+                if (NoticeFileName().IsMatch(file) && !AmongTexts(entry, kind, key, file))
+                {
+                    failures.Add(
+                        $"{app}: {name} leaves out the NOTICE file {file} of {label}, which Apache-2.0 asks to keep "
+                            + $"(C-0003 section 5). Add it to the component's texts in {Mapping.FilePath}.");
+                }
+            }
+        }
+    }
+
+    // The license and notice files anywhere in the packages and runtime packs of a component that are
+    // not among its texts. The report lists them for the coverage review, because a package can carry
+    // notices of its own below its top, such as those of the native libraries inside it.
+    private static IEnumerable<string> OtherLicenseFiles(
+        string name,
+        ComponentTexts entry,
+        BuildInputs build,
+        Configuration configuration)
+    {
+        var options = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0 };
+        foreach (var (label, folder, kind, key) in SourceFolders(name, entry, build, configuration))
+        {
+            var files = Directory.EnumerateFiles(folder, "*", options)
+                .Select(path => Path.GetRelativePath(folder, path).Replace('\\', '/'))
+                .Order(StringComparer.Ordinal);
+            foreach (var file in files)
+            {
+                if (LicenseFileName().IsMatch(file.Split('/')[^1]) && !AmongTexts(entry, kind, key, file))
+                {
+                    yield return $"{name}: {file} of {label}";
+                }
+            }
+        }
+    }
+
+    // The folders that a component's texts may come from: each package of the lock file that maps to
+    // it, and each package and runtime pack that its texts name.
+    private static List<(string Label, string Folder, SourceKind Kind, string Key)> SourceFolders(
+        string name,
+        ComponentTexts entry,
+        BuildInputs build,
+        Configuration configuration)
+    {
         var folders = new List<(string Label, string Folder, SourceKind Kind, string Key)>();
         foreach (var package in build.Packages)
         {
@@ -1388,25 +1446,13 @@ internal static partial class Notices
             }
         }
 
-        foreach (var (label, folder, kind, key) in folders.Where(candidate => Directory.Exists(candidate.Folder)))
-        {
-            var files = Directory.EnumerateFiles(folder)
-                .Select(path => Path.GetFileName(path))
-                .Order(StringComparer.Ordinal);
-            foreach (var file in files)
-            {
-                if (NoticeFileName().IsMatch(file)
-                    && !entry.Texts.Any(text => text.Kind == kind
-                        && string.Equals(text.Name, key, StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(text.Value, file, StringComparison.OrdinalIgnoreCase)))
-                {
-                    failures.Add(
-                        $"{app}: {name} leaves out the NOTICE file {file} of {label}, which Apache-2.0 asks to keep "
-                            + $"(C-0003 section 5). Add it to the component's texts in {Mapping.FilePath}.");
-                }
-            }
-        }
+        return [.. folders.Where(candidate => Directory.Exists(candidate.Folder))];
     }
+
+    private static bool AmongTexts(ComponentTexts entry, SourceKind kind, string key, string file) =>
+        entry.Texts.Any(text => text.Kind == kind
+            && string.Equals(text.Name, key, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(text.Value, file, StringComparison.OrdinalIgnoreCase));
 
     // Every license that a package declares by its expression is one that the register row of its
     // component names; otherwise the register needs a change first (C-0003 section 6).
@@ -1591,6 +1637,9 @@ internal static partial class Notices
     [GeneratedRegex(@"^NOTICE(?:\..+)?$", RegexOptions.IgnoreCase)]
     private static partial Regex NoticeFileName();
 
+    [GeneratedRegex(@"licen[cs]e|notice|copying|copyright|third.?party|authors", RegexOptions.IgnoreCase)]
+    private static partial Regex LicenseFileName();
+
     // A copyright notice says so: "Copyright", "(c)" or the copyright sign.
     [GeneratedRegex("copyright|\\(c\\)|\\u00A9", RegexOptions.IgnoreCase)]
     private static partial Regex CopyrightNotice();
@@ -1700,6 +1749,15 @@ internal static class Report
                 : string.Join(", ", attribution.Components);
             var role = attribution.File == bundle.Executable ? " (main executable)" : string.Empty;
             output.WriteLine($"  {attribution.File}{role}: {components}");
+        }
+
+        if (result.OtherLicenseFiles.Count > 0)
+        {
+            output.WriteLine("License and notice files in the sources that are not among the texts:");
+            foreach (var file in result.OtherLicenseFiles)
+            {
+                output.WriteLine($"  {file}");
+            }
         }
 
         if (result.UnusedRules.Count > 0)
@@ -1974,7 +2032,13 @@ internal sealed class Fixture
         var fixture = new Fixture(Path.Combine(parent, name));
         fixture.AddPack("Sample.Runtime.App", "Sample.Runtime.Pack", "6.0.0");
         fixture.AddPack("Sample.Platform", "Sample.Platform.Pack", "7.0.0");
-        fixture.Package("Sample.Ui", "1.0.0", "expression", "MIT", "Copyright 2020 Sample UI Authors");
+        fixture.Package(
+            "Sample.Ui",
+            "1.0.0",
+            "expression",
+            "MIT",
+            "Copyright 2020 Sample UI Authors",
+            ("native/THIRD-PARTY.md", "Notices of a library inside the package."));
         fixture.Package("Sample.Ui.Extra", "1.0.0", "expression", "MIT", "Copyright 2020 Sample UI Authors");
         fixture.Package("Sample.Graphics", "2.0.0", "file", "LICENSE.txt", null, ("LICENSE.txt", "Sample graphics."));
         fixture.Package(
@@ -2289,6 +2353,9 @@ internal static partial class SelfTest
             "maps the main executable to the mapping's components and to that of every package in the lock file, "
                 + "SteamKit2 among them");
         tally.Expect(result.UnusedRules.SequenceEqual(["Unused/**"]), "reports a rule that matches no file");
+        tally.Expect(
+            result.OtherLicenseFiles.SequenceEqual(["Sample.Ui: native/THIRD-PARTY.md of the package Sample.Ui 1.0.0"]),
+            "reports a license or notice file of a component's packages that is not among its texts");
         if (result.Outputs is not { } outputs)
         {
             return;

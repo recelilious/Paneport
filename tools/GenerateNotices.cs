@@ -1959,6 +1959,7 @@ internal sealed class Fixture
             "note": "The executable."
           },
           "files": [
+            { "path": "0-ui.dat", "components": ["Sample.Ui"], "note": "Its data, whose path sorts first." },
             { "path": "Info.plist", "components": ["Paneport"], "note": "The build writes it." },
             { "path": "PkgInfo", "components": ["Paneport"], "note": "The build writes it." },
             { "path": "Sample.App.*", "components": ["Paneport"], "note": "Our assembly." },
@@ -2027,6 +2028,7 @@ internal sealed class Fixture
     private static readonly string[] s_appFiles =
     [
         "Sample",
+        "0-ui.dat",
         "Sample.App.dll",
         "PkgInfo",
         "Ui.Core.dll",
@@ -2300,7 +2302,7 @@ internal static partial class SelfTest
         ];
         tally.Expect(
             broken.All(text => Rejects(() => Mapping.Parse(text)))
-                && Mapping.Parse(Fixture.Mapping) is { Files.Count: 14, MainExecutablePaths.Count: 1 },
+                && Mapping.Parse(Fixture.Mapping) is { Files.Count: 15, MainExecutablePaths.Count: 1 },
             "reads the mapping, and rejects an unknown key, a rule without a note or components, a path that leaves "
                 + "its folder, a text without its file or license, texts for Paneport, a bad pattern and a mapping "
                 + "that is no object");
@@ -2532,8 +2534,8 @@ internal static partial class SelfTest
         foreach (var (component, word, description) in new[]
         {
             ("Sample.Missing", "not in the register", "a component that the register lacks fails, named"),
-            ("Sample.Review", "Under review", "a component that is Under review fails, named"),
-            ("Sample.Forbidden", "Forbidden", "a component that is Forbidden fails, named"),
+            ("Sample.Review", "is Under review in the register", "a component that is Under review fails, named"),
+            ("Sample.Forbidden", "is Forbidden in the register", "a component that is Forbidden fails, named"),
             ("Sample.Tool", "build tool", "a component whose row is a Tool row fails, named"),
         })
         {

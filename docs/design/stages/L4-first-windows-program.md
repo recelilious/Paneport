@@ -372,6 +372,14 @@ Out: single-process mode, the native host and the bridge (M4.3); iOS builds (M4.
   - **Found.** actions/cache v6.1.0, its newest release, is commit `55cc8345863c7cc4c66a329aec7e433d2d1c52a9`. Hadron's own code is under BSD-3-Clause, and each folder of its `patches/` under the license of the project it changes, as its license files say.
   - **Waiting on recelilious.** The final acceptance of the four proposals.
   - **Left.** S4.2.6, once the proposals are accepted: the `runtime` job, with the build and analysis of the Win32 test programs moved there from the `ios` job, actions/cache mapped in `eng/license-map.json` and pinned at v6.1.0, and NuGet caches saved only on `main`; its first run, and a second run that restores the fork builds. Rebasing this branch and the contract branch onto `main` once M1.3's C-0011 1.2 has merged. Deleting the three downloads when the stage's fork work ends.
+- **2026-11-18 (UTC), fourth session.** The same branch and pull request, after recelilious accepted the four contract changes on 2026-11-17.
+  - **Done.**
+    - Contract pull request [#29](https://github.com/recelilious/Paneport/pull/29): the branch `contract/m4-2-runtime-harness`, rebased onto `main` after M1.3 accepted C-0011 1.2, with one acceptance commit for each of C-0011 1.3, C-0004 1.1, C-0003 1.6 and C-0010 1.1. It merges right before this branch.
+    - This branch, rebased onto `main` at `ff70eb8`. The commit that built the Win32 test programs in the `ios` job was dropped, so the branch leaves that job as `main` has it.
+    - S4.2.6: the `runtime` job (`d016f9b`), as C-0011 1.3 describes it; the `dotnet` job saves NuGet caches only on `main` (`fd32493`); the workflows README, `repository-checks.md`, the design document and `forks.md` follow (`b54318d`).
+  - **Verification.** The cold run, [44421264200](https://github.com/recelilious/Paneport/actions/runs/44421264200) on `fd32493`, passed in 44 min 16 s, 2120 s of them for Wine. The warm run at the same fork commits, [44421739191](https://github.com/recelilious/Paneport/actions/runs/44421739191) on `b54318d`, restored the tools and both forks from the cache and passed in 4 min 23 s. In both, all seven cases passed and the planted cases failed with their names. `checks` fails only on the license check until #29 brings the register row of `actions/cache`.
+  - **Downloads.** The three checkouts of 2026-11-15, the Wine fork, the FEX fork and merge request 11638's commit, were deleted from the session's scratchpad on 2026-11-19, once the job had passed. Nothing in them was run.
+  - **Left.** The independent review of this pull request and its fixes; then the rebase onto `main` once #29 has merged, and a green run of every job.
 
 ## M4.3 Single-process Wine on macOS
 

@@ -254,6 +254,7 @@ Out: Direct3D 9, 10 and 12 (D11, plan section 10); the i686 triangle (L7); graph
 
 - M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-10): DXMT's ARM64EC Meson setup compiles its shader converter for the Mac, which needs LLVM 15 with its headers and static libraries. M4.1 set up only DXMT's 32-bit PE side; this stage pins LLVM 15 with its register row (plan section 8) and sets up the ARM64EC side (`docs/design/forks.md` section 7).
 - M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-10): the DXMT fork marks `external/nvapi` as `update = none`, because DXMT builds NVAPI only with `enable_nvapi`, which Paneport leaves off (forks.md section 5.3).
+- S9.1.1 ([L9 brief](L9-first-release.md), M9.1 session log of 2026-11-19): every file that this stage adds to the bundle, such as DXMT's libraries, needs a rule in `eng/release/bundle-components.json`, or the `ios` job warns, and a rule for a new component needs its texts there, such as the fork's license files as `{ "repository": "external/..." }`, or the job fails; a new NuGet package of the app needs a row of `eng/license-map.json` and texts too. `licenses/` at the root of the bundle belongs to the notices generator (`docs/design/release-engineering.md` sections 1 and 5).
 - M4.1 ([L4 brief](L4-first-windows-program.md), session log of 2026-11-10): check the linker map of the first DXMT build against the mingw-w64 runtime objects that forks.md section 9 reviewed; DXMT links its PE side with `-static`, like the reviewed C++ DLL.
 
 **Session log.**

@@ -446,6 +446,25 @@ internal static partial class Unseen
     {
         var tracked = files.Order(StringComparer.Ordinal).ToList();
         var problems = new List<Problem>();
+
+        // Two paths that differ only in letter case or in Unicode normalization are one file on a
+        // checkout that ignores case, as macOS and Windows do by default, which then keeps only one of
+        // them: it can be the one that no rule reads, such as tools/shared/Register.CS beside
+        // tools/Shared/Register.cs on the Linux checks job.
+        var groups = tracked.GroupBy(Composed, StringComparer.OrdinalIgnoreCase);
+        foreach (var same in groups.Where(group => group.Count() > 1))
+        {
+            foreach (var file in same.Skip(1))
+            {
+                problems.Add(Problem(
+                    file,
+                    0,
+                    $"the path differs from {same.First()} only in letter case or Unicode normalization, so a checkout "
+                        + "that ignores case keeps one of the two, which may be the one that no rule reads. Rename "
+                        + "one of them."));
+            }
+        }
+
         foreach (var project in tracked.Where(file => file.EndsWith(".csproj", StringComparison.Ordinal)))
         {
             var (folder, name) = Split(project);
@@ -567,8 +586,11 @@ internal static partial class Unseen
     // tools/Shared/, a file that git does not track, such as one behind a link, and a path with any
     // character but letters, digits and "_./-", which rules out patterns, a drive and the MSBuild
     // syntax that the SDK expands, such as $(Property), %2E or a semicolon between two paths. A
-    // backslash is refused too: on Linux and macOS, where CI runs the tools, the SDK separates a
-    // path at "/" only, so "..\x/../Shared/Helper.cs" names a file outside tools/ there.
+    // backslash is refused too, since the SDK separates a path at "/" only on Linux and macOS and at
+    // "\" as well on Windows, where the windows-2025 dotnet job runs a tool, so one path names two
+    // files: "..\x/../Shared/Helper.cs" is tools/Shared/Helper.cs on Linux and macOS, and Shared/Helper.cs
+    // outside tools/ on Windows, and "../docs/x\../../tools/Shared/Register.cs" is
+    // docs/tools/Shared/Register.cs on Linux and macOS.
     private static string? Included(string folder, string path, List<string> tracked)
     {
         var parts = new List<string>(folder.Split('/', StringSplitOptions.RemoveEmptyEntries));
@@ -642,6 +664,19 @@ internal static partial class Unseen
 
     private static Problem Problem(string file, int line, string message) =>
         new(Reason.Unseen, Kind.Package, file, file, line, message);
+
+    // A path in Unicode normalization form C, or as it is when it holds no valid Unicode.
+    private static string Composed(string file)
+    {
+        try
+        {
+            return file.Normalize(NormalizationForm.FormC);
+        }
+        catch (ArgumentException)
+        {
+            return file;
+        }
+    }
 
     [GeneratedRegex(@"^#:property\s+NuGetLockFilePath\b", RegexOptions.IgnoreCase)]
     private static partial Regex LockFilePathProperty();
@@ -1226,7 +1261,10 @@ internal static class SelfTest
                     + "#:include Shared/Helper.cs;../x.cs\n#:include Shared/link/Helper.cs\n"
                     + "#:include Shared/Missing.cs\n#:include Shared/sub/Deep.cs\n#:include Shared\\Helper.cs\n"
                     + "#:include Shared\\x/../Helper.cs\n#:include ..\\x/../Shared/Helper.cs\n"
-                    + "#:include Shared/$(X)/../Helper.cs\n#:include Shared/%2E/../Helper.cs\nreturn 0;",
+                    + "#:include Shared/$(X)/../Helper.cs\n#:include Shared/%2E/../Helper.cs\n"
+                    + "#:include Shared/a;/../Helper.cs\n#:include Shared/@(X)/../Helper.cs\n"
+                    + "#:include Shared/*/../Helper.cs\n#:include Shared/?/../Helper.cs\n"
+                    + "#:include ../src/Locked/packages.lock.json\n#:include ../../tools/Shared/Helper.cs\nreturn 0;",
             ["tools/Marked.cs"] =
                 "#!/usr/bin/env dotnet\n" + (char)0xFEFF + "// A note after a byte-order mark\n"
                     + "#:include ../docs/Evil.cs\n" + (char)0x1A + "#:property NuGetLockFilePath=x.json\nreturn 0;",
@@ -1242,6 +1280,9 @@ internal static class SelfTest
             ["tools/Shared/Helper.cs"] = "// A shared file.\ninternal static class Helper;",
             ["tools/Shared/Other.cs"] = "// Shared.\n#:package Sample.Hidden@1.0.0\ninternal static class Other;",
             ["tools/Shared/sub/Deep.cs"] = "// Below tools/Shared/.\ninternal static class Deep;",
+            ["tools/shared/Helper.CS"] = "// The same path in another case.\n#:package Sample.Hidden@1.0.0\n",
+            ["docs/caf" + (char)0x00E9 + ".md"] = "A name with a composed letter.",
+            ["docs/cafe" + (char)0x0301 + ".md"] = "The same name, decomposed.",
             ["tools/packages.lock.json"] = SampleLockFile,
             ["global.json"] = """{ "sdk": { "version": "1.0.0" }, "msbuild-sdks": { "Sample.Sdk": "1.0.0" } }""",
             [".config/dotnet-tools.json"] = """{ "version": 1, "isRoot": true, "tools": {} }""",
@@ -1258,7 +1299,7 @@ internal static class SelfTest
         (string File, int Line)[] moved =
             [("eng/Sample.props", 2), ("Directory.Build.rsp", 1), ("tools/Moved.cs", 2), ("tools/Spaced.cs", 1)];
         (string File, int Line)[] ownLockFiles = [("tools/Shared.cs", 0), ("tools/Spaced.cs", 0)];
-        (string File, int Line)[] includes = [.. Enumerable.Range(1, 18).Select(line => ("tools/Escaping.cs", line))];
+        (string File, int Line)[] includes = [.. Enumerable.Range(1, 24).Select(line => ("tools/Escaping.cs", line))];
         (string File, int Line)[] directives =
             [("tools/Referring.cs", 1), ("tools/Referring.cs", 2), ("tools/Hooked.cs", 1)];
         (string File, int Line)[] terminated =
@@ -1312,9 +1353,13 @@ internal static class SelfTest
                 && !found.Contains(("tools/Shared/Other.cs", 0)),
             "a #: directive in a shared file fails, and a shared file needs no lock file of its own");
         tally.Expect(others.All(found.Contains), "msbuild-sdks in global.json fails, and so does a tool manifest");
+        (string File, int Line)[] collisions = [("tools/shared/Helper.CS", 0), ("docs/caf" + (char)0x00E9 + ".md", 0)];
+        tally.Expect(
+            collisions.All(found.Contains),
+            "two paths that differ only in letter case, or only in Unicode normalization, fail");
         var count = unlocked.Length + sdks.Length + otherSdks.Length + downloads.Length + moved.Length
             + ownLockFiles.Length + includes.Length + directives.Length + terminated.Length + marked.Length
-            + sharedDirectives.Length + others.Length;
+            + sharedDirectives.Length + others.Length + collisions.Length;
         tally.Expect(found.Count == count, $"exactly the {count} problems above are reported ({found.Count})");
     }
 

@@ -3793,8 +3793,9 @@ internal static partial class SelfTest
             keeps("hidden", ".keep", hidden: true)
                 && keeps("one-digit", Path.Combine(Notices.TextsFolder, "1-x.txt"))
                 && keeps("upper-case", Path.Combine(Notices.TextsFolder, "01-X.txt"))
-                && keeps("other-ending", Path.Combine(Notices.TextsFolder, "01-x.txt.bak")),
-            "refuses a hidden entry, and a name among the texts other than NN-<name>.txt, and keeps both");
+                && keeps("other-ending", Path.Combine(Notices.TextsFolder, "01-x.txt.bak"))
+                && keeps("text-folder", Path.Combine(Notices.TextsFolder, "02-folder.txt", "keep.txt")),
+            "refuses a hidden entry, and among the texts a name other than NN-<name>.txt and a folder, and keeps them");
 
         // A link among the top-level entries in place of texts/, and a link among the texts to a folder:
         // the folders that they lead to keep their files.
@@ -3972,6 +3973,18 @@ internal static partial class SelfTest
                         + "build/notices/."),
             "runs from the repository root with the lock file beside the project and MSBuild's answer, reports, and "
                 + "writes into the bundle and the output folder");
+
+        // The line that names what it wrote holds the bundle's name, so under GitHub Actions it comes
+        // while commands are stopped too.
+        var annotatedRun = new StringWriter();
+        var rerun = Cli.Run(options, cli.Repository, _ => cli.Query(), annotatedRun, annotate: true);
+        var printedLines = annotatedRun.ToString().Split('\r', '\n').Where(line => line.Length > 0).ToList();
+        var wrote = printedLines.FindIndex(line => line.StartsWith("Wrote ", StringComparison.Ordinal));
+        tally.Expect(
+            rerun == 0 && wrote > 0 && wrote + 1 < printedLines.Count
+                && StopCommands().Match(printedLines[wrote - 1]) is { Success: true } wroteStop
+                && printedLines[wrote + 1] == $"::{wroteStop.Groups[1].Value}::",
+            "under GitHub Actions prints the line that names what it wrote while workflow commands are stopped");
 
         var failing = Fixture.Create(root, "cli-failing");
         failing.Locked.Add(new LockedPackage("Sample.Unmapped", "1.0.0"));

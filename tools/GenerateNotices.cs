@@ -48,6 +48,7 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 
+var actions = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true";
 try
 {
     var root = Directory.GetCurrentDirectory();
@@ -62,17 +63,13 @@ try
     }
 
     return Options.Parse(args) is { } options
-        ? Cli.Run(
-            options,
-            root,
-            project => BuildQuery.Msbuild(root, project),
-            Console.Out,
-            Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+        ? Cli.Run(options, root, project => BuildQuery.Msbuild(root, project), Console.Out, actions)
         : Cli.Usage();
 }
 catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
 {
-    Console.Error.WriteLine($"error: {Report.Plain(exception.Message)}");
+    // The message may name a file of the bundle.
+    Report.Untrusted(Console.Error, actions, [$"error: {exception.Message}"]);
     return 2;
 }
 
@@ -188,8 +185,10 @@ internal static class Cli
             written += $" and {Path.GetRelativePath(root, copy).Replace('\\', '/')}/";
         }
 
-        output.WriteLine(Report.Plain(
-            $"Wrote {Notices.NoticesFile}, {Notices.IndexFile} and {outputs.Texts.Count} texts into {written}."));
+        Report.Untrusted(
+            output,
+            annotate,
+            [$"Wrote {Notices.NoticesFile}, {Notices.IndexFile} and {outputs.Texts.Count} texts into {written}."]);
         return 0;
     }
 
@@ -785,6 +784,9 @@ internal static partial class UpstreamUrl
     public const string Folder = "build/upstream";
     public const string FetchStep = "Fetch the license texts that no package ships";
 
+    // NEL, LS and PS, which end a line in C# besides CR and LF.
+    private static readonly char[] s_lineTerminators = [(char)0x85, (char)0x2028, (char)0x2029];
+
     // The owner, repository, commit and path of an accepted URL: https on raw.githubusercontent.com
     // only, a full commit and no branch, tag or short hash, and no "..", "?", "#", "%" or backslash.
     public static (string Owner, string Repository, string Commit, string Path) Parse(string url, string where)
@@ -819,6 +821,9 @@ internal static partial class UpstreamUrl
 
     // Lines First to Last of a text, each of them a comment or blank, so that no code ships as a notice.
     // A line inside a /* */ comment counts as a comment, so a range starts where its comment starts.
+    // A line that holds NEL, LS or PS fails, because C# ends a line there too, so code could follow a
+    // "//" comment on what reads here as one line. The text is the lines without the blank lines at
+    // its end, and one line break; a range of blank lines alone holds no notice.
     public static string Lines(string text, LineRange range, string name)
     {
         var lines = text[..^1].Split('\n');
@@ -831,6 +836,14 @@ internal static partial class UpstreamUrl
         var inComment = false;
         for (var number = range.First; number <= range.Last; number++)
         {
+            if (lines[number - 1].IndexOfAny(s_lineTerminators) >= 0)
+            {
+                throw new InvalidDataException(
+                    $"line {number} of {name}, in the range {range.First} to {range.Last}, holds NEL, LS or PS, which "
+                        + "end a line in C#; a range takes only the header of a source file, so that no code ships as "
+                        + "a notice.");
+            }
+
             var line = lines[number - 1].Trim();
             if (inComment)
             {
@@ -857,7 +870,11 @@ internal static partial class UpstreamUrl
             }
         }
 
-        return string.Join('\n', lines[(range.First - 1)..range.Last]) + "\n";
+        var header = string.Join('\n', lines[(range.First - 1)..range.Last]).TrimEnd('\n');
+        return string.IsNullOrWhiteSpace(header)
+            ? throw new InvalidDataException(
+                $"the lines {range.First} to {range.Last} of {name} are blank, so they hold no notice.")
+            : header + "\n";
     }
 
     // \z, not $, which would also match before a final line break.
@@ -1237,27 +1254,36 @@ internal sealed record PackageDescription(string? LicenseType, string? License, 
 // The licenses that an SPDX expression names, and whether a register row's License text names one.
 internal static partial class Spdx
 {
-    public static List<string> Licenses(string expression)
+    public static List<string> Licenses(string expression) => Named(Tokens(expression));
+
+    // The alternatives of an expression, split at each OR outside parentheses, each with the licenses
+    // that it names: "MIT OR LGPL-2.1-only" has two, and "(MIT OR LGPL-2.1-only) AND Zlib" one.
+    public static List<List<string>> Alternatives(string expression)
     {
-        var licenses = new List<string>();
-        var tokens = Separators().Split(expression).Where(token => token.Length > 0).ToList();
-        for (var index = 0; index < tokens.Count; index++)
+        var alternatives = new List<List<string>> { new() };
+        var depth = 0;
+        foreach (var token in Tokens(expression))
         {
-            switch (tokens[index].ToUpperInvariant())
+            depth += token switch
             {
-                case "AND" or "OR":
-                    break;
-                case "WITH":
-                    index++;
-                    break;
-                default:
-                    licenses.Add(tokens[index]);
-                    break;
+                "(" => 1,
+                ")" => -1,
+                _ => 0,
+            };
+            if (depth == 0 && token.Equals("OR", StringComparison.OrdinalIgnoreCase))
+            {
+                alternatives.Add([]);
+            }
+            else
+            {
+                alternatives[^1].Add(token);
             }
         }
 
-        return licenses;
+        return [.. alternatives.Select(Named)];
     }
+
+    public static bool IsLgpl(string license) => license.StartsWith("LGPL-", StringComparison.OrdinalIgnoreCase);
 
     // As a whole name: "MIT" counts in "MIT. Its packages" but not in "MIT-Modern-Variant".
     public static bool Mentions(string text, string license) =>
@@ -1272,8 +1298,33 @@ internal static partial class Spdx
     // under LGPL-2.1", "Apache-2.0" for "Apache-2.0 WITH LLVM-exception; parts ...".
     public static List<string> Leading(string license) => Licenses(PhraseEnd().Split(license, 2)[0]);
 
-    [GeneratedRegex(@"[\s()]+")]
-    private static partial Regex Separators();
+    // The licenses among the tokens: neither an operator, a parenthesis, nor the exception after WITH.
+    private static List<string> Named(List<string> tokens)
+    {
+        var licenses = new List<string>();
+        for (var index = 0; index < tokens.Count; index++)
+        {
+            switch (tokens[index].ToUpperInvariant())
+            {
+                case "AND" or "OR" or "(" or ")":
+                    break;
+                case "WITH":
+                    index++;
+                    break;
+                default:
+                    licenses.Add(tokens[index]);
+                    break;
+            }
+        }
+
+        return licenses;
+    }
+
+    private static List<string> Tokens(string expression) =>
+        [.. Token().Matches(expression).Select(match => match.Value)];
+
+    [GeneratedRegex(@"[()]|[^\s()]+")]
+    private static partial Regex Token();
 
     [GeneratedRegex(@"[.,;:](?:\s|\z)")]
     private static partial Regex PhraseEnd();
@@ -1496,13 +1547,14 @@ internal static partial class Notices
             }
         }
 
-        // Whether a component is under the LGPL comes from the expression that its register row starts
-        // with and from the licenses that its packages declare, not from a note further on in the row.
+        // Whether a component in the main executable is under the LGPL comes from the expression that its
+        // register row starts with, which records the license chosen among alternatives, and from the
+        // expressions that its packages declare, where an OR counts only when each alternative names the
+        // LGPL; a note further on in the row does not count.
         foreach (var name in main.Where(name => name != StaticLgplComponent))
         {
             if (configuration.Register.FirstOrDefault(row => row.Component == name) is { } row
-                && Licenses(row, declared, name).FirstOrDefault(
-                    license => license.StartsWith("LGPL-", StringComparison.OrdinalIgnoreCase)) is { } lgpl)
+                && Lgpl(row, declared.GetValueOrDefault(name) ?? []) is { } lgpl)
             {
                 failures.Add(
                     $"{app}: {name}, under {lgpl}, is compiled into the main executable {bundle.Executable}. "
@@ -1527,9 +1579,20 @@ internal static partial class Notices
         return new Result(failures, warnings, coverage, main, components, unused, others, unexpressed, outputs);
     }
 
-    // The licenses of the expression that the row starts with, and those that the component's packages declare.
+    // The licenses of the expression that the row starts with, and every license that the expressions of
+    // the component's packages name, alternatives included, which errs on the side of a notice too many.
     private static List<string> Licenses(RegisterRow row, Dictionary<string, List<string>> declared, string name) =>
-        [.. Spdx.Leading(row.License), .. declared.GetValueOrDefault(name) ?? []];
+        [.. Spdx.Leading(row.License), .. (declared.GetValueOrDefault(name) ?? []).SelectMany(Spdx.Licenses)];
+
+    // The LGPL license that the row's leading expression names, or that a declared expression names in
+    // each of its alternatives, or null.
+    private static string? Lgpl(RegisterRow row, List<string> expressions) =>
+        Spdx.Leading(row.License).FirstOrDefault(Spdx.IsLgpl)
+            ?? expressions
+                .Select(Spdx.Alternatives)
+                .Where(alternatives => alternatives.All(alternative => alternative.Any(Spdx.IsLgpl)))
+                .Select(alternatives => alternatives[0].First(Spdx.IsLgpl))
+                .FirstOrDefault();
 
     private static string? Refusal(RegisterRow row) => row.Category switch
     {
@@ -1859,9 +1922,10 @@ internal static partial class Notices
             && string.Equals(text.Name, key, StringComparison.OrdinalIgnoreCase)
             && string.Equals(text.Value, file, StringComparison.OrdinalIgnoreCase));
 
-    // The licenses that each component's packages declare by their expressions. Every one of them is
-    // one that the register row of the component names; otherwise the register needs a change first
-    // (C-0003 section 6). A package that declares its license otherwise goes into the report.
+    // The expressions that each component's packages declare. Every license that one names is one that
+    // the register row of the component names; otherwise the register needs a change first (C-0003
+    // section 6). An expression that names no license, such as an empty one, "()" or "WITH X", fails,
+    // and a package that declares its license otherwise goes into the report.
     private static Dictionary<string, List<string>> Declarations(
         string app,
         BuildInputs build,
@@ -1901,13 +1965,14 @@ internal static partial class Notices
                 continue;
             }
 
-            if (string.IsNullOrEmpty(description.License))
+            var expression = description.License ?? string.Empty;
+            var licenses = Spdx.Licenses(expression);
+            if (licenses.Count == 0)
             {
-                failures.Add($"{app}: the package {label} declares an empty license expression.");
+                failures.Add($"{app}: the package {label} declares a license expression that names no license.");
                 continue;
             }
 
-            var licenses = Spdx.Licenses(description.License);
             foreach (var license in licenses.Where(license => !Spdx.Mentions(row.License, license)))
             {
                 failures.Add(
@@ -1920,7 +1985,7 @@ internal static partial class Notices
                 declared[component] = list = [];
             }
 
-            list.AddRange(licenses);
+            list.Add(expression);
         }
 
         return declared;
@@ -2087,9 +2152,11 @@ internal static partial class Output
 {
     // The notices go into build output, never into git: a folder outside the repository, or inside
     // it under build/ or below a bin/ or obj/ folder, which C-0004 section 3 reserves for build
-    // output and .gitignore ignores. A device or network path fails, and every link among the
-    // existing folders of the path, and of the repository's, is followed to its final target first,
-    // so that a link under build/ cannot lead into a tracked folder. Returns the full path.
+    // output and .gitignore ignores. A device or network path fails: on Windows any full path whose
+    // root is not a drive, which covers \\?\, \\.\, \??\, \??\UNC\ and \\server\share alike. Every
+    // link among the existing folders of the path, and of the repository's, is followed to its final
+    // target first, so that a link under build/ cannot lead into a tracked folder. Returns the full
+    // path.
     public static string EnsureBuildOutput(string root, string path, string option)
     {
         var device = $"{option} {path} is a device or network path; the notices go into a local build output folder.";
@@ -2099,7 +2166,7 @@ internal static partial class Output
         }
 
         var full = Path.GetFullPath(path, root);
-        if (IsDeviceOrNetwork(full))
+        if (IsDeviceOrNetwork(full) || (OperatingSystem.IsWindows() && !DriveRoot().IsMatch(full)))
         {
             throw new InvalidDataException(device);
         }
@@ -2122,8 +2189,57 @@ internal static partial class Output
                 + "the notices go into build output, never into git.");
     }
 
-    // The path with each link among its existing parts replaced by the link's final target.
-    public static string RealPath(string path) => RealPath(path, 0);
+    // The path with each link among its existing parts replaced by the link's final target: on macOS
+    // and Linux part by part, as the kernel resolves it, and on Windows, whose junctions and links have
+    // full targets, through .NET.
+    public static string RealPath(string path) =>
+        OperatingSystem.IsWindows()
+            ? RealPath(path, 0)
+            : PhysicalPath(Path.GetFullPath(path), part => new FileInfo(part).LinkTarget);
+
+    // A full path of macOS or Linux resolved one part at a time, with the target of each link put in
+    // place of the link: a ".." after a link leads to the parent of the link's target, as the kernel
+    // has it, not to the folder that holds the link, as a lexical normalization such as
+    // Path.GetFullPath would. The link reader returns a link's target, or null for anything else.
+    public static string PhysicalPath(string path, Func<string, string?> linkTarget)
+    {
+        var pending = new Stack<string>(Parts(path).Reverse());
+        var current = "/";
+        var links = 0;
+        while (pending.TryPop(out var part))
+        {
+            if (part == "..")
+            {
+                var slash = current.LastIndexOf('/');
+                current = slash <= 0 ? "/" : current[..slash];
+                continue;
+            }
+
+            var next = current == "/" ? $"/{part}" : $"{current}/{part}";
+            if (linkTarget(next) is not { } target)
+            {
+                current = next;
+                continue;
+            }
+
+            if (++links > 32)
+            {
+                throw new IOException($"{path} goes through too many links.");
+            }
+
+            foreach (var targetPart in Parts(target).Reverse())
+            {
+                pending.Push(targetPart);
+            }
+
+            if (target.StartsWith('/'))
+            {
+                current = "/";
+            }
+        }
+
+        return current;
+    }
 
     // A destination is missing, empty, or holds only the tool's own earlier output; it is never a link.
     public static void Check(string folder)
@@ -2181,6 +2297,9 @@ internal static partial class Output
     // A device path such as \\?\ or \\.\, or a network path such as \\server\share.
     private static bool IsDeviceOrNetwork(string path) =>
         path.Length >= 2 && (path[0] is '/' or '\\') && (path[1] is '/' or '\\');
+
+    private static IEnumerable<string> Parts(string path) =>
+        path.Split('/', StringSplitOptions.RemoveEmptyEntries).Where(part => part != ".");
 
     private static string RealPath(string path, int depth)
     {
@@ -2286,11 +2405,17 @@ internal static partial class Output
     // The name of a text that the tool writes: its number, of two digits or more, and a slug.
     [GeneratedRegex(@"\A[0-9]{2,}-[a-z0-9-]+\.txt\z")]
     private static partial Regex TextName();
+
+    // A full path of Windows on a drive: X:\.
+    [GeneratedRegex(@"\A[A-Za-z]:\\")]
+    private static partial Regex DriveRoot();
 }
 
 // The report of a run. Every line goes through Plain, and every annotation's data through Data, so
-// that a file name with a line break cannot start a line of its own, such as a workflow command of
-// GitHub Actions.
+// that a file name with a line break cannot start a line of its own. Under GitHub Actions the plain
+// lines, which name files of the bundle and of packages, are printed while workflow commands are
+// stopped, so that no name runs a command without a line break either, such as one that starts with
+// "::" or holds "##["; the annotations follow once commands resume.
 internal static class Report
 {
     public static void Print(
@@ -2302,7 +2427,8 @@ internal static class Report
         TextWriter output,
         bool annotate)
     {
-        void write(string text) => output.WriteLine(Plain(text));
+        var lines = new List<string>();
+        void write(string text) => lines.Add(text);
         var app = bundle.Name;
         write($"Third-party notices of {app}, in {(mode == Mode.Ios ? "ios" : "release")} mode");
         write(
@@ -2359,22 +2485,51 @@ internal static class Report
         foreach (var warning in result.Warnings)
         {
             write($"warning: {warning}");
-            if (annotate)
-            {
-                output.WriteLine($"::warning title=Notices::{Data(warning)}");
-            }
         }
 
         foreach (var failure in result.Failures)
         {
             write($"error: {failure}");
-            if (annotate)
-            {
-                output.WriteLine($"::error title=Notices::{Data(failure)}");
-            }
         }
 
         write($"{app}: {result.Failures.Count} failures, {result.Warnings.Count} warnings.");
+        Untrusted(output, annotate, lines);
+        if (!annotate)
+        {
+            return;
+        }
+
+        foreach (var warning in result.Warnings)
+        {
+            output.WriteLine($"::warning title=Notices::{Data(warning)}");
+        }
+
+        foreach (var failure in result.Failures)
+        {
+            output.WriteLine($"::error title=Notices::{Data(failure)}");
+        }
+    }
+
+    // Lines that may name files of the bundle or of packages, each through Plain. Under GitHub Actions
+    // they are printed between ::stop-commands::<token> and ::<token>::, with a new random token for
+    // each run, which is how GitHub Actions prints text that must not run a command.
+    public static void Untrusted(TextWriter output, bool actions, IEnumerable<string> lines)
+    {
+        var token = actions ? Guid.NewGuid().ToString("N") : null;
+        if (token is not null)
+        {
+            output.WriteLine($"::stop-commands::{token}");
+        }
+
+        foreach (var line in lines)
+        {
+            output.WriteLine(Plain(line));
+        }
+
+        if (token is not null)
+        {
+            output.WriteLine($"::{token}::");
+        }
     }
 
     // A line of the report, with CR and LF written as %0D and %0A.
@@ -2667,6 +2822,8 @@ internal sealed class Fixture
 
     public string RegisterText { get; set; } = Register;
 
+    public string MapText { get; set; } = Map;
+
     public string MappingText { get; set; } = Resolve(Mapping);
 
     public List<LockedPackage> Locked { get; } =
@@ -2842,7 +2999,7 @@ internal sealed class Fixture
     public Configuration Load() => new(
         Repository,
         global::Register.Parse(RegisterText),
-        LicenseMap.Parse(Map),
+        LicenseMap.Parse(MapText),
         global::Mapping.Parse(MappingText),
         MitTemplate.Validate(Mit));
 
@@ -2852,7 +3009,7 @@ internal sealed class Fixture
     public void WriteRepository()
     {
         WriteFile(Path.Combine(Repository, global::Register.FilePath), RegisterText);
-        WriteFile(Path.Combine(Repository, LicenseMap.FilePath), Map);
+        WriteFile(Path.Combine(Repository, LicenseMap.FilePath), MapText);
         WriteFile(Path.Combine(Repository, global::Mapping.FilePath), MappingText);
         WriteFile(Path.Combine(Repository, MitTemplate.FilePath), Mit);
         WriteFile(Path.Combine(Repository, "src", "Sample", "Sample.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
@@ -2948,6 +3105,23 @@ internal sealed class Fixture
         return process.ExitCode == 0 && new DirectoryInfo(link).LinkTarget is not null;
     }
 
+    // A symbolic link with a relative target, as written, to a folder that it makes first. False when
+    // the link cannot be made.
+    public static bool RelativeLink(string link, string target, string folder)
+    {
+        Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(Path.GetDirectoryName(link)!);
+        try
+        {
+            Directory.CreateSymbolicLink(link, target);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     private void AddPack(string framework, string id, string version) =>
         Packs.Add(new RuntimePack(framework, id, version, Path.Combine(Root, "packs", id, version)));
 }
@@ -2964,6 +3138,7 @@ internal static partial class SelfTest
             Readers(tally, root);
             UpstreamTexts(tally);
             FullyRegistered(tally, root);
+            CaseOrder(tally, root);
             Outputs(tally, root);
             CommandLine(tally, root);
             Failures(tally, root);
@@ -3153,6 +3328,13 @@ internal static partial class SelfTest
                 && Spdx.Leading("LGPL-2.1, as its README says: more").SequenceEqual(["LGPL-2.1"])
                 && Spdx.Leading("FTL or GPL-2.0").SequenceEqual(["FTL", "GPL-2.0"]),
             "reads the expression that a register row's License text starts with, up to the end of its phrase");
+        static string alternatives(string expression) =>
+            string.Join(" | ", Spdx.Alternatives(expression).Select(alternative => string.Join(' ', alternative)));
+        tally.Expect(
+            alternatives("MIT OR LGPL-2.1-only") == "MIT | LGPL-2.1-only"
+                && alternatives("lgpl-2.1-only or (MIT AND Zlib)") == "lgpl-2.1-only | MIT Zlib"
+                && alternatives("(MIT OR LGPL-2.1-only) AND Zlib") == "MIT LGPL-2.1-only Zlib",
+            "splits an SPDX expression into its alternatives at each OR outside parentheses, in any case");
         string[] declared = ["MIT", "LGPL-2.1-only", "Apache-2.0", "lgpl-2.1-or-later"];
         string[] otherLicenses = ["MIT", "LGPL-3.0-only", "GPL-2.0"];
         var needed = FullTerms.Needed(declared);
@@ -3193,8 +3375,10 @@ internal static partial class SelfTest
         tally.Expect(
             !refused(url) && refused(url.Replace("https://", "http://", StringComparison.Ordinal))
                 && refused(url.Replace("raw.githubusercontent.com/", "example.com/", StringComparison.Ordinal))
-                && refused(url.Replace(".com/", ".com.example.org/", StringComparison.Ordinal)),
-            "an upstream text comes over https from raw.githubusercontent.com only");
+                && refused(url.Replace(".com/", ".com.example.org/", StringComparison.Ordinal))
+                && refused(url.Replace("githubusercontent.com/", "githubusercontent.org/", StringComparison.Ordinal)),
+            "an upstream text comes over https from raw.githubusercontent.com only, not from a host of the same "
+                + "length");
         tally.Expect(
             refused(url.Replace(Commit, "main", StringComparison.Ordinal))
                 && refused(url.Replace(Commit, "v1.0.0", StringComparison.Ordinal))
@@ -3248,9 +3432,23 @@ internal static partial class SelfTest
             "lists a text that has no source with a note, and rejects an empty list and a text without a note");
         tally.Expect(
             UpstreamUrl.Lines("/*\n * A\n code in a comment;\n */\n// B\n\nint x;\n", new LineRange(1, 6), "f")
-                == "/*\n * A\n code in a comment;\n */\n// B\n\n"
-                && Rejects(() => UpstreamUrl.Lines("// A\n*/ x;\n", new LineRange(1, 2), "f")),
-            "a range takes the lines of a /* */ comment, and refuses a line outside a comment");
+                == "/*\n * A\n code in a comment;\n */\n// B\n"
+                && Rejects(() => UpstreamUrl.Lines("// A\n*/ x;\n", new LineRange(1, 2), "f"))
+                && Rejects(() => UpstreamUrl.Lines("/* a */ int x;\n", new LineRange(1, 1), "f"))
+                && Rejects(() => UpstreamUrl.Lines("/* a\n */ int x;\n", new LineRange(1, 2), "f")),
+            "a range takes the lines of a /* */ comment, and refuses a line outside a comment and code after */");
+        char[] terminators = [(char)0x85, (char)0x2028, (char)0x2029];
+        string[] terminated = [.. terminators.Select(terminator => $"// a{terminator}int x;\n")];
+        tally.Expect(
+            terminated.All(text => Message(() => UpstreamUrl.Lines(text, new LineRange(1, 1), "f")) is { } refusal
+                && refusal.Contains("holds NEL, LS or PS", StringComparison.Ordinal)),
+            "a range refuses a // line that holds NEL, LS or PS, at which C# ends the comment");
+        const string Blank = "// a\n\n\nint x;\n";
+        tally.Expect(
+            UpstreamUrl.Lines(Blank, new LineRange(1, 3), "f") == "// a\n"
+                && Message(() => UpstreamUrl.Lines(Blank, new LineRange(2, 3), "f")) is { } blank
+                && blank.Contains("are blank", StringComparison.Ordinal),
+            "a range that ends in blank lines gives a text with one line break at its end, and blank lines alone fail");
     }
 
     private static void FullyRegistered(Tally tally, string root)
@@ -3377,6 +3575,31 @@ internal static partial class SelfTest
             headings.SequenceEqual(expected.Select((name, position) => $"{position + 1}. {name}"))
                 && links.SequenceEqual(paths.Select(path => (path, path))),
             "each section of THIRD_PARTY_NOTICES.md has its number and component in that order, and links its text");
+        var sectionTitles = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var section = string.Empty;
+        foreach (var line in markdown.Split('\n'))
+        {
+            if (SectionHeading().Match(line) is { Success: true } heading)
+            {
+                section = heading.Groups[1].Value.PadLeft(2, '0');
+                sectionTitles[section] = [];
+            }
+            else if (section.Length > 0 && line.StartsWith("### ", StringComparison.Ordinal))
+            {
+                sectionTitles[section].Add(line[4..]);
+            }
+        }
+
+        tally.Expect(
+            sectionTitles.Count == textFiles.Count
+                && textFiles.All(file => sectionTitles.GetValueOrDefault(file[..2]) is { } titles
+                    && File.ReadAllText(Path.Combine(notices, Notices.TextsFolder, file)).Split('\n')
+                        .Select(line => TextTitle().Match(line))
+                        .Where(match => match.Success)
+                        .Select(match => match.Groups[1].Value)
+                        .SequenceEqual(titles)),
+            "each section of THIRD_PARTY_NOTICES.md holds, as ### headings, the titles of the texts of the file of its "
+                + "number");
         tally.Expect(
             indexComponents.Select(component => component.GetProperty("text").GetString()).SequenceEqual(paths),
             "the index names each component's text");
@@ -3409,6 +3632,10 @@ internal static partial class SelfTest
                 && Holds(texts["sample-ui"], "lines 1 to 4 of src/Header.cs of sample/ui at commit 89abcdef")
                 && !texts["sample-ui"].Contains("namespace Sample", StringComparison.Ordinal),
             "takes an upstream text from build/upstream/ by its SHA-256, and of a range only its lines");
+        tally.Expect(
+            texts["sample-ui"].EndsWith("a sample. */\n", StringComparison.Ordinal)
+                && texts.Values.All(text => !text.EndsWith("\n\n", StringComparison.Ordinal)),
+            "ends a range whose last line is blank, as every text, with one line break");
         tally.Expect(
             Holds(texts["sample-apache"], "Sample Apache NOTICE text.")
                 && Holds(markdown, "Sample Apache NOTICE text."),
@@ -3455,6 +3682,79 @@ internal static partial class SelfTest
             "writes into build/, bin/, obj/ or outside the repository, never elsewhere in it");
     }
 
+    // Both orders that release-engineering.md promises, through Generate: the components by name
+    // without regard to case first, so that a name in lower case sorts among the others, and each
+    // component's sources without regard to case.
+    private static void CaseOrder(Tally tally, string root)
+    {
+        Console.WriteLine("Order without regard to case:");
+        var fixture = Fixture.Create(root, "case-order");
+        fixture.RegisterText = Fixture.Register + "\n| sample.lower | A library in lower case | MIT | Allowed |";
+        fixture.MapText = Fixture.Map.Replace(
+            "\"Sample.Lgpl.Static\": \"Sample.Lgpl\"",
+            "\"Sample.Lgpl.Static\": \"Sample.Lgpl\",\n    \"alpha.Lower\": \"sample.lower\",\n"
+                + "    \"Beta.Lower\": \"sample.lower\"",
+            StringComparison.Ordinal);
+        fixture.MappingText = EditMapping(
+            "\"Sample.Lgpl\": {",
+            "\"sample.lower\": { \"texts\": [{ \"package\": \"alpha.Lower\", \"license\": \"MIT\" }] },\n"
+                + "    \"Sample.Lgpl\": {");
+        foreach (var id in new[] { "alpha.Lower", "Beta.Lower" })
+        {
+            fixture.Locked.Add(new LockedPackage(id, "1.0.0"));
+            fixture.Package(id, "1.0.0", "expression", "MIT", "Copyright 2026 Sample Lower Authors");
+        }
+
+        if (fixture.Generate(Mode.Release) is not { Outputs: { } outputs } result)
+        {
+            tally.Expect(false, "the fixture of the order checks generates its notices");
+            return;
+        }
+
+        string[] expected =
+        [
+            "Sample.Apache",
+            "Sample.Fonts",
+            "Sample.Graphics",
+            "Sample.Lgpl",
+            "sample.lower",
+            "Sample.Platform",
+            "Sample.Runtime",
+            "Sample.Ui",
+            "SteamKit2",
+        ];
+        var folder = Path.Combine(fixture.Root, "notices");
+        Output.Write(folder, outputs);
+        var markdown = File.ReadAllText(Path.Combine(folder, Notices.NoticesFile));
+        var table = markdown.Split('\n')
+            .Select(line => TableRow().Match(line))
+            .Where(match => match.Success)
+            .Select(match => match.Groups[1].Value);
+        var headings = markdown.Split('\n')
+            .Select(line => SectionHeading().Match(line))
+            .Where(match => match.Success)
+            .Select(match => match.Groups[2].Value);
+        using var index = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, Notices.IndexFile)));
+        var entries = index.RootElement.GetProperty("components").EnumerateArray().ToList();
+        var texts = Directory.EnumerateFiles(Path.Combine(folder, Notices.TextsFolder))
+            .Select(path => Path.GetFileName(path))
+            .Order(StringComparer.Ordinal)
+            .Select(file => file[3..^4]);
+        tally.Expect(
+            result.Components.Select(component => component.Name).SequenceEqual(expected)
+                && table.SequenceEqual(expected) && headings.SequenceEqual(expected)
+                && entries.Select(entry => entry.GetProperty("name").GetString()).SequenceEqual(expected)
+                && texts.SequenceEqual(expected.Select(Notices.Slug)),
+            "puts a component whose name is in lower case in its place without regard to case, in the table, the "
+                + "headings, the index and the texts");
+        string[] sources = ["alpha.Lower 1.0.0", "Beta.Lower 1.0.0"];
+        var lower = entries.Single(entry => entry.GetProperty("name").GetString() == "sample.lower");
+        tally.Expect(
+            lower.GetProperty("sources").EnumerateArray().Select(source => source.GetString()).SequenceEqual(sources)
+                && Holds(markdown, "- Sources: alpha.Lower 1.0.0, Beta.Lower 1.0.0\n"),
+            "sorts a component's sources without regard to case, in the index and in THIRD_PARTY_NOTICES.md");
+    }
+
     private static void Outputs(Tally tally, string root)
     {
         Console.WriteLine("Output folders and links:");
@@ -3465,20 +3765,57 @@ internal static partial class SelfTest
             return;
         }
 
-        bool keeps(string name, string file)
+        // The tool's own output, all of it, after a write that it refused.
+        bool intact(string folder) =>
+            File.Exists(Path.Combine(folder, Notices.NoticesFile))
+                && File.Exists(Path.Combine(folder, Notices.IndexFile))
+                && outputs.Texts.All(text => File.Exists(Path.Combine(folder, text.Path)));
+        bool keeps(string name, string file, bool hidden = false)
         {
             var folder = Path.Combine(fixture.Root, name);
             Output.Write(folder, outputs);
             var path = Path.Combine(folder, file);
             Fixture.WriteFile(path, "kept");
-            return Throws(() => Output.Write(folder, outputs)) && File.Exists(path);
+            if (hidden)
+            {
+                File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.Hidden);
+            }
+
+            return Throws(() => Output.Write(folder, outputs)) && File.Exists(path) && intact(folder);
         }
 
         tally.Expect(
             keeps("beside", "keep.txt") && keeps("below", Path.Combine("sub", "keep.txt"))
                 && keeps("among", Path.Combine(Notices.TextsFolder, "notes.md")),
             "refuses a folder of its own output that holds another file too, beside, below it or among the texts, "
-                + "and keeps that file");
+                + "and keeps that file and its own output");
+        tally.Expect(
+            keeps("hidden", ".keep", hidden: true)
+                && keeps("one-digit", Path.Combine(Notices.TextsFolder, "1-x.txt"))
+                && keeps("upper-case", Path.Combine(Notices.TextsFolder, "01-X.txt"))
+                && keeps("other-ending", Path.Combine(Notices.TextsFolder, "01-x.txt.bak")),
+            "refuses a hidden entry, and a name among the texts other than NN-<name>.txt, and keeps both");
+
+        // A link among the top-level entries in place of texts/, and a link among the texts to a folder:
+        // the folders that they lead to keep their files.
+        var victim = Path.Combine(fixture.Root, "victim");
+        Fixture.WriteFile(Path.Combine(victim, "01-victim.txt"), "kept");
+        var topLink = Path.Combine(fixture.Root, "top-link");
+        Output.Write(topLink, outputs);
+        Directory.Delete(Path.Combine(topLink, Notices.TextsFolder), recursive: true);
+        var topLinked = Fixture.Link(Path.Combine(topLink, Notices.TextsFolder), victim);
+        var textLink = Path.Combine(fixture.Root, "text-link");
+        Output.Write(textLink, outputs);
+        var inner = Path.Combine(fixture.Root, "inner");
+        Fixture.WriteFile(Path.Combine(inner, "01-x.txt"), "kept");
+        var textLinked = Fixture.Link(Path.Combine(textLink, Notices.TextsFolder, "99-folder.txt"), inner);
+        tally.Expect(
+            topLinked && textLinked
+                && Throws(() => Output.Write(topLink, outputs)) && File.Exists(Path.Combine(victim, "01-victim.txt"))
+                && File.Exists(Path.Combine(topLink, Notices.NoticesFile))
+                && Throws(() => Output.Write(textLink, outputs)) && File.Exists(Path.Combine(inner, "01-x.txt"))
+                && intact(textLink),
+            "refuses a link among its own entries, also one among the texts, and keeps what they lead to");
         // Only the index differs from the tool's own output: another format.
         var other = Path.Combine(fixture.Root, "other-format");
         Output.Write(other, outputs);
@@ -3509,10 +3846,36 @@ internal static partial class SelfTest
             "a later run with one component fewer replaces the texts, and leaves no text of the earlier run behind");
 
         string[] devicePaths =
-            [@"\\?\C:\repo\docs\notices", @"\\.\C:\repo\docs\notices", @"\\server\share\notices", "//server/share/x"];
+        [
+            @"\\?\C:\repo\docs\notices",
+            @"\\.\C:\repo\docs\notices",
+            @"\??\C:\repo\docs\notices",
+            @"\??\UNC\server\share\notices",
+            @"\\?\UNC\server\share\notices",
+            @"\\server\share\notices",
+            "//server/share/x",
+        ];
         tally.Expect(
             devicePaths.All(path => Rejects(() => Output.EnsureBuildOutput(fixture.Repository, path, "--out"))),
-            "refuses a device path and a network path");
+            "refuses device paths, \\\\?\\, \\\\.\\ and \\??\\ among them, and network paths");
+
+        // Links that the kernel of macOS and Linux follows part by part, from a made-up tree: build/a
+        // leads to ../docs/x, and build/j to a/../y, which is docs/y and not build/y.
+        var tree = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/repo/build/a"] = "../docs/x",
+            ["/repo/build/j"] = "a/../y",
+            ["/repo/build/full"] = "/repo/docs",
+            ["/repo/build/loop"] = "loop",
+        };
+        string physical(string path) => Output.PhysicalPath(path, part => tree.GetValueOrDefault(part));
+        tally.Expect(
+            physical("/repo/build/j") == "/repo/docs/y" && physical("/repo/build/j/x") == "/repo/docs/y/x"
+                && physical("/repo/build/full/n") == "/repo/docs/n"
+                && physical("/repo/build/other") == "/repo/build/other"
+                && physical("/repo/../../x") == "/x" && Throws(() => physical("/repo/build/loop")),
+            "follows a link's target part by part, so that a .. after a link leads to the parent of its target, and "
+                + "refuses a loop of links");
 
         // Links: on macOS and Linux symbolic links, on Windows junctions where symbolic links need a right.
         var linked = Fixture.Create(root, "linked");
@@ -3539,6 +3902,21 @@ internal static partial class SelfTest
             Fixture.Link(bundleLink, Path.Combine(build, "elsewhere")) && Throws(() => Output.Check(bundleLink))
                 && Throws(() => Output.Write(Path.Combine(build, "out-link"), outputs)),
             "refuses a licenses/ folder in the bundle, or an output folder, that is a link");
+
+        // The made-up tree above on disk, where the kernel follows the links: on macOS and Linux only,
+        // since Windows makes a relative link only with a right that the self-test does not ask for.
+        var relative = Fixture.Create(root, "relative-links").Repository;
+        bool refusedThrough(params string[] parts) =>
+            Message(() => Output.EnsureBuildOutput(relative, Path.Combine(parts), "--out")) is { } refusal
+                && refusal.Contains("leads to docs/y", StringComparison.Ordinal);
+        bool relativeLink(string name, string target, string folder) =>
+            Fixture.RelativeLink(Path.Combine(relative, "build", name), target, Path.Combine(relative, "docs", folder));
+        tally.Expect(
+            OperatingSystem.IsWindows()
+                || (relativeLink("a", "../docs/x", "x") && relativeLink("j", "a/../y", "y")
+                    && refusedThrough("build", "j") && refusedThrough("build", "j", "x")),
+            "on macOS and Linux, refuses build/j when it links to a/../y and build/a to ../docs/x, since that is "
+                + "docs/y");
     }
 
     private static void CommandLine(Tally tally, string root)
@@ -3558,6 +3936,16 @@ internal static partial class SelfTest
 
         var cli = Fixture.Create(root, "cli");
         cli.WriteRepository();
+
+        // A copy of the bundle in a tracked folder, for the check that refuses it below.
+        var docsBundle = Path.Combine(cli.Repository, "docs", "Sample.app");
+        foreach (var file in Directory.EnumerateFiles(cli.App, "*", SearchOption.AllDirectories))
+        {
+            var copy = Path.Combine(docsBundle, Path.GetRelativePath(cli.App, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+            File.Copy(file, copy);
+        }
+
         var options =
             new Options(Mode.Release, "src/Sample/Sample.csproj", "src/Sample/bin/Sample.app", "build/notices");
         string? asked = null;
@@ -3610,25 +3998,73 @@ internal static partial class SelfTest
         Func<string, string> query = _ => cli.Query();
         var docsApp = options with { App = "docs/Sample.app" };
         var docsOut = options with { Out = "docs/notices" };
+        bool outside(Options refused) =>
+            Message(() => Cli.Run(refused, cli.Repository, query, TextWriter.Null, annotate: false)) is { } refusal
+                && refusal.Contains("outside build/", StringComparison.Ordinal);
         tally.Expect(
-            Rejects(() => Cli.Run(docsApp, cli.Repository, query, TextWriter.Null, annotate: false))
-                && Rejects(() => Cli.Run(docsOut, cli.Repository, query, TextWriter.Null, annotate: false)),
-            "refuses an app or an output folder in the repository outside build/, bin/ and obj/");
+            File.Exists(Path.Combine(docsBundle, "Info.plist")) && outside(docsApp)
+                && !Directory.Exists(Path.Combine(docsBundle, Notices.Folder))
+                && outside(docsOut) && !Directory.Exists(Path.Combine(cli.Repository, "docs", "notices")),
+            "refuses an app or an output folder in the repository outside build/, bin/ and obj/, and writes nothing "
+                + "there");
 
-        const string Injected = "Sample.app: a\n::error title=Injected::b 100% is attributed to no component.";
+        // A lone CR ends a line for the runner of GitHub Actions as LF does.
+        const string Injected =
+            "Sample.app: a\r::error title=Injected::b\n::error title=Again::c 100% is attributed to no component.";
         var injected = new Result([], [Injected], [], [], [], [], [], [], null);
         var annotated = new StringWriter();
         Report.Print(Bundle.Read(cli.App), cli.Build(), cli.Load(), Mode.Ios, injected, annotated, annotate: true);
-        var lines = annotated.ToString().Split('\n').Select(line => line.TrimEnd('\r')).ToList();
+        var lines = annotated.ToString().Split('\r', '\n');
         tally.Expect(
-            !lines.Any(line => line.StartsWith("::error", StringComparison.Ordinal))
+            !lines.Any(line => line.TrimStart().StartsWith("::error", StringComparison.Ordinal))
                 && lines.Contains(
-                    "warning: Sample.app: a%0A::error title=Injected::b 100% is attributed to no component.")
+                    "warning: Sample.app: a%0D::error title=Injected::b%0A::error title=Again::c 100% is attributed to "
+                        + "no component.")
                 && lines.Contains(
-                    "::warning title=Notices::Sample.app: a%0A::error title=Injected::b 100%25 is attributed to no "
-                        + "component."),
-            "escapes line breaks in every line of the report, and % in an annotation too, so that no name starts a "
-                + "line");
+                    "::warning title=Notices::Sample.app: a%0D::error title=Injected::b%0A::error title=Again::c "
+                        + "100%25 is attributed to no component."),
+            "escapes CR and LF in every line of the report, and % in an annotation too, so that no name starts a line");
+
+        // Names that run a workflow command without a line break: one that starts with "::", and one
+        // that holds "##[", which the runner's older parser finds anywhere in a line.
+        string[] commands = ["::error title=Spoof::x", "::stop-commands::tok", "Frameworks/a##[error]spoofed"];
+        var spoofing = new Result(
+            [],
+            [.. commands.Select(name => $"Sample.app: {name} is attributed to no component.")],
+            [.. commands.Select(name => new Attribution(name, []))],
+            [],
+            [],
+            [],
+            [$"Sample.Ui: {commands[2]} of the package Sample.Ui 1.0.0"],
+            [],
+            null);
+        string printed()
+        {
+            var writer = new StringWriter();
+            Report.Print(Bundle.Read(cli.App), cli.Build(), cli.Load(), Mode.Ios, spoofing, writer, annotate: true);
+            return writer.ToString();
+        }
+
+        var first = printed().Split('\r', '\n');
+        var token = StopCommands().Match(first[0]) is { Success: true } stop ? stop.Groups[1].Value : null;
+        var resume = token is null ? -1 : Array.IndexOf(first, $"::{token}::");
+        var named = first.Select((line, position) => (line, position))
+            .Where(entry => commands.Any(name => entry.line.Contains(name, StringComparison.Ordinal)))
+            .ToList();
+        const string Annotation = "::warning title=Notices::";
+        var after = first.Skip(resume + 1).Where(line => line.Length > 0).ToList();
+        tally.Expect(
+            resume > 0 && named.Count > 0
+                && named.All(entry => (entry.position > 0 && entry.position < resume)
+                    || (entry.position > resume && entry.line.StartsWith(Annotation, StringComparison.Ordinal)))
+                && after.Count == commands.Length
+                && after.All(line => line.StartsWith(Annotation, StringComparison.Ordinal)),
+            "under GitHub Actions prints the report while workflow commands are stopped, so that a name with \"::\" or "
+                + "\"##[\" runs none, and the annotations after they resume");
+        tally.Expect(
+            token is not null && StopCommands().Match(printed().Split('\r', '\n')[0]) is { Success: true } again
+                && again.Groups[1].Value != token,
+            "stops workflow commands with a new random token in each run");
 
         var listed = new StringWriter();
         var expected = $"{Fixture.Hash(Fixture.ApacheTerms)} {Fixture.ApacheUrl}\n"
@@ -3762,13 +4198,24 @@ internal static partial class SelfTest
                 $"a declared license is checked when the type is \"{type}\"");
         }
 
-        Expect(
-            tally,
-            root,
-            "empty-expression",
-            fixture => fixture.Package("Sample.Graphics.Native", "2.0.0", "expression", string.Empty, null),
-            ["Sample.Graphics.Native 2.0.0 declares an empty license expression"],
-            "an empty license expression fails");
+        foreach (var (name, expression) in new[]
+        {
+            ("empty", string.Empty),
+            ("parentheses", "()"),
+            ("operator", "AND"),
+            ("exception", "WITH GPL-3.0-only"),
+            ("spaces", "   "),
+            ("line-break", "\n"),
+        })
+        {
+            Expect(
+                tally,
+                root,
+                $"expression-{name}",
+                fixture => fixture.Package("Sample.Graphics.Native", "2.0.0", "expression", expression, null),
+                ["Sample.Graphics.Native 2.0.0 declares a license expression that names no license"],
+                $"a license expression that names no license fails: {name}");
+        }
         var unexpressed = Fixture.Create(root, "unexpressed");
         unexpressed.Description("Sample.Ui.Extra", "1.0.0", "<licenseUrl>https://example.org/license</licenseUrl>");
         unexpressed.Description("Sample.Graphics.Native", "2.0.0", "<license>MIT</license>");
@@ -3853,6 +4300,13 @@ internal static partial class SelfTest
         Expect(
             tally,
             root,
+            "range-blank",
+            fixture => fixture.MappingText = EditMapping("\"lines\": [1, 4]", "\"lines\": [4, 4]"),
+            ["missing license text of Sample.Ui", "the lines 4 to 4 of src/Header.cs", "are blank"],
+            "a range of blank lines only counts as missing");
+        Expect(
+            tally,
+            root,
             "apache-terms",
             fixture => fixture.MappingText = EditMapping(
                 $",\n        {{ \"upstream\": \"{Fixture.ApacheUrl}\", \"sha256\": \""
@@ -3883,6 +4337,52 @@ internal static partial class SelfTest
             },
             ["Sample.Graphics is under Apache-2.0, but none of its texts holds the full terms"],
             "a component whose package declares Apache-2.0 needs the full terms too");
+
+        // The register row alone asks for the full terms, for a component without a package such as a
+        // fork's, in each identifier of LGPL-2.1 and in any case.
+        string[] rowLicenses = ["LGPL-2.1-or-later", "LGPL-2.1", "LGPL-2.1+", "lgpl-2.1-or-later"];
+        for (var index = 0; index < rowLicenses.Length; index++)
+        {
+            var license = rowLicenses[index];
+            Expect(
+                tally,
+                root,
+                $"row-terms-{index}",
+                fixture =>
+                {
+                    fixture.RegisterText = Fixture.Register.Replace(
+                        "| Sample.Lgpl | A library the user can replace | LGPL-2.1-or-later |",
+                        $"| Sample.Lgpl | A library the user can replace | {license} |",
+                        StringComparison.Ordinal);
+                    fixture.MappingText = EditMapping(
+                        "\"Sample.Lgpl\": { \"texts\": [{ \"repository\": \"external/Sample-lgpl/COPYING.LIB\" }] }",
+                        "\"Sample.Lgpl\": { \"texts\": [{ \"repository\": \"external/Sample-lgpl/NOTICE\" }] }");
+                    Fixture.WriteFile(
+                        Path.Combine(fixture.Repository, "external", "Sample-lgpl", "NOTICE"),
+                        "Sample LGPL notice.");
+                },
+                ["Sample.Lgpl is under LGPL-2.1, but none of its texts holds the full terms of LGPL-2.1"],
+                $"a component without a package whose row says {license} needs the full terms of LGPL-2.1");
+        }
+
+        Expect(
+            tally,
+            root,
+            "split-terms",
+            fixture =>
+            {
+                fixture.MappingText = EditMapping(
+                    ",\n        { \"repository\": \"external/Sample-lgpl/COPYING.LIB\" }",
+                    ",\n        { \"repository\": \"external/Sample-lgpl/part-1.txt\" },"
+                        + "\n        { \"repository\": \"external/Sample-lgpl/part-2.txt\" }");
+                var folder = Path.Combine(fixture.Repository, "external", "Sample-lgpl");
+                Fixture.WriteFile(Path.Combine(folder, "part-1.txt"), "GNU LESSER GENERAL PUBLIC LICENSE");
+                Fixture.WriteFile(
+                    Path.Combine(folder, "part-2.txt"),
+                    "TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION");
+            },
+            ["SteamKit2 is under LGPL-2.1, but none of its texts holds the full terms of LGPL-2.1"],
+            "the full terms stand in one text, not split between two");
         Expect(
             tally,
             root,
@@ -3916,6 +4416,53 @@ internal static partial class SelfTest
         tally.Expect(
             noted.Generate(Mode.Release).Failures.Count == 0,
             "a register row that names the LGPL only after its leading expression does not make the component LGPL");
+        string[] runtimeLicenses = ["LGPL-2.1-only", "lgpl-2.1-only"];
+        for (var index = 0; index < runtimeLicenses.Length; index++)
+        {
+            var license = runtimeLicenses[index];
+            Expect(
+                tally,
+                root,
+                $"row-lgpl-{index}",
+                fixture => fixture.RegisterText = Fixture.Register.Replace(
+                    "| Sample.Runtime | A runtime | MIT |",
+                    $"| Sample.Runtime | A runtime | {license} |",
+                    StringComparison.Ordinal),
+                [$"Sample.Runtime, under {license}, is compiled into the main executable Sample"],
+                $"so does a component in it that only its row puts under {license}, without a package");
+        }
+
+        // An OR that a package declares puts a component of the executable under the LGPL only when each
+        // alternative names the LGPL, since the register row records the license chosen (C-0003 section 5).
+        const string Either = "MIT OR LGPL-2.1-only";
+        var chosen = Fixture.Create(root, "or-chooses-mit");
+        chosen.RegisterText = Fixture.Register.Replace(
+            Fixture.GraphicsLicense,
+            "MIT. Its native package is also offered under LGPL-2.1-only.",
+            StringComparison.Ordinal);
+        chosen.Package("Sample.Graphics.Native", "2.0.0", "expression", Either, null);
+        chosen.MappingText = EditMapping(
+            "{ \"package\": \"Sample.Graphics\", \"file\": \"LICENSE.txt\" },",
+            "{ \"package\": \"Sample.Graphics\", \"file\": \"LICENSE.txt\" },\n"
+                + "        { \"repository\": \"external/Sample-lgpl/COPYING.LIB\" },");
+        var chosenResult = chosen.Generate(Mode.Release);
+        tally.Expect(
+            chosenResult.Failures.Count == 0 && chosenResult.Outputs is not null,
+            $"a component in it whose package declares {Either} passes when its register row chooses MIT");
+        Expect(
+            tally,
+            root,
+            "or-chooses-lgpl",
+            fixture =>
+            {
+                fixture.RegisterText = Fixture.Register.Replace(
+                    Fixture.GraphicsLicense,
+                    "LGPL-2.1-only. Its native package is also offered under MIT.",
+                    StringComparison.Ordinal);
+                fixture.Package("Sample.Graphics.Native", "2.0.0", "expression", Either, null);
+            },
+            ["Sample.Graphics, under LGPL-2.1-only, is compiled into the main executable Sample"],
+            "and fails when its register row chooses LGPL-2.1-only");
         Expect(
             tally,
             root,
@@ -4037,4 +4584,10 @@ internal static partial class SelfTest
 
     [GeneratedRegex(@"^- Text: \[(.+?)\]\((.+?)\)$")]
     private static partial Regex TextLink();
+
+    [GeneratedRegex(@"^===== (.+) =====$")]
+    private static partial Regex TextTitle();
+
+    [GeneratedRegex(@"\A::stop-commands::([0-9a-f]{32})\z")]
+    private static partial Regex StopCommands();
 }

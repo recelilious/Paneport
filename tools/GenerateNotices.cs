@@ -3479,11 +3479,14 @@ internal static partial class SelfTest
                 && keeps("among", Path.Combine(Notices.TextsFolder, "notes.md")),
             "refuses a folder of its own output that holds another file too, beside, below it or among the texts, "
                 + "and keeps that file");
-        var other = Path.Combine(fixture.Root, "other-tool");
-        Fixture.WriteFile(Path.Combine(other, Notices.IndexFile), "{ \"format\": 7, \"components\": [] }");
-        Fixture.WriteFile(Path.Combine(other, "data.bin"), "data");
+        // Only the index differs from the tool's own output: another format.
+        var other = Path.Combine(fixture.Root, "other-format");
+        Output.Write(other, outputs);
+        File.WriteAllText(Path.Combine(other, Notices.IndexFile), "{ \"format\": 7, \"components\": [] }");
+        var otherIndex = Path.Combine(other, Notices.IndexFile);
         tally.Expect(
-            Throws(() => Output.Write(other, outputs)) && File.Exists(Path.Combine(other, "data.bin")),
+            Throws(() => Output.Write(other, outputs)) && File.Exists(Path.Combine(other, Notices.NoticesFile))
+                && File.ReadAllText(otherIndex).Contains("\"format\": 7", StringComparison.Ordinal),
             "refuses a folder whose index is of another format, and leaves it as it is");
 
         var fewer = Fixture.Create(root, "fewer");
@@ -3525,10 +3528,11 @@ internal static partial class SelfTest
                 && !files.Any(file => file.StartsWith("Linked/", StringComparison.Ordinal)),
             "lists a link in the bundle as a file, and never follows it");
         var throughLink = Path.Combine("build", "into-docs", "x");
+        var plain = Path.Combine("build", "notices");
         tally.Expect(
             made
                 && Rejects(() => Output.EnsureBuildOutput(linked.Repository, throughLink, "--out"))
-                && !Rejects(() => Output.EnsureBuildOutput(linked.Repository, Path.Combine("build", "notices"), "--out")),
+                && !Rejects(() => Output.EnsureBuildOutput(linked.Repository, plain, "--out")),
             "follows a link under build/ to its target, and refuses one that leads into the repository outside build/");
         var bundleLink = Path.Combine(linked.App, Notices.Folder);
         tally.Expect(

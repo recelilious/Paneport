@@ -141,13 +141,14 @@ internal static partial class Inventory
     // before the first token of the file: after blank lines, comments and preprocessor lines
     // such as #nullable, but not after #if. Reading stops where the compiler stops accepting.
     // The SDK also accepts whitespace after "#:", as in "#: package", so each directive comes
-    // back without it.
+    // back without it. Lines end at every line terminator of C#, so that a lone CR cannot hide a
+    // directive after a comment.
     public static List<(int Line, string Text)> HeaderDirectives(string source)
     {
         var directives = new List<(int Line, string Text)>();
-        var lines = source.Split('\n');
+        var lines = SourceLines(source);
         var inComment = false;
-        for (var index = 0; index < lines.Length; index++)
+        for (var index = 0; index < lines.Count; index++)
         {
             var line = lines[index].Trim();
             if (inComment)
@@ -187,6 +188,32 @@ internal static partial class Inventory
         }
 
         return directives;
+    }
+
+    // The lines of a C# source, split at CR LF, CR, LF, and NEL, LS and PS (U+0085, U+2028, U+2029),
+    // the line terminators of the C# specification.
+    public static List<string> SourceLines(string source)
+    {
+        var lines = new List<string>();
+        var start = 0;
+        for (var index = 0; index < source.Length; index++)
+        {
+            if (source[index] is not ('\r' or '\n' or (char)0x85 or (char)0x2028 or (char)0x2029))
+            {
+                continue;
+            }
+
+            lines.Add(source[start..index]);
+            if (source[index] == '\r' && index + 1 < source.Length && source[index + 1] == '\n')
+            {
+                index++;
+            }
+
+            start = index + 1;
+        }
+
+        lines.Add(source[start..]);
+        return lines;
     }
 
     // #:package Name@Version, #:package Name (with central package management), and
@@ -406,6 +433,10 @@ internal static partial class Unseen
         "NuGetLockFilePath moves the lock file where tools/CheckLicenses.cs does not look. Keep the lock file "
             + "next to the project, as packages.lock.json or packages.<project>.lock.json.";
 
+    // The properties that the tools set with #:property. Any other could import MSBuild files with
+    // package references, such as CustomAfterMicrosoftCommonTargets, or turn on #:ref.
+    private static readonly string[] s_toolProperties = ["PublishAot"];
+
     public static List<Problem> Find(IEnumerable<string> files, Func<string, string> read)
     {
         var tracked = files.Order(StringComparer.Ordinal).ToList();
@@ -444,15 +475,35 @@ internal static partial class Unseen
                 {
                     problems.Add(Problem(tool, line, LockFilePathMessage));
                 }
-                else if (IncludeDirective().Match(text) is { Success: true } include
-                    && Included(folder, include.Groups[1].Value) is null)
+                else if (PropertyDirective().Match(text) is { Success: true } property
+                    && !s_toolProperties.Contains(property.Groups[1].Value, StringComparer.OrdinalIgnoreCase))
                 {
                     problems.Add(Problem(
                         tool,
                         line,
-                        "#:include names a file outside tools/Shared/, or a pattern. The SDK reads the #: directives "
-                            + "of an included file too, and the checker reads only those under tools/, so include only "
-                            + ".cs files from tools/Shared/."));
+                        $"#:property {property.Groups[1].Value} is not one that the tools set ("
+                            + $"{string.Join(", ", s_toolProperties)}). A property can import MSBuild files or turn on "
+                            + "#:ref, which the checker does not read; add it to the list in tools/CheckLicenses.cs "
+                            + "only after a review."));
+                }
+                else if (RefDirective().IsMatch(text))
+                {
+                    problems.Add(Problem(
+                        tool,
+                        line,
+                        "#:ref brings in another file-based app with its #: directives, which the checker does not "
+                            + "read. Share code through tools/Shared/ with #:include."));
+                }
+                else if (IncludeDirective().Match(text) is { Success: true } include
+                    && Included(folder, include.Groups[1].Value, tracked) is null)
+                {
+                    problems.Add(Problem(
+                        tool,
+                        line,
+                        "#:include names something other than a .cs file that git tracks in tools/Shared/. The SDK "
+                            + "reads the #: directives of an included file too, and expands MSBuild syntax in the "
+                            + "path, and the checker reads only the files under tools/, so include only those files, "
+                            + "by a plain path."));
                 }
             }
         }
@@ -506,13 +557,15 @@ internal static partial class Unseen
     private static bool IsShared(string file) =>
         file.StartsWith("tools/Shared/", StringComparison.Ordinal) && file.EndsWith(".cs", StringComparison.Ordinal);
 
-    // The file that an #:include of a tool in the folder names, when it is a .cs file in tools/Shared/,
-    // and null for anything else: an absolute path, a path that leaves tools/Shared/ or a pattern.
-    private static string? Included(string folder, string path)
+    // The file that an #:include of a tool in the folder names, when it is a .cs file that git tracks
+    // directly in tools/Shared/, and null for anything else: an absolute path, a path that leaves
+    // tools/Shared/, a file that git does not track, such as one behind a link, and a path with any
+    // character but letters, digits and "_./\-", which rules out patterns, a drive and the MSBuild
+    // syntax that the SDK expands, such as $(Property), %2E or a semicolon between two paths.
+    private static string? Included(string folder, string path, List<string> tracked)
     {
         var parts = new List<string>(folder.Split('/', StringSplitOptions.RemoveEmptyEntries));
-        if (path.StartsWith('/') || path.StartsWith('\\') || path.Contains(':', StringComparison.Ordinal)
-            || path.IndexOfAny(['*', '?', '[', '"']) >= 0)
+        if (!IncludePath().IsMatch(path) || path.StartsWith('/') || path.StartsWith('\\'))
         {
             return null;
         }
@@ -535,7 +588,9 @@ internal static partial class Unseen
         }
 
         var file = string.Join('/', parts);
-        return IsShared(file) ? file : null;
+        return IsShared(file) && file.Count(character => character == '/') == 2 && tracked.Contains(file)
+            ? file
+            : null;
     }
 
     private static (string Folder, string Name) Split(string file)
@@ -586,6 +641,16 @@ internal static partial class Unseen
 
     [GeneratedRegex(@"^#:include\s+(.*?)\s*$")]
     private static partial Regex IncludeDirective();
+
+    [GeneratedRegex(@"\A[A-Za-z0-9_./\\-]+\z")]
+    private static partial Regex IncludePath();
+
+    // A property's name, up to "=" or white space.
+    [GeneratedRegex(@"^#:property\s+([^=\s]+)")]
+    private static partial Regex PropertyDirective();
+
+    [GeneratedRegex(@"^#:ref\b")]
+    private static partial Regex RefDirective();
 
     // MSBuild project files of any language, .props and .targets files, and response files such
     // as Directory.Build.rsp, which can set properties for every build below them.
@@ -1150,9 +1215,22 @@ internal static class SelfTest
                     + "#:include Shared\\Helper.cs\nreturn 0;",
             ["tools/Escaping.cs"] =
                 "#:include ../src/Helper.cs\n#:include Shared/../../src/Helper.cs\n#:include Shared/*.cs\n"
-                    + "#:include /tmp/Helper.cs\n#:include Shared/Helper.json\nreturn 0;",
+                    + "#:include /Shared/Helper.cs\n#:include \\Shared\\Helper.cs\n#:include C:/../Shared/Helper.cs\n"
+                    + "#:include Shared/Helper.json\n#:include Shared/$(X).cs\n#:include Shared/%2E%2E/x.cs\n"
+                    + "#:include Shared/Helper.cs;../x.cs\n#:include Shared/link/Helper.cs\n"
+                    + "#:include Shared/Missing.cs\n#:include Shared/sub/Deep.cs\nreturn 0;",
+            ["tools/Referring.cs"] =
+                "#:property ExperimentalFileBasedProgramEnableRefDirective=true\n#:ref ../src/Lib.cs\nreturn 0;",
+            ["tools/Hooked.cs"] =
+                "#:property CustomAfterMicrosoftCommonTargets=$(MSBuildProjectDirectory)/../docs/hook.xml\n"
+                    + "#:property publishaot=false\nreturn 0;",
+            ["tools/Terminated.cs"] =
+                "// A note\r#:include ../docs/Evil.cs\n// Another" + (char)0x2028 + "#:package Sample.Hidden@1.0.0\n"
+                    + "// More" + (char)0x85 + "#:ref ../src/Lib.cs\n// Last" + (char)0x2029
+                    + "#:property NuGetLockFilePath=x.json\nreturn 0;",
             ["tools/Shared/Helper.cs"] = "// A shared file.\ninternal static class Helper;",
             ["tools/Shared/Other.cs"] = "// Shared.\n#:package Sample.Hidden@1.0.0\ninternal static class Other;",
+            ["tools/Shared/sub/Deep.cs"] = "// Below tools/Shared/.\ninternal static class Deep;",
             ["tools/packages.lock.json"] = SampleLockFile,
             ["global.json"] = """{ "sdk": { "version": "1.0.0" }, "msbuild-sdks": { "Sample.Sdk": "1.0.0" } }""",
             [".config/dotnet-tools.json"] = """{ "version": 1, "isRoot": true, "tools": {} }""",
@@ -1169,13 +1247,15 @@ internal static class SelfTest
         (string File, int Line)[] moved =
             [("eng/Sample.props", 2), ("Directory.Build.rsp", 1), ("tools/Moved.cs", 2), ("tools/Spaced.cs", 1)];
         (string File, int Line)[] ownLockFiles = [("tools/Shared.cs", 0), ("tools/Spaced.cs", 0)];
-        (string File, int Line)[] includes =
+        (string File, int Line)[] includes = [.. Enumerable.Range(1, 13).Select(line => ("tools/Escaping.cs", line))];
+        (string File, int Line)[] directives =
+            [("tools/Referring.cs", 1), ("tools/Referring.cs", 2), ("tools/Hooked.cs", 1)];
+        (string File, int Line)[] terminated =
         [
-            ("tools/Escaping.cs", 1),
-            ("tools/Escaping.cs", 2),
-            ("tools/Escaping.cs", 3),
-            ("tools/Escaping.cs", 4),
-            ("tools/Escaping.cs", 5),
+            ("tools/Terminated.cs", 0),
+            ("tools/Terminated.cs", 2),
+            ("tools/Terminated.cs", 6),
+            ("tools/Terminated.cs", 8),
         ];
         (string File, int Line)[] sharedDirectives = [("tools/Shared/Other.cs", 2)];
         (string File, int Line)[] others = [("global.json", 0), (".config/dotnet-tools.json", 0)];
@@ -1200,16 +1280,25 @@ internal static class SelfTest
             "a tool with package directives, also as #: package, needs a lock file of its own; others share one");
         tally.Expect(
             includes.All(found.Contains) && !found.Any(problem => problem.File == "tools/Including.cs"),
-            "#:include of a .cs file in tools/Shared/ passes, also as #: include, with ./ and with a backslash; one "
-                + "that leaves tools/Shared/, a pattern, an absolute path and a file of another kind fail");
+            "#:include of a tracked .cs file in tools/Shared/ passes, also as #: include, with ./ and with a "
+                + "backslash; one that leaves tools/Shared/, a pattern, an absolute path in three forms, a file of "
+                + "another kind, MSBuild syntax, an untracked file, one behind a link and one below tools/Shared/ "
+                + "fail");
+        tally.Expect(
+            directives.All(found.Contains) && !found.Any(problem => problem == ("tools/Hooked.cs", 2)),
+            "#:ref fails, and so does a #:property that the tools do not set; PublishAot passes, in any case");
+        tally.Expect(
+            terminated.All(found.Contains),
+            "a directive after a lone CR, NEL, LS or PS starts a line of its own, as the compiler reads it");
         tally.Expect(
             sharedDirectives.All(found.Contains)
-                && !found.Any(problem => problem.File == "tools/Shared/Helper.cs")
+                && !found.Any(problem => problem.File is "tools/Shared/Helper.cs" or "tools/Shared/sub/Deep.cs")
                 && !found.Contains(("tools/Shared/Other.cs", 0)),
             "a #: directive in a shared file fails, and a shared file needs no lock file of its own");
         tally.Expect(others.All(found.Contains), "msbuild-sdks in global.json fails, and so does a tool manifest");
         var count = unlocked.Length + sdks.Length + otherSdks.Length + downloads.Length + moved.Length
-            + ownLockFiles.Length + includes.Length + sharedDirectives.Length + others.Length;
+            + ownLockFiles.Length + includes.Length + directives.Length + terminated.Length + sharedDirectives.Length
+            + others.Length;
         tally.Expect(found.Count == count, $"exactly the {count} problems above are reported ({found.Count})");
     }
 

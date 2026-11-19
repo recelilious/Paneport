@@ -68,9 +68,7 @@ try
 }
 catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
 {
-    // The message may name a file of the bundle.
-    Report.Untrusted(Console.Error, actions, [$"error: {exception.Message}"]);
-    return 2;
+    return Cli.Fail(Console.Error, actions, exception);
 }
 
 internal enum Mode
@@ -135,6 +133,14 @@ internal sealed record Options(Mode Mode, string Project, string App, string? Ou
 
 internal static class Cli
 {
+    // The error that ends a run, whose message may name a file of the bundle, so that under GitHub
+    // Actions it is printed while workflow commands are stopped. Returns the exit code 2.
+    public static int Fail(TextWriter error, bool actions, Exception exception)
+    {
+        Report.Untrusted(error, actions, [$"error: {exception.Message}"]);
+        return 2;
+    }
+
     public static int Usage()
     {
         Console.Error.WriteLine(
@@ -839,11 +845,14 @@ internal static partial class UpstreamUrl
 
     public static bool IsSha256(string text) => Sha256().IsMatch(text);
 
-    // Lines First to Last of a text, each of them a comment or blank, so that no code ships as a notice.
-    // A line inside a /* */ comment counts as a comment, so a range starts where its comment starts.
-    // A line that holds NEL, LS or PS fails, because C# ends a line there too, so code could follow a
-    // "//" comment on what reads here as one line. The text is the lines without the blank lines at
-    // its end, and one line break; a range of blank lines alone holds no notice.
+    // Lines First to Last of a text, which lie in the file's leading comment header: each line from
+    // line 1 to Last is a comment or blank, so that no code ships as a notice and a range cannot start
+    // inside a /* */ comment or a string that an earlier line opened. A line inside a /* */ comment
+    // counts as a comment. A line that holds NEL, LS or PS fails, because C# ends a line there too, so
+    // code could follow a "//" comment on what reads here as one line; so does a line that ends in a
+    // backslash or holds the trigraph ??/, which C splices with the next line, so that "*\" and "/"
+    // could close a comment. The text is the lines without the blank or white-space lines at its end,
+    // and one line break; a range of blank lines alone holds no notice.
     public static string Lines(string text, LineRange range, string name)
     {
         var lines = text[..^1].Split('\n');
@@ -853,18 +862,29 @@ internal static partial class UpstreamUrl
                 $"the lines {range.First} to {range.Last} run past the end of {name}, which has {lines.Length} lines.");
         }
 
+        const string Header = "a range lies within the leading comment header of a source file, so that no code "
+            + "ships as a notice.";
         var inComment = false;
-        for (var number = range.First; number <= range.Last; number++)
+        for (var number = 1; number <= range.Last; number++)
         {
-            if (lines[number - 1].IndexOfAny(s_lineTerminators) >= 0)
+            var where = number < range.First
+                ? $"before the range {range.First} to {range.Last}"
+                : $"in the range {range.First} to {range.Last}";
+            var raw = lines[number - 1];
+            if (raw.IndexOfAny(s_lineTerminators) >= 0)
             {
                 throw new InvalidDataException(
-                    $"line {number} of {name}, in the range {range.First} to {range.Last}, holds NEL, LS or PS, which "
-                        + "end a line in C#; a range takes only the header of a source file, so that no code ships as "
-                        + "a notice.");
+                    $"line {number} of {name}, {where}, holds NEL, LS or PS, which end a line in C#; {Header}");
             }
 
-            var line = lines[number - 1].Trim();
+            if (raw.TrimEnd().EndsWith('\\') || raw.Contains("??/", StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    $"line {number} of {name}, {where}, ends in a backslash or holds ??/, which C splices with the "
+                        + $"next line; {Header}");
+            }
+
+            var line = raw.Trim();
             if (inComment)
             {
                 var end = line.IndexOf("*/", StringComparison.Ordinal);
@@ -885,16 +905,21 @@ internal static partial class UpstreamUrl
             if (line.Length > 0 && !line.StartsWith("//", StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
-                    $"line {number} of {name}, in the range {range.First} to {range.Last}, is neither a comment nor "
-                        + "blank; a range takes only the header of a source file, so that no code ships as a notice.");
+                    $"line {number} of {name}, {where}, is neither a comment nor blank; {Header}");
             }
         }
 
-        var header = string.Join('\n', lines[(range.First - 1)..range.Last]).TrimEnd('\n');
-        return string.IsNullOrWhiteSpace(header)
-            ? throw new InvalidDataException(
-                $"the lines {range.First} to {range.Last} of {name} are blank, so they hold no notice.")
-            : header + "\n";
+        // The last notice line keeps any white space at its end as upstream wrote it.
+        var last = range.Last;
+        while (last >= range.First && string.IsNullOrWhiteSpace(lines[last - 1]))
+        {
+            last--;
+        }
+
+        return last >= range.First
+            ? string.Join('\n', lines[(range.First - 1)..last]) + "\n"
+            : throw new InvalidDataException(
+                $"the lines {range.First} to {range.Last} of {name} are blank, so they hold no notice.");
     }
 
     // \z, not $, which would also match before a final line break.
@@ -2223,10 +2248,11 @@ internal static partial class Output
     // The notices go into build output, never into git: a folder outside the repository, or inside
     // it under build/ or below a bin/ or obj/ folder, which C-0004 section 3 reserves for build
     // output and .gitignore ignores. A device or network path fails: on Windows any full path whose
-    // root is not a drive, which covers \\?\, \\.\, \??\, \??\UNC\ and \\server\share alike. Every
-    // link among the existing folders of the path, and of the repository's, is followed to its final
-    // target first, so that a link under build/ cannot lead into a tracked folder. Returns the full
-    // path.
+    // root is not a drive, which covers \\?\, \\.\, \??\, \??\UNC\ and \\server\share alike, and any
+    // with a ':' after its drive, which names a stream, as docs\A::$INDEX_ALLOCATION does the folder
+    // docs itself, or a path on another drive. Every link among the existing folders of the path, and
+    // of the repository's, is followed to its final target first, so that a link under build/ cannot
+    // lead into a tracked folder. Returns the full path.
     public static string EnsureBuildOutput(string root, string path, string option)
     {
         var device = $"{option} {path} is a device or network path; the notices go into a local build output folder.";
@@ -2236,7 +2262,8 @@ internal static partial class Output
         }
 
         var full = Path.GetFullPath(path, root);
-        if (IsDeviceOrNetwork(full) || (OperatingSystem.IsWindows() && !DriveRoot().IsMatch(full)))
+        if (IsDeviceOrNetwork(full)
+            || (OperatingSystem.IsWindows() && (!DriveRoot().IsMatch(full) || full.IndexOf(':', 2) >= 0)))
         {
             throw new InvalidDataException(device);
         }
@@ -2383,9 +2410,10 @@ internal static partial class Output
         var parts = full[current.Length..].Split(
             [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
             StringSplitOptions.RemoveEmptyEntries);
+        // Path.Join, unlike Path.Combine, never starts over at a part that looks rooted, such as C:x.
         for (var index = 0; index < parts.Length; index++)
         {
-            var next = Path.Combine(current, parts[index]);
+            var next = Path.Join(current, parts[index]);
             var directory = new DirectoryInfo(next);
             FileSystemInfo entry = directory.Exists ? directory : new FileInfo(next);
             if (entry.LinkTarget is not null)
@@ -2396,7 +2424,7 @@ internal static partial class Output
             }
             else if (!entry.Exists)
             {
-                return Path.Combine([next, .. parts[(index + 1)..]]);
+                return Path.Join([next, .. parts[(index + 1)..]]);
             }
 
             current = next;
@@ -3216,6 +3244,21 @@ internal sealed class Fixture
         }
     }
 
+    // A symbolic link to a file, which Windows makes only with a right or in developer mode.
+    public static bool FileLink(string link, string target)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(link)!);
+        try
+        {
+            File.CreateSymbolicLink(link, target);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     private void AddPack(string framework, string id, string version) =>
         Packs.Add(new RuntimePack(framework, id, version, Path.Combine(Root, "packs", id, version)));
 }
@@ -3564,6 +3607,29 @@ internal static partial class SelfTest
                 && Message(() => UpstreamUrl.Lines(Blank, new LineRange(2, 3), "f")) is { } blank
                 && blank.Contains("are blank", StringComparison.Ordinal),
             "a range that ends in blank lines gives a text with one line break at its end, and blank lines alone fail");
+
+        // The scan starts at line 1, so a range cannot start inside a comment or a string that an
+        // earlier line opened, nor below code.
+        static string? refusal(string text, int first, int last) =>
+            Message(() => UpstreamUrl.Lines(text, new LineRange(first, last), "f"));
+        tally.Expect(
+            refusal("/* a\n// b */ int x;\n", 2, 2) is not null
+                && refusal("var s = @\"\n// not a comment\n\";\n", 2, 2) is not null
+                && refusal("// a\n\nint x;\n// b\n", 4, 4) is not null
+                && refusal("// a\n// b\n", 2, 2) is null,
+            "a range lies within the file's leading comment header, so it starts in no comment, string or code above");
+        tally.Expect(
+            refusal("/* a *\\\n/ int x;\n", 1, 2) is { } splice
+                && splice.Contains("ends in a backslash", StringComparison.Ordinal)
+                && refusal("/* a *??/\n/ int x;\n", 1, 2) is { } trigraph
+                && trigraph.Contains("holds ??/", StringComparison.Ordinal)
+                && refusal("// a \\  \n// b\n", 1, 1) is not null,
+            "a range refuses a line that ends in a backslash or holds the trigraph ??/, which C splices with the next");
+        tally.Expect(
+            UpstreamUrl.Lines("// a\n   \n\t\nint x;\n", new LineRange(1, 3), "f") == "// a\n"
+                && UpstreamUrl.Lines("// a  \n\n", new LineRange(1, 2), "f") == "// a  \n",
+            "a range leaves out the lines of white space at its end, and keeps the white space at the end of its last "
+                + "notice line");
     }
 
     private static void FullyRegistered(Tally tally, string root)
@@ -3722,6 +3788,64 @@ internal static partial class SelfTest
                         .SequenceEqual(titles)),
             "each section of THIRD_PARTY_NOTICES.md holds, as ### headings, the titles of the texts of the file of its "
                 + "number");
+
+        // Each section's License and Sources lines against the index, and the body of each of its texts
+        // against the same block of the text file of its number.
+        var markdownLines = markdown.Split('\n');
+        var sectionLines = new Dictionary<string, (string License, string Sources)>(StringComparer.Ordinal);
+        var sectionBodies = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        section = string.Empty;
+        for (var at = 0; at < markdownLines.Length; at++)
+        {
+            var current = markdownLines[at];
+            if (SectionHeading().Match(current) is { Success: true } heading)
+            {
+                section = heading.Groups[1].Value.PadLeft(2, '0');
+                sectionLines[section] = (string.Empty, string.Empty);
+                sectionBodies[section] = [];
+            }
+            else if (section.Length > 0 && current.StartsWith("- License: ", StringComparison.Ordinal))
+            {
+                sectionLines[section] = sectionLines[section] with { License = current["- License: ".Length..] };
+            }
+            else if (section.Length > 0 && current.StartsWith("- Sources: ", StringComparison.Ordinal))
+            {
+                sectionLines[section] = sectionLines[section] with { Sources = current["- Sources: ".Length..] };
+            }
+            else if (section.Length > 0 && current.StartsWith("### ", StringComparison.Ordinal)
+                && at + 2 < markdownLines.Length && markdownLines[at + 2].EndsWith("text", StringComparison.Ordinal))
+            {
+                var fence = markdownLines[at + 2][..^"text".Length];
+                var end = Array.IndexOf(markdownLines, fence, at + 3);
+                var body = end < 0 ? string.Empty : string.Join('\n', markdownLines[(at + 3)..end]) + "\n";
+                sectionBodies[section].Add(body);
+                at = end < 0 ? markdownLines.Length : end;
+            }
+        }
+
+        // A text file's blocks: each starts two lines after its ===== heading and ends before the blank
+        // line of the next heading, or at the end of the file.
+        static List<string> bodies(string content)
+        {
+            var lines = content.Split('\n');
+            var starts = Enumerable.Range(0, lines.Length).Where(at => TextTitle().IsMatch(lines[at])).ToList();
+            var ends = starts.Skip(1).Select(start => start - 1).Append(lines.Length - 1).ToList();
+            return [.. starts.Select((start, index) => string.Join('\n', lines[(start + 2)..ends[index]]) + "\n")];
+        }
+
+        static string sourcesOf(JsonElement component) =>
+            string.Join(", ", component.GetProperty("sources").EnumerateArray().Select(source => source.GetString()));
+        tally.Expect(
+            sectionLines.Count == indexComponents.Count
+                && indexComponents.Select((component, position) => (component, key: $"{position + 1:00}")).All(entry =>
+                    sectionLines.GetValueOrDefault(entry.key) is var (license, sources)
+                        && license == entry.component.GetProperty("license").GetString()
+                        && sources == sourcesOf(entry.component)),
+            "each section of THIRD_PARTY_NOTICES.md gives the License and Sources that the index gives its component");
+        tally.Expect(
+            textFiles.All(file => sectionBodies.GetValueOrDefault(file[..2]) is { } blocks
+                && bodies(File.ReadAllText(Path.Combine(notices, Notices.TextsFolder, file))).SequenceEqual(blocks)),
+            "each text of a section of THIRD_PARTY_NOTICES.md is the same as its block in the text file of its number");
         tally.Expect(
             indexComponents.Select(component => component.GetProperty("text").GetString()).SequenceEqual(paths),
             "the index names each component's text");
@@ -3802,6 +3926,15 @@ internal static partial class SelfTest
                 && !Rejects(() => Output.EnsureBuildOutput(repository, fixture.App, "--app"))
                 && !Rejects(() => Output.EnsureBuildOutput(repository, Path.Combine(fixture.Root, "out"), "--out")),
             "writes into build/, bin/, obj/ or outside the repository, never elsewhere in it");
+        tally.Expect(
+            Rejects(() => Output.EnsureBuildOutput(repository, Path.Combine("DOCS", "notices"), "--out"))
+                && (!(OperatingSystem.IsWindows() || OperatingSystem.IsMacOS())
+                    || Rejects(() => Output.EnsureBuildOutput(
+                        repository,
+                        Path.Combine(repository.ToUpperInvariant(), "docs", "notices"),
+                        "--out"))),
+            "refuses a tracked folder named in another case, and on Windows and macOS also below the repository named "
+                + "in another case");
     }
 
     // Both orders that release-engineering.md promises, through Generate: the components by name
@@ -3913,11 +4046,13 @@ internal static partial class SelfTest
                 + "and keeps that file and its own output");
         tally.Expect(
             keeps("hidden", ".keep", hidden: true)
+                && keeps("hidden-text", Path.Combine(Notices.TextsFolder, ".keep"), hidden: true)
                 && keeps("one-digit", Path.Combine(Notices.TextsFolder, "1-x.txt"))
                 && keeps("upper-case", Path.Combine(Notices.TextsFolder, "01-X.txt"))
                 && keeps("other-ending", Path.Combine(Notices.TextsFolder, "01-x.txt.bak"))
                 && keeps("text-folder", Path.Combine(Notices.TextsFolder, "02-folder.txt", "keep.txt")),
-            "refuses a hidden entry, and among the texts a name other than NN-<name>.txt and a folder, and keeps them");
+            "refuses a hidden entry, also among the texts, and among the texts a name other than NN-<name>.txt and a "
+                + "folder, and keeps them");
 
         // A link among the top-level entries in place of texts/, and a link among the texts to a folder:
         // the folders that they lead to keep their files.
@@ -3936,9 +4071,24 @@ internal static partial class SelfTest
             topLinked && textLinked
                 && Throws(() => Output.Write(topLink, outputs)) && File.Exists(Path.Combine(victim, "01-victim.txt"))
                 && File.Exists(Path.Combine(topLink, Notices.NoticesFile))
+                && File.Exists(Path.Combine(topLink, Notices.IndexFile))
                 && Throws(() => Output.Write(textLink, outputs)) && File.Exists(Path.Combine(inner, "01-x.txt"))
                 && intact(textLink),
             "refuses a link among its own entries, also one among the texts, and keeps what they lead to");
+
+        // A link among the texts to a file, which Windows makes only with a right that the self-test
+        // does not ask for, so the check runs where the link can be made.
+        var fileLink = Path.Combine(fixture.Root, "file-link");
+        Output.Write(fileLink, outputs);
+        var outsideText = Path.Combine(fixture.Root, "outside.txt");
+        Fixture.WriteFile(outsideText, "kept");
+        var fileLinked = Fixture.FileLink(Path.Combine(fileLink, Notices.TextsFolder, "01-x.txt"), outsideText);
+        tally.Expect(
+            fileLinked
+                ? Throws(() => Output.Write(fileLink, outputs)) && File.ReadAllText(outsideText) == "kept"
+                    && intact(fileLink)
+                : OperatingSystem.IsWindows(),
+            "refuses a link to a file among the texts, and keeps its target and its own output");
         // Only the index differs from the tool's own output: another format.
         var other = Path.Combine(fixture.Root, "other-format");
         Output.Write(other, outputs);
@@ -3946,7 +4096,7 @@ internal static partial class SelfTest
         var otherIndex = Path.Combine(other, Notices.IndexFile);
         tally.Expect(
             Throws(() => Output.Write(other, outputs)) && File.Exists(Path.Combine(other, Notices.NoticesFile))
-                && File.ReadAllText(otherIndex).Contains("\"format\": 7", StringComparison.Ordinal),
+                && File.ReadAllText(otherIndex).Contains("\"format\": 7", StringComparison.Ordinal) && intact(other),
             "refuses a folder whose index is of another format, and leaves it as it is");
 
         var fewer = Fixture.Create(root, "fewer");
@@ -3982,6 +4132,31 @@ internal static partial class SelfTest
             devicePaths.All(path => Rejects(() => Output.EnsureBuildOutput(fixture.Repository, path, "--out"))),
             "refuses device paths, \\\\?\\, \\\\.\\ and \\??\\ among them, and network paths");
 
+        // On Windows a ':' after the drive names a stream, and docs\A::$INDEX_ALLOCATION opens the folder
+        // docs itself; Path.Combine would also start over at a part such as C:x. Elsewhere these are
+        // names in the tracked docs/.
+        string[] colonPaths =
+        [
+            @"docs\A::$INDEX_ALLOCATION",
+            @"docs\Z:$I30:$INDEX_ALLOCATION",
+            $@"docs\new\{fixture.Repository}\build\y",
+            @"docs\new\C:x",
+        ];
+        bool refusedAsDevice(string path) =>
+            Message(() => Output.EnsureBuildOutput(fixture.Repository, path, "--out")) is { } refusal
+                && (!OperatingSystem.IsWindows()
+                    || refusal.Contains("is a device or network path", StringComparison.Ordinal));
+        Directory.CreateDirectory(Path.Combine(fixture.Repository, "docs", "new"));
+        var realRepository = Output.RealPath(fixture.Repository);
+        bool keptUnder(params string[] parts) =>
+            Output.RealPath(Path.Join([fixture.Repository, .. parts])) == Path.Join([realRepository, .. parts]);
+        tally.Expect(
+            colonPaths.All(refusedAsDevice)
+                && (!OperatingSystem.IsWindows()
+                    || (keptUnder("docs", "new", "C:x") && keptUnder("docs", "no", "C:x"))),
+            "refuses on Windows a path with a ':' after its drive, and resolves a part such as C:x below the folder "
+                + "that holds it");
+
         // Links that the kernel of macOS and Linux follows part by part, from a made-up tree: build/a
         // leads to ../docs/x, and build/j to a/../y, which is docs/y and not build/y.
         var tree = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -3990,12 +4165,16 @@ internal static partial class SelfTest
             ["/repo/build/j"] = "a/../y",
             ["/repo/build/full"] = "/repo/docs",
             ["/repo/build/loop"] = "loop",
+            ["/repo/build/k"] = "./../docs",
+            ["/repo/build/s"] = "sub/",
+            ["/repo/build/t"] = "s/../../docs",
         };
         string physical(string path) => Output.PhysicalPath(path, part => tree.GetValueOrDefault(part));
         tally.Expect(
             physical("/repo/build/j") == "/repo/docs/y" && physical("/repo/build/j/x") == "/repo/docs/y/x"
                 && physical("/repo/build/full/n") == "/repo/docs/n"
                 && physical("/repo/build/other") == "/repo/build/other"
+                && physical("/repo/build/k/x") == "/repo/docs/x" && physical("/repo/build/t/x") == "/repo/docs/x"
                 && physical("/repo/../../x") == "/x" && Throws(() => physical("/repo/build/loop")),
             "follows a link's target part by part, so that a .. after a link leads to the parent of its target, and "
                 + "refuses a loop of links");
@@ -4200,6 +4379,17 @@ internal static partial class SelfTest
             token is not null && StopCommands().Match(printed().Split('\r', '\n')[0]) is { Success: true } again
                 && again.Groups[1].Value != token,
             "stops workflow commands with a new random token in each run");
+        var ended = new StringWriter();
+        var spoofed = new IOException("Frameworks/a##[error]x\n::error title=Spoof::y");
+        var exitCode = Cli.Fail(ended, actions: true, spoofed);
+        var failedLines = ended.ToString().Split('\r', '\n').Where(line => line.Length > 0).ToArray();
+        tally.Expect(
+            exitCode == 2 && failedLines.Length == 3
+                && StopCommands().Match(failedLines[0]) is { Success: true } stopped
+                && failedLines[1] == "error: Frameworks/a##[error]x%0A::error title=Spoof::y"
+                && failedLines[2] == $"::{stopped.Groups[1].Value}::",
+            "prints the error that ends a run while workflow commands are stopped, its line breaks escaped, and "
+                + "exits with 2");
 
         var listed = new StringWriter();
         var expected = $"{Fixture.Hash(Fixture.ApacheTerms)} {Fixture.ApacheUrl}\n"

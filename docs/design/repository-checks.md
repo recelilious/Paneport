@@ -309,6 +309,8 @@ The `ios` job plants its own failures on every run: it runs the bootstrap agains
 Public material consulted (C-0001 section 6):
 
 - File-based apps: <https://learn.microsoft.com/en-us/dotnet/core/sdk/file-based-apps>
+- How SDK 10.0.403 resolves an `#:include` path, with `Path.GetFullPath` against the folder of the file that includes it: <https://github.com/dotnet/sdk/blob/v10.0.403/src/Microsoft.DotNet.ProjectTools/VirtualProjectBuilder.cs>; and .NET's separator of paths on Linux and macOS, `/` only: <https://github.com/dotnet/runtime/blob/release/10.0/src/libraries/Common/src/System/IO/PathInternal.Unix.cs>
+- Roslyn's white space, U+FEFF and U+001A among it: <https://github.com/dotnet/roslyn/blob/main/src/Compilers/CSharp/Portable/Parser/CharacterInfo.cs>
 - `dotnet run`: <https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-run>
 - `dotnet format`: <https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-format>
 - Trimming options, including `TrimmerSingleWarn` and `TrimmerRootAssembly`: <https://learn.microsoft.com/en-us/dotnet/core/deploying/trimming/trimming-options>

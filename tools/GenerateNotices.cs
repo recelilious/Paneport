@@ -1582,8 +1582,8 @@ internal static partial class Notices
 
         // Whether a component in the main executable is under the LGPL comes from the expression that its
         // register row starts with, which records the license chosen among alternatives, and from the
-        // expressions that its packages declare, where an OR counts only when each alternative names the
-        // LGPL; a note further on in the row does not count.
+        // expressions that its packages declare, where an OR lets it out of the LGPL only through an
+        // alternative of the licenses that the row starts with; a note further on in the row does not count.
         foreach (var name in main.Where(name => name != StaticLgplComponent))
         {
             if (configuration.Register.FirstOrDefault(row => row.Component == name) is { } row
@@ -1617,15 +1617,23 @@ internal static partial class Notices
     private static List<string> Licenses(RegisterRow row, Dictionary<string, List<string>> declared, string name) =>
         [.. Spdx.Leading(row.License), .. (declared.GetValueOrDefault(name) ?? []).SelectMany(Spdx.Licenses)];
 
-    // The LGPL license that the row's leading expression names, or that a declared expression names in
-    // each of its alternatives, or null.
-    private static string? Lgpl(RegisterRow row, List<string> expressions) =>
-        Spdx.Leading(row.License).FirstOrDefault(Spdx.IsLgpl)
+    // The LGPL license that the row's leading expression names, or that a declared expression names
+    // without a way out, or null. A way out is an alternative of the expression's top level that names
+    // at least one license, and only licenses of the row's leading expression, which the register says
+    // Paneport uses; it then names no LGPL license, since the row's arm has already returned any that
+    // the leading expression names. Another alternative, under GPL-2.0, AGPL-3.0, MPL-2.0 or nothing,
+    // leaves the LGPL as the only terms that can be used (C-0003 sections 3 and 5).
+    internal static string? Lgpl(RegisterRow row, List<string> expressions)
+    {
+        var leading = Spdx.Leading(row.License);
+        return leading.FirstOrDefault(Spdx.IsLgpl)
             ?? expressions
                 .Select(Spdx.Alternatives)
-                .Where(alternatives => alternatives.All(alternative => alternative.Any(Spdx.IsLgpl)))
-                .Select(alternatives => alternatives[0].First(Spdx.IsLgpl))
-                .FirstOrDefault();
+                .Where(alternatives => !alternatives.Any(alternative => alternative.Count > 0
+                    && alternative.All(license => leading.Contains(license, StringComparer.Ordinal))))
+                .SelectMany(alternatives => alternatives.SelectMany(alternative => alternative))
+                .FirstOrDefault(Spdx.IsLgpl);
+    }
 
     private static string? Refusal(RegisterRow row) => row.Category switch
     {
@@ -1976,8 +1984,9 @@ internal static partial class Notices
 
     // The expressions that each component's packages declare. Every license that one names is one that
     // the register row of the component names; otherwise the register needs a change first (C-0003
-    // section 6). An expression that names no license, such as an empty one, "()" or "WITH X", fails,
-    // and a package that declares its license otherwise goes into the report.
+    // section 6). An expression that names no license, such as an empty one, "()" or "WITH X", fails, and
+    // so does one with an alternative that names none, such as "MIT OR"; a package that declares its
+    // license otherwise goes into the report.
     private static Dictionary<string, List<string>> Declarations(
         string app,
         BuildInputs build,
@@ -2022,6 +2031,15 @@ internal static partial class Notices
             if (licenses.Count == 0)
             {
                 failures.Add($"{app}: the package {label} declares a license expression that names no license.");
+                continue;
+            }
+
+            // An alternative that names no license, as in "MIT OR" or "() OR LGPL-2.1-only", offers no terms.
+            if (Spdx.Alternatives(expression).Any(alternative => alternative.Count == 0))
+            {
+                failures.Add(
+                    $"{app}: the package {label} declares a license expression that names no license in one of its "
+                        + "alternatives.");
                 continue;
             }
 
@@ -3411,6 +3429,12 @@ internal static partial class SelfTest
                 && alternatives("lgpl-2.1-only or (MIT AND Zlib)") == "lgpl-2.1-only | MIT Zlib"
                 && alternatives("(MIT OR LGPL-2.1-only) AND Zlib") == "MIT LGPL-2.1-only Zlib",
             "splits an SPDX expression into its alternatives at each OR outside parentheses, in any case");
+        var graphicsRow = global::Register.Parse(Fixture.Register).Single(row => row.Component == "Sample.Graphics");
+        tally.Expect(
+            Notices.Lgpl(graphicsRow, ["LGPL-2.1-only OR"]) == "LGPL-2.1-only"
+                && Notices.Lgpl(graphicsRow, ["() OR LGPL-2.1-only"]) == "LGPL-2.1-only"
+                && Notices.Lgpl(graphicsRow, ["MIT OR LGPL-2.1-only"]) is null,
+            "an alternative that names no license is no way out of the LGPL, one of the row's licenses is");
         string[] declared = ["MIT", "LGPL-2.1-only", "Apache-2.0", "lgpl-2.1-or-later"];
         string[] otherLicenses = ["MIT", "LGPL-3.0-only", "GPL-2.0"];
         var needed = FullTerms.Needed(declared);
@@ -4486,7 +4510,7 @@ internal static partial class SelfTest
 
         // The register row alone asks for the full terms, for a component without a package such as a
         // fork's, in each identifier of LGPL-2.1 and in any case.
-        string[] rowLicenses = ["LGPL-2.1-or-later", "LGPL-2.1", "LGPL-2.1+", "lgpl-2.1-or-later"];
+        string[] rowLicenses = ["LGPL-2.1-or-later", "LGPL-2.1", "LGPL-2.1+", "lgpl-2.1-or-later", "LGPL-2.1-only"];
         for (var index = 0; index < rowLicenses.Length; index++)
         {
             var license = rowLicenses[index];
@@ -4609,6 +4633,72 @@ internal static partial class SelfTest
             },
             ["Sample.Graphics, under LGPL-2.1-only, is compiled into the main executable Sample"],
             "and fails when its register row chooses LGPL-2.1-only");
+        Expect(
+            tally,
+            root,
+            "or-chooses-mit-terms",
+            fixture =>
+            {
+                fixture.RegisterText = chosen.RegisterText;
+                fixture.Package("Sample.Graphics.Native", "2.0.0", "expression", Either, null);
+            },
+            ["Sample.Graphics is under LGPL-2.1, but none of its texts holds the full terms of LGPL-2.1"],
+            $"the full-terms rule counts the LGPL alternative of {Either}");
+
+        // An alternative lets the component out of the LGPL only when it names licenses, all of them in the
+        // expression that the row starts with: GPL, AGPL or MPL beside the LGPL leaves only the LGPL.
+        foreach (var (name, expression, lgpl) in new[]
+        {
+            ("gpl", "LGPL-2.1-only OR GPL-2.0-only", "LGPL-2.1-only"),
+            ("gpl-first", "GPL-2.0-only OR LGPL-2.1-only", "LGPL-2.1-only"),
+            ("agpl", "LGPL-2.1-only OR AGPL-3.0-only", "LGPL-2.1-only"),
+            ("mpl", "LGPL-2.1-or-later OR MPL-2.0", "LGPL-2.1-or-later"),
+            ("lgpl-3", "LGPL-2.1-only OR LGPL-3.0-only", "LGPL-2.1-only"),
+            ("and-mit", "LGPL-2.1-only AND MIT", "LGPL-2.1-only"),
+        })
+        {
+            Expect(
+                tally,
+                root,
+                $"way-out-{name}",
+                fixture =>
+                {
+                    var offered = expression.Replace(" OR ", " or ", StringComparison.Ordinal);
+                    fixture.RegisterText = Fixture.Register.Replace(
+                        Fixture.GraphicsLicense,
+                        $"MIT. Its native package is under {offered}.",
+                        StringComparison.Ordinal);
+                    fixture.Package("Sample.Graphics.Native", "2.0.0", "expression", expression, null);
+                },
+                [$"Sample.Graphics, under {lgpl}, is compiled into the main executable Sample"],
+                $"so does a component in it whose package declares {expression}, with a row that starts with MIT");
+        }
+
+        var both = Fixture.Create(root, "or-chooses-mit-and");
+        both.RegisterText = Fixture.Register.Replace(
+            Fixture.GraphicsLicense,
+            "MIT. Its native package is also offered under LGPL-2.1-only and Zlib.",
+            StringComparison.Ordinal);
+        both.Package("Sample.Graphics.Native", "2.0.0", "expression", "MIT OR (LGPL-2.1-only AND Zlib)", null);
+        both.MappingText = chosen.MappingText;
+        tally.Expect(
+            both.Generate(Mode.Release).Failures.Count == 0,
+            "a component in it whose package declares MIT OR (LGPL-2.1-only AND Zlib) passes when its row chooses MIT");
+        foreach (var (name, expression) in new[]
+        {
+            ("lgpl-or", "LGPL-2.1-only OR"),
+            ("empty-or-lgpl", "() OR LGPL-2.1-only"),
+            ("mit-or", "MIT OR"),
+        })
+        {
+            Expect(
+                tally,
+                root,
+                $"alternative-{name}",
+                fixture => fixture.Package("Sample.Graphics.Native", "2.0.0", "expression", expression, null),
+                ["Sample.Graphics.Native 2.0.0 declares a license expression that names no license in one of its"],
+                $"an expression with an alternative that names no license fails: {expression}");
+        }
         Expect(
             tally,
             root,

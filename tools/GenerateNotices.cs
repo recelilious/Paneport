@@ -4538,7 +4538,7 @@ internal static partial class SelfTest
                 root,
                 $"expression-{name}",
                 fixture => fixture.Package("Sample.Graphics.Native", "2.0.0", "expression", expression, null),
-                ["Sample.Graphics.Native 2.0.0 declares a license expression that names no license"],
+                ["Sample.Graphics.Native 2.0.0 declares a license expression that names no license."],
                 $"a license expression that names no license fails: {name}");
         }
         var unexpressed = Fixture.Create(root, "unexpressed");

@@ -509,8 +509,14 @@ internal enum SourceKind
 internal readonly record struct LineRange(int First, int Last);
 
 // Name is the package, the runtime pack's framework, or the SHA-256 of an upstream file; Value is the
-// file, the license, the repository path or the upstream URL.
-internal sealed record TextSource(SourceKind Kind, string Name, string Value, LineRange? Lines = null);
+// file, the license, the repository path or the upstream URL. Terms marks an upstream file that only
+// carries the full terms of a license, by the license's SPDX identifier.
+internal sealed record TextSource(
+    SourceKind Kind,
+    string Name,
+    string Value,
+    LineRange? Lines = null,
+    string? Terms = null);
 
 // A text that a component needs and that no source provides yet, with the reason.
 internal sealed record MissingText(string Text, string Note);
@@ -666,7 +672,10 @@ internal sealed record Mapping(
                 SourceKind.RepositoryFile,
                 string.Empty,
                 RelativePath(element.GetProperty("repository"), where)),
-            ["sha256", "upstream"] or ["lines", "sha256", "upstream"] => UpstreamSource(element, where),
+            ["sha256", "upstream"] or ["lines", "sha256", "upstream"] or ["sha256", "terms", "upstream"]
+                or ["lines", "sha256", "terms", "upstream"] => UpstreamSource(element, where),
+            _ when keys.Contains("terms", StringComparer.Ordinal) => throw new InvalidDataException(
+                $"{where}: only an upstream file takes \"terms\", the license whose full terms it carries."),
             _ => throw new InvalidDataException(
                 $"{where} must name a package with a file or a license, a runtime pack with a file, a repository "
                     + "file, or an upstream file with its SHA-256."),
@@ -695,7 +704,18 @@ internal sealed record Mapping(
                             + "after the last.");
         }
 
-        return new TextSource(SourceKind.Upstream, sha256, url, lines);
+        string? terms = null;
+        if (element.TryGetProperty("terms", out var carried))
+        {
+            terms = carried is { ValueKind: JsonValueKind.String } && carried.GetString() is { } license
+                && FullTerms.Passage(license) is not null
+                    ? license
+                    : throw new InvalidDataException(
+                        $"{where}: \"terms\" of {url} must name a license whose full terms the tool recognizes: "
+                            + $"{string.Join(", ", FullTerms.Known)}.");
+        }
+
+        return new TextSource(SourceKind.Upstream, sha256, url, lines, terms);
     }
 
     private static List<MissingText> Missing(JsonElement element, string component)
@@ -1345,7 +1365,20 @@ internal static partial class FullTerms
             "LGPL-2.1",
             ["LGPL-2.1", "LGPL-2.1-only", "LGPL-2.1-or-later", "LGPL-2.1+"],
             "GNU LESSER GENERAL PUBLIC LICENSE TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION"),
+        (
+            "Unicode-3.0",
+            ["Unicode-3.0"],
+            "to any person obtaining a copy of data files and any associated documentation (the \"Data Files\") or "
+                + "software and any associated documentation (the \"Software\") to deal in the Data Files or Software "
+                + "without restriction"),
     ];
+
+    // The identifiers whose full terms the rules recognize.
+    public static IEnumerable<string> Known => s_terms.SelectMany(terms => terms.Identifiers);
+
+    // The passage that marks the full terms of the license of this identifier, or null.
+    public static string? Passage(string identifier) =>
+        s_terms.FirstOrDefault(terms => terms.Identifiers.Contains(identifier, StringComparer.Ordinal)).Passage;
 
     // Each license among these whose full terms are needed, once, with the passage that marks them.
     public static List<(string License, string Passage)> Needed(IEnumerable<string> licenses) =>
@@ -1760,7 +1793,14 @@ internal static partial class Notices
         SortedSet<string> sources)
     {
         var (owner, repository, commit, file) = UpstreamUrl.Parse(source.Value, Mapping.FilePath);
-        sources.Add($"{owner}/{repository} {commit}");
+
+        // A file that only carries a license's terms, such as another project's copy of Apache-2.0, is
+        // the copy's origin and not a source of the component's code.
+        if (source.Terms is null)
+        {
+            sources.Add($"{owner}/{repository} {commit}");
+        }
+
         var fetch = $"The ios job's step \"{UpstreamUrl.FetchStep}\" fetches it and checks its SHA-256 before the "
             + "notices step.";
         var path = Path.Combine(configuration.Root, UpstreamUrl.Folder, source.Name);
@@ -1781,9 +1821,21 @@ internal static partial class Notices
 
         var name = $"{file} of {owner}/{repository} at commit {commit}";
         var text = TextFile.Decode(bytes, name);
-        return source.Lines is { } lines
+        var block = source.Lines is { } lines
             ? new TextBlock($"lines {lines.First} to {lines.Last} of {name}", UpstreamUrl.Lines(text, lines, name))
             : new TextBlock(name, text);
+        if (source.Terms is not { } terms)
+        {
+            return block;
+        }
+
+        // Titled by the license that it carries, so that a reader does not take it for that project's code.
+        return FullTerms.Passage(terms) is { } passage && FullTerms.Holds(block.Text, passage)
+            ? block with { Title = $"{terms} license, copied from {block.Title}" }
+            : Fail(
+                failures,
+                $"{missing} {Mapping.FilePath} says that {source.Value} carries the full terms of {terms}, but it "
+                    + $"does not hold them.");
     }
 
     // The standard text of the license that a package declares by its expression, with the
@@ -2686,6 +2738,30 @@ internal sealed class Fixture
         Sample terms.
         """;
 
+    public const string UnicodeUrl =
+        "https://raw.githubusercontent.com/sample/data/fedcba9876543210fedcba9876543210fedcba98/LICENSE";
+
+    // The permission of the Unicode License V3, and that of the older Unicode terms, which differ in it.
+    public const string UnicodeTerms =
+        """
+        UNICODE LICENSE V3
+
+        Copyright (c) 2026 Sample Data Holder
+
+        Permission is hereby granted, free of charge, to any person obtaining a
+        copy of data files and any associated documentation (the "Data Files") or
+        software and any associated documentation (the "Software") to deal in the
+        Data Files or Software without restriction.
+        """;
+
+    public const string OlderUnicodeTerms =
+        """
+        Permission is hereby granted, free of charge, to any person obtaining a copy of
+        the Unicode data files and any associated documentation (the "Data Files") or
+        Unicode software and any associated documentation (the "Software") to deal in
+        the Data Files or Software without restriction.
+        """;
+
     // A source file whose header holds a notice, of which the mapping takes lines 1 to 4.
     public const string Header =
         """
@@ -2740,7 +2816,7 @@ internal sealed class Fixture
               "texts": [
                 { "package": "Sample.Apache", "file": "LICENSE.txt" },
                 { "package": "Sample.Apache", "file": "NOTICE.txt" },
-                { "upstream": "{{ApacheUrl}}", "sha256": "<apache-sha256>" }
+                { "upstream": "{{ApacheUrl}}", "sha256": "<apache-sha256>", "terms": "Apache-2.0" }
               ]
             },
             "SteamKit2": {
@@ -3410,6 +3486,21 @@ internal static partial class SelfTest
                 && refusedLines("[1, 2, 3]") && refusedLines("[\"1\", \"4\"]") && refusedLines("[1.5, 4]")
                 && refusedLines("\"1-4\""),
             "a range of lines is [first, last], from line 1, the first not after the last");
+        bool refusedTerms(string to) =>
+            Rejects(() => Mapping.Parse(EditMapping("\"terms\": \"Apache-2.0\"", $"\"terms\": {to}")));
+        tally.Expect(
+            !refusedTerms("\"Unicode-3.0\"") && !refusedTerms("\"LGPL-2.1-only\"") && refusedTerms("\"MIT\"")
+                && refusedTerms("\"apache-2.0\"") && refusedTerms("\"\"") && refusedTerms("1")
+                && refusedTerms("null"),
+            "the license whose terms a text carries is one whose full terms the rules recognize, by its identifier");
+        const string GraphicsText = "{ \"package\": \"Sample.Graphics\", \"file\": \"LICENSE.txt\" }";
+        const string LgplText = "{ \"repository\": \"external/Sample-lgpl/COPYING.LIB\" }";
+        string? marked(string text) => Message(() => Mapping.Parse(
+            EditMapping(text, text.Replace(" }", ", \"terms\": \"Apache-2.0\" }", StringComparison.Ordinal))));
+        tally.Expect(
+            marked(GraphicsText) is { } package && package.Contains("only an upstream file", StringComparison.Ordinal)
+                && marked(LgplText) is { } file && file.Contains("only an upstream file", StringComparison.Ordinal),
+            "only an upstream text is marked as carrying a license's terms");
 
         const string RuntimeText = "{ \"runtimePack\": \"Sample.Runtime.App\", \"file\": \"THIRD-PARTY-NOTICES.TXT\" }";
         string twice(string sha256) => EditMapping(
@@ -3516,6 +3607,13 @@ internal static partial class SelfTest
         tally.Expect(
             ui.Sources.SequenceEqual(uiSources),
             "lists a component's sources sorted, and an upstream text by its repository and commit");
+        var apache = result.Components.Single(component => component.Name == "Sample.Apache");
+        tally.Expect(
+            apache.Sources.SequenceEqual(["Sample.Apache 3.0.0"])
+                && apache.Texts.Any(text => text.Title == "Apache-2.0 license, copied from LICENSE-2.0.txt of "
+                    + "sample/terms at commit 0123456789abcdef0123456789abcdef01234567"),
+            "titles a text that only carries a license's terms by that license, naming the file it is copied "
+                + "from, and leaves that file's repository out of the sources");
         if (result.Outputs is not { } outputs)
         {
             return;
@@ -4299,6 +4397,41 @@ internal static partial class SelfTest
         Expect(
             tally,
             root,
+            "terms-not-held",
+            fixture => fixture.MappingText = EditMapping(
+                "\"lines\": [1, 4] }",
+                "\"lines\": [1, 4], \"terms\": \"Apache-2.0\" }"),
+            ["missing license text of Sample.Ui", "carries the full terms of Apache-2.0, but it does not hold them"],
+            "an upstream text marked as carrying a license's terms fails when it does not hold them");
+        const string GraphicsText = "{ \"package\": \"Sample.Graphics\", \"file\": \"LICENSE.txt\" }";
+        static string unicode(Fixture fixture, string text)
+        {
+            Fixture.WriteFile(fixture.Upstream(text), text);
+            return EditMapping(
+                GraphicsText,
+                $"{GraphicsText},\n        {{ \"upstream\": \"{Fixture.UnicodeUrl}\", \"sha256\": "
+                    + $"\"{Fixture.Hash(text)}\", \"terms\": \"Unicode-3.0\" }}");
+        }
+
+        var v3 = Fixture.Create(root, "unicode-terms");
+        v3.MappingText = unicode(v3, Fixture.UnicodeTerms);
+        var v3Result = v3.Generate(Mode.Release);
+        tally.Expect(
+            v3Result.Failures.Count == 0
+                && v3Result.Components.Single(component => component.Name == "Sample.Graphics").Texts
+                    .Any(text => text.Title == "Unicode-3.0 license, copied from LICENSE of sample/data at commit "
+                        + "fedcba9876543210fedcba9876543210fedcba98"),
+            "recognizes the full terms of the Unicode License V3 in a text marked as carrying them");
+        Expect(
+            tally,
+            root,
+            "unicode-older-terms",
+            fixture => fixture.MappingText = unicode(fixture, Fixture.OlderUnicodeTerms),
+            ["missing license text of Sample.Graphics", "carries the full terms of Unicode-3.0, but it does not hold"],
+            "but not the older Unicode terms, whose permission names the Unicode data files");
+        Expect(
+            tally,
+            root,
             "range-past-end",
             fixture => fixture.MappingText = EditMapping("\"lines\": [1, 4]", "\"lines\": [1, 99]"),
             ["missing license text of Sample.Ui", "run past the end of src/Header.cs", "which has 7 lines"],
@@ -4323,7 +4456,7 @@ internal static partial class SelfTest
             "apache-terms",
             fixture => fixture.MappingText = EditMapping(
                 $",\n        {{ \"upstream\": \"{Fixture.ApacheUrl}\", \"sha256\": \""
-                    + $"{Fixture.Hash(Fixture.ApacheTerms)}\" }}",
+                    + $"{Fixture.Hash(Fixture.ApacheTerms)}\", \"terms\": \"Apache-2.0\" }}",
                 string.Empty),
             ["Sample.Apache is under Apache-2.0, but none of its texts holds the full terms of Apache-2.0"],
             "an Apache-2.0 component with a short notice and no full terms fails");

@@ -126,8 +126,22 @@
           "lines": [1, 3]
         },
         {
+          "upstream": "https://raw.githubusercontent.com/AvaloniaUI/Avalonia/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Avalonia.Base/Utilities/SpringSolver.cs",
+          "sha256": "f10c8be8167c90c8a686d6994ea76412c69e349d8294de9ea84cac862a679be4",
+          "lines": [1, 26]
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/fribidi/linear-reorder/f2f872257d4d8b8e137fcf831f254d6d4db79d3c/linear-reorder.c",
+          "sha256": "a7d0a99b14421dc341de063cc4100201dc9a7db0cf9d6e2f48720892a6bba40e",
+          "lines": [1, 38]
+        },
+        {
           "upstream": "https://raw.githubusercontent.com/kubernetes/kubernetes/d30db1f9a915aa95402e1190461469a1889d92be/LICENSE",
           "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/ascora/LottieSharp/ab704fa19297edd25fabf7522f6441e64712adde/LICENSE",
+          "sha256": "f6b84f94878ea0832c5876a583a78da654414d960dc9fc3fc6d2e2034196240f"
         },
         {
           "upstream": "https://raw.githubusercontent.com/foliojs/linebreak/c7873ab973ca11576c50e49803b1fecbe531ed96/LICENSE",
@@ -136,9 +150,19 @@
         {
           "upstream": "https://raw.githubusercontent.com/foliojs/unicode-trie/8ab9b14025ff7c26c2aec1bbd1e71d5f83eb3bd1/LICENSE",
           "sha256": "43439dbd4f43837aadab215cdbe5a422cc6323a50c4ea84d8d6bbc3671666a1d"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/HandyOrg/HandyControl/3f384cb0c2cb3992575b8cc0fdd2672e5063b7f0/LICENSE",
+          "sha256": "837a7bf3110bd614cf09ea15782a20bc2849512ce154ad3397b2ba769a30b8d3"
         }
       ],
-      "note": "Avalonia's packages declare MIT and ship no license or notice file; their nuspecs record the repository commit 2d79ba55 of 12.1.4. The texts come from that commit: licence.md, Avalonia's own license as upstream wrote it, and NOTICE.md, the notices of the third-party code inside Avalonia.Base and Avalonia.Controls (WPF, the Silverlight Toolkit under Ms-PL, wayland-protocols, Metsys.Bson, RichTextKit under Apache-2.0, Mono, Collections.Pooled, EllipticalArc.java, WinUI, Chromium, Flutter and Reactive Extensions). Lines 1 to 3 of BiDiAlgorithm.cs hold the notice of Six Labors, the other holder of Apache-2.0 code in Avalonia.Base, which NOTICE.md does not list. The full Apache-2.0 text, which that code needs, comes from a pinned copy that is byte for byte the text at apache.org/licenses/LICENSE-2.0.txt, since RichTextKit's license.txt holds only the short notice. LineBreak.cs and UnicodeTrie.cs say that they are ported from foliojs/linebreak and foliojs/unicode-trie, so their MIT licenses follow."
+      "missing": [
+        {
+          "text": "the notice of the Stack Overflow answer https://stackoverflow.com/a/15994225, whose computation and comments PinchGestureRecognizer.cs in Avalonia.Base takes",
+          "note": "Stack Overflow publishes its answers under CC BY-SA, which C-0003 section 5 does not list, and no file on raw.githubusercontent.com holds the notice; the coverage review of M9.1 decides with recelilious whether and how it ships (docs/design/release-engineering.md section 10)."
+        }
+      ],
+      "note": "Avalonia's packages declare MIT and ship no license or notice file; their nuspecs record the repository commit 2d79ba55 of 12.1.4. The texts come from that commit and from the projects that its code names as sources. licence.md is Avalonia's own license as upstream wrote it. NOTICE.md holds the notices of the third-party code in Avalonia's repository, part of which is inside the shipped assemblies, such as Avalonia.Base, Avalonia.Controls and Avalonia.Skia: WPF, the Silverlight Toolkit under Ms-PL, wayland-protocols, Metsys.Bson, RichTextKit under Apache-2.0, Mono, Collections.Pooled, EllipticalArc.java, WinUI, Chromium, Flutter and Reactive Extensions; Metsys.Bson is in Avalonia.Remote.Protocol, which neither bundle holds. Lines 1 to 3 of BiDiAlgorithm.cs hold the notice of Six Labors, the other holder of Apache-2.0 code in Avalonia.Base, which NOTICE.md does not list. Lines 1 to 26 of SpringSolver.cs hold Apple's BSD-2-Clause notice of the WebKit code that it ports, and lines 1 to 38 of fribidi/linear-reorder's linear-reorder.c Google's notice of the reordering that BidiReorderer.cs ports. The full Apache-2.0 text comes from a pinned copy that is byte for byte the text at apache.org/licenses/LICENSE-2.0.txt, since RichTextKit's license.txt holds only the short notice. LottieSharp's LICENSE of 2018 is Apache-2.0 with the copyright of Ascora GmbH, under which ColorAnimator.cs took its color interpolation before LottieSharp moved to MIT in 2022. LineBreak.cs and UnicodeTrie.cs are ported from foliojs/linebreak and foliojs/unicode-trie, and RelativePanel.cs in Avalonia.Controls from HandyControl, so their MIT licenses follow. docs/design/release-engineering.md section 4 records the scan of the shipped assemblies' source that found these notices."
     },
     "Avalonia.BuildServices": {
       "texts": [

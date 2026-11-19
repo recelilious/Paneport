@@ -121,8 +121,8 @@ internal static class Cli
     public static int Usage()
     {
         Console.Error.WriteLine(
-            "usage: dotnet run tools/GenerateNotices.cs -- --mode ios|release --project <app.csproj> --app <bundle.app> "
-                + "[--out <folder>] | --self-test");
+            "usage: dotnet run tools/GenerateNotices.cs -- --mode ios|release --project <app.csproj> "
+                + "--app <bundle.app> [--out <folder>] | --self-test");
         return 2;
     }
 
@@ -203,9 +203,10 @@ internal static partial class MitTemplate
     public static string Validate(string text)
     {
         var normalized = TextFile.Normalize(text);
-        return CopyrightLine().IsMatch(normalized) && normalized.Contains("Permission is hereby granted", StringComparison.Ordinal)
-            ? normalized
-            : throw new InvalidDataException($"{FilePath} is not the MIT license with a copyright line.");
+        return CopyrightLine().IsMatch(normalized)
+            && normalized.Contains("Permission is hereby granted", StringComparison.Ordinal)
+                ? normalized
+                : throw new InvalidDataException($"{FilePath} is not the MIT license with a copyright line.");
     }
 
     public static string Apply(string template, string copyright) =>
@@ -293,10 +294,9 @@ internal static class BuildQuery
                     }
 
                     var pack = new RuntimePack(
-                        Metadata(item, "FrameworkName") ?? throw new InvalidDataException("a runtime pack has no FrameworkName."),
-                        Metadata(item, "NuGetPackageId") ?? throw new InvalidDataException("a runtime pack has no NuGetPackageId."),
-                        Metadata(item, "NuGetPackageVersion")
-                            ?? throw new InvalidDataException("a runtime pack has no NuGetPackageVersion."),
+                        Required(item, "FrameworkName"),
+                        Required(item, "NuGetPackageId"),
+                        Required(item, "NuGetPackageVersion"),
                         folder);
                     if (packs.Any(other => other.Framework == pack.Framework))
                     {
@@ -320,6 +320,9 @@ internal static class BuildQuery
             && value.GetString() is { Length: > 0 } text
             ? text
             : null;
+
+    private static string Required(JsonElement item, string name) =>
+        Metadata(item, name) ?? throw new InvalidDataException($"a runtime pack has no {name}.");
 
     private static string Dotnet(string workingDirectory, params string[] arguments)
     {
@@ -405,16 +408,19 @@ internal static class LockFiles
                         continue;
                     }
 
-                    var version = entry.Value.TryGetProperty("resolved", out var resolved) ? resolved.GetString() : null;
+                    var version = entry.Value.TryGetProperty("resolved", out var resolved)
+                        ? resolved.GetString()
+                        : null;
                     if (string.IsNullOrEmpty(version))
                     {
                         throw new InvalidDataException($"the lock file gives {entry.Name} no resolved version.");
                     }
 
-                    if (!packages.Any(package => string.Equals(package.Id, entry.Name, StringComparison.OrdinalIgnoreCase)
-                        && package.Version == version))
+                    var package = new LockedPackage(entry.Name, version);
+                    if (!packages.Any(other => string.Equals(other.Id, package.Id, StringComparison.OrdinalIgnoreCase)
+                        && other.Version == package.Version))
                     {
-                        packages.Add(new LockedPackage(entry.Name, version));
+                        packages.Add(package);
                     }
                 }
             }
@@ -504,7 +510,9 @@ internal sealed record Mapping(
                 }
 
                 var texts = entry["texts"].EnumerateArray().Select(text => Source(text, property.Name)).ToList();
-                var credit = entry.TryGetValue("credit", out var value) ? Text(value, $"{property.Name}: \"credit\"") : null;
+                var credit = entry.TryGetValue("credit", out var value)
+                    ? Text(value, $"{property.Name}: \"credit\"")
+                    : null;
                 if (entry.TryGetValue("note", out var note))
                 {
                     Note(note, property.Name);
@@ -549,7 +557,8 @@ internal sealed record Mapping(
                 string.Empty,
                 RelativePath(element.GetProperty("repository"), where)),
             _ => throw new InvalidDataException(
-                $"{where} must name a package with a file or a license, a runtime pack with a file, or a repository file."),
+                $"{where} must name a package with a file or a license, a runtime pack with a file, or a "
+                    + "repository file."),
         };
     }
 
@@ -604,10 +613,10 @@ internal sealed record Mapping(
     private static string RelativePath(JsonElement element, string where)
     {
         var path = Text(element, where);
-        return path.StartsWith('/') || path.Contains('\\', StringComparison.Ordinal) || path.Contains(':', StringComparison.Ordinal)
-            || path.Split('/').Any(part => part is "" or "." or "..")
-            ? throw new InvalidDataException($"{where}: {path} must be a relative path that stays below its folder.")
-            : path;
+        return path.StartsWith('/') || path.Contains('\\', StringComparison.Ordinal)
+            || path.Contains(':', StringComparison.Ordinal) || path.Split('/').Any(part => part is "" or "." or "..")
+                ? throw new InvalidDataException($"{where}: {path} must be a relative path below its folder.")
+                : path;
     }
 }
 
@@ -620,7 +629,8 @@ internal static class Glob
     {
         var parts = pattern.Split('/');
         if (pattern.StartsWith('/') || pattern.Contains('\\', StringComparison.Ordinal)
-            || parts.Any(part => part is "" or "." or ".." || (part.Contains("**", StringComparison.Ordinal) && part != "**")))
+            || parts.Any(part => part is "" or "." or ".."
+                || (part.Contains("**", StringComparison.Ordinal) && part != "**")))
         {
             throw new InvalidDataException(
                 $"the path {pattern} must be relative to the bundle, and \"**\" must be a whole part of it.");
@@ -771,7 +781,8 @@ internal static class PropertyList
                 throw new InvalidDataException("its dictionary has a value without a key.");
             }
 
-            if (elements[index + 1].Name.LocalName == "string" && !values.TryAdd(elements[index].Value, elements[index + 1].Value))
+            if (elements[index + 1].Name.LocalName == "string"
+                && !values.TryAdd(elements[index].Value, elements[index + 1].Value))
             {
                 throw new InvalidDataException("its dictionary gives a key twice.");
             }
@@ -868,7 +879,9 @@ internal sealed class BinaryPropertyList
         }
 
         var offset = Read(_table + ((long)index * _offsetSize), _offsetSize);
-        return offset >= 8 && offset < (ulong)_table ? (long)offset : throw Unreadable("an object offset is out of range");
+        return offset >= 8 && offset < (ulong)_table
+            ? (long)offset
+            : throw Unreadable("an object offset is out of range");
     }
 
     private ulong Read(long position, int size)
@@ -941,10 +954,10 @@ internal sealed record PackageDescription(string? LicenseType, string? License, 
         try
         {
             using var reader = XmlReader.Create(path, settings);
-            var metadata = XDocument.Load(reader).Root?.Elements().FirstOrDefault(element => element.Name.LocalName == "metadata")
+            var metadata = Child(XDocument.Load(reader).Root, "metadata")
                 ?? throw new InvalidDataException($"the description of {id} has no metadata.");
-            var license = metadata.Elements().FirstOrDefault(element => element.Name.LocalName == "license");
-            var copyright = metadata.Elements().FirstOrDefault(element => element.Name.LocalName == "copyright")?.Value.Trim();
+            var license = Child(metadata, "license");
+            var copyright = Child(metadata, "copyright")?.Value.Trim();
             return new PackageDescription(
                 license?.Attribute("type")?.Value,
                 license?.Value.Trim(),
@@ -955,6 +968,10 @@ internal sealed record PackageDescription(string? LicenseType, string? License, 
             throw new InvalidDataException($"the description of {id} cannot be read: {exception.Message}");
         }
     }
+
+    // A .nuspec puts its elements in a namespace of its schema's version, so they are found by local name.
+    private static XElement? Child(XElement? parent, string name) =>
+        parent?.Elements().FirstOrDefault(element => element.Name.LocalName == name);
 }
 
 // The licenses that an SPDX expression names, and whether a register row's License text names one.
@@ -1090,7 +1107,8 @@ internal static partial class Notices
             var component = configuration.Map.ComponentFor(Kind.Package, package.Id);
             if (component is null)
             {
-                failures.Add($"{app}: the package {package.Id} of {build.LockFile} has no row in {LicenseMap.FilePath}.");
+                failures.Add(
+                    $"{app}: the package {package.Id} of {build.LockFile} has no row in {LicenseMap.FilePath}.");
             }
             else if (!main.Contains(component))
             {
@@ -1167,15 +1185,18 @@ internal static partial class Notices
         }
 
         CheckDeclaredLicenses(app, build, configuration, failures);
-        var unused = configuration.Mapping.Files.Select(rule => rule.Pattern).Where(pattern => !used.Contains(pattern)).ToList();
+        var unused = configuration.Mapping.Files
+            .Select(rule => rule.Pattern)
+            .Where(pattern => !used.Contains(pattern))
+            .ToList();
         var outputs = failures.Count == 0 ? Render(bundle, components) : null;
         return new Result(failures, warnings, coverage, main, components, unused, outputs);
     }
 
     private static string? Refusal(RegisterRow row) => row.Category switch
     {
-        "Under review" => "is Under review in the register, and nothing under review ships until its review is recorded "
-            + "(C-0003 section 5, C-0009 section 4).",
+        "Under review" => "is Under review in the register, and nothing under review ships until its review is "
+            + "recorded (C-0003 section 5, C-0009 section 4).",
         "Forbidden" => "is Forbidden in the register and never enters the app package (C-0003 section 5).",
         "Tool" => "is a build tool in the register, and a Tool row covers nothing that ships (C-0003 section 5).",
         _ => null,
@@ -1192,9 +1213,12 @@ internal static partial class Notices
         List<string> failures)
     {
         var sources = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var package in build.Packages.Where(package => configuration.Map.ComponentFor(Kind.Package, package.Id) == name))
+        foreach (var package in build.Packages)
         {
-            sources.Add($"{package.Id} {package.Version}");
+            if (configuration.Map.ComponentFor(Kind.Package, package.Id) == name)
+            {
+                sources.Add($"{package.Id} {package.Version}");
+            }
         }
 
         if (!configuration.Mapping.Components.TryGetValue(name, out var entry))
@@ -1225,7 +1249,9 @@ internal static partial class Notices
                     + $"section 5). Give it a credit in {Mapping.FilePath}.");
         }
 
-        return failures.Count == before ? new ComponentNotice(name, row, [.. sources], entry.Credit, texts, files) : null;
+        return failures.Count == before
+            ? new ComponentNotice(name, row, [.. sources], entry.Credit, texts, files)
+            : null;
     }
 
     private static TextBlock? Text(
@@ -1299,7 +1325,8 @@ internal static partial class Notices
         {
             return Fail(
                 failures,
-                $"{missing} the tool builds the text of MIT only, not of {source.Value}; name a file of {label} instead.");
+                $"{missing} the tool builds the text of MIT only, not of {source.Value}; name a file of {label} "
+                    + "instead.");
         }
 
         if (PackageDescription.Read(folder, package.Id) is not { } description)
@@ -1318,7 +1345,8 @@ internal static partial class Notices
         }
 
         return new TextBlock(
-            $"MIT license, with the copyright line of the package {label}, which declares MIT and ships no license file",
+            $"MIT license, with the copyright line of the package {label}, which declares MIT and ships no "
+                + "license file",
             MitTemplate.Apply(configuration.MitText, copyright));
     }
 
@@ -1362,11 +1390,14 @@ internal static partial class Notices
 
         foreach (var (label, folder, kind, key) in folders.Where(candidate => Directory.Exists(candidate.Folder)))
         {
-            var files = Directory.EnumerateFiles(folder).Select(path => Path.GetFileName(path)).Order(StringComparer.Ordinal);
+            var files = Directory.EnumerateFiles(folder)
+                .Select(path => Path.GetFileName(path))
+                .Order(StringComparer.Ordinal);
             foreach (var file in files)
             {
                 if (NoticeFileName().IsMatch(file)
-                    && !entry.Texts.Any(text => text.Kind == kind && string.Equals(text.Name, key, StringComparison.OrdinalIgnoreCase)
+                    && !entry.Texts.Any(text => text.Kind == kind
+                        && string.Equals(text.Name, key, StringComparison.OrdinalIgnoreCase)
                         && string.Equals(text.Value, file, StringComparison.OrdinalIgnoreCase)))
                 {
                     failures.Add(
@@ -1379,7 +1410,11 @@ internal static partial class Notices
 
     // Every license that a package declares by its expression is one that the register row of its
     // component names; otherwise the register needs a change first (C-0003 section 6).
-    private static void CheckDeclaredLicenses(string app, BuildInputs build, Configuration configuration, List<string> failures)
+    private static void CheckDeclaredLicenses(
+        string app,
+        BuildInputs build,
+        Configuration configuration,
+        List<string> failures)
     {
         foreach (var package in build.Packages)
         {
@@ -1398,7 +1433,8 @@ internal static partial class Notices
 
             if (description is { LicenseType: "expression", License: { } expression })
             {
-                foreach (var license in Spdx.Licenses(expression).Where(license => !Spdx.Mentions(row.License, license)))
+                var unnamed = Spdx.Licenses(expression).Where(license => !Spdx.Mentions(row.License, license));
+                foreach (var license in unnamed)
                 {
                     failures.Add(
                         $"{app}: the package {label} declares {license}, which the register row {component} does not "
@@ -1412,8 +1448,9 @@ internal static partial class Notices
     {
         var width = Math.Max(2, components.Count.ToString(CultureInfo.InvariantCulture).Length);
         var paths = components
-            .Select((component, index) =>
-                $"{TextsFolder}/{(index + 1).ToString(CultureInfo.InvariantCulture).PadLeft(width, '0')}-{Slug(component.Name)}.txt")
+            .Select((component, index) => (index + 1).ToString(CultureInfo.InvariantCulture).PadLeft(width, '0')
+                + $"-{Slug(component.Name)}.txt")
+            .Select(name => $"{TextsFolder}/{name}")
             .ToList();
         var texts = components.Select((component, index) => (paths[index], PlainText(component))).ToList();
         return new NoticeOutputs(Markdown(bundle, components, paths), Index(components, paths), texts);
@@ -1446,8 +1483,8 @@ internal static partial class Notices
         var builder = new StringBuilder();
         builder.Append("# Third-party notices\n\n");
         builder.Append(Inline(bundle.Title)).Append(version).Append(" contains the third-party components below. ");
-        builder.Append("Paneport's own code is under the MIT license. Each component keeps its own license, so the app as ");
-        builder.Append("a whole is not under the MIT license.\n\n");
+        builder.Append("Paneport's own code is under the MIT license. Each component keeps its own license, so the ");
+        builder.Append("app as a whole is not under the MIT license.\n\n");
         builder.Append("| # | Component | License |\n|---|---|---|\n");
         for (var index = 0; index < components.Count; index++)
         {
@@ -1455,10 +1492,10 @@ internal static partial class Notices
             builder.Append(Cell(components[index].Row.License)).Append(" |\n");
         }
 
-        builder.Append("\nEach section below gives a component's sources and the full text of its license and notices. ");
-        builder.Append(CultureInfo.InvariantCulture, $"The folder `{TextsFolder}` beside this file holds the same texts, ");
-        builder.Append(CultureInfo.InvariantCulture, $"one file per component, and `{IndexFile}` lists them in this order ");
-        builder.Append("for the app's licenses screen.\n");
+        builder.Append("\nEach section below gives a component's sources and the full text of its license and ");
+        builder.Append(CultureInfo.InvariantCulture, $"notices. The folder `{TextsFolder}` beside this file holds ");
+        builder.Append(CultureInfo.InvariantCulture, $"the same texts, one file per component, and `{IndexFile}` ");
+        builder.Append("lists them in this order for the app's licenses screen.\n");
         for (var index = 0; index < components.Count; index++)
         {
             var component = components[index];
@@ -1567,7 +1604,8 @@ internal static class Output
     public static void EnsureBuildOutput(string root, string path, string option)
     {
         var relative = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
-        if (Path.IsPathRooted(relative) || relative == ".." || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+        if (Path.IsPathRooted(relative) || relative == ".."
+            || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
         {
             return;
         }
@@ -1579,8 +1617,8 @@ internal static class Output
         }
 
         throw new InvalidDataException(
-            $"{option} {relative.Replace('\\', '/')} is in the repository outside build/, bin/ and obj/; the notices go "
-                + "into build output, never into git.");
+            $"{option} {relative.Replace('\\', '/')} is in the repository outside build/, bin/ and obj/; the "
+                + "notices go into build output, never into git.");
     }
 
     // Writes the notices into a folder, replacing the tool's own earlier output there and nothing else.
@@ -1617,10 +1655,10 @@ internal static class Output
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllText(index));
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty("format", out var format) && format.ValueKind == JsonValueKind.Number
-                && document.RootElement.TryGetProperty("components", out var components)
-                && components.ValueKind == JsonValueKind.Array;
+            var root = document.RootElement;
+            return root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("format", out var format) && format.ValueKind == JsonValueKind.Number
+                && root.TryGetProperty("components", out var components) && components.ValueKind == JsonValueKind.Array;
         }
         catch (JsonException)
         {
@@ -1634,14 +1672,20 @@ internal static class Output
 
 internal static class Report
 {
-    public static void Print(Bundle bundle, BuildInputs build, Configuration configuration, Mode mode, Result result, TextWriter output)
+    public static void Print(
+        Bundle bundle,
+        BuildInputs build,
+        Configuration configuration,
+        Mode mode,
+        Result result,
+        TextWriter output)
     {
         var annotate = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true";
         var app = bundle.Name;
         output.WriteLine($"Third-party notices of {app}, in {(mode == Mode.Ios ? "ios" : "release")} mode");
         output.WriteLine(
-            $"Register: {configuration.Register.Count} rows. Mapping: {configuration.Mapping.Files.Count} file rules and "
-                + $"the texts of {configuration.Mapping.Components.Count} components. {build.LockFile}: "
+            $"Register: {configuration.Register.Count} rows. Mapping: {configuration.Mapping.Files.Count} file "
+                + $"rules and the texts of {configuration.Mapping.Components.Count} components. {build.LockFile}: "
                 + $"{build.Packages.Count} packages.");
         foreach (var pack in build.RuntimePacks)
         {
@@ -1651,7 +1695,9 @@ internal static class Report
         output.WriteLine($"Coverage of {result.Coverage.Count} files:");
         foreach (var attribution in result.Coverage)
         {
-            var components = attribution.Components.Count == 0 ? "(no component)" : string.Join(", ", attribution.Components);
+            var components = attribution.Components.Count == 0
+                ? "(no component)"
+                : string.Join(", ", attribution.Components);
             var role = attribution.File == bundle.Executable ? " (main executable)" : string.Empty;
             output.WriteLine($"  {attribution.File}{role}: {components}");
         }
@@ -1780,7 +1826,7 @@ internal sealed class Fixture
         | Sample.Runtime | A runtime | MIT | Allowed |
         | Sample.Platform | Platform bindings | MIT | Allowed |
         | Sample.Ui | A user interface library | MIT | Allowed |
-        | Sample.Graphics | A graphics library | MIT. Its native package lists further components in its notices. | Allowed |
+        | Sample.Graphics | A graphics library | MIT. Its native package lists more components. | Allowed |
         | Sample.Apache | A protocol library | Apache-2.0 | Allowed |
         | Sample.Fonts | Font rendering | FTL or GPL-2.0 | Allowed, under FTL |
         | SteamKit2 | A network protocol | LGPL-2.1-only | Conditional |
@@ -1819,7 +1865,7 @@ internal sealed class Fixture
             { "path": "Sample.App.*", "components": ["Paneport"], "note": "Our assembly." },
             { "path": "Ui.*", "components": ["Sample.Ui"], "note": "The library." },
             { "path": "Graphics.dll", "components": ["Sample.Graphics"], "note": "Its assembly." },
-            { "path": "Frameworks/libgraphics.framework/**", "components": ["Sample.Graphics"], "note": "Its library." },
+            { "path": "Frameworks/libgraphics.framework/**", "components": ["Sample.Graphics"], "note": "Native." },
             { "path": "Apache.*", "components": ["Sample.Apache"], "note": "Its assembly." },
             { "path": "SteamKit2.*", "components": ["SteamKit2"], "note": "Its assembly." },
             { "path": "System.*", "components": ["Sample.Runtime"], "note": "The runtime's assemblies." },
@@ -1846,7 +1892,7 @@ internal sealed class Fixture
             "SteamKit2": { "texts": [{ "package": "SteamKit2", "file": "license.txt" }] },
             "Sample.Fonts": {
               "texts": [{ "package": "Sample.Fonts.Native", "file": "LICENSE.TXT" }],
-              "credit": "Portions of this software are copyright (c) 2026 The Sample Font Project. All rights reserved.",
+              "credit": "Portions of this software are copyright (c) 2026 The Sample Font Project.",
               "note": "The FTL asks for this credit."
             },
             "Sample.Runtime": {
@@ -1872,7 +1918,7 @@ internal sealed class Fixture
         THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
         """;
 
-    public const string Credit = "Portions of this software are copyright (c) 2026 The Sample Font Project. All rights reserved.";
+    public const string Credit = "Portions of this software are copyright (c) 2026 The Sample Font Project.";
 
     private static readonly string[] s_appFiles =
     [
@@ -1926,11 +1972,11 @@ internal sealed class Fixture
     public static Fixture Create(string parent, string name)
     {
         var fixture = new Fixture(Path.Combine(parent, name));
-        fixture.Packs.Add(new RuntimePack("Sample.Runtime.App", "Sample.Runtime.Pack", "6.0.0", fixture.Pack("Sample.Runtime.Pack", "6.0.0")));
-        fixture.Packs.Add(new RuntimePack("Sample.Platform", "Sample.Platform.Pack", "7.0.0", fixture.Pack("Sample.Platform.Pack", "7.0.0")));
+        fixture.AddPack("Sample.Runtime.App", "Sample.Runtime.Pack", "6.0.0");
+        fixture.AddPack("Sample.Platform", "Sample.Platform.Pack", "7.0.0");
         fixture.Package("Sample.Ui", "1.0.0", "expression", "MIT", "Copyright 2020 Sample UI Authors");
         fixture.Package("Sample.Ui.Extra", "1.0.0", "expression", "MIT", "Copyright 2020 Sample UI Authors");
-        fixture.Package("Sample.Graphics", "2.0.0", "file", "LICENSE.txt", null, ("LICENSE.txt", "Sample graphics license text."));
+        fixture.Package("Sample.Graphics", "2.0.0", "file", "LICENSE.txt", null, ("LICENSE.txt", "Sample graphics."));
         fixture.Package(
             "Sample.Graphics.Native",
             "2.0.0",
@@ -1946,12 +1992,13 @@ internal sealed class Fixture
             null,
             ("LICENSE.txt", "Sample Apache license text."),
             ("NOTICE.txt", "Sample Apache NOTICE text."));
-        fixture.Package("SteamKit2", "4.0.0", "expression", "LGPL-2.1-only", null, ("license.txt", "Sample LGPL license text."));
-        fixture.Package("Sample.Fonts.Native", "5.0.0", "expression", "FTL", null, ("LICENSE.TXT", "Sample font license text."));
-        WriteFile(Path.Combine(fixture.Packs[0].Folder, "LICENSE.TXT"), "Sample runtime license text.\r\nSecond line.\r\n");
-        WriteFile(Path.Combine(fixture.Packs[0].Folder, "THIRD-PARTY-NOTICES.TXT"), "Sample runtime notices.");
+        fixture.Package("SteamKit2", "4.0.0", "expression", "LGPL-2.1-only", null, ("license.txt", "Sample LGPL."));
+        fixture.Package("Sample.Fonts.Native", "5.0.0", "expression", "FTL", null, ("LICENSE.TXT", "Sample font."));
+        var runtime = fixture.Packs[0].Folder;
+        WriteFile(Path.Combine(runtime, "LICENSE.TXT"), "Sample runtime license text.\r\nSecond line.\r\n");
+        WriteFile(Path.Combine(runtime, "THIRD-PARTY-NOTICES.TXT"), "Sample runtime notices.");
         WriteFile(Path.Combine(fixture.Packs[1].Folder, "LICENSE"), "Sample platform license text.");
-        WriteFile(Path.Combine(fixture.Repository, "external", "Sample-lgpl", "COPYING.LIB"), "Sample LGPL library text.");
+        WriteFile(Path.Combine(fixture.Repository, "external", "Sample-lgpl", "COPYING.LIB"), "Sample LGPL library.");
         foreach (var file in s_appFiles)
         {
             WriteFile(Path.Combine(fixture.App, file), $"sample content of {file}");
@@ -1990,9 +2037,15 @@ internal sealed class Fixture
         File.WriteAllText(path, xml.ToString());
     }
 
-    public void Package(string id, string version, string licenseType, string license, string? copyright, params (string Name, string Text)[] files)
+    public void Package(
+        string id,
+        string version,
+        string licenseType,
+        string license,
+        string? copyright,
+        params (string Name, string Text)[] files)
     {
-        var folder = Path.Combine(Packages, id.ToLowerInvariant(), version);
+        var folder = PackageFolder(id, version);
         var copyrightElement = copyright is null ? string.Empty : $"\n    <copyright>{copyright}</copyright>";
         WriteFile(
             Path.Combine(folder, $"{id.ToLowerInvariant()}.nuspec"),
@@ -2012,8 +2065,9 @@ internal sealed class Fixture
         }
     }
 
-    public string PackageFile(string id, string version, string file) =>
-        Path.Combine(Packages, id.ToLowerInvariant(), version, file);
+    public string PackageFolder(string id, string version) => Path.Combine(Packages, id.ToLowerInvariant(), version);
+
+    public string PackageFile(string id, string version, string file) => Path.Combine(PackageFolder(id, version), file);
 
     public static void WriteFile(string path, string content)
     {
@@ -2033,19 +2087,26 @@ internal sealed class Fixture
         mode);
 
     // Every file under the fixture's folder, for the check that the tool writes nowhere else.
-    public List<string> Snapshot() =>
-        [.. Directory.EnumerateFiles(Root, "*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0 })
-            .Select(path => Path.GetRelativePath(Root, path).Replace('\\', '/'))
-            .Order(StringComparer.Ordinal)];
+    public List<string> Snapshot()
+    {
+        var options = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0 };
+        return
+        [
+            .. Directory.EnumerateFiles(Root, "*", options)
+                .Select(path => Path.GetRelativePath(Root, path).Replace('\\', '/'))
+                .Order(StringComparer.Ordinal),
+        ];
+    }
 
-    private string Pack(string id, string version) => Path.Combine(Root, "packs", id, version);
+    private void AddPack(string framework, string id, string version) =>
+        Packs.Add(new RuntimePack(framework, id, version, Path.Combine(Root, "packs", id, version)));
 }
 
 internal static partial class SelfTest
 {
     public static int Run()
     {
-        Console.WriteLine("Self-test of tools/GenerateNotices.cs, with fixtures that it generates in a temporary folder.");
+        Console.WriteLine("Self-test of tools/GenerateNotices.cs, with fixtures generated in a temporary folder.");
         var tally = new Tally();
         var root = Path.Combine(Path.GetTempPath(), $"GenerateNotices-{Guid.NewGuid():N}");
         try
@@ -2078,15 +2139,18 @@ internal static partial class SelfTest
             values.GetValueOrDefault("CFBundleExecutable") == "Sample"
                 && values.GetValueOrDefault("CFBundleDisplayName") == Fixture.DisplayName,
             "reads the ASCII and UTF-16 strings of a binary property list");
-        tally.Expect(Rejects(() => PropertyList.TopLevelStrings(binary[..^10])), "rejects a truncated binary property list");
+        tally.Expect(
+            Rejects(() => PropertyList.TopLevelStrings(binary[..^10])),
+            "rejects a truncated binary property list");
         var damaged = binary.ToArray();
         damaged[^1] = 0xFF;
         tally.Expect(Rejects(() => PropertyList.TopLevelStrings(damaged)), "rejects an offset table outside the file");
         var xml = Encoding.UTF8.GetBytes(
             "<?xml version=\"1.0\"?><plist><dict><key>CFBundleExecutable</key><string>Sample</string>"
                 + "<key>UIDeviceFamily</key><array><integer>1</integer></array></dict></plist>");
+        var xmlValues = PropertyList.TopLevelStrings(xml);
         tally.Expect(
-            PropertyList.TopLevelStrings(xml).SequenceEqual([new KeyValuePair<string, string>("CFBundleExecutable", "Sample")]),
+            xmlValues.Count == 1 && xmlValues.GetValueOrDefault("CFBundleExecutable") == "Sample",
             "reads the strings of an XML property list and skips other values");
         tally.Expect(
             Rejects(() => PropertyList.TopLevelStrings("<plist><dict><key>A</key></dict></plist>"u8.ToArray())),
@@ -2111,38 +2175,48 @@ internal static partial class SelfTest
 
         string[] broken =
         [
-            Fixture.Mapping.Replace("\"mainExecutable\"", "\"main\"", StringComparison.Ordinal),
-            Fixture.Mapping.Replace("\"note\": \"Our assembly.\"", "\"why\": \"Our assembly.\"", StringComparison.Ordinal),
-            Fixture.Mapping.Replace("\"components\": [\"Sample.Ui\"]", "\"components\": []", StringComparison.Ordinal),
-            Fixture.Mapping.Replace("\"file\": \"LICENSE.TXT\"", "\"file\": \"../LICENSE.TXT\"", StringComparison.Ordinal),
-            Fixture.Mapping.Replace("{ \"package\": \"Sample.Ui\", \"license\": \"MIT\" }", "{ \"package\": \"Sample.Ui\" }", StringComparison.Ordinal),
-            Fixture.Mapping.Replace("\"Sample.Lgpl\": {", "\"Paneport\": {", StringComparison.Ordinal),
-            Fixture.Mapping.Replace("\"path\": \"Unused/**\"", "\"path\": \"Unused/**/../x\"", StringComparison.Ordinal),
+            EditMapping("\"mainExecutable\"", "\"main\""),
+            EditMapping("\"note\": \"Our assembly.\"", "\"why\": \"Our assembly.\""),
+            EditMapping("\"components\": [\"Sample.Ui\"]", "\"components\": []"),
+            EditMapping("\"file\": \"LICENSE.TXT\"", "\"file\": \"../LICENSE.TXT\""),
+            EditMapping("{ \"package\": \"Sample.Ui\", \"license\": \"MIT\" }", "{ \"package\": \"Sample.Ui\" }"),
+            EditMapping("\"Sample.Lgpl\": {", "\"Paneport\": {"),
+            EditMapping("\"path\": \"Unused/**\"", "\"path\": \"Unused/**/../x\""),
             "[]",
         ];
         tally.Expect(
             broken.All(text => Rejects(() => Mapping.Parse(text))) && Mapping.Parse(Fixture.Mapping).Files.Count == 14,
-            "reads the mapping, and rejects an unknown key, a rule without a note or components, a path that leaves its "
-                + "folder, a text without its file or license, texts for Paneport, a bad pattern and a mapping that is no object");
+            "reads the mapping, and rejects an unknown key, a rule without a note or components, a path that leaves "
+                + "its folder, a text without its file or license, texts for Paneport, a bad pattern and a mapping "
+                + "that is no object");
 
         var query =
             """
             {
               "Properties": { "NuGetPackageRoot": "/packages/" },
               "Items": { "ResolvedRuntimePack": [
-                { "Identity": "A.Runtime", "FrameworkName": "A.App", "NuGetPackageId": "A.Runtime", "NuGetPackageVersion": "1.0.0", "PackageDirectory": "/packs/a" },
-                { "Identity": "B.Runtime", "FrameworkName": "B.App", "NuGetPackageId": "B.Runtime", "NuGetPackageVersion": "2.0.0" }
+                {
+                  "Identity": "A.Runtime", "FrameworkName": "A.App", "NuGetPackageId": "A.Runtime",
+                  "NuGetPackageVersion": "1.0.0", "PackageDirectory": "/packs/a"
+                },
+                {
+                  "Identity": "B.Runtime", "FrameworkName": "B.App", "NuGetPackageId": "B.Runtime",
+                  "NuGetPackageVersion": "2.0.0"
+                }
               ] }
             }
             """;
         var (packageRoot, packs) = BuildQuery.ParseQuery(query);
         tally.Expect(
-            packageRoot == "/packages/" && packs.Count == 1 && packs[0] == new RuntimePack("A.App", "A.Runtime", "1.0.0", "/packs/a"),
-            "reads NuGet's package folder and the resolved runtime packs from MSBuild's answer, without unresolved ones");
+            packageRoot == "/packages/" && packs.Count == 1
+                && packs[0] == new RuntimePack("A.App", "A.Runtime", "1.0.0", "/packs/a"),
+            "reads NuGet's package folder and the resolved runtime packs from MSBuild's answer, without unresolved "
+                + "ones");
+        var twoPacks = query
+            .Replace("\"B.App\"", "\"A.App\"", StringComparison.Ordinal)
+            .Replace("\"2.0.0\"", "\"2.0.0\", \"PackageDirectory\": \"/packs/b\"", StringComparison.Ordinal);
         tally.Expect(
-            Rejects(() => BuildQuery.ParseQuery(query.Replace("\"B.App\"", "\"A.App\"", StringComparison.Ordinal)
-                .Replace("\"2.0.0\" }", "\"2.0.0\", \"PackageDirectory\": \"/packs/b\" }", StringComparison.Ordinal)))
-                && Rejects(() => BuildQuery.ParseQuery("{ \"Items\": {} }")),
+            Rejects(() => BuildQuery.ParseQuery(twoPacks)) && Rejects(() => BuildQuery.ParseQuery("{ \"Items\": {} }")),
             "rejects two runtime packs for one framework, and an answer without NuGet's package folder");
         var locked = LockFiles.Packages(
             """
@@ -2158,8 +2232,10 @@ internal static partial class SelfTest
               }
             }
             """);
+        LockedPackage[] lockedPackages =
+            [new("Sample.Direct", "1.0.0"), new("Sample.Native", "3.0.0"), new("Sample.Transitive", "2.0.0")];
         tally.Expect(
-            locked.SequenceEqual([new("Sample.Direct", "1.0.0"), new("Sample.Native", "3.0.0"), new("Sample.Transitive", "2.0.0")]),
+            locked.SequenceEqual(lockedPackages),
             "reads the packages of every target and runtime of a lock file, without the projects");
         tally.Expect(
             Spdx.Licenses("MIT OR (Apache-2.0 WITH LLVM-exception)").SequenceEqual(["MIT", "Apache-2.0"])
@@ -2167,7 +2243,8 @@ internal static partial class SelfTest
                 && Spdx.Mentions("FTL or GPL-2.0", "FTL") && !Spdx.Mentions("LGPL-2.1-only", "GPL-2.1-only"),
             "reads the licenses of an SPDX expression, and finds a license in a register row only as a whole name");
         tally.Expect(
-            Rejects(() => MitTemplate.Validate("Permission is hereby granted")) && Rejects(() => MitTemplate.Validate("Copyright 2026")),
+            Rejects(() => MitTemplate.Validate("Permission is hereby granted"))
+                && Rejects(() => MitTemplate.Validate("Copyright 2026")),
             "rejects an MIT text without its copyright line or its permission");
     }
 
@@ -2177,16 +2254,40 @@ internal static partial class SelfTest
         var fixture = Fixture.Create(root, "registered");
         var before = fixture.Snapshot();
         var result = fixture.Generate(Mode.Ios);
-        tally.Expect(result.Failures.Count == 0 && result.Warnings.Count == 0 && result.Outputs is not null, "passes in ios mode");
+        tally.Expect(
+            result.Failures.Count == 0 && result.Warnings.Count == 0 && result.Outputs is not null,
+            "passes in ios mode");
         tally.Expect(fixture.Generate(Mode.Release).Failures.Count == 0, "passes in release mode");
         string[] expected =
-            ["Sample.Apache", "Sample.Fonts", "Sample.Graphics", "Sample.Lgpl", "Sample.Platform", "Sample.Runtime", "Sample.Ui", "SteamKit2"];
-        tally.Expect(result.Components.Select(component => component.Name).SequenceEqual(expected), "lists each component once, in name order");
+        [
+            "Sample.Apache",
+            "Sample.Fonts",
+            "Sample.Graphics",
+            "Sample.Lgpl",
+            "Sample.Platform",
+            "Sample.Runtime",
+            "Sample.Ui",
+            "SteamKit2",
+        ];
+        tally.Expect(
+            result.Components.Select(component => component.Name).SequenceEqual(expected),
+            "lists each component once, in name order");
+        string[] mainComponents =
+        [
+            "Paneport",
+            "Sample.Runtime",
+            "Sample.Platform",
+            "Sample.Ui",
+            "Sample.Graphics",
+            "Sample.Apache",
+            "SteamKit2",
+            "Sample.Fonts",
+        ];
         var main = result.Coverage.Single(attribution => attribution.File == "Sample").Components;
         tally.Expect(
-            main.ToHashSet().SetEquals(["Paneport", "Sample.Runtime", "Sample.Platform", "Sample.Ui", "Sample.Graphics", "Sample.Apache", "SteamKit2", "Sample.Fonts"]),
-            "maps the main executable to the mapping's components and to that of every package in the lock file, SteamKit2 "
-                + "among them");
+            main.ToHashSet().SetEquals(mainComponents),
+            "maps the main executable to the mapping's components and to that of every package in the lock file, "
+                + "SteamKit2 among them");
         tally.Expect(result.UnusedRules.SequenceEqual(["Unused/**"]), "reports a rule that matches no file");
         if (result.Outputs is not { } outputs)
         {
@@ -2203,28 +2304,32 @@ internal static partial class SelfTest
             added.All(file => file.StartsWith("repo/src/Sample/bin/Sample.app/licenses/", StringComparison.Ordinal)
                 || file.StartsWith("repo/build/notices/", StringComparison.Ordinal))
                 && before.All(after.Contains) && added.Count == 2 * (2 + expected.Length),
-            "writes only into licenses/ in the bundle and the output folder, and replaces its own earlier output there");
+            "writes only into licenses/ in the bundle and the output folder, and replaces its own earlier output "
+                + "there");
 
         var tableOrder = File.ReadAllLines(Path.Combine(notices, Notices.NoticesFile))
             .Select(line => TableRow().Match(line))
             .Where(match => match.Success)
             .Select(match => match.Groups[1].Value)
             .ToList();
-        using var index = JsonDocument.Parse(File.ReadAllText(Path.Combine(notices, Notices.IndexFile)));
-        var indexOrder = index.RootElement.GetProperty("components").EnumerateArray()
-            .Select(component => component.GetProperty("name").GetString()).ToList();
+        var indexText = File.ReadAllText(Path.Combine(notices, Notices.IndexFile));
+        using var index = JsonDocument.Parse(indexText);
+        var indexComponents = index.RootElement.GetProperty("components").EnumerateArray().ToList();
+        var indexOrder = indexComponents.Select(component => component.GetProperty("name").GetString()).ToList();
         var textFiles = Directory.EnumerateFiles(Path.Combine(notices, Notices.TextsFolder))
-            .Select(path => Path.GetFileName(path)).Order(StringComparer.Ordinal).ToList();
+            .Select(path => Path.GetFileName(path))
+            .Order(StringComparer.Ordinal)
+            .ToList();
         var textOrder = textFiles.Select(file => file[3..^4]).ToList();
+        var numbered = textFiles.Select(
+            (file, position) => file.StartsWith($"{position + 1:00}-", StringComparison.Ordinal));
         tally.Expect(
             tableOrder.SequenceEqual(expected) && indexOrder.SequenceEqual(expected)
-                && textOrder.SequenceEqual(expected.Select(Notices.Slug))
-                && textFiles.Select((file, position) => file.StartsWith($"{position + 1:00}-", StringComparison.Ordinal)).All(match => match),
+                && textOrder.SequenceEqual(expected.Select(Notices.Slug)) && numbered.All(match => match),
             "THIRD_PARTY_NOTICES.md, the texts and the index list the same components in the same order");
-        var indexTexts = index.RootElement.GetProperty("components").EnumerateArray()
-            .Select(component => component.GetProperty("text").GetString()).ToList();
         tally.Expect(
-            indexTexts.SequenceEqual(textFiles.Select(file => $"{Notices.TextsFolder}/{file}")),
+            indexComponents.Select(component => component.GetProperty("text").GetString())
+                .SequenceEqual(textFiles.Select(file => $"{Notices.TextsFolder}/{file}")),
             "the index names each component's text");
 
         var texts = textFiles.ToDictionary(
@@ -2232,48 +2337,51 @@ internal static partial class SelfTest
             file => File.ReadAllText(Path.Combine(notices, Notices.TextsFolder, file)));
         var markdown = File.ReadAllText(Path.Combine(notices, Notices.NoticesFile));
         tally.Expect(
-            texts["sample-ui"].Contains("Copyright 2020 Sample UI Authors", StringComparison.Ordinal)
-                && texts["sample-ui"].Contains("Permission is hereby granted", StringComparison.Ordinal)
+            Holds(texts["sample-ui"], "Copyright 2020 Sample UI Authors", "Permission is hereby granted")
                 && !texts["sample-ui"].Contains("Sample Template Holder", StringComparison.Ordinal),
-            "builds the MIT text of a package without a license file from the MIT text and the package's copyright line");
+            "builds the MIT text of a package without a license file from the MIT text and the package's copyright "
+                + "line");
         tally.Expect(
-            texts["sample-graphics"].Contains("Sample graphics license text.", StringComparison.Ordinal)
-                && texts["sample-graphics"].Contains("Sample graphics third-party notices.", StringComparison.Ordinal)
-                && texts["sample-runtime"].Contains("Sample runtime license text.\nSecond line.\n", StringComparison.Ordinal)
-                && texts["sample-runtime"].Contains("Sample runtime notices.", StringComparison.Ordinal)
-                && texts["sample-lgpl"].Contains("Sample LGPL library text.", StringComparison.Ordinal),
-            "takes the texts and third-party notices of packages, runtime packs and repository files, with Unix line endings");
+            Holds(texts["sample-graphics"], "Sample graphics.", "Sample graphics third-party notices.")
+                && Holds(texts["sample-runtime"], "Sample runtime license text.\nSecond line.\n")
+                && Holds(texts["sample-runtime"], "Sample runtime notices.")
+                && Holds(texts["sample-lgpl"], "Sample LGPL library."),
+            "takes the texts and third-party notices of packages, runtime packs and repository files, with Unix line "
+                + "endings");
         tally.Expect(
-            texts["sample-apache"].Contains("Sample Apache NOTICE text.", StringComparison.Ordinal)
-                && markdown.Contains("Sample Apache NOTICE text.", StringComparison.Ordinal),
+            Holds(texts["sample-apache"], "Sample Apache NOTICE text.")
+                && Holds(markdown, "Sample Apache NOTICE text."),
             "keeps the Apache-2.0 NOTICE file");
         tally.Expect(
-            texts["sample-fonts"].Contains(Fixture.Credit, StringComparison.Ordinal)
-                && markdown.Contains(Fixture.Credit, StringComparison.Ordinal)
-                && File.ReadAllText(Path.Combine(notices, Notices.IndexFile)).Contains(Fixture.Credit, StringComparison.Ordinal),
+            Holds(texts["sample-fonts"], Fixture.Credit) && Holds(markdown, Fixture.Credit)
+                && Holds(indexText, Fixture.Credit),
             "keeps the FreeType credit in all three outputs");
         tally.Expect(
-            markdown.StartsWith("# Third-party notices\n\n" + Fixture.DisplayName + " 1.2.3 (45) contains", StringComparison.Ordinal)
-                && markdown.Contains("Sample.Ui.Extra 1.0.0", StringComparison.Ordinal)
-                && markdown.Contains("Sample.Runtime.Pack 6.0.0", StringComparison.Ordinal)
-                && !markdown.Contains(fixture.Root, StringComparison.Ordinal) && !texts.Values.Any(text => text.Contains(fixture.Root, StringComparison.Ordinal)),
+            markdown.StartsWith(
+                $"# Third-party notices\n\n{Fixture.DisplayName} 1.2.3 (45) contains",
+                StringComparison.Ordinal)
+                && Holds(markdown, "Sample.Ui.Extra 1.0.0", "Sample.Runtime.Pack 6.0.0")
+                && !markdown.Contains(fixture.Root, StringComparison.Ordinal)
+                && !texts.Values.Any(text => text.Contains(fixture.Root, StringComparison.Ordinal)),
             "names the app, its version and each component's sources, and never a local path");
 
         var xmlFixture = Fixture.Create(root, "xml-info");
         xmlFixture.WriteInfo("Sample", binary: false);
-        tally.Expect(xmlFixture.Generate(Mode.Release).Failures.Count == 0, "reads an XML Info.plist as well as a binary one");
+        tally.Expect(
+            xmlFixture.Generate(Mode.Release).Failures.Count == 0,
+            "reads an XML Info.plist as well as a binary one");
 
-        File.WriteAllText(Path.Combine(fixture.App, Notices.Folder, Notices.IndexFile), "{}");
+        File.WriteAllText(Path.Combine(notices, Notices.IndexFile), "{}");
         tally.Expect(
-            Throws(() => Output.Write(Path.Combine(fixture.App, Notices.Folder), outputs))
-                && File.Exists(Path.Combine(fixture.App, Notices.Folder, Notices.NoticesFile)),
+            Throws(() => Output.Write(notices, outputs)) && File.Exists(Path.Combine(notices, Notices.NoticesFile)),
             "refuses to replace a licenses/ folder that it did not write, and leaves it as it is");
+        var repository = fixture.Repository;
         tally.Expect(
-            Rejects(() => Output.EnsureBuildOutput(fixture.Repository, Path.Combine(fixture.Repository, "docs", "notices"), "--out"))
-                && Rejects(() => Output.EnsureBuildOutput(fixture.Repository, fixture.Repository, "--out"))
-                && !Rejects(() => Output.EnsureBuildOutput(fixture.Repository, fixture.Out, "--out"))
-                && !Rejects(() => Output.EnsureBuildOutput(fixture.Repository, fixture.App, "--app"))
-                && !Rejects(() => Output.EnsureBuildOutput(fixture.Repository, Path.Combine(fixture.Root, "elsewhere"), "--out")),
+            Rejects(() => Output.EnsureBuildOutput(repository, Path.Combine(repository, "docs", "notices"), "--out"))
+                && Rejects(() => Output.EnsureBuildOutput(repository, repository, "--out"))
+                && !Rejects(() => Output.EnsureBuildOutput(repository, fixture.Out, "--out"))
+                && !Rejects(() => Output.EnsureBuildOutput(repository, fixture.App, "--app"))
+                && !Rejects(() => Output.EnsureBuildOutput(repository, Path.Combine(fixture.Root, "out"), "--out")),
             "writes into build/, bin/, obj/ or outside the repository, never elsewhere in it");
     }
 
@@ -2286,7 +2394,8 @@ internal static partial class SelfTest
         var ios = unattributed.Generate(Mode.Ios);
         var release = unattributed.Generate(Mode.Release);
         tally.Expect(
-            ios.Failures.Count == 0 && ios.Outputs is not null && Names(ios.Warnings, "Unknown.dll") && Names(ios.Warnings, ".hidden"),
+            ios.Failures.Count == 0 && ios.Outputs is not null
+                && Names(ios.Warnings, "Unknown.dll") && Names(ios.Warnings, ".hidden"),
             "an unattributed file, hidden ones too, is a warning in ios mode, and the notices are still written");
         tally.Expect(
             release.Outputs is null && Names(release.Failures, "Unknown.dll") && Names(release.Failures, ".hidden"),
@@ -2300,59 +2409,132 @@ internal static partial class SelfTest
             ("Sample.Tool", "build tool", "a component whose row is a Tool row fails, named"),
         })
         {
-            var fixture = Fixture.Create(root, component);
-            fixture.MappingText = Fixture.Mapping.Replace(
-                "{ \"path\": \"Platform.dll\", \"components\": [\"Sample.Platform\"]",
-                $"{{ \"path\": \"Platform.dll\", \"components\": [\"{component}\"]",
-                StringComparison.Ordinal);
-            var result = fixture.Generate(Mode.Ios);
-            tally.Expect(
-                result.Outputs is null && result.Failures.Any(failure => failure.Contains(component, StringComparison.Ordinal)
-                    && failure.Contains(word, StringComparison.Ordinal)),
+            Expect(
+                tally,
+                root,
+                component,
+                fixture => fixture.MappingText = EditMapping(
+                    "{ \"path\": \"Platform.dll\", \"components\": [\"Sample.Platform\"]",
+                    $"{{ \"path\": \"Platform.dll\", \"components\": [\"{component}\"]"),
+                [component, word],
                 description);
         }
 
-        Expect(tally, root, "no-texts", fixture => fixture.MappingText = fixture.MappingText.Replace(
-            "\"Sample.Ui\": { \"texts\": [{ \"package\": \"Sample.Ui\", \"license\": \"MIT\" }] },",
-            string.Empty,
-            StringComparison.Ordinal), ["missing license text of Sample.Ui"], "a component without texts fails");
-        Expect(tally, root, "no-file", fixture => File.Delete(fixture.PackageFile("Sample.Graphics.Native", "2.0.0", "THIRD-PARTY-NOTICES.txt")),
-            ["missing license text of Sample.Graphics", "THIRD-PARTY-NOTICES.txt"], "a missing license file fails, named");
-        Expect(tally, root, "no-copyright", fixture => fixture.Package("Sample.Ui", "1.0.0", "expression", "MIT", null),
-            ["missing license text of Sample.Ui", "copyright"], "an MIT package without a copyright line fails");
-        Expect(tally, root, "no-mit", fixture => fixture.Package("Sample.Ui", "1.0.0", "expression", "BSD-3-Clause", "Copyright 2020 Sample"),
+        Expect(
+            tally,
+            root,
+            "no-texts",
+            fixture => fixture.MappingText = EditMapping(
+                "\"Sample.Ui\": { \"texts\": [{ \"package\": \"Sample.Ui\", \"license\": \"MIT\" }] },",
+                string.Empty),
+            ["missing license text of Sample.Ui"],
+            "a component without texts fails");
+        Expect(
+            tally,
+            root,
+            "no-file",
+            fixture => File.Delete(fixture.PackageFile("Sample.Graphics.Native", "2.0.0", "THIRD-PARTY-NOTICES.txt")),
+            ["missing license text of Sample.Graphics", "THIRD-PARTY-NOTICES.txt"],
+            "a missing license file fails, named");
+        Expect(
+            tally,
+            root,
+            "no-copyright",
+            fixture => fixture.Package("Sample.Ui", "1.0.0", "expression", "MIT", null),
+            ["missing license text of Sample.Ui", "copyright"],
+            "an MIT package without a copyright line fails");
+        Expect(
+            tally,
+            root,
+            "no-mit",
+            fixture => fixture.Package("Sample.Ui", "1.0.0", "expression", "BSD-3-Clause", "Copyright 2020 Sample"),
             ["missing license text of Sample.Ui", "does not declare the expression MIT"],
             "an MIT text for a package that declares another license fails");
-        Expect(tally, root, "no-pack", fixture => fixture.Packs.RemoveAt(1),
-            ["missing license text of Sample.Platform", "no runtime pack for Sample.Platform"], "a runtime pack that the build lacks fails");
-        Expect(tally, root, "not-locked", fixture => fixture.Locked.RemoveAll(package => package.Id == "SteamKit2"),
-            ["missing license text of SteamKit2", "SteamKit2 is not in"], "a package that the lock file lacks fails");
-        Expect(tally, root, "not-restored", fixture => Directory.Delete(Path.GetDirectoryName(fixture.PackageFile("Sample.Ui.Extra", "1.0.0", "x"))!, recursive: true),
-            ["Sample.Ui.Extra 1.0.0 is not in NuGet's package folder"], "a package that is not restored fails");
-        Expect(tally, root, "unmapped", fixture => fixture.Locked.Add(new LockedPackage("Sample.Unmapped", "1.0.0")),
-            ["Sample.Unmapped", "no row in eng/license-map.json"], "a package of the lock file that the license map lacks fails");
-        Expect(tally, root, "static-lgpl", fixture =>
+        Expect(
+            tally,
+            root,
+            "no-pack",
+            fixture => fixture.Packs.RemoveAt(1),
+            ["missing license text of Sample.Platform", "no runtime pack for Sample.Platform"],
+            "a runtime pack that the build lacks fails");
+        Expect(
+            tally,
+            root,
+            "not-locked",
+            fixture => fixture.Locked.RemoveAll(package => package.Id == "SteamKit2"),
+            ["missing license text of SteamKit2", "SteamKit2 is not in"],
+            "a package that the lock file lacks fails");
+        Expect(
+            tally,
+            root,
+            "not-restored",
+            fixture => Directory.Delete(fixture.PackageFolder("Sample.Ui.Extra", "1.0.0"), recursive: true),
+            ["Sample.Ui.Extra 1.0.0 is not in NuGet's package folder"],
+            "a package that is not restored fails");
+        Expect(
+            tally,
+            root,
+            "unmapped",
+            fixture => fixture.Locked.Add(new LockedPackage("Sample.Unmapped", "1.0.0")),
+            ["Sample.Unmapped", "no row in eng/license-map.json"],
+            "a package of the lock file that the license map lacks fails");
+        Expect(
+            tally,
+            root,
+            "static-lgpl",
+            fixture =>
             {
                 fixture.Locked.Add(new LockedPackage("Sample.Lgpl.Static", "1.0.0"));
                 fixture.Package("Sample.Lgpl.Static", "1.0.0", "expression", "LGPL-2.1-or-later", null);
             },
-            ["Sample.Lgpl", "main executable Sample", "only for SteamKit2"], "an LGPL component other than SteamKit2 in the main executable fails");
-        Expect(tally, root, "no-notice", fixture => fixture.MappingText = fixture.MappingText.Replace(
-            ",\n        { \"package\": \"Sample.Apache\", \"file\": \"NOTICE.txt\" }",
-            string.Empty,
-            StringComparison.Ordinal), ["Sample.Apache leaves out the NOTICE file NOTICE.txt"], "an Apache-2.0 NOTICE file left out fails");
-        Expect(tally, root, "no-credit", fixture => fixture.MappingText = fixture.MappingText.Replace(
-            $"\"credit\": \"{Fixture.Credit}\",",
-            string.Empty,
-            StringComparison.Ordinal), ["Sample.Fonts is under the FTL"], "an FTL component without its credit fails");
-        Expect(tally, root, "other-license", fixture => fixture.Package(
-                "Sample.Graphics.Native", "2.0.0", "expression", "BSD-3-Clause", null, ("THIRD-PARTY-NOTICES.txt", "Notices.")),
-            ["Sample.Graphics.Native 2.0.0 declares BSD-3-Clause", "register row Sample.Graphics"], "a package whose declared license its register row lacks fails");
-        Expect(tally, root, "no-executable", fixture => fixture.WriteInfo("Missing", binary: true),
-            ["executable Missing"], "an executable that the bundle lacks fails");
+            ["Sample.Lgpl", "main executable Sample", "only for SteamKit2"],
+            "an LGPL component other than SteamKit2 in the main executable fails");
+        Expect(
+            tally,
+            root,
+            "no-notice",
+            fixture => fixture.MappingText = EditMapping(
+                ",\n        { \"package\": \"Sample.Apache\", \"file\": \"NOTICE.txt\" }",
+                string.Empty),
+            ["Sample.Apache leaves out the NOTICE file NOTICE.txt"],
+            "an Apache-2.0 NOTICE file left out fails");
+        Expect(
+            tally,
+            root,
+            "no-credit",
+            fixture => fixture.MappingText = EditMapping($"\"credit\": \"{Fixture.Credit}\",", string.Empty),
+            ["Sample.Fonts is under the FTL"],
+            "an FTL component without its credit fails");
+        Expect(
+            tally,
+            root,
+            "other-license",
+            fixture => fixture.Package(
+                "Sample.Graphics.Native",
+                "2.0.0",
+                "expression",
+                "BSD-3-Clause",
+                null,
+                ("THIRD-PARTY-NOTICES.txt", "Notices.")),
+            ["Sample.Graphics.Native 2.0.0 declares BSD-3-Clause", "register row Sample.Graphics"],
+            "a package whose declared license its register row lacks fails");
+        Expect(
+            tally,
+            root,
+            "no-executable",
+            fixture => fixture.WriteInfo("Missing", binary: true),
+            ["executable Missing"],
+            "an executable that the bundle lacks fails");
     }
 
-    private static void Expect(Tally tally, string root, string name, Action<Fixture> change, string[] words, string description)
+    // A fixture with one change, which must fail with a message that holds every word.
+    private static void Expect(
+        Tally tally,
+        string root,
+        string name,
+        Action<Fixture> change,
+        string[] words,
+        string description)
     {
         var fixture = Fixture.Create(root, name);
         change(fixture);
@@ -2362,6 +2544,12 @@ internal static partial class SelfTest
                 && result.Failures.Any(failure => words.All(word => failure.Contains(word, StringComparison.Ordinal))),
             description);
     }
+
+    private static string EditMapping(string from, string to) =>
+        Fixture.Mapping.ReplaceLineEndings("\n").Replace(from, to, StringComparison.Ordinal);
+
+    private static bool Holds(string text, params string[] parts) =>
+        parts.All(part => text.Contains(part, StringComparison.Ordinal));
 
     private static bool Names(IEnumerable<string> messages, string file) =>
         messages.Any(message => message.Contains($": {file} is attributed to no component", StringComparison.Ordinal));

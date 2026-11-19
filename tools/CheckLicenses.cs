@@ -450,9 +450,9 @@ internal static partial class Unseen
                     problems.Add(Problem(
                         tool,
                         line,
-                        "#:include names a file outside tools/Shared/, or a pattern. The SDK reads the #: directives of "
-                            + "an included file too, and the checker reads only those under tools/, so include only .cs "
-                            + "files from tools/Shared/."));
+                        "#:include names a file outside tools/Shared/, or a pattern. The SDK reads the #: directives "
+                            + "of an included file too, and the checker reads only those under tools/, so include only "
+                            + ".cs files from tools/Shared/."));
                 }
             }
         }
@@ -1152,7 +1152,7 @@ internal static class SelfTest
                 "#:include ../src/Helper.cs\n#:include Shared/../../src/Helper.cs\n#:include Shared/*.cs\n"
                     + "#:include /tmp/Helper.cs\n#:include Shared/Helper.json\nreturn 0;",
             ["tools/Shared/Helper.cs"] = "// A shared file.\ninternal static class Helper;",
-            ["tools/Shared/Other.cs"] = "// A shared file.\n#:package Sample.Hidden@1.0.0\ninternal static class Other;",
+            ["tools/Shared/Other.cs"] = "// Shared.\n#:package Sample.Hidden@1.0.0\ninternal static class Other;",
             ["tools/packages.lock.json"] = SampleLockFile,
             ["global.json"] = """{ "sdk": { "version": "1.0.0" }, "msbuild-sdks": { "Sample.Sdk": "1.0.0" } }""",
             [".config/dotnet-tools.json"] = """{ "version": 1, "isRoot": true, "tools": {} }""",
@@ -1204,7 +1204,8 @@ internal static class SelfTest
                 + "that leaves tools/Shared/, a pattern, an absolute path and a file of another kind fail");
         tally.Expect(
             sharedDirectives.All(found.Contains)
-                && !found.Any(problem => problem.File == "tools/Shared/Helper.cs" || problem is ("tools/Shared/Other.cs", 0)),
+                && !found.Any(problem => problem.File == "tools/Shared/Helper.cs")
+                && !found.Contains(("tools/Shared/Other.cs", 0)),
             "a #: directive in a shared file fails, and a shared file needs no lock file of its own");
         tally.Expect(others.All(found.Contains), "msbuild-sdks in global.json fails, and so does a tool manifest");
         var count = unlocked.Length + sdks.Length + otherSdks.Length + downloads.Length + moved.Length

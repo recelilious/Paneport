@@ -1,7 +1,8 @@
 {
   "mainExecutable": {
     "components": ["Paneport", ".NET runtime", ".NET for iOS (dotnet/macios)"],
-    "note": "The app's executable holds our code, the Mono runtime and the native code of .NET for iOS, which the build links into it, and the code of every package in the app's lock file, which full ahead-of-time compilation puts into it (C-0003 section 3, C-0009 section 3). tools/GenerateNotices.cs adds the component of each package through eng/license-map.json."
+    "paths": ["aot-instances.aotdata.*"],
+    "note": "The app's executable holds our code, the Mono runtime and the native code of .NET for iOS, which the build links into it, and the code of every package in the app's lock file, which full ahead-of-time compilation puts into it (C-0003 section 3, C-0009 section 3). tools/GenerateNotices.cs adds the component of each package through eng/license-map.json. The ahead-of-time data of the generic instances that the compiler shares between all assemblies, aot-instances.aotdata.arm64, comes from the whole app in the same way."
   },
   "files": [
     {
@@ -87,18 +88,16 @@
     {
       "path": "netstandard.*",
       "components": [".NET runtime"],
-      "note": "The runtime's .NET Standard facade and its ahead-of-time data."
-    },
-    {
-      "path": "icudt*.dat",
-      "components": [".NET runtime"],
-      "note": "The ICU data of the runtime's globalization, whose notice the runtime's THIRD-PARTY-NOTICES.TXT holds."
+      "note": "The runtime's .NET Standard facade and its ahead-of-time data, which a package built for .NET Standard brings in."
     }
   ],
   "components": {
     ".NET for iOS (dotnet/macios)": {
-      "texts": [{ "runtimePack": "Microsoft.iOS", "file": "LICENSE" }],
-      "note": "The pack's LICENSE is that of dotnet/macios: the MIT license, then the notices of the third-party code that it carries."
+      "texts": [
+        { "runtimePack": "Microsoft.iOS", "file": "LICENSE" },
+        { "runtimePack": "Microsoft.iOS.Runtimes", "file": "LICENSE" }
+      ],
+      "note": "Two runtime packs: Microsoft.iOS with the bindings, and Microsoft.iOS.Runtimes with the native code for ios-arm64 that the build links into the executable. Each carries the LICENSE of dotnet/macios, the MIT license followed by the notices of the third-party code that it carries, which the notices hold once."
     },
     ".NET runtime": {
       "texts": [

@@ -456,10 +456,15 @@ internal sealed record ComponentTexts(IReadOnlyList<TextSource> Texts, string? C
 
 internal sealed record FileRule(string Pattern, IReadOnlyList<string> Components, Regex Matcher);
 
+internal sealed record PathPattern(string Pattern, Regex Matcher);
+
 // eng/release/bundle-components.json: the reviewed mapping from the files of an app bundle to
 // Paneport or to components of the register, and where each component's license texts come from.
+// MainExecutablePaths are the files that, like the main executable, hold what the build makes of
+// the whole app, such as the ahead-of-time data of generic instances of every assembly.
 internal sealed record Mapping(
     IReadOnlyList<string> MainExecutable,
+    IReadOnlyList<PathPattern> MainExecutablePaths,
     IReadOnlyList<FileRule> Files,
     IReadOnlyDictionary<string, ComponentTexts> Components)
 {
@@ -474,8 +479,22 @@ internal sealed record Mapping(
         {
             using var document = JsonDocument.Parse(json);
             var root = Object(document.RootElement, "the mapping", ["mainExecutable", "files", "components"], []);
-            var main = Object(root["mainExecutable"], "mainExecutable", ["components", "note"], []);
+            var main = Object(root["mainExecutable"], "mainExecutable", ["components", "note"], ["paths"]);
             Note(main["note"], "mainExecutable");
+            var mainPaths = new List<PathPattern>();
+            if (main.TryGetValue("paths", out var paths))
+            {
+                if (paths.ValueKind != JsonValueKind.Array)
+                {
+                    throw new InvalidDataException("mainExecutable: \"paths\" must be an array of paths.");
+                }
+
+                foreach (var path in paths.EnumerateArray().Select(path => Text(path, "mainExecutable: a path")))
+                {
+                    mainPaths.Add(new PathPattern(path, Glob.ToRegex(path)));
+                }
+            }
+
             var files = new List<FileRule>();
             if (root["files"].ValueKind != JsonValueKind.Array)
             {
@@ -524,7 +543,7 @@ internal sealed record Mapping(
                 }
             }
 
-            return new Mapping(Names(main["components"], "mainExecutable"), files, components);
+            return new Mapping(Names(main["components"], "mainExecutable"), mainPaths, files, components);
         }
         catch (JsonException exception)
         {
@@ -1132,6 +1151,14 @@ internal static partial class Notices
                 continue;
             }
 
+            var mainPath = configuration.Mapping.MainExecutablePaths.FirstOrDefault(path => path.Matcher.IsMatch(file));
+            if (mainPath is not null)
+            {
+                used.Add(mainPath.Pattern);
+                coverage.Add(new Attribution(file, main));
+                continue;
+            }
+
             var rule = configuration.Mapping.Files.FirstOrDefault(rule => rule.Matcher.IsMatch(file));
             if (rule is null)
             {
@@ -1186,8 +1213,9 @@ internal static partial class Notices
         }
 
         CheckDeclaredLicenses(app, build, configuration, failures);
-        var unused = configuration.Mapping.Files
-            .Select(rule => rule.Pattern)
+        var unused = configuration.Mapping.MainExecutablePaths
+            .Select(path => path.Pattern)
+            .Concat(configuration.Mapping.Files.Select(rule => rule.Pattern))
             .Where(pattern => !used.Contains(pattern))
             .ToList();
         var others = components
@@ -1236,12 +1264,24 @@ internal static partial class Notices
         }
 
         var before = failures.Count;
+        // A text that two sources hold alike, such as the LICENSE of two packs of one SDK, is written
+        // once, under a heading that names both.
         var texts = new List<TextBlock>();
         foreach (var source in entry.Texts)
         {
-            if (Text(app, name, source, build, configuration, failures, sources) is { } text)
+            if (Text(app, name, source, build, configuration, failures, sources) is not { } text)
+            {
+                continue;
+            }
+
+            var same = texts.FindIndex(block => block.Text == text.Text);
+            if (same < 0)
             {
                 texts.Add(text);
+            }
+            else
+            {
+                texts[same] = texts[same] with { Title = $"{texts[same].Title}; the same text is {text.Title}" };
             }
         }
 
@@ -1915,6 +1955,7 @@ internal sealed class Fixture
         {
           "mainExecutable": {
             "components": ["Paneport", "Sample.Runtime", "Sample.Platform"],
+            "paths": ["aot-instances.aotdata.*"],
             "note": "The executable."
           },
           "files": [
@@ -1959,7 +2000,12 @@ internal sealed class Fixture
                 { "runtimePack": "Sample.Runtime.App", "file": "THIRD-PARTY-NOTICES.TXT" }
               ]
             },
-            "Sample.Platform": { "texts": [{ "runtimePack": "Sample.Platform", "file": "LICENSE" }] },
+            "Sample.Platform": {
+              "texts": [
+                { "runtimePack": "Sample.Platform", "file": "LICENSE" },
+                { "runtimePack": "Sample.Platform.Runtimes", "file": "LICENSE" }
+              ]
+            },
             "Sample.Lgpl": { "texts": [{ "repository": "external/Sample-lgpl/COPYING.LIB" }] }
           }
         }
@@ -1995,6 +2041,7 @@ internal sealed class Fixture
         "Platform.dll",
         "Frameworks/libsamplelgpl.framework/libsamplelgpl",
         "Frameworks/libfonts.framework/libfonts",
+        "aot-instances.aotdata.arm64",
     ];
 
     private Fixture(string root)
@@ -2032,6 +2079,7 @@ internal sealed class Fixture
         var fixture = new Fixture(Path.Combine(parent, name));
         fixture.AddPack("Sample.Runtime.App", "Sample.Runtime.Pack", "6.0.0");
         fixture.AddPack("Sample.Platform", "Sample.Platform.Pack", "7.0.0");
+        fixture.AddPack("Sample.Platform.Runtimes", "Sample.Platform.Native", "7.0.0");
         fixture.Package(
             "Sample.Ui",
             "1.0.0",
@@ -2062,6 +2110,7 @@ internal sealed class Fixture
         WriteFile(Path.Combine(runtime, "LICENSE.TXT"), "Sample runtime license text.\r\nSecond line.\r\n");
         WriteFile(Path.Combine(runtime, "THIRD-PARTY-NOTICES.TXT"), "Sample runtime notices.");
         WriteFile(Path.Combine(fixture.Packs[1].Folder, "LICENSE"), "Sample platform license text.");
+        WriteFile(Path.Combine(fixture.Packs[2].Folder, "LICENSE"), "Sample platform license text.\r\n");
         WriteFile(Path.Combine(fixture.Repository, "external", "Sample-lgpl", "COPYING.LIB"), "Sample LGPL library.");
         foreach (var file in s_appFiles)
         {
@@ -2246,10 +2295,12 @@ internal static partial class SelfTest
             EditMapping("{ \"package\": \"Sample.Ui\", \"license\": \"MIT\" }", "{ \"package\": \"Sample.Ui\" }"),
             EditMapping("\"Sample.Lgpl\": {", "\"Paneport\": {"),
             EditMapping("\"path\": \"Unused/**\"", "\"path\": \"Unused/**/../x\""),
+            EditMapping("\"paths\": [\"aot-instances.aotdata.*\"]", "\"paths\": \"aot-instances.aotdata.*\""),
             "[]",
         ];
         tally.Expect(
-            broken.All(text => Rejects(() => Mapping.Parse(text))) && Mapping.Parse(Fixture.Mapping).Files.Count == 14,
+            broken.All(text => Rejects(() => Mapping.Parse(text)))
+                && Mapping.Parse(Fixture.Mapping) is { Files.Count: 14, MainExecutablePaths.Count: 1 },
             "reads the mapping, and rejects an unknown key, a rule without a note or components, a path that leaves "
                 + "its folder, a text without its file or license, texts for Paneport, a bad pattern and a mapping "
                 + "that is no object");
@@ -2352,6 +2403,10 @@ internal static partial class SelfTest
             main.ToHashSet().SetEquals(mainComponents),
             "maps the main executable to the mapping's components and to that of every package in the lock file, "
                 + "SteamKit2 among them");
+        tally.Expect(
+            result.Coverage.Single(attribution => attribution.File == "aot-instances.aotdata.arm64").Components
+                .SequenceEqual(main),
+            "maps a file of the main executable's paths, such as the data of generic instances, as the executable");
         tally.Expect(result.UnusedRules.SequenceEqual(["Unused/**"]), "reports a rule that matches no file");
         tally.Expect(
             result.OtherLicenseFiles.SequenceEqual(["Sample.Ui: native/THIRD-PARTY.md of the package Sample.Ui 1.0.0"]),
@@ -2419,6 +2474,12 @@ internal static partial class SelfTest
             Holds(texts["sample-apache"], "Sample Apache NOTICE text.")
                 && Holds(markdown, "Sample Apache NOTICE text."),
             "keeps the Apache-2.0 NOTICE file");
+        var platform = texts["sample-platform"];
+        tally.Expect(
+            platform.Split("Sample platform license text.").Length == 2
+                && Holds(platform, "Sample.Platform.Pack 7.0.0; the same text is LICENSE of the runtime pack")
+                && Holds(platform, "Sample.Platform.Native 7.0.0 ====="),
+            "writes a text that two sources hold alike once, under a heading that names both");
         tally.Expect(
             Holds(texts["sample-fonts"], Fixture.Credit) && Holds(markdown, Fixture.Credit)
                 && Holds(indexText, Fixture.Credit),

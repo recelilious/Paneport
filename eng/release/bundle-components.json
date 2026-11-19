@@ -2,7 +2,7 @@
   "mainExecutable": {
     "components": ["Paneport", ".NET runtime", ".NET for iOS (dotnet/macios)"],
     "paths": ["aot-instances.aotdata.*"],
-    "note": "The app's executable holds our code, the Mono runtime and the native code of .NET for iOS, which the build links into it, and the code of every package in the app's lock file, which full ahead-of-time compilation puts into it (C-0003 section 3, C-0009 section 3). tools/GenerateNotices.cs adds the component of each package through eng/license-map.json. The ahead-of-time data of the generic instances that the compiler shares between all assemblies, aot-instances.aotdata.arm64, comes from the whole app in the same way."
+    "note": "The app's executable holds our code, the Mono runtime and the native code of .NET for iOS, which the build links into it, and the code of the packages that the app ships, which full ahead-of-time compilation puts into it (C-0003 section 3, C-0009 section 3). tools/GenerateNotices.cs maps it to the component of every package in the app's lock file, through eng/license-map.json, including packages that do not ship: build tasks, the native assets of other platforms and assemblies that the trimmer removes. That errs on the side of a notice too many. The ahead-of-time data of the generic instances that the compiler shares between all assemblies, aot-instances.aotdata.arm64, comes from the whole app in the same way."
   },
   "files": [
     {
@@ -102,17 +102,52 @@
     ".NET runtime": {
       "texts": [
         { "runtimePack": "Microsoft.NETCore.App", "file": "LICENSE.TXT" },
-        { "runtimePack": "Microsoft.NETCore.App", "file": "THIRD-PARTY-NOTICES.TXT" }
+        { "runtimePack": "Microsoft.NETCore.App", "file": "THIRD-PARTY-NOTICES.TXT" },
+        {
+          "upstream": "https://raw.githubusercontent.com/kubernetes/kubernetes/d30db1f9a915aa95402e1190461469a1889d92be/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
       ],
-      "note": "The runtime pack that the app's build uses, Mono's for iOS."
+      "note": "The runtime pack that the app's build uses, Mono's for iOS. Its THIRD-PARTY-NOTICES.TXT names parts under Apache-2.0 without the license's terms, so the full Apache-2.0 text follows, from a pinned copy that is byte for byte the text at apache.org/licenses/LICENSE-2.0.txt; a notice too many is the accepted way to err, and the coverage review of M9.1 confirms which parts ship."
     },
     "Avalonia": {
-      "texts": [{ "package": "Avalonia", "license": "MIT" }],
-      "note": "Avalonia's packages declare MIT and ship no license file."
+      "texts": [
+        {
+          "upstream": "https://raw.githubusercontent.com/AvaloniaUI/Avalonia/2d79ba55fae1b1e71c69f93a668080c9029e6a31/licence.md",
+          "sha256": "213814d306090074d234d760239ff0f67eb9b8d20eefb4d5631bb39dbe0b769b"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/AvaloniaUI/Avalonia/2d79ba55fae1b1e71c69f93a668080c9029e6a31/NOTICE.md",
+          "sha256": "dd6f80852d16320c865a2e403ffd1a8b07a0e34c5b37122c0bc2343639ff68e6"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/AvaloniaUI/Avalonia/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Avalonia.Base/Media/TextFormatting/Unicode/BiDiAlgorithm.cs",
+          "sha256": "245d9e90d33ff619f0507993ba41ca2670ec278ee40152e4a04c6f311929aa5b",
+          "lines": [1, 3]
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/kubernetes/kubernetes/d30db1f9a915aa95402e1190461469a1889d92be/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/foliojs/linebreak/c7873ab973ca11576c50e49803b1fecbe531ed96/LICENSE",
+          "sha256": "cf22b8198f0886a8d4626121579114f23141070e1fceab02ab3c1c361e163440"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/foliojs/unicode-trie/8ab9b14025ff7c26c2aec1bbd1e71d5f83eb3bd1/LICENSE",
+          "sha256": "43439dbd4f43837aadab215cdbe5a422cc6323a50c4ea84d8d6bbc3671666a1d"
+        }
+      ],
+      "note": "Avalonia's packages declare MIT and ship no license or notice file; their nuspecs record the repository commit 2d79ba55 of 12.1.4. The texts come from that commit: licence.md, Avalonia's own license as upstream wrote it, and NOTICE.md, the notices of the third-party code inside Avalonia.Base and Avalonia.Controls (WPF, the Silverlight Toolkit under Ms-PL, wayland-protocols, Metsys.Bson, RichTextKit under Apache-2.0, Mono, Collections.Pooled, EllipticalArc.java, WinUI, Chromium, Flutter and Reactive Extensions). Lines 1 to 3 of BiDiAlgorithm.cs hold the notice of Six Labors, the other holder of Apache-2.0 code in Avalonia.Base, which NOTICE.md does not list. The full Apache-2.0 text, which that code needs, comes from a pinned copy that is byte for byte the text at apache.org/licenses/LICENSE-2.0.txt, since RichTextKit's license.txt holds only the short notice. LineBreak.cs and UnicodeTrie.cs say that they are ported from foliojs/linebreak and foliojs/unicode-trie, so their MIT licenses follow."
     },
     "Avalonia.BuildServices": {
-      "texts": [{ "package": "Avalonia.BuildServices", "license": "MIT" }],
-      "note": "It declares MIT and ships no license file."
+      "texts": [
+        {
+          "upstream": "https://raw.githubusercontent.com/AvaloniaUI/Avalonia.BuildServices/777f975b0a0cecf0311273711d56697212c558c0/LICENSE",
+          "sha256": "94162c40c663bd96ec1b870e6aba6ef0a43f44c9eb500807e7965e7078f6dc47"
+        }
+      ],
+      "note": "It declares MIT and ships no license file; its nuspec records the repository commit 777f975, whose LICENSE is the text, as upstream wrote it."
     },
     "CommunityToolkit.Mvvm": {
       "texts": [

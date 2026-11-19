@@ -1,0 +1,6 @@
+= threads: an x86-64 build
+= threads: interlocked: 400000 increments and a sum of 19999800000: pass
+= threads: critical section: 400000 increments: pass
+= threads: events: 1000 round trips and a manual-reset event: pass
+= threads: suspend, context change and resume: pass
+= result: pass

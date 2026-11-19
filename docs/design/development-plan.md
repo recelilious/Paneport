@@ -153,6 +153,7 @@ The last column holds recelilious's answer and the date it was given. A stage se
 | D11 | The paths for Direct3D 9, Direct3D 12 and 32-bit guests (FEX WoW64 or Box64) | M7.3, then after L6 | C-0004 section 2 open items. M7.3 settles 32-bit guests. | Open. |
 | D12 | Whether the device test app shares the main app's bundle identifier | M1.3 | Sharing it keeps the free account's three-app limit; recommended. | Shared (2026-10-29). |
 | D13 | How the Steam sign-in QR code is drawn | M2.3 (S2.3.10) | A QR code library registered under C-0003, or a small encoder of our own. | Open. |
+| D14 | Whether the `runtime` CI job runs on every pull request, and whether a merge waits for it | M4.2 (S4.2.6) | The brief of M4.2 leaves both to recelilious; C-0011 1.3 settles both. | Every pull request and every push to `main`, and a merge waits for it (2026-11-17). Other branch pushes skip the job, because the pull request's run covers them. Each fork build is saved to the cache as soon as it is built, so that a failing harness, a timeout or a cancelled run keeps it; the job times out after 90 minutes; and NuGet caches are saved only on `main`, because the repository's caches are limited to 10 GB and held 11 GB on 2026-11-17, mostly NuGet caches saved for each branch and pull request. The repository has no branch protection or rulesets, so a merge waits for the job by process, as for the `ios` job. A cold build of Wine takes about 30 minutes of the job (scratch run 43936699061 of M4.2). |
 
 ## 5. Stage map
 
@@ -187,7 +188,7 @@ The last column holds recelilious's answer and the date it was given. A stage se
 | M2.3 | SteamKit2 on the device | L2 | M1.3, M0.3; D13; merges after S9.1.1 | L | Unit tests with fakes; a desktop run; the device gate |
 | M3.1 | JIT provider and broker script | L3 | M2.2, M1.3 | L | macOS tests with a MAP_JIT provider; device acceptance |
 | M4.1 | Forks, submodules and toolchains | L4 | M1.1; D4, D5 | M | A fresh clone builds the first fork targets |
-| M4.2 | ARM64EC Wine with FEX on macOS | L4 | M4.1 | XL | Win32 test programs pass on the macOS harness |
+| M4.2 | ARM64EC Wine with FEX on macOS | L4 | M4.1; D14 | XL | Win32 test programs pass on the macOS harness |
 | M4.3 | Single-process Wine on macOS | L4 | M4.2, M2.2 | XL | The same tests in single-process mode, with fork and exec trapped |
 | M4.4 | Runtime on iOS | L4 | M4.3, M3.1, M1.3 | XL | iOS builds and bundle checks in CI; device acceptance |
 | M5.1 | iOS display driver | L5 | M4.4 | L | The harness renders into a layer it provides |
@@ -358,6 +359,8 @@ Each of these goes through the contract process (C-0012 section 2) when its stag
 | M4.1 | C-0003 | Register the build tools the forks need, such as Python, bison, flex and autoconf, record llvm-mingw's license, and record the mingw-w64 runtime review. |
 | M4.2 | C-0011 | Add a `runtime` CI job that builds the forks and runs the macOS harness. |
 | M4.2 | C-0004 | Add `tests/runtime/` and `tests/win32/` to the repository layout. |
+| M4.2 | C-0003 | Register actions/cache, say which changed fork files carry a notice, and move FEX-darwin to the reference-only list with Hadron and Arknights-MacOS-Runtime. |
+| M4.2 | C-0010 | Say how a fork file that we change is marked. |
 | M4.4 | C-0009 | Add bundle locations for the template prefix and the bundled test programs. If PE code pages must come from the JIT pool, also C-0005 section 3 or C-0006 section 3. |
 | M5.2 | C-0003 | Register any LLVM libraries that DXMT's Mach-O side links. |
 | M6.3 | C-0004 | Give the file-backed tier's backing file a place in section 4, if it needs one. |

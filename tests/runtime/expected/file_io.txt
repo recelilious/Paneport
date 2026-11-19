@@ -1,0 +1,8 @@
+= file_io: an x86-64 build
+= file_io: drive C: present
+= file_io: temporary folder on drive C:
+= file_io: create, write and read back 1048576 bytes: pass
+= file_io: a mapped view matches the file: pass
+= file_io: truncate, copy, rename and list: pass
+= file_io: delete the files and the folder: pass
+= result: pass

@@ -58,5 +58,5 @@ CheckOptions:
   bugprone-sizeof-expression.WarnOnSizeOfPointerToAggregate: false
   readability-function-cognitive-complexity.IgnoreMacros: true
 WarningsAsErrors: '*'
-HeaderFilterRegex: '.*/(src|tests)/native/.*'
+HeaderFilterRegex: '.*/(src/native|tests/native|tests/runtime|tests/win32)/.*'
 SystemHeaders: false

@@ -639,8 +639,8 @@ jobs:
       # every file of the bundle through eng/release/bundle-components.json; here a file that it
       # does not attribute and a text that the mapping lists as having no source yet are warnings,
       # and a component that the register lacks or marks Under review or Forbidden, a missing license
-      # text, missing full terms of LGPL-2.1 or Apache-2.0, an upstream text that is missing or
-      # changed, and an LGPL component other than SteamKit2 in the main executable fail
+      # text, missing full terms of LGPL-2.1, Apache-2.0 or Unicode-3.0, an upstream text that is
+      # missing or changed, and an LGPL component other than SteamKit2 in the main executable fail
       # (docs/design/release-engineering.md).
       - name: Place the third-party notices in both apps (tools/GenerateNotices.cs)
         if: ${{ !cancelled() && (steps.apps.outputs.main != '' || steps.apps.outputs.test != '') }}

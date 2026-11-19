@@ -22,14 +22,14 @@
 //   dotnet run tools/GenerateNotices.cs -- --self-test      check every rule on generated fixtures
 //
 // Both modes fail on a component that the register lacks or marks Under review, Forbidden or Tool;
-// on a component without a license text, or without the full terms of LGPL-2.1 or Apache-2.0 when
-// its row or its packages name them; on a package whose declared license its register row does not
-// name; on an Apache-2.0 NOTICE file left out; on an FTL component without its credit; and on an
-// LGPL component other than SteamKit2 in the main executable (C-0003 section 3). A file that the
-// mapping does not attribute, and a text that the mapping lists as having no source yet, are
-// warnings in ios mode, the ios job's, and failures in release mode. After a failure nothing is
-// written. Findings name the file, component or package, never a license text. Exit codes: 0 the
-// notices are written, 1 a failure, 2 usage or an input that cannot be read.
+// on a component without a license text, or without the full terms of LGPL-2.1, Apache-2.0 or
+// Unicode-3.0 when its row or its packages name them; on a package whose declared license its
+// register row does not name; on an Apache-2.0 NOTICE file left out; on an FTL component without
+// its credit; and on an LGPL component other than SteamKit2 in the main executable (C-0003 section
+// 3). A file that the mapping does not attribute, and a text that the mapping lists as having no
+// source yet, are warnings in ios mode, the ios job's, and failures in release mode. After a
+// failure nothing is written. Findings name the file, component or package, never a license text.
+// Exit codes: 0 the notices are written, 1 a failure, 2 usage or an input that cannot be read.
 // docs/design/release-engineering.md describes the rules and the outputs.
 
 #:include Shared/Register.cs
@@ -680,7 +680,8 @@ internal sealed record Mapping(
                 RelativePath(element.GetProperty("repository"), where)),
             ["sha256", "upstream"] or ["lines", "sha256", "upstream"] or ["sha256", "terms", "upstream"]
                 or ["lines", "sha256", "terms", "upstream"] => UpstreamSource(element, where),
-            _ when keys.Contains("terms", StringComparer.Ordinal) => throw new InvalidDataException(
+            _ when keys.Contains("terms", StringComparer.Ordinal) && !keys.Contains("upstream", StringComparer.Ordinal)
+                => throw new InvalidDataException(
                 $"{where}: only an upstream file takes \"terms\", the license whose full terms it carries."),
             _ => throw new InvalidDataException(
                 $"{where} must name a package with a file or a license, a runtime pack with a file, a repository "
@@ -846,13 +847,14 @@ internal static partial class UpstreamUrl
     public static bool IsSha256(string text) => Sha256().IsMatch(text);
 
     // Lines First to Last of a text, which lie in the file's leading comment header: each line from
-    // line 1 to Last is a comment or blank, so that no code ships as a notice and a range cannot start
-    // inside a /* */ comment or a string that an earlier line opened. A line inside a /* */ comment
-    // counts as a comment. A line that holds NEL, LS or PS fails, because C# ends a line there too, so
-    // code could follow a "//" comment on what reads here as one line; so does a line that ends in a
-    // backslash or holds the trigraph ??/, which C splices with the next line, so that "*\" and "/"
-    // could close a comment. The text is the lines without the blank or white-space lines at its end,
-    // and one line break; a range of blank lines alone holds no notice.
+    // line 1 to Last is a comment or blank, so that no code ships as a notice. A range may start inside
+    // a /* */ comment of the header, whose state the scan takes from line 1; a range that starts inside
+    // a string or below code fails. A line inside a /* */ comment counts as a comment. A line that
+    // holds NEL, LS or PS fails, because C# ends a line there too, so code could follow a "//" comment
+    // on what reads here as one line; so does a line that ends in a backslash or holds the trigraph
+    // ??/, which C splices with the next line, so that "*\" and "/" could close a comment. The text is
+    // the lines without the blank or white-space lines at its end, and one line break; a range of
+    // blank lines alone holds no notice.
     public static string Lines(string text, LineRange range, string name)
     {
         var lines = text[..^1].Split('\n');
@@ -2250,9 +2252,10 @@ internal static partial class Output
     // output and .gitignore ignores. A device or network path fails: on Windows any full path whose
     // root is not a drive, which covers \\?\, \\.\, \??\, \??\UNC\ and \\server\share alike, and any
     // with a ':' after its drive, which names a stream, as docs\A::$INDEX_ALLOCATION does the folder
-    // docs itself, or a path on another drive. Every link among the existing folders of the path, and
-    // of the repository's, is followed to its final target first, so that a link under build/ cannot
-    // lead into a tracked folder. Returns the full path.
+    // docs\A, and docs::$INDEX_ALLOCATION the folder docs itself, or a path on another drive. Every
+    // link among the existing folders of the path, and of the repository's, is followed to its final
+    // target first, so that a link under build/ cannot lead into a tracked folder. Returns the full
+    // path.
     public static string EnsureBuildOutput(string root, string path, string option)
     {
         var device = $"{option} {path} is a device or network path; the notices go into a local build output folder.";
@@ -2638,8 +2641,15 @@ internal static class Report
     public static string Data(string text) => Plain(text.Replace("%", "%25", StringComparison.Ordinal));
 }
 
-internal sealed class Tally
+internal sealed class Tally(TextWriter output)
 {
+    private readonly List<string> _skipped = [];
+
+    public Tally()
+        : this(Console.Out)
+    {
+    }
+
     public int Total { get; private set; }
 
     public int Failed { get; private set; }
@@ -2648,7 +2658,25 @@ internal sealed class Tally
     {
         Total++;
         Failed += passed ? 0 : 1;
-        Console.WriteLine($"  {(passed ? "ok  " : "FAIL")} {description}");
+        output.WriteLine($"  {(passed ? "ok  " : "FAIL")} {description}");
+    }
+
+    // A check that cannot run on this system: it counts neither as passed nor as failed, and the
+    // summary names its reason.
+    public void Skip(string description, string reason)
+    {
+        _skipped.Add(reason);
+        output.WriteLine($"  skip {description} ({reason})");
+    }
+
+    public string Summary()
+    {
+        var skipped = _skipped.Count == 0
+            ? string.Empty
+            : $", {_skipped.Count} skipped ({string.Join("; ", _skipped)})";
+        return Failed == 0
+            ? $"Self-test passed: {Total} of {Total} checks as expected{skipped}."
+            : $"Self-test FAILED: {Failed} of {Total} checks not as expected{skipped}.";
     }
 }
 
@@ -3289,9 +3317,7 @@ internal static partial class SelfTest
             }
         }
 
-        Console.WriteLine(tally.Failed == 0
-            ? $"Self-test passed: {tally.Total} of {tally.Total} checks as expected."
-            : $"Self-test FAILED: {tally.Failed} of {tally.Total} checks not as expected.");
+        Console.WriteLine(tally.Summary());
         return tally.Failed == 0 ? 0 : 1;
     }
 
@@ -3315,6 +3341,13 @@ internal static partial class SelfTest
     private static void Readers(Tally tally, string root)
     {
         Console.WriteLine("Readers:");
+        var counted = new Tally(TextWriter.Null);
+        counted.Expect(true, "a check that runs");
+        counted.Skip("a check that cannot run here", "a reason");
+        tally.Expect(
+            counted.Total == 1
+                && counted.Summary() == "Self-test passed: 1 of 1 checks as expected, 1 skipped (a reason).",
+            "a skipped check counts neither as passed nor as failed, and the summary gives its number and reason");
         (string, string)[] entries = [("CFBundleExecutable", "Sample"), ("CFBundleDisplayName", Fixture.DisplayName)];
         var binary = BinaryPropertyListWriter.Write(entries);
         var values = PropertyList.TopLevelStrings(binary);
@@ -3569,6 +3602,18 @@ internal static partial class SelfTest
                 && marked(LgplText) is { } file && file.Contains("only an upstream file", StringComparison.Ordinal),
             "only an upstream text is marked as carrying a license's terms");
 
+        // An upstream text with "terms" that lacks its hash, misspells a key or names one twice gets the
+        // message of the forms, which names the SHA-256, and not the refusal of the mark.
+        const string Mark = "\"terms\": \"Apache-2.0\" }";
+        bool namesForms(string from, string to) =>
+            Message(() => Mapping.Parse(EditMapping(from, to))) is { } refused
+                && refused.Contains("or an upstream file with its SHA-256", StringComparison.Ordinal);
+        tally.Expect(
+            namesForms($", \"sha256\": \"{hash}\", \"terms\"", ", \"terms\"")
+                && namesForms(Mark, "\"terms\": \"Apache-2.0\", \"line\": [1, 2] }")
+                && namesForms(Mark, "\"terms\": \"Apache-2.0\", \"terms\": \"Apache-2.0\" }"),
+            "an upstream text with the mark but without its hash, with a misspelt key or a key twice names the forms");
+
         const string RuntimeText = "{ \"runtimePack\": \"Sample.Runtime.App\", \"file\": \"THIRD-PARTY-NOTICES.TXT\" }";
         string twice(string sha256) => EditMapping(
             RuntimeText,
@@ -3608,16 +3653,27 @@ internal static partial class SelfTest
                 && blank.Contains("are blank", StringComparison.Ordinal),
             "a range that ends in blank lines gives a text with one line break at its end, and blank lines alone fail");
 
-        // The scan starts at line 1, so a range cannot start inside a comment or a string that an
-        // earlier line opened, nor below code.
+        // The scan starts at line 1: a range may start inside a /* */ comment of the header, whose state
+        // the scan takes from there, but a range that starts inside a string or below code fails, and so
+        // does code after the comment's end.
         static string? refusal(string text, int first, int last) =>
             Message(() => UpstreamUrl.Lines(text, new LineRange(first, last), "f"));
         tally.Expect(
             refusal("/* a\n// b */ int x;\n", 2, 2) is not null
                 && refusal("var s = @\"\n// not a comment\n\";\n", 2, 2) is not null
                 && refusal("// a\n\nint x;\n// b\n", 4, 4) is not null
-                && refusal("// a\n// b\n", 2, 2) is null,
-            "a range lies within the file's leading comment header, so it starts in no comment, string or code above");
+                && refusal("// a\n// b\n", 2, 2) is null
+                && refusal("/*\n * a\n */\nint x;\n", 2, 3) is null,
+            "a range lies within the file's leading comment header: it may start inside a comment of the header, "
+                + "not inside a string or below code");
+        tally.Expect(
+            refusal("// a" + (char)0x2028 + "x\n// b\n", 2, 2) is { } terminatorBefore
+                && terminatorBefore.Contains("before the range 2 to 2, holds NEL, LS or PS", StringComparison.Ordinal)
+                && refusal("// a \\\n// b\n", 2, 2) is { } spliceBefore
+                && spliceBefore.Contains("before the range 2 to 2, ends in a backslash", StringComparison.Ordinal)
+                && refusal("// a ??/ b\n// c\n", 2, 2) is { } trigraphBefore
+                && trigraphBefore.Contains("before the range 2 to 2, ends in a backslash", StringComparison.Ordinal),
+            "a range refuses NEL, LS or PS, a backslash at the end of a line and ??/ on the lines above it too");
         tally.Expect(
             refusal("/* a *\\\n/ int x;\n", 1, 2) is { } splice
                 && splice.Contains("ends in a backslash", StringComparison.Ordinal)
@@ -3691,15 +3747,15 @@ internal static partial class SelfTest
             result.OtherLicenseFiles.SequenceEqual(others),
             "reports the license, notice, third-party, EULA, patent, credit, acknowledgement and legal files of a "
                 + "component's packages that are not among its texts");
-        var ui = result.Components.Single(component => component.Name == "Sample.Ui");
         string[] uiSources =
             ["Sample.Ui 1.0.0", "Sample.Ui.Extra 1.0.0", "sample/ui 89abcdef0123456789abcdef0123456789abcdef"];
         tally.Expect(
-            ui.Sources.SequenceEqual(uiSources),
+            result.Components.SingleOrDefault(component => component.Name == "Sample.Ui") is { } ui
+                && ui.Sources.SequenceEqual(uiSources),
             "lists a component's sources sorted, and an upstream text by its repository and commit");
-        var apache = result.Components.Single(component => component.Name == "Sample.Apache");
         tally.Expect(
-            apache.Sources.SequenceEqual(["Sample.Apache 3.0.0"])
+            result.Components.SingleOrDefault(component => component.Name == "Sample.Apache") is { } apache
+                && apache.Sources.SequenceEqual(["Sample.Apache 3.0.0"])
                 && apache.Texts.Any(text => text.Title == "Apache-2.0 license, copied from LICENSE-2.0.txt of "
                     + "sample/terms at commit 0123456789abcdef0123456789abcdef01234567"),
             "titles a text that only carries a license's terms by that license, naming the file it is copied "
@@ -4082,13 +4138,23 @@ internal static partial class SelfTest
         Output.Write(fileLink, outputs);
         var outsideText = Path.Combine(fixture.Root, "outside.txt");
         Fixture.WriteFile(outsideText, "kept");
-        var fileLinked = Fixture.FileLink(Path.Combine(fileLink, Notices.TextsFolder, "01-x.txt"), outsideText);
-        tally.Expect(
-            fileLinked
-                ? Throws(() => Output.Write(fileLink, outputs)) && File.ReadAllText(outsideText) == "kept"
-                    && intact(fileLink)
-                : OperatingSystem.IsWindows(),
-            "refuses a link to a file among the texts, and keeps its target and its own output");
+        const string FileLinkCheck =
+            "refuses a link to a file among the texts, and keeps its target and its own output";
+        if (Fixture.FileLink(Path.Combine(fileLink, Notices.TextsFolder, "01-x.txt"), outsideText))
+        {
+            tally.Expect(
+                Throws(() => Output.Write(fileLink, outputs)) && File.ReadAllText(outsideText) == "kept"
+                    && intact(fileLink),
+                FileLinkCheck);
+        }
+        else if (OperatingSystem.IsWindows())
+        {
+            tally.Skip(FileLinkCheck, "no file link without a right");
+        }
+        else
+        {
+            tally.Expect(false, $"{FileLinkCheck}: the link could not be made");
+        }
         // Only the index differs from the tool's own output: another format.
         var other = Path.Combine(fixture.Root, "other-format");
         Output.Write(other, outputs);
@@ -4132,12 +4198,13 @@ internal static partial class SelfTest
             devicePaths.All(path => Rejects(() => Output.EnsureBuildOutput(fixture.Repository, path, "--out"))),
             "refuses device paths, \\\\?\\, \\\\.\\ and \\??\\ among them, and network paths");
 
-        // On Windows a ':' after the drive names a stream, and docs\A::$INDEX_ALLOCATION opens the folder
-        // docs itself; Path.Combine would also start over at a part such as C:x. Elsewhere these are
-        // names in the tracked docs/.
+        // On Windows a ':' after the drive names a stream: docs\A::$INDEX_ALLOCATION names, and creates,
+        // the folder docs\A inside the tracked docs/, and docs::$INDEX_ALLOCATION the folder docs itself;
+        // Path.Combine would also start over at a part such as C:x. Elsewhere these are names in docs/.
         string[] colonPaths =
         [
             @"docs\A::$INDEX_ALLOCATION",
+            "docs::$INDEX_ALLOCATION",
             @"docs\Z:$I30:$INDEX_ALLOCATION",
             $@"docs\new\{fixture.Repository}\build\y",
             @"docs\new\C:x",
@@ -4213,12 +4280,20 @@ internal static partial class SelfTest
                 && refusal.Contains("leads to docs/y", StringComparison.Ordinal);
         bool relativeLink(string name, string target, string folder) =>
             Fixture.RelativeLink(Path.Combine(relative, "build", name), target, Path.Combine(relative, "docs", folder));
-        tally.Expect(
-            OperatingSystem.IsWindows()
-                || (relativeLink("a", "../docs/x", "x") && relativeLink("j", "a/../y", "y")
-                    && refusedThrough("build", "j") && refusedThrough("build", "j", "x")),
+        const string RelativeLinkCheck =
             "on macOS and Linux, refuses build/j when it links to a/../y and build/a to ../docs/x, since that is "
-                + "docs/y");
+                + "docs/y";
+        if (OperatingSystem.IsWindows())
+        {
+            tally.Skip(RelativeLinkCheck, "no relative link without a right");
+        }
+        else
+        {
+            tally.Expect(
+                relativeLink("a", "../docs/x", "x") && relativeLink("j", "a/../y", "y")
+                    && refusedThrough("build", "j") && refusedThrough("build", "j", "x"),
+                RelativeLinkCheck);
+        }
     }
 
     private static void CommandLine(Tally tally, string root)
@@ -4630,11 +4705,11 @@ internal static partial class SelfTest
         var v3 = Fixture.Create(root, "unicode-terms");
         v3.MappingText = unicode(v3, Fixture.UnicodeTerms);
         var v3Result = v3.Generate(Mode.Release);
+        var v3Graphics = v3Result.Components.SingleOrDefault(component => component.Name == "Sample.Graphics");
         tally.Expect(
-            v3Result.Failures.Count == 0
-                && v3Result.Components.Single(component => component.Name == "Sample.Graphics").Texts
-                    .Any(text => text.Title == "Unicode-3.0 license, copied from LICENSE of sample/data at commit "
-                        + "fedcba9876543210fedcba9876543210fedcba98"),
+            v3Result.Failures.Count == 0 && v3Graphics is not null
+                && v3Graphics.Texts.Any(text => text.Title == "Unicode-3.0 license, copied from LICENSE of sample/data "
+                    + "at commit fedcba9876543210fedcba9876543210fedcba98"),
             "recognizes the full terms of the Unicode License V3 in a text marked as carrying them");
         Expect(
             tally,
@@ -4697,6 +4772,16 @@ internal static partial class SelfTest
             },
             ["Sample.Graphics is under Apache-2.0, but none of its texts holds the full terms"],
             "a component whose package declares Apache-2.0 needs the full terms too");
+        Expect(
+            tally,
+            root,
+            "row-unicode-terms",
+            fixture => fixture.RegisterText = Fixture.Register.Replace(
+                Fixture.GraphicsLicense,
+                "MIT AND Unicode-3.0. Its native package lists more components.",
+                StringComparison.Ordinal),
+            ["Sample.Graphics is under Unicode-3.0, but none of its texts holds the full terms"],
+            "a component whose row names Unicode-3.0 needs the full terms of the Unicode License V3");
 
         // The register row alone asks for the full terms, for a component without a package such as a
         // fork's, in each identifier of LGPL-2.1 and in any case.
@@ -4792,8 +4877,9 @@ internal static partial class SelfTest
                 $"so does a component in it that only its row puts under {license}, without a package");
         }
 
-        // An OR that a package declares puts a component of the executable under the LGPL only when each
-        // alternative names the LGPL, since the register row records the license chosen (C-0003 section 5).
+        // An OR that a package declares lets a component of the executable out of the LGPL only through an
+        // alternative that names licenses, all of them in the expression that the register row starts
+        // with, since the row records the license chosen (C-0003 section 5).
         const string Either = "MIT OR LGPL-2.1-only";
         var chosen = Fixture.Create(root, "or-chooses-mit");
         chosen.RegisterText = Fixture.Register.Replace(

@@ -47,7 +47,8 @@ internal static partial class Register
         {
             throw new InvalidDataException(
                 $"{FilePath} line {header + 1}: the register's columns are \"{string.Join(" | ", columns)}\", "
-                    + $"not \"{string.Join(" | ", s_columns)}\". Update tools/CheckLicenses.cs to the new shape.");
+                    + $"not \"{string.Join(" | ", s_columns)}\". Update tools/Shared/Register.cs, which "
+                    + "tools/CheckLicenses.cs and tools/GenerateNotices.cs include, to the new shape.");
         }
 
         var rows = new List<RegisterRow>();

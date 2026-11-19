@@ -11,20 +11,26 @@
 // eng/release/bundle-components.json. The main executable maps to the components that the mapping
 // names for it and to the component of every package in the app's lock file, through
 // eng/license-map.json, because full AOT compiles every package into it. The register and the map
-// are read by the files in tools/Shared/, which tools/CheckLicenses.cs includes too.
+// are read by the files in tools/Shared/, which tools/CheckLicenses.cs includes too. A text that no
+// package ships comes from raw.githubusercontent.com at a full commit: the ios job fetches it into
+// build/upstream/ and checks its SHA-256, and the tool, which never uses the network, checks the
+// hash again when it reads the file.
 //
 //   dotnet run tools/GenerateNotices.cs -- --mode ios|release --project <app.csproj> --app <bundle.app>
-//       [--out <folder>]                                generate the notices of a built app
-//   dotnet run tools/GenerateNotices.cs -- --self-test  check every rule on generated fixtures
+//       [--out <folder>]                                    generate the notices of a built app
+//   dotnet run tools/GenerateNotices.cs -- --list-upstream  print "<sha256> <url>" for each text to fetch
+//   dotnet run tools/GenerateNotices.cs -- --self-test      check every rule on generated fixtures
 //
 // Both modes fail on a component that the register lacks or marks Under review, Forbidden or Tool;
-// on a component without a license text; on a package whose declared license its register row
-// does not name; on an Apache-2.0 NOTICE file left out; on an FTL component without its credit;
-// and on an LGPL component other than SteamKit2 in the main executable (C-0003 section 3). A file
-// that the mapping does not attribute is a warning in ios mode, the ios job's, and a failure in
-// release mode. After a failure nothing is written. Findings name the file, component or package,
-// never a license text. Exit codes: 0 the notices are written, 1 a failure, 2 usage or an input
-// that cannot be read. docs/design/release-engineering.md describes the rules and the outputs.
+// on a component without a license text, or without the full terms of LGPL-2.1 or Apache-2.0 when
+// its row or its packages name them; on a package whose declared license its register row does not
+// name; on an Apache-2.0 NOTICE file left out; on an FTL component without its credit; and on an
+// LGPL component other than SteamKit2 in the main executable (C-0003 section 3). A file that the
+// mapping does not attribute, and a text that the mapping lists as having no source yet, are
+// warnings in ios mode, the ios job's, and failures in release mode. After a failure nothing is
+// written. Findings name the file, component or package, never a license text. Exit codes: 0 the
+// notices are written, 1 a failure, 2 usage or an input that cannot be read.
+// docs/design/release-engineering.md describes the rules and the outputs.
 
 #:include Shared/Register.cs
 #:include Shared/LicenseMap.cs
@@ -34,6 +40,7 @@ using System.Buffers.Binary;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -43,16 +50,29 @@ using System.Xml.Linq;
 
 try
 {
+    var root = Directory.GetCurrentDirectory();
     if (args is ["--self-test"])
     {
         return SelfTest.Run();
     }
 
-    return Options.Parse(args) is { } options ? Cli.Run(options) : Cli.Usage();
+    if (args is ["--list-upstream"])
+    {
+        return Cli.ListUpstream(root, Console.Out);
+    }
+
+    return Options.Parse(args) is { } options
+        ? Cli.Run(
+            options,
+            root,
+            project => BuildQuery.Msbuild(root, project),
+            Console.Out,
+            Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+        : Cli.Usage();
 }
 catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
 {
-    Console.Error.WriteLine($"error: {exception.Message}");
+    Console.Error.WriteLine($"error: {Report.Plain(exception.Message)}");
     return 2;
 }
 
@@ -122,51 +142,71 @@ internal static class Cli
     {
         Console.Error.WriteLine(
             "usage: dotnet run tools/GenerateNotices.cs -- --mode ios|release --project <app.csproj> "
-                + "--app <bundle.app> [--out <folder>] | --self-test");
+                + "--app <bundle.app> [--out <folder>] | --list-upstream | --self-test");
         return 2;
     }
 
-    public static int Run(Options options)
+    // The query gives MSBuild's answer for the app's project; the self-test passes one of its own.
+    public static int Run(Options options, string root, Func<string, string> query, TextWriter output, bool annotate)
     {
-        var root = Directory.GetCurrentDirectory();
         if (!File.Exists(Path.Combine(root, Register.FilePath)))
         {
             throw new InvalidDataException($"run the tool from the repository root, where {Register.FilePath} is.");
         }
 
         var configuration = Configuration.Load(root);
-        var app = Path.GetFullPath(options.App);
+        var app = Output.EnsureBuildOutput(root, options.App, "--app");
         if (!Directory.Exists(app))
         {
             throw new InvalidDataException($"{options.App} is not an app bundle.");
         }
 
-        Output.EnsureBuildOutput(root, app, "--app");
-        var output = options.Out is null ? null : Path.GetFullPath(options.Out);
-        if (output is not null)
+        var notices = Path.Combine(app, Notices.Folder);
+        var copy = options.Out is { } given ? Output.EnsureBuildOutput(root, given, "--out") : null;
+
+        // Both destinations are checked before either is written.
+        Output.Check(notices);
+        if (copy is not null)
         {
-            Output.EnsureBuildOutput(root, output, "--out");
+            Output.Check(copy);
         }
 
         var bundle = Bundle.Read(app);
-        var build = BuildQuery.Run(root, options.Project);
+        var build = BuildQuery.Run(root, options.Project, query);
         var result = Notices.Generate(bundle, build, configuration, options.Mode);
-        Report.Print(bundle, build, configuration, options.Mode, result, Console.Out);
+        Report.Print(bundle, build, configuration, options.Mode, result, output, annotate);
         if (result.Outputs is not { } outputs)
         {
             return 1;
         }
 
-        Output.Write(Path.Combine(app, Notices.Folder), outputs);
+        Output.Write(notices, outputs);
         var written = $"{bundle.Name}/{Notices.Folder}/";
-        if (output is not null)
+        if (copy is not null)
         {
-            Output.Write(output, outputs);
-            written += $" and {Path.GetRelativePath(root, output).Replace('\\', '/')}/";
+            Output.Write(copy, outputs);
+            written += $" and {Path.GetRelativePath(root, copy).Replace('\\', '/')}/";
         }
 
-        Console.WriteLine(
-            $"Wrote {Notices.NoticesFile}, {Notices.IndexFile} and {outputs.Texts.Count} texts into {written}.");
+        output.WriteLine(Report.Plain(
+            $"Wrote {Notices.NoticesFile}, {Notices.IndexFile} and {outputs.Texts.Count} texts into {written}."));
+        return 0;
+    }
+
+    // The texts that the ios job fetches before the notices step: one line "<sha256> <url>" each.
+    public static int ListUpstream(string root, TextWriter output)
+    {
+        var path = Path.Combine(root, Mapping.FilePath);
+        if (!File.Exists(path))
+        {
+            throw new InvalidDataException($"run the tool from the repository root, where {Mapping.FilePath} is.");
+        }
+
+        foreach (var (url, sha256) in Mapping.Parse(File.ReadAllText(path)).Upstream())
+        {
+            output.WriteLine($"{sha256} {url}");
+        }
+
         return 0;
     }
 }
@@ -242,25 +282,15 @@ internal sealed record BuildInputs(
 // its build used, and reads the project's lock file.
 internal static class BuildQuery
 {
-    public static BuildInputs Run(string root, string project)
+    public static BuildInputs Run(string root, string project, Func<string, string> query)
     {
-        var path = Path.GetFullPath(project);
+        var path = Path.GetFullPath(project, root);
         if (!File.Exists(path))
         {
             throw new InvalidDataException($"{project} does not exist.");
         }
 
-        var json = Dotnet(
-            root,
-            "msbuild",
-            path,
-            "-nologo",
-            "-nodeReuse:false",
-            "-t:ResolveFrameworkReferences",
-            "-getItem:ResolvedRuntimePack",
-            "-getProperty:NuGetPackageRoot",
-            "-p:Configuration=Release");
-        var (packageRoot, packs) = ParseQuery(json);
+        var (packageRoot, packs) = ParseQuery(query(path));
         var lockFile = LockFiles.Find(path);
         return new BuildInputs(
             Path.GetRelativePath(root, lockFile).Replace('\\', '/'),
@@ -324,6 +354,18 @@ internal static class BuildQuery
     private static string Required(JsonElement item, string name) =>
         Metadata(item, name) ?? throw new InvalidDataException($"a runtime pack has no {name}.");
 
+    // MSBuild's answer for the project, from the repository root, where global.json picks the SDK.
+    public static string Msbuild(string root, string project) => Dotnet(
+        root,
+        "msbuild",
+        project,
+        "-nologo",
+        "-nodeReuse:false",
+        "-t:ResolveFrameworkReferences",
+        "-getItem:ResolvedRuntimePack",
+        "-getProperty:NuGetPackageRoot",
+        "-p:Configuration=Release");
+
     private static string Dotnet(string workingDirectory, params string[] arguments)
     {
         var start = new ProcessStartInfo("dotnet")
@@ -368,11 +410,13 @@ internal static class BuildQuery
 
 internal static class LockFiles
 {
-    // NuGet uses packages.<project>.lock.json in place of packages.lock.json when it exists.
+    // NuGet uses packages.<project>.lock.json in place of packages.lock.json when it exists, with each
+    // space of the project's name made an underscore.
     public static string Find(string project)
     {
         var folder = Path.GetDirectoryName(project) ?? ".";
-        var named = Path.Combine(folder, $"packages.{Path.GetFileNameWithoutExtension(project)}.lock.json");
+        var name = Path.GetFileNameWithoutExtension(project).Replace(' ', '_');
+        var named = Path.Combine(folder, $"packages.{name}.lock.json");
         if (File.Exists(named))
         {
             return named;
@@ -385,7 +429,8 @@ internal static class LockFiles
     }
 
     // Every package of every target and runtime, direct, transitive and centrally pinned, without
-    // the solution's own projects.
+    // the solution's own projects. A package at two versions fails, because its texts would come
+    // from one of them only.
     public static List<LockedPackage> Packages(string json)
     {
         var packages = new List<LockedPackage>();
@@ -417,10 +462,17 @@ internal static class LockFiles
                     }
 
                     var package = new LockedPackage(entry.Name, version);
-                    if (!packages.Any(other => string.Equals(other.Id, package.Id, StringComparison.OrdinalIgnoreCase)
-                        && other.Version == package.Version))
+                    var same = packages.FirstOrDefault(
+                        other => string.Equals(other.Id, package.Id, StringComparison.OrdinalIgnoreCase));
+                    if (same is null)
                     {
                         packages.Add(package);
+                    }
+                    else if (!string.Equals(same.Version, package.Version, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidDataException(
+                            $"the lock file gives {package.Id} two versions, {same.Version} and {package.Version}; the "
+                                + "notices take a package's texts from one version, so the app must use one.");
                     }
                 }
             }
@@ -448,11 +500,26 @@ internal enum SourceKind
 
     // A file of this repository, such as a license file of a fork under external/.
     RepositoryFile,
+
+    // A file that no package ships, at a full commit on raw.githubusercontent.com, which the ios job
+    // fetches into build/upstream/ and checks by its SHA-256 before the notices step.
+    Upstream,
 }
 
-internal sealed record TextSource(SourceKind Kind, string Name, string Value);
+// Lines First to Last of a file, counted from 1: a notice that lives only in a source file's header.
+internal readonly record struct LineRange(int First, int Last);
 
-internal sealed record ComponentTexts(IReadOnlyList<TextSource> Texts, string? Credit);
+// Name is the package, the runtime pack's framework, or the SHA-256 of an upstream file; Value is the
+// file, the license, the repository path or the upstream URL.
+internal sealed record TextSource(SourceKind Kind, string Name, string Value, LineRange? Lines = null);
+
+// A text that a component needs and that no source provides yet, with the reason.
+internal sealed record MissingText(string Text, string Note);
+
+internal sealed record ComponentTexts(
+    IReadOnlyList<TextSource> Texts,
+    string? Credit,
+    IReadOnlyList<MissingText> Missing);
 
 internal sealed record FileRule(string Pattern, IReadOnlyList<string> Components, Regex Matcher);
 
@@ -522,7 +589,7 @@ internal sealed record Mapping(
                     throw new InvalidDataException($"\"components\" cannot hold \"{property.Name}\".");
                 }
 
-                var entry = Object(property.Value, property.Name, ["texts"], ["credit", "note"]);
+                var entry = Object(property.Value, property.Name, ["texts"], ["credit", "missing", "note"]);
                 if (entry["texts"].ValueKind != JsonValueKind.Array || entry["texts"].GetArrayLength() == 0)
                 {
                     throw new InvalidDataException($"{property.Name}: \"texts\" must list at least one text.");
@@ -537,19 +604,44 @@ internal sealed record Mapping(
                     Note(note, property.Name);
                 }
 
-                if (!components.TryAdd(property.Name, new ComponentTexts(texts, credit)))
+                var missing = entry.TryGetValue("missing", out var gaps) ? Missing(gaps, property.Name) : [];
+                if (!components.TryAdd(property.Name, new ComponentTexts(texts, credit, missing)))
                 {
                     throw new InvalidDataException($"\"components\" lists {property.Name} twice.");
                 }
             }
 
-            return new Mapping(Names(main["components"], "mainExecutable"), mainPaths, files, components);
+            var mapping = new Mapping(Names(main["components"], "mainExecutable"), mainPaths, files, components);
+            var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var source in mapping.Components.Values.SelectMany(entry => entry.Texts)
+                .Where(source => source.Kind == SourceKind.Upstream))
+            {
+                if (hashes.TryGetValue(source.Value, out var other) && other != source.Name)
+                {
+                    throw new InvalidDataException($"{FilePath} gives {source.Value} two different SHA-256 hashes.");
+                }
+
+                hashes[source.Value] = source.Name;
+            }
+
+            return mapping;
         }
         catch (JsonException exception)
         {
             throw new InvalidDataException($"{FilePath} is not valid JSON: {exception.Message}");
         }
     }
+
+    // Each upstream file once, by its URL, with its SHA-256.
+    public List<(string Url, string Sha256)> Upstream() =>
+    [
+        .. Components.Values
+            .SelectMany(entry => entry.Texts)
+            .Where(source => source.Kind == SourceKind.Upstream)
+            .Select(source => (source.Value, source.Name))
+            .Distinct()
+            .OrderBy(source => source.Value, StringComparer.Ordinal),
+    ];
 
     private static TextSource Source(JsonElement element, string component)
     {
@@ -575,10 +667,55 @@ internal sealed record Mapping(
                 SourceKind.RepositoryFile,
                 string.Empty,
                 RelativePath(element.GetProperty("repository"), where)),
+            ["sha256", "upstream"] or ["lines", "sha256", "upstream"] => UpstreamSource(element, where),
             _ => throw new InvalidDataException(
-                $"{where} must name a package with a file or a license, a runtime pack with a file, or a "
-                    + "repository file."),
+                $"{where} must name a package with a file or a license, a runtime pack with a file, a repository "
+                    + "file, or an upstream file with its SHA-256."),
         };
+    }
+
+    private static TextSource UpstreamSource(JsonElement element, string where)
+    {
+        var url = Text(element.GetProperty("upstream"), where);
+        UpstreamUrl.Parse(url, where);
+        var sha256 = element.GetProperty("sha256") is { ValueKind: JsonValueKind.String } hash
+            && hash.GetString() is { } text && UpstreamUrl.IsSha256(text)
+                ? text
+                : throw new InvalidDataException(
+                    $"{where}: the SHA-256 of {url} must be 64 lowercase hexadecimal digits.");
+        LineRange? lines = null;
+        if (element.TryGetProperty("lines", out var range))
+        {
+            lines = range is { ValueKind: JsonValueKind.Array } && range.GetArrayLength() == 2
+                && range[0].ValueKind == JsonValueKind.Number && range[1].ValueKind == JsonValueKind.Number
+                && range[0].TryGetInt32(out var first) && range[1].TryGetInt32(out var last) && first >= 1
+                && last >= first
+                    ? new LineRange(first, last)
+                    : throw new InvalidDataException(
+                        $"{where}: \"lines\" of {url} must be [first, last], two line numbers from 1, the first not "
+                            + "after the last.");
+        }
+
+        return new TextSource(SourceKind.Upstream, sha256, url, lines);
+    }
+
+    private static List<MissingText> Missing(JsonElement element, string component)
+    {
+        if (element.ValueKind != JsonValueKind.Array || element.GetArrayLength() == 0)
+        {
+            throw new InvalidDataException($"{component}: \"missing\" must list at least one text.");
+        }
+
+        return
+        [
+            .. element.EnumerateArray().Select(gap =>
+            {
+                var fields = Object(gap, $"a missing text of {component}", ["note", "text"], []);
+                return new MissingText(
+                    Text(fields["text"], $"a missing text of {component}"),
+                    Text(fields["note"], $"a missing text of {component}: \"note\""));
+            }),
+        ];
     }
 
     private static Dictionary<string, JsonElement> Object(
@@ -639,6 +776,101 @@ internal sealed record Mapping(
     }
 }
 
+// A text that no package ships: a file on raw.githubusercontent.com at a full commit, with its
+// SHA-256. The ios job fetches each one into build/upstream/<sha256> before the notices step and
+// checks its hash; the tool never uses the network and checks the hash again when it reads the file.
+internal static partial class UpstreamUrl
+{
+    public const string Prefix = "https://raw.githubusercontent.com/";
+    public const string Folder = "build/upstream";
+    public const string FetchStep = "Fetch the license texts that no package ships";
+
+    // The owner, repository, commit and path of an accepted URL: https on raw.githubusercontent.com
+    // only, a full commit and no branch, tag or short hash, and no "..", "?", "#", "%" or backslash.
+    public static (string Owner, string Repository, string Commit, string Path) Parse(string url, string where)
+    {
+        if (!url.StartsWith(Prefix, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"{where}: {url} must be an https URL on raw.githubusercontent.com.");
+        }
+
+        if (url.Contains("..", StringComparison.Ordinal) || url.IndexOfAny(['?', '#', '%', '\\']) >= 0)
+        {
+            throw new InvalidDataException(
+                $"{where}: {url} must hold no \"..\", \"?\", \"#\", \"%\" or backslash.");
+        }
+
+        var parts = url[Prefix.Length..].Split('/');
+        if (parts.Length < 4 || parts.Any(part => part == "." || !UrlPart().IsMatch(part)))
+        {
+            throw new InvalidDataException(
+                $"{where}: {url} must name an owner, a repository, a commit and a path, each part of letters, digits "
+                    + "and \"-._~+\".");
+        }
+
+        return FullCommit().IsMatch(parts[2])
+            ? (parts[0], parts[1], parts[2], string.Join('/', parts[3..]))
+            : throw new InvalidDataException(
+                $"{where}: {url} must name a full commit of 40 lowercase hexadecimal digits, not a branch, a tag or "
+                    + "a short hash.");
+    }
+
+    public static bool IsSha256(string text) => Sha256().IsMatch(text);
+
+    // Lines First to Last of a text, each of them a comment or blank, so that no code ships as a notice.
+    // A line inside a /* */ comment counts as a comment, so a range starts where its comment starts.
+    public static string Lines(string text, LineRange range, string name)
+    {
+        var lines = text[..^1].Split('\n');
+        if (range.Last > lines.Length)
+        {
+            throw new InvalidDataException(
+                $"the lines {range.First} to {range.Last} run past the end of {name}, which has {lines.Length} lines.");
+        }
+
+        var inComment = false;
+        for (var number = range.First; number <= range.Last; number++)
+        {
+            var line = lines[number - 1].Trim();
+            if (inComment)
+            {
+                var end = line.IndexOf("*/", StringComparison.Ordinal);
+                if (end < 0)
+                {
+                    continue;
+                }
+
+                (line, inComment) = (line[(end + 2)..].TrimStart(), false);
+            }
+
+            if (line.StartsWith("/*", StringComparison.Ordinal))
+            {
+                var end = line.IndexOf("*/", 2, StringComparison.Ordinal);
+                (line, inComment) = end < 0 ? (string.Empty, true) : (line[(end + 2)..].TrimStart(), false);
+            }
+
+            if (line.Length > 0 && !line.StartsWith("//", StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    $"line {number} of {name}, in the range {range.First} to {range.Last}, is neither a comment nor "
+                        + "blank; a range takes only the header of a source file, so that no code ships as a notice.");
+            }
+        }
+
+        return string.Join('\n', lines[(range.First - 1)..range.Last]) + "\n";
+    }
+
+    // \z, not $, which would also match before a final line break.
+    [GeneratedRegex(@"\A[A-Za-z0-9._~+-]+\z")]
+    private static partial Regex UrlPart();
+
+    [GeneratedRegex(@"\A[0-9a-f]{40}\z")]
+    private static partial Regex FullCommit();
+
+    [GeneratedRegex(@"\A[0-9a-f]{64}\z")]
+    private static partial Regex Sha256();
+}
+
 // The paths of the mapping's rules: "*" matches within one part of a path, "?" one character of it,
 // and "**", as a whole part, any number of parts, so that "Frameworks/x.framework/**" is everything
 // inside that framework and "**/x" an x in any folder.
@@ -655,13 +887,15 @@ internal static class Glob
                 $"the path {pattern} must be relative to the bundle, and \"**\" must be a whole part of it.");
         }
 
-        var builder = new StringBuilder("^");
+        // \A and \z, not ^ and $, which would also match before a final line break, and "**" matches
+        // line breaks too, since a file name may hold one.
+        var builder = new StringBuilder(@"\A");
         for (var index = 0; index < parts.Length; index++)
         {
             var last = index == parts.Length - 1;
             if (parts[index] == "**")
             {
-                builder.Append(last ? ".+" : "(?:[^/]+/)*");
+                builder.Append(last ? @"[\s\S]+" : "(?:[^/]+/)*");
                 continue;
             }
 
@@ -681,7 +915,7 @@ internal static class Glob
             }
         }
 
-        return new Regex(builder.Append('$').ToString(), RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        return new Regex(builder.Append(@"\z").ToString(), RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
     }
 }
 
@@ -959,8 +1193,13 @@ internal sealed class BinaryPropertyList
 }
 
 // A package's description, its .nuspec in NuGet's package folder: its declared license and copyright.
-internal sealed record PackageDescription(string? LicenseType, string? License, string? Copyright)
+// NuGet trims the license type and reads it without regard to case, and so does the tool.
+internal sealed record PackageDescription(string? LicenseType, string? License, string? LicenseUrl, string? Copyright)
 {
+    public bool DeclaresExpression => string.Equals(LicenseType, "expression", StringComparison.OrdinalIgnoreCase);
+
+    public bool DeclaresFile => string.Equals(LicenseType, "file", StringComparison.OrdinalIgnoreCase);
+
     public static PackageDescription? Read(string folder, string id)
     {
         var path = Path.Combine(folder, $"{id.ToLowerInvariant()}.nuspec");
@@ -976,10 +1215,12 @@ internal sealed record PackageDescription(string? LicenseType, string? License, 
             var metadata = Child(XDocument.Load(reader).Root, "metadata")
                 ?? throw new InvalidDataException($"the description of {id} has no metadata.");
             var license = Child(metadata, "license");
+            var url = Child(metadata, "licenseUrl")?.Value.Trim();
             var copyright = Child(metadata, "copyright")?.Value.Trim();
             return new PackageDescription(
-                license?.Attribute("type")?.Value,
+                license?.Attribute("type")?.Value.Trim(),
                 license?.Value.Trim(),
+                string.IsNullOrEmpty(url) ? null : url,
                 string.IsNullOrEmpty(copyright) ? null : copyright);
         }
         catch (XmlException exception)
@@ -1026,42 +1267,82 @@ internal static partial class Spdx
             RegexOptions.CultureInvariant,
             TimeSpan.FromSeconds(1));
 
+    // The licenses of the expression that a register row's License text starts with, up to the first
+    // period, comma, semicolon or colon that ends a phrase: "MIT" for "MIT. Its native library is
+    // under LGPL-2.1", "Apache-2.0" for "Apache-2.0 WITH LLVM-exception; parts ...".
+    public static List<string> Leading(string license) => Licenses(PhraseEnd().Split(license, 2)[0]);
+
     [GeneratedRegex(@"[\s()]+")]
     private static partial Regex Separators();
+
+    [GeneratedRegex(@"[.,;:](?:\s|\z)")]
+    private static partial Regex PhraseEnd();
+}
+
+// The licenses whose full terms a component's texts must hold when its register row or its packages
+// name them, since a short notice that points to the license is not the license (C-0003 section 3).
+// Each is recognized by a passage of its text, compared with runs of white space made one space.
+internal static partial class FullTerms
+{
+    private static readonly (string License, string[] Identifiers, string Passage)[] s_terms =
+    [
+        (
+            "Apache-2.0",
+            ["Apache-2.0"],
+            "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION"),
+        (
+            "LGPL-2.1",
+            ["LGPL-2.1", "LGPL-2.1-only", "LGPL-2.1-or-later", "LGPL-2.1+"],
+            "GNU LESSER GENERAL PUBLIC LICENSE TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION"),
+    ];
+
+    // Each license among these whose full terms are needed, once, with the passage that marks them.
+    public static List<(string License, string Passage)> Needed(IEnumerable<string> licenses) =>
+    [
+        .. s_terms
+            .Where(terms => licenses.Any(
+                license => terms.Identifiers.Contains(license, StringComparer.OrdinalIgnoreCase)))
+            .Select(terms => (terms.License, terms.Passage)),
+    ];
+
+    public static bool Holds(string text, string passage) =>
+        WhiteSpace().Replace(text, " ").Contains(passage, StringComparison.Ordinal);
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhiteSpace();
 }
 
 internal static class TextFile
 {
     // A license or notices file as text: UTF-8, or UTF-16 with a byte-order mark, with Windows line
     // endings made Unix ones and one line break at its end. Null for a missing file.
-    public static string? Read(string path)
-    {
-        if (!File.Exists(path))
-        {
-            return null;
-        }
+    public static string? Read(string path) =>
+        File.Exists(path) ? Decode(File.ReadAllBytes(path), Path.GetFileName(path)) : null;
 
+    // An empty text, one with a NUL character and one that is not valid UTF-8 are rejected.
+    public static string Decode(byte[] bytes, string name)
+    {
         string text;
         try
         {
             using var reader = new StreamReader(
-                path,
+                new MemoryStream(bytes),
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true),
                 detectEncodingFromByteOrderMarks: true);
             text = reader.ReadToEnd();
         }
         catch (DecoderFallbackException)
         {
-            throw new InvalidDataException($"{Path.GetFileName(path)} is not UTF-8 text.");
+            throw new InvalidDataException($"{name} is not UTF-8 text.");
         }
 
         if (text.Contains('\0', StringComparison.Ordinal))
         {
-            throw new InvalidDataException($"{Path.GetFileName(path)} is not text.");
+            throw new InvalidDataException($"{name} is not text.");
         }
 
         return string.IsNullOrWhiteSpace(text)
-            ? throw new InvalidDataException($"{Path.GetFileName(path)} is empty.")
+            ? throw new InvalidDataException($"{name} is empty.")
             : Normalize(text);
     }
 
@@ -1073,6 +1354,15 @@ internal static class TextFile
 }
 
 internal sealed record Attribution(string File, IReadOnlyList<string> Components);
+
+// What generating the notices of one app works with, which each component's steps share.
+internal sealed record Context(
+    string App,
+    Mode Mode,
+    BuildInputs Build,
+    Configuration Configuration,
+    List<string> Failures,
+    List<string> Warnings);
 
 internal sealed record TextBlock(string Title, string Text);
 
@@ -1086,6 +1376,7 @@ internal sealed record ComponentNotice(
 
 internal sealed record NoticeOutputs(string Notices, string Index, IReadOnlyList<(string Path, string Content)> Texts);
 
+// Unexpressed lists the packages that declare their license without an SPDX expression, for the report.
 internal sealed record Result(
     IReadOnlyList<string> Failures,
     IReadOnlyList<string> Warnings,
@@ -1094,6 +1385,7 @@ internal sealed record Result(
     IReadOnlyList<ComponentNotice> Components,
     IReadOnlyList<string> UnusedRules,
     IReadOnlyList<string> OtherLicenseFiles,
+    IReadOnlyList<string> Unexpressed,
     NoticeOutputs? Outputs);
 
 internal static partial class Notices
@@ -1172,6 +1464,8 @@ internal static partial class Notices
             coverage.Add(new Attribution(file, rule.Components));
         }
 
+        var unexpressed = new List<string>();
+        var declared = Declarations(app, build, configuration, failures, unexpressed);
         var names = coverage.SelectMany(attribution => attribution.Components)
             .Where(name => name != Mapping.Paneport)
             .Distinct(StringComparer.Ordinal)
@@ -1194,25 +1488,29 @@ internal static partial class Notices
             }
 
             var count = coverage.Count(attribution => attribution.Components.Contains(name));
-            if (Notice(app, name, row, count, build, configuration, failures) is { } notice)
+            var licenses = Licenses(row, declared, name);
+            var context = new Context(app, mode, build, configuration, failures, warnings);
+            if (Notice(context, name, row, licenses, count) is { } notice)
             {
                 components.Add(notice);
             }
         }
 
+        // Whether a component is under the LGPL comes from the expression that its register row starts
+        // with and from the licenses that its packages declare, not from a note further on in the row.
         foreach (var name in main.Where(name => name != StaticLgplComponent))
         {
             if (configuration.Register.FirstOrDefault(row => row.Component == name) is { } row
-                && row.License.Contains("LGPL", StringComparison.Ordinal))
+                && Licenses(row, declared, name).FirstOrDefault(
+                    license => license.StartsWith("LGPL-", StringComparison.OrdinalIgnoreCase)) is { } lgpl)
             {
                 failures.Add(
-                    $"{app}: {name}, under {row.License}, is compiled into the main executable {bundle.Executable}. "
+                    $"{app}: {name}, under {lgpl}, is compiled into the main executable {bundle.Executable}. "
                         + $"C-0003 section 3 allows that only for {StaticLgplComponent}; ship it as a library that the "
                         + "user can replace.");
             }
         }
 
-        CheckDeclaredLicenses(app, build, configuration, failures);
         var unused = configuration.Mapping.MainExecutablePaths
             .Select(path => path.Pattern)
             .Concat(configuration.Mapping.Files.Select(rule => rule.Pattern))
@@ -1226,8 +1524,12 @@ internal static partial class Notices
                 configuration))
             .ToList();
         var outputs = failures.Count == 0 ? Render(bundle, components) : null;
-        return new Result(failures, warnings, coverage, main, components, unused, others, outputs);
+        return new Result(failures, warnings, coverage, main, components, unused, others, unexpressed, outputs);
     }
+
+    // The licenses of the expression that the row starts with, and those that the component's packages declare.
+    private static List<string> Licenses(RegisterRow row, Dictionary<string, List<string>> declared, string name) =>
+        [.. Spdx.Leading(row.License), .. declared.GetValueOrDefault(name) ?? []];
 
     private static string? Refusal(RegisterRow row) => row.Category switch
     {
@@ -1240,14 +1542,13 @@ internal static partial class Notices
 
     // The component's texts, sources and credit, or null after a failure.
     private static ComponentNotice? Notice(
-        string app,
+        Context context,
         string name,
         RegisterRow row,
-        int files,
-        BuildInputs build,
-        Configuration configuration,
-        List<string> failures)
+        List<string> licenses,
+        int files)
     {
+        var (app, mode, build, configuration, failures, warnings) = context;
         var sources = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var package in build.Packages)
         {
@@ -1269,7 +1570,7 @@ internal static partial class Notices
         var texts = new List<TextBlock>();
         foreach (var source in entry.Texts)
         {
-            if (Text(app, name, source, build, configuration, failures, sources) is not { } text)
+            if (Text(context, name, source, sources) is not { } text)
             {
                 continue;
             }
@@ -1285,6 +1586,20 @@ internal static partial class Notices
             }
         }
 
+        if (failures.Count == before)
+        {
+            foreach (var (license, passage) in FullTerms.Needed(licenses))
+            {
+                if (!texts.Any(text => FullTerms.Holds(text.Text, passage)))
+                {
+                    failures.Add(
+                        $"{app}: {name} is under {license}, but none of its texts holds the full terms of {license}, "
+                            + $"and a notice alone is not the license (C-0003 section 3). Add its full text to the "
+                            + $"component's texts in {Mapping.FilePath}.");
+                }
+            }
+        }
+
         if (Spdx.Mentions(row.License, "Apache-2.0"))
         {
             CheckNoticeFiles(app, name, entry, build, configuration, failures);
@@ -1297,20 +1612,21 @@ internal static partial class Notices
                     + $"section 5). Give it a credit in {Mapping.FilePath}.");
         }
 
+        // A text that the component needs and that no source provides yet shows in every run.
+        foreach (var gap in entry.Missing)
+        {
+            (mode == Mode.Release ? failures : warnings).Add(
+                $"{app}: {name} needs {gap.Text}, which no source provides yet ({Mapping.FilePath}: {gap.Note})");
+        }
+
         return failures.Count == before
             ? new ComponentNotice(name, row, [.. sources], entry.Credit, texts, files)
             : null;
     }
 
-    private static TextBlock? Text(
-        string app,
-        string name,
-        TextSource source,
-        BuildInputs build,
-        Configuration configuration,
-        List<string> failures,
-        SortedSet<string> sources)
+    private static TextBlock? Text(Context context, string name, TextSource source, SortedSet<string> sources)
     {
+        var (app, _, build, configuration, failures, _) = context;
         var missing = $"{app}: missing license text of {name}:";
         try
         {
@@ -1321,6 +1637,17 @@ internal static partial class Notices
                     {
                         failures.Add($"{missing} the package {source.Name} is not in {build.LockFile}.");
                         return null;
+                    }
+
+                    // A component's texts come from its own packages, so that a slip in the mapping cannot
+                    // write another component's license under this one.
+                    var owner = configuration.Map.ComponentFor(Kind.Package, package.Id);
+                    if (owner != name)
+                    {
+                        return Fail(
+                            failures,
+                            $"{app}: a text of {name} names the package {package.Id}, which {LicenseMap.FilePath} "
+                                + $"gives to {owner ?? "no component"}, not to {name}.");
                     }
 
                     var label = $"{package.Id} {package.Version}";
@@ -1345,6 +1672,8 @@ internal static partial class Notices
                     return TextFile.Read(Path.Combine(pack.Folder, source.Value)) is { } packText
                         ? new TextBlock($"{source.Value} of the runtime pack {pack.Id} {pack.Version}", packText)
                         : Fail(failures, $"{missing} the runtime pack {pack.Id} {pack.Version} has no {source.Value}.");
+                case SourceKind.Upstream:
+                    return Upstream(missing, source, configuration, failures, sources);
                 default:
                     sources.Add(source.Value);
                     return TextFile.Read(Path.Combine(configuration.Root, source.Value)) is { } fileText
@@ -1356,6 +1685,42 @@ internal static partial class Notices
         {
             return Fail(failures, $"{missing} {exception.Message}");
         }
+    }
+
+    // A file that the ios job fetched into build/upstream/, named by its SHA-256, which is checked
+    // again here: a missing or changed file fails in both modes.
+    private static TextBlock? Upstream(
+        string missing,
+        TextSource source,
+        Configuration configuration,
+        List<string> failures,
+        SortedSet<string> sources)
+    {
+        var (owner, repository, commit, file) = UpstreamUrl.Parse(source.Value, Mapping.FilePath);
+        sources.Add($"{owner}/{repository} {commit}");
+        var fetch = $"The ios job's step \"{UpstreamUrl.FetchStep}\" fetches it and checks its SHA-256 before the "
+            + "notices step.";
+        var path = Path.Combine(configuration.Root, UpstreamUrl.Folder, source.Name);
+        if (!File.Exists(path))
+        {
+            return Fail(failures, $"{missing} {source.Value} is not in {UpstreamUrl.Folder}/. {fetch}");
+        }
+
+        var bytes = File.ReadAllBytes(path);
+        var actual = Convert.ToHexStringLower(SHA256.HashData(bytes));
+        if (actual != source.Name)
+        {
+            return Fail(
+                failures,
+                $"{missing} {UpstreamUrl.Folder}/{source.Name} has the SHA-256 {actual}, not the one that "
+                    + $"{Mapping.FilePath} gives for {source.Value}. {fetch}");
+        }
+
+        var name = $"{file} of {owner}/{repository} at commit {commit}";
+        var text = TextFile.Decode(bytes, name);
+        return source.Lines is { } lines
+            ? new TextBlock($"lines {lines.First} to {lines.Last} of {name}", UpstreamUrl.Lines(text, lines, name))
+            : new TextBlock(name, text);
     }
 
     // The standard text of the license that a package declares by its expression, with the
@@ -1382,7 +1747,7 @@ internal static partial class Notices
             return Fail(failures, $"{missing} the package {label} has no description in NuGet's package folder.");
         }
 
-        if (description.LicenseType != "expression" || description.License != "MIT")
+        if (!description.DeclaresExpression || description.License != "MIT")
         {
             return Fail(failures, $"{missing} the package {label} does not declare the expression MIT.");
         }
@@ -1494,14 +1859,17 @@ internal static partial class Notices
             && string.Equals(text.Name, key, StringComparison.OrdinalIgnoreCase)
             && string.Equals(text.Value, file, StringComparison.OrdinalIgnoreCase));
 
-    // Every license that a package declares by its expression is one that the register row of its
-    // component names; otherwise the register needs a change first (C-0003 section 6).
-    private static void CheckDeclaredLicenses(
+    // The licenses that each component's packages declare by their expressions. Every one of them is
+    // one that the register row of the component names; otherwise the register needs a change first
+    // (C-0003 section 6). A package that declares its license otherwise goes into the report.
+    private static Dictionary<string, List<string>> Declarations(
         string app,
         BuildInputs build,
         Configuration configuration,
-        List<string> failures)
+        List<string> failures,
+        List<string> unexpressed)
     {
+        var declared = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var package in build.Packages)
         {
             if (configuration.Map.ComponentFor(Kind.Package, package.Id) is not { } component
@@ -1517,17 +1885,45 @@ internal static partial class Notices
                 continue;
             }
 
-            if (description is { LicenseType: "expression", License: { } expression })
+            if (!description.DeclaresExpression)
             {
-                var unnamed = Spdx.Licenses(expression).Where(license => !Spdx.Mentions(row.License, license));
-                foreach (var license in unnamed)
+                if (!description.DeclaresFile)
                 {
-                    failures.Add(
-                        $"{app}: the package {label} declares {license}, which the register row {component} does not "
-                            + "name. The register needs a change first (C-0003 section 6).");
+                    unexpressed.Add(description switch
+                    {
+                        { License: null, LicenseUrl: not null } => $"{label} declares its license only by licenseUrl",
+                        { License: null } => $"{label} declares no license",
+                        { LicenseType: null } => $"{label} declares a license without a type",
+                        _ => $"{label} declares a license of the type \"{description.LicenseType}\"",
+                    });
                 }
+
+                continue;
             }
+
+            if (string.IsNullOrEmpty(description.License))
+            {
+                failures.Add($"{app}: the package {label} declares an empty license expression.");
+                continue;
+            }
+
+            var licenses = Spdx.Licenses(description.License);
+            foreach (var license in licenses.Where(license => !Spdx.Mentions(row.License, license)))
+            {
+                failures.Add(
+                    $"{app}: the package {label} declares {license}, which the register row {component} does not "
+                        + "name. The register needs a change first (C-0003 section 6).");
+            }
+
+            if (!declared.TryGetValue(component, out var list))
+            {
+                declared[component] = list = [];
+            }
+
+            list.AddRange(licenses);
         }
+
+        return declared;
     }
 
     private static NoticeOutputs Render(Bundle bundle, List<ComponentNotice> components)
@@ -1677,7 +2073,9 @@ internal static partial class Notices
     [GeneratedRegex(@"^NOTICE(?:\..+)?$", RegexOptions.IgnoreCase)]
     private static partial Regex NoticeFileName();
 
-    [GeneratedRegex(@"licen[cs]e|notice|copying|copyright|third.?party|authors", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(
+        @"licen[cs]e|notice|copying|copyright|third.?party|3rd.?party|authors|eula|patent|credit|acknowledg|legal",
+        RegexOptions.IgnoreCase)]
     private static partial Regex LicenseFileName();
 
     // A copyright notice says so: "Copyright", "(c)" or the copyright sign.
@@ -1685,46 +2083,93 @@ internal static partial class Notices
     private static partial Regex CopyrightNotice();
 }
 
-internal static class Output
+internal static partial class Output
 {
     // The notices go into build output, never into git: a folder outside the repository, or inside
     // it under build/ or below a bin/ or obj/ folder, which C-0004 section 3 reserves for build
-    // output and .gitignore ignores.
-    public static void EnsureBuildOutput(string root, string path, string option)
+    // output and .gitignore ignores. A device or network path fails, and every link among the
+    // existing folders of the path, and of the repository's, is followed to its final target first,
+    // so that a link under build/ cannot lead into a tracked folder. Returns the full path.
+    public static string EnsureBuildOutput(string root, string path, string option)
     {
-        var relative = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
+        var device = $"{option} {path} is a device or network path; the notices go into a local build output folder.";
+        if (IsDeviceOrNetwork(path))
+        {
+            throw new InvalidDataException(device);
+        }
+
+        var full = Path.GetFullPath(path, root);
+        if (IsDeviceOrNetwork(full))
+        {
+            throw new InvalidDataException(device);
+        }
+
+        var relative = Path.GetRelativePath(RealPath(root), RealPath(full));
         if (Path.IsPathRooted(relative) || relative == ".."
             || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
         {
-            return;
+            return full;
         }
 
         var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         if (parts[0] == "build" || parts.Any(part => part is "bin" or "obj"))
         {
-            return;
+            return full;
         }
 
         throw new InvalidDataException(
-            $"{option} {relative.Replace('\\', '/')} is in the repository outside build/, bin/ and obj/; the "
-                + "notices go into build output, never into git.");
+            $"{option} {path} leads to {relative.Replace('\\', '/')} in the repository, outside build/, bin/ and obj/; "
+                + "the notices go into build output, never into git.");
     }
 
-    // Writes the notices into a folder, replacing the tool's own earlier output there and nothing else.
-    public static void Write(string folder, NoticeOutputs outputs)
-    {
-        if (Directory.Exists(folder) && Directory.EnumerateFileSystemEntries(folder).Any())
-        {
-            if (!IsOwn(folder))
-            {
-                throw new IOException(
-                    $"{folder} holds files that this tool did not write, and it replaces only its own notices.");
-            }
+    // The path with each link among its existing parts replaced by the link's final target.
+    public static string RealPath(string path) => RealPath(path, 0);
 
-            Directory.Delete(folder, recursive: true);
+    // A destination is missing, empty, or holds only the tool's own earlier output; it is never a link.
+    public static void Check(string folder)
+    {
+        var info = new DirectoryInfo(folder);
+        if (info.LinkTarget is not null)
+        {
+            throw new IOException(
+                $"{folder} is a link, and the notices are written into a folder, never through a link.");
         }
 
-        Directory.CreateDirectory(Path.Combine(folder, Notices.TextsFolder));
+        if (!info.Exists)
+        {
+            return;
+        }
+
+        if (Foreign(info) is { } foreign)
+        {
+            throw new IOException(
+                $"{folder} holds {foreign}, which this tool did not write, and it replaces only its own notices.");
+        }
+    }
+
+    // Writes the notices into a folder, replacing the tool's own earlier output there: it deletes only
+    // THIRD_PARTY_NOTICES.md, index.json and texts/NN-<name>.txt, after Check has found nothing else.
+    public static void Write(string folder, NoticeOutputs outputs)
+    {
+        Check(folder);
+        var texts = Path.Combine(folder, Notices.TextsFolder);
+        if (Directory.Exists(folder))
+        {
+            File.Delete(Path.Combine(folder, Notices.NoticesFile));
+            File.Delete(Path.Combine(folder, Notices.IndexFile));
+            if (Directory.Exists(texts))
+            {
+                var own = Directory.EnumerateFiles(texts).Where(path => TextName().IsMatch(Path.GetFileName(path)));
+                foreach (var text in own.ToList())
+                {
+                    File.Delete(text);
+                }
+
+                Directory.Delete(texts);
+            }
+        }
+
+        Directory.CreateDirectory(texts);
         Save(Path.Combine(folder, Notices.NoticesFile), outputs.Notices);
         Save(Path.Combine(folder, Notices.IndexFile), outputs.Index);
         foreach (var (path, content) in outputs.Texts)
@@ -1733,9 +2178,88 @@ internal static class Output
         }
     }
 
-    private static bool IsOwn(string folder)
+    // A device path such as \\?\ or \\.\, or a network path such as \\server\share.
+    private static bool IsDeviceOrNetwork(string path) =>
+        path.Length >= 2 && (path[0] is '/' or '\\') && (path[1] is '/' or '\\');
+
+    private static string RealPath(string path, int depth)
     {
-        var index = Path.Combine(folder, Notices.IndexFile);
+        if (depth > 32)
+        {
+            throw new IOException($"{path} goes through too many links.");
+        }
+
+        var full = Path.GetFullPath(path);
+        var current = Path.GetPathRoot(full) ?? throw new IOException($"{path} has no root.");
+        var parts = full[current.Length..].Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries);
+        for (var index = 0; index < parts.Length; index++)
+        {
+            var next = Path.Combine(current, parts[index]);
+            var directory = new DirectoryInfo(next);
+            FileSystemInfo entry = directory.Exists ? directory : new FileInfo(next);
+            if (entry.LinkTarget is not null)
+            {
+                var target = entry.ResolveLinkTarget(returnFinalTarget: true)
+                    ?? throw new IOException($"{next} is a link that cannot be followed.");
+                next = RealPath(target.FullName, depth + 1);
+            }
+            else if (!entry.Exists)
+            {
+                return Path.Combine([next, .. parts[(index + 1)..]]);
+            }
+
+            current = next;
+        }
+
+        return current;
+    }
+
+    // The first entry of a folder that is not the tool's own output, or null. A folder that is not
+    // empty holds the tool's index of format 1, and besides it only the notices file and the texts.
+    private static string? Foreign(DirectoryInfo folder)
+    {
+        var options = new EnumerationOptions { AttributesToSkip = 0, IgnoreInaccessible = false };
+        var entries = folder.EnumerateFileSystemInfos("*", options)
+            .OrderBy(entry => entry.Name, StringComparer.Ordinal)
+            .ToList();
+        if (entries.Count == 0)
+        {
+            return null;
+        }
+
+        if (!IsOwnIndex(Path.Combine(folder.FullName, Notices.IndexFile)))
+        {
+            return $"no {Notices.IndexFile} of format {Notices.Format}";
+        }
+
+        foreach (var entry in entries)
+        {
+            var own = entry.LinkTarget is null && entry.Name switch
+            {
+                Notices.NoticesFile or Notices.IndexFile => entry is FileInfo,
+                Notices.TextsFolder => entry is DirectoryInfo,
+                _ => false,
+            };
+            if (!own)
+            {
+                return entry.Name;
+            }
+        }
+
+        var texts = new DirectoryInfo(Path.Combine(folder.FullName, Notices.TextsFolder));
+        var foreign = texts.Exists
+            ? texts.EnumerateFileSystemInfos("*", options)
+                .OrderBy(entry => entry.Name, StringComparer.Ordinal)
+                .FirstOrDefault(entry => entry is not FileInfo || entry.LinkTarget is not null
+                    || !TextName().IsMatch(entry.Name))
+            : null;
+        return foreign is null ? null : $"{Notices.TextsFolder}/{foreign.Name}";
+    }
+
+    private static bool IsOwnIndex(string index)
+    {
         if (!File.Exists(index))
         {
             return false;
@@ -1747,6 +2271,7 @@ internal static class Output
             var root = document.RootElement;
             return root.ValueKind == JsonValueKind.Object
                 && root.TryGetProperty("format", out var format) && format.ValueKind == JsonValueKind.Number
+                && format.TryGetInt32(out var number) && number == Notices.Format
                 && root.TryGetProperty("components", out var components) && components.ValueKind == JsonValueKind.Array;
         }
         catch (JsonException)
@@ -1757,8 +2282,15 @@ internal static class Output
 
     private static void Save(string path, string content) =>
         File.WriteAllText(path, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+    // The name of a text that the tool writes: its number, of two digits or more, and a slug.
+    [GeneratedRegex(@"\A[0-9]{2,}-[a-z0-9-]+\.txt\z")]
+    private static partial Regex TextName();
 }
 
+// The report of a run. Every line goes through Plain, and every annotation's data through Data, so
+// that a file name with a line break cannot start a line of its own, such as a workflow command of
+// GitHub Actions.
 internal static class Report
 {
     public static void Print(
@@ -1767,73 +2299,90 @@ internal static class Report
         Configuration configuration,
         Mode mode,
         Result result,
-        TextWriter output)
+        TextWriter output,
+        bool annotate)
     {
-        var annotate = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true";
+        void write(string text) => output.WriteLine(Plain(text));
         var app = bundle.Name;
-        output.WriteLine($"Third-party notices of {app}, in {(mode == Mode.Ios ? "ios" : "release")} mode");
-        output.WriteLine(
+        write($"Third-party notices of {app}, in {(mode == Mode.Ios ? "ios" : "release")} mode");
+        write(
             $"Register: {configuration.Register.Count} rows. Mapping: {configuration.Mapping.Files.Count} file "
                 + $"rules and the texts of {configuration.Mapping.Components.Count} components. {build.LockFile}: "
                 + $"{build.Packages.Count} packages.");
         foreach (var pack in build.RuntimePacks)
         {
-            output.WriteLine($"Runtime pack for {pack.Framework}: {pack.Id} {pack.Version}");
+            write($"Runtime pack for {pack.Framework}: {pack.Id} {pack.Version}");
         }
 
-        output.WriteLine($"Coverage of {result.Coverage.Count} files:");
+        write($"Coverage of {result.Coverage.Count} files:");
         foreach (var attribution in result.Coverage)
         {
             var components = attribution.Components.Count == 0
                 ? "(no component)"
                 : string.Join(", ", attribution.Components);
             var role = attribution.File == bundle.Executable ? " (main executable)" : string.Empty;
-            output.WriteLine($"  {attribution.File}{role}: {components}");
+            write($"  {attribution.File}{role}: {components}");
         }
 
         if (result.OtherLicenseFiles.Count > 0)
         {
-            output.WriteLine("License and notice files in the sources that are not among the texts:");
+            write("License and notice files in the sources that are not among the texts:");
             foreach (var file in result.OtherLicenseFiles)
             {
-                output.WriteLine($"  {file}");
+                write($"  {file}");
+            }
+        }
+
+        if (result.Unexpressed.Count > 0)
+        {
+            write("Packages that declare their license without an SPDX expression:");
+            foreach (var package in result.Unexpressed)
+            {
+                write($"  {package}");
             }
         }
 
         if (result.UnusedRules.Count > 0)
         {
-            output.WriteLine($"Rules that match no file of {app}: {string.Join(", ", result.UnusedRules)}");
+            write($"Rules that match no file of {app}: {string.Join(", ", result.UnusedRules)}");
         }
 
-        output.WriteLine($"Components in the notices: {result.Components.Count}");
+        write($"Components in the notices: {result.Components.Count}");
         for (var index = 0; index < result.Components.Count; index++)
         {
             var component = result.Components[index];
-            output.WriteLine(
+            write(
                 $"  {index + 1}. {component.Name} ({component.Row.Category}): {component.Files} files, "
                     + $"{component.Texts.Count} texts, from {string.Join(", ", component.Sources)}");
         }
 
         foreach (var warning in result.Warnings)
         {
-            output.WriteLine($"warning: {warning}");
+            write($"warning: {warning}");
             if (annotate)
             {
-                output.WriteLine($"::warning title=Notices::{warning}");
+                output.WriteLine($"::warning title=Notices::{Data(warning)}");
             }
         }
 
         foreach (var failure in result.Failures)
         {
-            output.WriteLine($"error: {failure}");
+            write($"error: {failure}");
             if (annotate)
             {
-                output.WriteLine($"::error title=Notices::{failure}");
+                output.WriteLine($"::error title=Notices::{Data(failure)}");
             }
         }
 
-        output.WriteLine($"{app}: {result.Failures.Count} failures, {result.Warnings.Count} warnings.");
+        write($"{app}: {result.Failures.Count} failures, {result.Warnings.Count} warnings.");
     }
+
+    // A line of the report, with CR and LF written as %0D and %0A.
+    public static string Plain(string text) =>
+        text.Replace("\r", "%0D", StringComparison.Ordinal).Replace("\n", "%0A", StringComparison.Ordinal);
+
+    // The data of an annotation, escaped as GitHub Actions asks: %, CR and LF as %25, %0D and %0A.
+    public static string Data(string text) => Plain(text.Replace("%", "%25", StringComparison.Ordinal));
 }
 
 internal sealed class Tally
@@ -1934,6 +2483,9 @@ internal sealed class Fixture
         | Sample.Tool | A build tool | MIT | Tool |
         """;
 
+    // The License text of Sample.Graphics' row, which some cases change.
+    public const string GraphicsLicense = "MIT. Its native package lists more components.";
+
     public const string Map =
         """
         {
@@ -1950,8 +2502,49 @@ internal sealed class Fixture
         }
         """;
 
-    public const string Mapping =
+    public const string ApacheUrl =
+        "https://raw.githubusercontent.com/sample/terms/0123456789abcdef0123456789abcdef01234567/LICENSE-2.0.txt";
+
+    public const string HeaderUrl =
+        "https://raw.githubusercontent.com/sample/ui/89abcdef0123456789abcdef0123456789abcdef/src/Header.cs";
+
+    // The full terms of Apache-2.0 and LGPL-2.1 as the rules recognize them, each passage split over
+    // lines as a license text may write it.
+    public const string ApacheTerms =
         """
+        Sample Apache License
+        Version 2.0, January 2004
+
+        TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND
+        DISTRIBUTION
+
+        Sample terms.
+        """;
+
+    public const string LgplTerms =
+        """
+        Sample LGPL library.
+
+        GNU LESSER GENERAL PUBLIC LICENSE
+           TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+
+        Sample terms.
+        """;
+
+    // A source file whose header holds a notice, of which the mapping takes lines 1 to 4.
+    public const string Header =
+        """
+        // Copyright (c) Sample Header Holder.
+        /* Licensed under the Sample License.
+           Ported from a sample. */
+
+        namespace Sample;
+
+        internal static class Header;
+        """;
+
+    public const string Mapping =
+        $$"""
         {
           "mainExecutable": {
             "components": ["Paneport", "Sample.Runtime", "Sample.Platform"],
@@ -1976,7 +2569,12 @@ internal sealed class Fixture
             { "path": "Unused/**", "components": ["Paneport"], "note": "A rule that matches nothing." }
           ],
           "components": {
-            "Sample.Ui": { "texts": [{ "package": "Sample.Ui", "license": "MIT" }] },
+            "Sample.Ui": {
+              "texts": [
+                { "package": "Sample.Ui", "license": "MIT" },
+                { "upstream": "{{HeaderUrl}}", "sha256": "<header-sha256>", "lines": [1, 4] }
+              ]
+            },
             "Sample.Graphics": {
               "texts": [
                 { "package": "Sample.Graphics", "file": "LICENSE.txt" },
@@ -1986,10 +2584,16 @@ internal sealed class Fixture
             "Sample.Apache": {
               "texts": [
                 { "package": "Sample.Apache", "file": "LICENSE.txt" },
-                { "package": "Sample.Apache", "file": "NOTICE.txt" }
+                { "package": "Sample.Apache", "file": "NOTICE.txt" },
+                { "upstream": "{{ApacheUrl}}", "sha256": "<apache-sha256>" }
               ]
             },
-            "SteamKit2": { "texts": [{ "package": "SteamKit2", "file": "license.txt" }] },
+            "SteamKit2": {
+              "texts": [
+                { "package": "SteamKit2", "file": "license.txt" },
+                { "repository": "external/Sample-lgpl/COPYING.LIB" }
+              ]
+            },
             "Sample.Fonts": {
               "texts": [{ "package": "Sample.Fonts.Native", "file": "LICENSE.TXT" }],
               "credit": "Portions of this software are copyright (c) 2026 The Sample Font Project.",
@@ -2061,7 +2665,9 @@ internal sealed class Fixture
 
     public string Packages => Path.Combine(Root, "packages");
 
-    public string MappingText { get; set; } = Mapping.ReplaceLineEndings("\n");
+    public string RegisterText { get; set; } = Register;
+
+    public string MappingText { get; set; } = Resolve(Mapping);
 
     public List<LockedPackage> Locked { get; } =
     [
@@ -2075,6 +2681,16 @@ internal sealed class Fixture
     ];
 
     public List<RuntimePack> Packs { get; } = [];
+
+    public static string DisplayName => "Sampl" + (char)0x00E9 + " App";
+
+    public static string Hash(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+
+    // A mapping with the SHA-256 of each upstream text in place.
+    public static string Resolve(string mapping) =>
+        mapping.ReplaceLineEndings("\n")
+            .Replace("<apache-sha256>", Hash(ApacheTerms), StringComparison.Ordinal)
+            .Replace("<header-sha256>", Hash(Header), StringComparison.Ordinal);
 
     public static Fixture Create(string parent, string name)
     {
@@ -2090,30 +2706,56 @@ internal sealed class Fixture
             "Copyright 2020 Sample UI Authors",
             ("native/THIRD-PARTY.md", "Notices of a library inside the package."));
         fixture.Package("Sample.Ui.Extra", "1.0.0", "expression", "MIT", "Copyright 2020 Sample UI Authors");
-        fixture.Package("Sample.Graphics", "2.0.0", "file", "LICENSE.txt", null, ("LICENSE.txt", "Sample graphics."));
+        fixture.Package(
+            "Sample.Graphics",
+            "2.0.0",
+            "file",
+            "LICENSE.txt",
+            null,
+            ("LICENSE.txt", "Sample graphics.\n```\nA run of three backticks.\n```\n"),
+            ("ACKNOWLEDGEMENTS.md", "Thanks."),
+            ("CREDITS", "Credits."),
+            ("EULA.txt", "An agreement."),
+            ("PATENTS", "A patent grant."),
+            ("legal.txt", "Legal notes."));
         fixture.Package(
             "Sample.Graphics.Native",
             "2.0.0",
             "expression",
             "MIT",
-            "Copyright 2021 Sample Graphics Authors",
-            ("THIRD-PARTY-NOTICES.txt", "Sample graphics third-party notices."));
+            "Copyright 2021 Sample Graphics Authors");
+        WriteFile(
+            fixture.PackageFile("Sample.Graphics.Native", "2.0.0", "THIRD-PARTY-NOTICES.txt"),
+            "Sample graphics third-party notices.",
+            Encoding.Unicode);
         fixture.Package(
             "Sample.Apache",
             "3.0.0",
             "expression",
             "Apache-2.0",
             null,
-            ("LICENSE.txt", "Sample Apache license text."),
+            ("LICENSE.txt", "Sample Apache license header."),
             ("NOTICE.txt", "Sample Apache NOTICE text."));
-        fixture.Package("SteamKit2", "4.0.0", "expression", "LGPL-2.1-only", null, ("license.txt", "Sample LGPL."));
+        fixture.Package(
+            "SteamKit2",
+            "4.0.0",
+            "expression",
+            "LGPL-2.1-only",
+            null,
+            ("license.txt", "Sample LGPL notice."),
+            ("3rd party.txt", "Sample third-party notes."),
+            ("readme.txt", "Read me."));
         fixture.Package("Sample.Fonts.Native", "5.0.0", "expression", "FTL", null, ("LICENSE.TXT", "Sample font."));
         var runtime = fixture.Packs[0].Folder;
-        WriteFile(Path.Combine(runtime, "LICENSE.TXT"), "Sample runtime license text.\r\nSecond line.\r\n");
+        WriteFile(
+            Path.Combine(runtime, "LICENSE.TXT"),
+            "Sample runtime license text.\r\nSecond line.\rThird line.\r\n");
         WriteFile(Path.Combine(runtime, "THIRD-PARTY-NOTICES.TXT"), "Sample runtime notices.");
         WriteFile(Path.Combine(fixture.Packs[1].Folder, "LICENSE"), "Sample platform license text.");
         WriteFile(Path.Combine(fixture.Packs[2].Folder, "LICENSE"), "Sample platform license text.\r\n");
-        WriteFile(Path.Combine(fixture.Repository, "external", "Sample-lgpl", "COPYING.LIB"), "Sample LGPL library.");
+        WriteFile(Path.Combine(fixture.Repository, "external", "Sample-lgpl", "COPYING.LIB"), LgplTerms);
+        WriteFile(fixture.Upstream(ApacheTerms), ApacheTerms);
+        WriteFile(fixture.Upstream(Header), Header);
         foreach (var file in s_appFiles)
         {
             WriteFile(Path.Combine(fixture.App, file), $"sample content of {file}");
@@ -2123,7 +2765,8 @@ internal sealed class Fixture
         return fixture;
     }
 
-    public static string DisplayName => "Sampl" + (char)0x00E9 + " App";
+    // Where the ios job would have fetched an upstream text: build/upstream/<sha256>.
+    public string Upstream(string text) => Path.Combine(Repository, "build", "upstream", Hash(text));
 
     public void WriteInfo(string executable, bool binary)
     {
@@ -2160,46 +2803,96 @@ internal sealed class Fixture
         string? copyright,
         params (string Name, string Text)[] files)
     {
-        var folder = PackageFolder(id, version);
         var copyrightElement = copyright is null ? string.Empty : $"\n    <copyright>{copyright}</copyright>";
-        WriteFile(
-            Path.Combine(folder, $"{id.ToLowerInvariant()}.nuspec"),
-            $"""
-            <?xml version="1.0" encoding="utf-8"?>
-            <package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
-              <metadata>
-                <id>{id}</id>
-                <version>{version}</version>
-                <license type="{licenseType}">{license}</license>{copyrightElement}
-              </metadata>
-            </package>
-            """);
+        Description(id, version, $"<license type=\"{licenseType}\">{license}</license>{copyrightElement}");
         foreach (var (name, text) in files)
         {
-            WriteFile(Path.Combine(folder, name), text);
+            WriteFile(Path.Combine(PackageFolder(id, version), name), text);
         }
     }
+
+    // A package description whose metadata holds these license elements.
+    public void Description(string id, string version, string license) => WriteFile(
+        Path.Combine(PackageFolder(id, version), $"{id.ToLowerInvariant()}.nuspec"),
+        $"""
+        <?xml version="1.0" encoding="utf-8"?>
+        <package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+          <metadata>
+            <id>{id}</id>
+            <version>{version}</version>
+            {license}
+          </metadata>
+        </package>
+        """);
 
     public string PackageFolder(string id, string version) => Path.Combine(Packages, id.ToLowerInvariant(), version);
 
     public string PackageFile(string id, string version, string file) => Path.Combine(PackageFolder(id, version), file);
 
-    public static void WriteFile(string path, string content)
+    public static void WriteFile(string path, string content) => WriteFile(path, content, new UTF8Encoding(false));
+
+    public static void WriteFile(string path, string content, Encoding encoding)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, content);
+        File.WriteAllText(path, content, encoding);
     }
 
-    public Result Generate(Mode mode) => Notices.Generate(
-        Bundle.Read(App),
-        new BuildInputs("packages.lock.json", Packages, Locked, Packs),
-        new Configuration(
-            Repository,
-            global::Register.Parse(Register),
-            LicenseMap.Parse(Map),
-            global::Mapping.Parse(MappingText),
-            MitTemplate.Validate(Mit)),
-        mode);
+    public BuildInputs Build() => new("packages.lock.json", Packages, Locked, Packs);
+
+    public Configuration Load() => new(
+        Repository,
+        global::Register.Parse(RegisterText),
+        LicenseMap.Parse(Map),
+        global::Mapping.Parse(MappingText),
+        MitTemplate.Validate(Mit));
+
+    public Result Generate(Mode mode) => Notices.Generate(Bundle.Read(App), Build(), Load(), mode);
+
+    // The repository files that the command line reads, and the sample project with its lock file.
+    public void WriteRepository()
+    {
+        WriteFile(Path.Combine(Repository, global::Register.FilePath), RegisterText);
+        WriteFile(Path.Combine(Repository, LicenseMap.FilePath), Map);
+        WriteFile(Path.Combine(Repository, global::Mapping.FilePath), MappingText);
+        WriteFile(Path.Combine(Repository, MitTemplate.FilePath), Mit);
+        WriteFile(Path.Combine(Repository, "src", "Sample", "Sample.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var entries = Locked.Select(package =>
+            $"      \"{package.Id}\": {{ \"type\": \"Transitive\", \"resolved\": \"{package.Version}\" }}");
+        WriteFile(
+            Path.Combine(Repository, "src", "Sample", "packages.lock.json"),
+            $"{{\n  \"version\": 2,\n  \"dependencies\": {{\n    \"net10.0-ios\": {{\n{string.Join(",\n", entries)}\n"
+                + "    }\n  }\n}\n");
+    }
+
+    // MSBuild's answer for the sample project: NuGet's package folder and the runtime packs.
+    public string Query()
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteStartObject("Properties");
+            writer.WriteString("NuGetPackageRoot", Packages + Path.DirectorySeparatorChar);
+            writer.WriteEndObject();
+            writer.WriteStartObject("Items");
+            writer.WriteStartArray("ResolvedRuntimePack");
+            foreach (var pack in Packs)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("FrameworkName", pack.Framework);
+                writer.WriteString("NuGetPackageId", pack.Id);
+                writer.WriteString("NuGetPackageVersion", pack.Version);
+                writer.WriteString("PackageDirectory", pack.Folder);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
 
     // Every file under the fixture's folder, for the check that the tool writes nowhere else.
     public List<string> Snapshot()
@@ -2211,6 +2904,48 @@ internal sealed class Fixture
                 .Select(path => Path.GetRelativePath(Root, path).Replace('\\', '/'))
                 .Order(StringComparer.Ordinal),
         ];
+    }
+
+    // A link to a folder: a symbolic link, or on Windows without the right to make one, a junction,
+    // which needs none. False when neither can be made.
+    public static bool Link(string link, string target)
+    {
+        Directory.CreateDirectory(target);
+        Directory.CreateDirectory(Path.GetDirectoryName(link)!);
+        try
+        {
+            Directory.CreateSymbolicLink(link, target);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return false;
+            }
+        }
+
+        var start = new ProcessStartInfo("cmd.exe")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var argument in new[] { "/d", "/c", "mklink", "/J", link, target })
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(start);
+        if (process is null)
+        {
+            return false;
+        }
+
+        process.StandardOutput.ReadToEnd();
+        process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        return process.ExitCode == 0 && new DirectoryInfo(link).LinkTarget is not null;
     }
 
     private void AddPack(string framework, string id, string version) =>
@@ -2226,14 +2961,18 @@ internal static partial class SelfTest
         var root = Path.Combine(Path.GetTempPath(), $"GenerateNotices-{Guid.NewGuid():N}");
         try
         {
-            Readers(tally);
+            Readers(tally, root);
+            UpstreamTexts(tally);
             FullyRegistered(tally, root);
+            Outputs(tally, root);
+            CommandLine(tally, root);
             Failures(tally, root);
         }
         finally
         {
             if (Directory.Exists(root))
             {
+                RemoveLinks(new DirectoryInfo(root));
                 Directory.Delete(root, recursive: true);
             }
         }
@@ -2244,7 +2983,24 @@ internal static partial class SelfTest
         return tally.Failed == 0 ? 0 : 1;
     }
 
-    private static void Readers(Tally tally)
+    // Removes each link to a folder by itself first: a recursive delete of a folder that holds a
+    // junction fails on Windows, although it removes the junction.
+    private static void RemoveLinks(DirectoryInfo folder)
+    {
+        foreach (var child in folder.EnumerateDirectories("*", new EnumerationOptions { AttributesToSkip = 0 }))
+        {
+            if (child.LinkTarget is not null)
+            {
+                child.Delete();
+            }
+            else
+            {
+                RemoveLinks(child);
+            }
+        }
+    }
+
+    private static void Readers(Tally tally, string root)
     {
         Console.WriteLine("Readers:");
         (string, string)[] entries = [("CFBundleExecutable", "Sample"), ("CFBundleDisplayName", Fixture.DisplayName)];
@@ -2283,10 +3039,18 @@ internal static partial class SelfTest
             Matches("**/x.txt", "x.txt", "a/x.txt", "a/b/x.txt") && Matches("a/**/b", "a/b", "a/c/d/b")
                 && Matches("icudt?.dat", "icudt1.dat"),
             "\"**/\" matches any number of folders, and \"?\" one character");
+        tally.Expect(
+            MatchesNone("Info.plist", "Info.plist\n") && MatchesNone("a/Info.plist", "a/Info.plist\n")
+                && Matches("Frameworks/x.framework/**", "Frameworks/x.framework/a\nb"),
+            "a pattern matches a whole name and never one with a line break after it, and \"**\" matches line breaks");
         string[] badPatterns = ["/abs", "a/../b", "a**", "a\\b", "a//b"];
         tally.Expect(
             badPatterns.All(pattern => Rejects(() => Glob.ToRegex(pattern))),
             "rejects absolute paths, \"..\", a partial \"**\", backslashes and empty parts");
+        string[] names = ["b", "A", "a", "B"];
+        tally.Expect(
+            names.Order(Notices.NameOrder).SequenceEqual(["A", "a", "B", "b"]),
+            "orders names without regard to case first, and then exactly");
 
         string[] broken =
         [
@@ -2302,7 +3066,7 @@ internal static partial class SelfTest
         ];
         tally.Expect(
             broken.All(text => Rejects(() => Mapping.Parse(text)))
-                && Mapping.Parse(Fixture.Mapping) is { Files.Count: 15, MainExecutablePaths.Count: 1 },
+                && Mapping.Parse(Fixture.Resolve(Fixture.Mapping)) is { Files.Count: 15, MainExecutablePaths.Count: 1 },
             "reads the mapping, and rejects an unknown key, a rule without a note or components, a path that leaves "
                 + "its folder, a text without its file or license, texts for Paneport, a bad pattern and a mapping "
                 + "that is no object");
@@ -2345,7 +3109,10 @@ internal static partial class SelfTest
                   "Sample.Transitive": { "type": "Transitive", "resolved": "2.0.0" },
                   "sample.project": { "type": "Project" }
                 },
-                "net10.0-ios/ios-arm64": { "Sample.Native": { "type": "Transitive", "resolved": "3.0.0" } }
+                "net10.0-ios/ios-arm64": {
+                  "Sample.Native": { "type": "Transitive", "resolved": "3.0.0" },
+                  "sample.direct": { "type": "Transitive", "resolved": "1.0.0" }
+                }
               }
             }
             """);
@@ -2353,16 +3120,137 @@ internal static partial class SelfTest
             [new("Sample.Direct", "1.0.0"), new("Sample.Native", "3.0.0"), new("Sample.Transitive", "2.0.0")];
         tally.Expect(
             locked.SequenceEqual(lockedPackages),
-            "reads the packages of every target and runtime of a lock file, without the projects");
+            "reads the packages of every target and runtime of a lock file, each once, without the projects");
+        var twoVersions =
+            """
+            {
+              "version": 2,
+              "dependencies": {
+                "net10.0-ios": { "Sample.Twice": { "type": "Direct", "resolved": "1.0.0" } },
+                "net10.0-ios/ios-arm64": { "sample.twice": { "type": "Transitive", "resolved": "2.0.0" } }
+              }
+            }
+            """;
+        tally.Expect(
+            Rejects(() => LockFiles.Packages(twoVersions)),
+            "rejects a lock file that gives one package two versions");
+        var projects = Path.Combine(root, "projects");
+        Fixture.WriteFile(Path.Combine(projects, "My App.csproj"), "<Project />");
+        Fixture.WriteFile(Path.Combine(projects, "packages.lock.json"), "{}");
+        Fixture.WriteFile(Path.Combine(projects, "packages.My_App.lock.json"), "{}");
+        tally.Expect(
+            Path.GetFileName(LockFiles.Find(Path.Combine(projects, "My App.csproj"))) == "packages.My_App.lock.json",
+            "finds the lock file of a project with a space in its name as NuGet names it, with an underscore");
+
         tally.Expect(
             Spdx.Licenses("MIT OR (Apache-2.0 WITH LLVM-exception)").SequenceEqual(["MIT", "Apache-2.0"])
                 && Spdx.Mentions("MIT. Its native packages", "MIT") && !Spdx.Mentions("MIT-Modern-Variant", "MIT")
                 && Spdx.Mentions("FTL or GPL-2.0", "FTL") && !Spdx.Mentions("LGPL-2.1-only", "GPL-2.1-only"),
             "reads the licenses of an SPDX expression, and finds a license in a register row only as a whole name");
         tally.Expect(
+            Spdx.Leading("MIT. Its native library is under LGPL-2.1-or-later.").SequenceEqual(["MIT"])
+                && Spdx.Leading("Apache-2.0 WITH LLVM-exception; parts under MIT").SequenceEqual(["Apache-2.0"])
+                && Spdx.Leading("LGPL-2.1, as its README says: more").SequenceEqual(["LGPL-2.1"])
+                && Spdx.Leading("FTL or GPL-2.0").SequenceEqual(["FTL", "GPL-2.0"]),
+            "reads the expression that a register row's License text starts with, up to the end of its phrase");
+        string[] declared = ["MIT", "LGPL-2.1-only", "Apache-2.0", "lgpl-2.1-or-later"];
+        string[] otherLicenses = ["MIT", "LGPL-3.0-only", "GPL-2.0"];
+        var needed = FullTerms.Needed(declared);
+        tally.Expect(
+            needed.Select(terms => terms.License).SequenceEqual(["Apache-2.0", "LGPL-2.1"])
+                && FullTerms.Needed(otherLicenses).Count == 0
+                && FullTerms.Holds(Fixture.ApacheTerms, needed[0].Passage)
+                && FullTerms.Holds(Fixture.LgplTerms, needed[1].Passage)
+                && !FullTerms.Holds("Licensed under the Apache License, Version 2.0.", needed[0].Passage),
+            "knows which licenses need their full terms, and finds the terms across line breaks, not in a notice");
+        tally.Expect(
             Rejects(() => MitTemplate.Validate("Permission is hereby granted"))
                 && Rejects(() => MitTemplate.Validate("Copyright 2026")),
             "rejects an MIT text without its copyright line or its permission");
+        var reshaped = Fixture.Register.Replace("| Purpose ", string.Empty, StringComparison.Ordinal);
+        tally.Expect(
+            Message(() => global::Register.Parse(reshaped)) is { } shape
+                && shape.Contains("Update tools/Shared/Register.cs", StringComparison.Ordinal),
+            "names tools/Shared/Register.cs, which both tools include, when the register's columns change");
+        byte[] utf16 = [.. Encoding.Unicode.Preamble, .. Encoding.Unicode.GetBytes("Text.\r\n")];
+        tally.Expect(
+            TextFile.Decode(utf16, "a") == "Text.\n"
+                && TextFile.Decode("A\rB\r\nC\n\n"u8.ToArray(), "a") == "A\nB\nC\n",
+            "reads UTF-16 with a byte-order mark, and makes a lone CR and Windows line endings Unix ones");
+        tally.Expect(
+            Message(() => TextFile.Decode([], "x")) == "x is empty."
+                && Message(() => TextFile.Decode([0x41, 0, 0x42], "x")) == "x is not text."
+                && Message(() => TextFile.Decode([0x53, 0xE9, 0x0A], "x")) == "x is not UTF-8 text.",
+            "rejects an empty text, one with a NUL character and one in Latin-1");
+    }
+
+    private static void UpstreamTexts(Tally tally)
+    {
+        Console.WriteLine("Texts that no package ships:");
+        const string Commit = "0123456789abcdef0123456789abcdef01234567";
+        var url = Fixture.ApacheUrl;
+        bool refused(string to) => Rejects(() => Mapping.Parse(EditMapping(url, to)));
+        tally.Expect(
+            !refused(url) && refused(url.Replace("https://", "http://", StringComparison.Ordinal))
+                && refused(url.Replace("raw.githubusercontent.com/", "example.com/", StringComparison.Ordinal))
+                && refused(url.Replace(".com/", ".com.example.org/", StringComparison.Ordinal)),
+            "an upstream text comes over https from raw.githubusercontent.com only");
+        tally.Expect(
+            refused(url.Replace(Commit, "main", StringComparison.Ordinal))
+                && refused(url.Replace(Commit, "v1.0.0", StringComparison.Ordinal))
+                && refused(url.Replace(Commit, Commit[..12], StringComparison.Ordinal))
+                && refused(url.Replace(Commit, Commit.ToUpperInvariant(), StringComparison.Ordinal)),
+            "its URL names a full commit, never a branch, a tag or a short hash");
+        tally.Expect(
+            refused(url.Replace("/LICENSE", "/../LICENSE", StringComparison.Ordinal))
+                && refused(url + "?raw=1") && refused(url + "#top")
+                && refused(url.Replace("/LICENSE", "/%2E%2E/LICENSE", StringComparison.Ordinal))
+                && refused(url.Replace("/LICENSE", "\\\\LICENSE", StringComparison.Ordinal)),
+            "its URL holds no \"..\", \"?\", \"#\", \"%\" or backslash");
+        tally.Expect(
+            refused(url.Replace("/LICENSE", "/./LICENSE", StringComparison.Ordinal))
+                && refused(url.Replace("/LICENSE-2.0.txt", string.Empty, StringComparison.Ordinal))
+                && refused(url + "\\n"),
+            "its URL has a path after the commit, no \".\" part and no line break at its end");
+
+        var hash = Fixture.Hash(Fixture.ApacheTerms);
+        bool refusedHash(string to) => Rejects(() => Mapping.Parse(EditMapping($", \"sha256\": \"{hash}\"", to)));
+        tally.Expect(
+            refusedHash(string.Empty) && refusedHash($", \"sha256\": \"{hash.ToUpperInvariant()}\"")
+                && refusedHash($", \"sha256\": \"{hash[1..]}\"") && refusedHash(", \"sha256\": 1"),
+            "it has a SHA-256 of 64 lowercase hexadecimal digits");
+        bool refusedLines(string to) =>
+            Rejects(() => Mapping.Parse(EditMapping("\"lines\": [1, 4]", $"\"lines\": {to}")));
+        tally.Expect(
+            !refusedLines("[2, 2]") && refusedLines("[0, 4]") && refusedLines("[4, 1]") && refusedLines("[1]")
+                && refusedLines("[1, 2, 3]") && refusedLines("[\"1\", \"4\"]") && refusedLines("[1.5, 4]")
+                && refusedLines("\"1-4\""),
+            "a range of lines is [first, last], from line 1, the first not after the last");
+
+        const string RuntimeText = "{ \"runtimePack\": \"Sample.Runtime.App\", \"file\": \"THIRD-PARTY-NOTICES.TXT\" }";
+        string twice(string sha256) => EditMapping(
+            RuntimeText,
+            $"{RuntimeText},\n        {{ \"upstream\": \"{url}\", \"sha256\": \"{sha256}\" }}");
+        (string, string)[] listed = [(url, hash), (Fixture.HeaderUrl, Fixture.Hash(Fixture.Header))];
+        tally.Expect(
+            Rejects(() => Mapping.Parse(twice(new string('0', 64))))
+                && Mapping.Parse(twice(hash)).Upstream().SequenceEqual(listed),
+            "rejects one URL with two hashes, and lists each upstream text once");
+
+        const string Graphics = "\"Sample.Graphics\": {\n      \"texts\": [";
+        string withMissing(string missing) =>
+            EditMapping(Graphics, $"\"Sample.Graphics\": {{\n      \"missing\": {missing},\n      \"texts\": [");
+        tally.Expect(
+            Mapping.Parse(withMissing("[{ \"text\": \"its notices\", \"note\": \"None yet.\" }]"))
+                .Components["Sample.Graphics"].Missing.Count == 1
+                && Rejects(() => Mapping.Parse(withMissing("[]")))
+                && Rejects(() => Mapping.Parse(withMissing("[{ \"text\": \"its notices\" }]"))),
+            "lists a text that has no source with a note, and rejects an empty list and a text without a note");
+        tally.Expect(
+            UpstreamUrl.Lines("/*\n * A\n code in a comment;\n */\n// B\n\nint x;\n", new LineRange(1, 6), "f")
+                == "/*\n * A\n code in a comment;\n */\n// B\n\n"
+                && Rejects(() => UpstreamUrl.Lines("// A\n*/ x;\n", new LineRange(1, 2), "f")),
+            "a range takes the lines of a /* */ comment, and refuses a line outside a comment");
     }
 
     private static void FullyRegistered(Tally tally, string root)
@@ -2410,18 +3298,35 @@ internal static partial class SelfTest
                 .SequenceEqual(main),
             "maps a file of the main executable's paths, such as the data of generic instances, as the executable");
         tally.Expect(result.UnusedRules.SequenceEqual(["Unused/**"]), "reports a rule that matches no file");
+        string[] others =
+        [
+            "Sample.Graphics: ACKNOWLEDGEMENTS.md of the package Sample.Graphics 2.0.0",
+            "Sample.Graphics: CREDITS of the package Sample.Graphics 2.0.0",
+            "Sample.Graphics: EULA.txt of the package Sample.Graphics 2.0.0",
+            "Sample.Graphics: PATENTS of the package Sample.Graphics 2.0.0",
+            "Sample.Graphics: legal.txt of the package Sample.Graphics 2.0.0",
+            "Sample.Ui: native/THIRD-PARTY.md of the package Sample.Ui 1.0.0",
+            "SteamKit2: 3rd party.txt of the package SteamKit2 4.0.0",
+        ];
         tally.Expect(
-            result.OtherLicenseFiles.SequenceEqual(["Sample.Ui: native/THIRD-PARTY.md of the package Sample.Ui 1.0.0"]),
-            "reports a license or notice file of a component's packages that is not among its texts");
+            result.OtherLicenseFiles.SequenceEqual(others),
+            "reports the license, notice, third-party, EULA, patent, credit, acknowledgement and legal files of a "
+                + "component's packages that are not among its texts");
+        var ui = result.Components.Single(component => component.Name == "Sample.Ui");
+        string[] uiSources =
+            ["Sample.Ui 1.0.0", "Sample.Ui.Extra 1.0.0", "sample/ui 89abcdef0123456789abcdef0123456789abcdef"];
+        tally.Expect(
+            ui.Sources.SequenceEqual(uiSources),
+            "lists a component's sources sorted, and an upstream text by its repository and commit");
         if (result.Outputs is not { } outputs)
         {
             return;
         }
 
-        Output.Write(Path.Combine(fixture.App, Notices.Folder), outputs);
-        Output.Write(fixture.Out, outputs);
-        Output.Write(fixture.Out, outputs);
         var notices = Path.Combine(fixture.App, Notices.Folder);
+        Output.Write(notices, outputs);
+        Output.Write(fixture.Out, outputs);
+        Output.Write(fixture.Out, outputs);
         var after = fixture.Snapshot();
         var added = after.Except(before).ToList();
         tally.Expect(
@@ -2430,8 +3335,16 @@ internal static partial class SelfTest
                 && before.All(after.Contains) && added.Count == 2 * (2 + expected.Length),
             "writes only into licenses/ in the bundle and the output folder, and replaces its own earlier output "
                 + "there");
+        tally.Expect(
+            Directory.EnumerateFiles(notices, "*", SearchOption.AllDirectories)
+                .All(path => !File.ReadAllBytes(path).AsSpan().StartsWith(Encoding.UTF8.Preamble)),
+            "writes every output without a byte-order mark");
+        tally.Expect(
+            fixture.Generate(Mode.Release).Failures.Count == 0,
+            "a later run in release mode leaves out the notices that it wrote into the bundle");
 
-        var tableOrder = File.ReadAllLines(Path.Combine(notices, Notices.NoticesFile))
+        var markdown = File.ReadAllText(Path.Combine(notices, Notices.NoticesFile));
+        var tableOrder = markdown.Split('\n')
             .Select(line => TableRow().Match(line))
             .Where(match => match.Success)
             .Select(match => match.Groups[1].Value)
@@ -2451,15 +3364,33 @@ internal static partial class SelfTest
             tableOrder.SequenceEqual(expected) && indexOrder.SequenceEqual(expected)
                 && textOrder.SequenceEqual(expected.Select(Notices.Slug)) && numbered.All(match => match),
             "THIRD_PARTY_NOTICES.md, the texts and the index list the same components in the same order");
+        var paths = textFiles.Select(file => $"{Notices.TextsFolder}/{file}").ToList();
+        var headings = markdown.Split('\n')
+            .Select(line => SectionHeading().Match(line))
+            .Where(match => match.Success)
+            .Select(match => $"{match.Groups[1].Value}. {match.Groups[2].Value}");
+        var links = markdown.Split('\n')
+            .Select(line => TextLink().Match(line))
+            .Where(match => match.Success)
+            .Select(match => (match.Groups[1].Value, match.Groups[2].Value));
         tally.Expect(
-            indexComponents.Select(component => component.GetProperty("text").GetString())
-                .SequenceEqual(textFiles.Select(file => $"{Notices.TextsFolder}/{file}")),
+            headings.SequenceEqual(expected.Select((name, position) => $"{position + 1}. {name}"))
+                && links.SequenceEqual(paths.Select(path => (path, path))),
+            "each section of THIRD_PARTY_NOTICES.md has its number and component in that order, and links its text");
+        tally.Expect(
+            indexComponents.Select(component => component.GetProperty("text").GetString()).SequenceEqual(paths),
             "the index names each component's text");
+        var rows = global::Register.Parse(Fixture.Register);
+        tally.Expect(
+            indexComponents.All(component =>
+                rows.Single(row => row.Component == component.GetProperty("name").GetString()) is var row
+                    && component.GetProperty("license").GetString() == row.License
+                    && component.GetProperty("category").GetString() == row.Category),
+            "the index gives each component the License text and the category of its register row");
 
         var texts = textFiles.ToDictionary(
             file => file[3..^4],
             file => File.ReadAllText(Path.Combine(notices, Notices.TextsFolder, file)));
-        var markdown = File.ReadAllText(Path.Combine(notices, Notices.NoticesFile));
         tally.Expect(
             Holds(texts["sample-ui"], "Copyright 2020 Sample UI Authors", "Permission is hereby granted")
                 && !texts["sample-ui"].Contains("Sample Template Holder", StringComparison.Ordinal),
@@ -2467,11 +3398,17 @@ internal static partial class SelfTest
                 + "line");
         tally.Expect(
             Holds(texts["sample-graphics"], "Sample graphics.", "Sample graphics third-party notices.")
-                && Holds(texts["sample-runtime"], "Sample runtime license text.\nSecond line.\n")
+                && Holds(texts["sample-runtime"], "Sample runtime license text.\nSecond line.\nThird line.\n")
                 && Holds(texts["sample-runtime"], "Sample runtime notices.")
                 && Holds(texts["sample-lgpl"], "Sample LGPL library."),
-            "takes the texts and third-party notices of packages, runtime packs and repository files, with Unix line "
-                + "endings");
+            "takes the texts and third-party notices of packages, runtime packs and repository files, UTF-16 too, "
+                + "with Unix line endings in place of Windows ones and lone CRs");
+        tally.Expect(
+            Holds(texts["sample-apache"], "TERMS AND CONDITIONS FOR USE", "LICENSE-2.0.txt of sample/terms at commit")
+                && Holds(texts["sample-ui"], "// Copyright (c) Sample Header Holder.\n/* Licensed", "a sample. */\n")
+                && Holds(texts["sample-ui"], "lines 1 to 4 of src/Header.cs of sample/ui at commit 89abcdef")
+                && !texts["sample-ui"].Contains("namespace Sample", StringComparison.Ordinal),
+            "takes an upstream text from build/upstream/ by its SHA-256, and of a range only its lines");
         tally.Expect(
             Holds(texts["sample-apache"], "Sample Apache NOTICE text.")
                 && Holds(markdown, "Sample Apache NOTICE text."),
@@ -2486,6 +3423,9 @@ internal static partial class SelfTest
             Holds(texts["sample-fonts"], Fixture.Credit) && Holds(markdown, Fixture.Credit)
                 && Holds(indexText, Fixture.Credit),
             "keeps the FreeType credit in all three outputs");
+        tally.Expect(
+            Holds(markdown, "\n````text\nSample graphics.\n```\nA run of three backticks.\n```\n````\n"),
+            "fences a text with more backticks than the longest run in it");
         tally.Expect(
             markdown.StartsWith(
                 $"# Third-party notices\n\n{Fixture.DisplayName} 1.2.3 (45) contains",
@@ -2515,6 +3455,185 @@ internal static partial class SelfTest
             "writes into build/, bin/, obj/ or outside the repository, never elsewhere in it");
     }
 
+    private static void Outputs(Tally tally, string root)
+    {
+        Console.WriteLine("Output folders and links:");
+        var fixture = Fixture.Create(root, "outputs");
+        if (fixture.Generate(Mode.Ios).Outputs is not { } outputs)
+        {
+            tally.Expect(false, "the fixture of the output checks generates its notices");
+            return;
+        }
+
+        bool keeps(string name, string file)
+        {
+            var folder = Path.Combine(fixture.Root, name);
+            Output.Write(folder, outputs);
+            var path = Path.Combine(folder, file);
+            Fixture.WriteFile(path, "kept");
+            return Throws(() => Output.Write(folder, outputs)) && File.Exists(path);
+        }
+
+        tally.Expect(
+            keeps("beside", "keep.txt") && keeps("below", Path.Combine("sub", "keep.txt"))
+                && keeps("among", Path.Combine(Notices.TextsFolder, "notes.md")),
+            "refuses a folder of its own output that holds another file too, beside, below it or among the texts, "
+                + "and keeps that file");
+        var other = Path.Combine(fixture.Root, "other-tool");
+        Fixture.WriteFile(Path.Combine(other, Notices.IndexFile), "{ \"format\": 7, \"components\": [] }");
+        Fixture.WriteFile(Path.Combine(other, "data.bin"), "data");
+        tally.Expect(
+            Throws(() => Output.Write(other, outputs)) && File.Exists(Path.Combine(other, "data.bin")),
+            "refuses a folder whose index is of another format, and leaves it as it is");
+
+        var fewer = Fixture.Create(root, "fewer");
+        fewer.Locked.RemoveAll(package => package.Id == "Sample.Fonts.Native");
+        File.Delete(Path.Combine(fewer.App, "Frameworks", "libfonts.framework", "libfonts"));
+        var shorter = fewer.Generate(Mode.Ios).Outputs;
+        var rewritten = Path.Combine(fixture.Root, "rewritten");
+        Output.Write(rewritten, outputs);
+        if (shorter is not null)
+        {
+            Output.Write(rewritten, shorter);
+        }
+
+        var left = Directory.EnumerateFiles(Path.Combine(rewritten, Notices.TextsFolder))
+            .Select(path => $"{Notices.TextsFolder}/{Path.GetFileName(path)}")
+            .Order(StringComparer.Ordinal);
+        tally.Expect(
+            shorter is { Texts.Count: 7 } && outputs.Texts.Count == 8
+                && left.SequenceEqual(shorter.Texts.Select(text => text.Path).Order(StringComparer.Ordinal)),
+            "a later run with one component fewer replaces the texts, and leaves no text of the earlier run behind");
+
+        string[] devicePaths =
+            [@"\\?\C:\repo\docs\notices", @"\\.\C:\repo\docs\notices", @"\\server\share\notices", "//server/share/x"];
+        tally.Expect(
+            devicePaths.All(path => Rejects(() => Output.EnsureBuildOutput(fixture.Repository, path, "--out"))),
+            "refuses a device path and a network path");
+
+        // Links: on macOS and Linux symbolic links, on Windows junctions where symbolic links need a right.
+        var linked = Fixture.Create(root, "linked");
+        var outside = Path.Combine(linked.Root, "outside");
+        Fixture.WriteFile(Path.Combine(outside, "inside.txt"), "behind a link");
+        var build = Path.Combine(linked.Repository, "build");
+        var made = Fixture.Link(Path.Combine(linked.App, "Linked"), outside)
+            && Fixture.Link(Path.Combine(build, "into-docs"), Path.Combine(linked.Repository, "docs"))
+            && Fixture.Link(Path.Combine(build, "out-link"), Path.Combine(build, "real"));
+        var files = Bundle.Read(linked.App).Files;
+        tally.Expect(
+            made && files.Contains("Linked")
+                && !files.Any(file => file.StartsWith("Linked/", StringComparison.Ordinal)),
+            "lists a link in the bundle as a file, and never follows it");
+        var throughLink = Path.Combine("build", "into-docs", "x");
+        tally.Expect(
+            made
+                && Rejects(() => Output.EnsureBuildOutput(linked.Repository, throughLink, "--out"))
+                && !Rejects(() => Output.EnsureBuildOutput(linked.Repository, Path.Combine("build", "notices"), "--out")),
+            "follows a link under build/ to its target, and refuses one that leads into the repository outside build/");
+        var bundleLink = Path.Combine(linked.App, Notices.Folder);
+        tally.Expect(
+            Fixture.Link(bundleLink, Path.Combine(build, "elsewhere")) && Throws(() => Output.Check(bundleLink))
+                && Throws(() => Output.Write(Path.Combine(build, "out-link"), outputs)),
+            "refuses a licenses/ folder in the bundle, or an output folder, that is a link");
+    }
+
+    private static void CommandLine(Tally tally, string root)
+    {
+        Console.WriteLine("The command line:");
+        string[] good = ["--mode", "release", "--project", "a.csproj", "--app", "A.app", "--out", "build/x"];
+        string[] unknownMode = ["--mode", "debug", "--project", "a.csproj", "--app", "A.app"];
+        string[] noApp = ["--mode", "ios", "--project", "a.csproj"];
+        string[] twice = [.. good, "--out", "build/y"];
+        string[] noValue = ["--mode", "ios", "--project", "a.csproj", "--app"];
+        tally.Expect(
+            Options.Parse(good) == new Options(Mode.Release, "a.csproj", "A.app", "build/x")
+                && Options.Parse(unknownMode) is null && Options.Parse(noApp) is null && Options.Parse(twice) is null
+                && Options.Parse(noValue) is null,
+            "reads its options, and rejects an unknown mode, a missing --app, an option given twice and one without "
+                + "a value");
+
+        var cli = Fixture.Create(root, "cli");
+        cli.WriteRepository();
+        var options =
+            new Options(Mode.Release, "src/Sample/Sample.csproj", "src/Sample/bin/Sample.app", "build/notices");
+        string? asked = null;
+        var output = new StringWriter();
+        var code = Cli.Run(
+            options,
+            cli.Repository,
+            project =>
+            {
+                asked = project;
+                return cli.Query();
+            },
+            output,
+            annotate: false);
+        tally.Expect(
+            code == 0 && asked == Path.Combine(cli.Repository, "src", "Sample", "Sample.csproj")
+                && File.Exists(Path.Combine(cli.App, Notices.Folder, Notices.NoticesFile))
+                && File.Exists(Path.Combine(cli.Out, Notices.IndexFile))
+                && Holds(
+                    output.ToString(),
+                    "src/Sample/packages.lock.json: 7 packages.",
+                    "Runtime pack for Sample.Platform: Sample.Platform.Pack 7.0.0",
+                    "Wrote THIRD_PARTY_NOTICES.md, index.json and 8 texts into Sample.app/licenses/ and "
+                        + "build/notices/."),
+            "runs from the repository root with the lock file beside the project and MSBuild's answer, reports, and "
+                + "writes into the bundle and the output folder");
+
+        var failing = Fixture.Create(root, "cli-failing");
+        failing.Locked.Add(new LockedPackage("Sample.Unmapped", "1.0.0"));
+        failing.WriteRepository();
+        var failed = new StringWriter();
+        tally.Expect(
+            Cli.Run(options, failing.Repository, _ => failing.Query(), failed, annotate: true) == 1
+                && !Directory.Exists(Path.Combine(failing.App, Notices.Folder)) && !Directory.Exists(failing.Out)
+                && Holds(
+                    failed.ToString(),
+                    "error: Sample.app: the package Sample.Unmapped",
+                    "::error title=Notices::Sample.app: the package Sample.Unmapped"),
+            "exits with 1 after a failure, annotates it under GitHub Actions, and writes nothing");
+
+        var foreign = Fixture.Create(root, "cli-foreign");
+        foreign.WriteRepository();
+        Fixture.WriteFile(Path.Combine(foreign.Out, "keep.txt"), "kept");
+        tally.Expect(
+            Throws(() => Cli.Run(options, foreign.Repository, _ => foreign.Query(), TextWriter.Null, annotate: false))
+                && !Directory.Exists(Path.Combine(foreign.App, Notices.Folder))
+                && File.Exists(Path.Combine(foreign.Out, "keep.txt")),
+            "checks both destinations before it writes either: an output folder that it may not replace leaves the "
+                + "bundle as it is");
+        Func<string, string> query = _ => cli.Query();
+        var docsApp = options with { App = "docs/Sample.app" };
+        var docsOut = options with { Out = "docs/notices" };
+        tally.Expect(
+            Rejects(() => Cli.Run(docsApp, cli.Repository, query, TextWriter.Null, annotate: false))
+                && Rejects(() => Cli.Run(docsOut, cli.Repository, query, TextWriter.Null, annotate: false)),
+            "refuses an app or an output folder in the repository outside build/, bin/ and obj/");
+
+        const string Injected = "Sample.app: a\n::error title=Injected::b 100% is attributed to no component.";
+        var injected = new Result([], [Injected], [], [], [], [], [], [], null);
+        var annotated = new StringWriter();
+        Report.Print(Bundle.Read(cli.App), cli.Build(), cli.Load(), Mode.Ios, injected, annotated, annotate: true);
+        var lines = annotated.ToString().Split('\n').Select(line => line.TrimEnd('\r')).ToList();
+        tally.Expect(
+            !lines.Any(line => line.StartsWith("::error", StringComparison.Ordinal))
+                && lines.Contains(
+                    "warning: Sample.app: a%0A::error title=Injected::b 100% is attributed to no component.")
+                && lines.Contains(
+                    "::warning title=Notices::Sample.app: a%0A::error title=Injected::b 100%25 is attributed to no "
+                        + "component."),
+            "escapes line breaks in every line of the report, and % in an annotation too, so that no name starts a "
+                + "line");
+
+        var listed = new StringWriter();
+        var expected = $"{Fixture.Hash(Fixture.ApacheTerms)} {Fixture.ApacheUrl}\n"
+            + $"{Fixture.Hash(Fixture.Header)} {Fixture.HeaderUrl}\n";
+        tally.Expect(
+            Cli.ListUpstream(cli.Repository, listed) == 0 && listed.ToString().ReplaceLineEndings("\n") == expected,
+            "lists each upstream text once for the ios job to fetch, as \"<sha256> <url>\"");
+    }
+
     private static void Failures(Tally tally, string root)
     {
         Console.WriteLine("Each failure names what fails:");
@@ -2530,6 +3649,21 @@ internal static partial class SelfTest
         tally.Expect(
             release.Outputs is null && Names(release.Failures, "Unknown.dll") && Names(release.Failures, ".hidden"),
             "an unattributed file fails in release mode, and nothing is written");
+
+        var gap = Fixture.Create(root, "missing-text");
+        gap.MappingText = EditMapping(
+            "\"Sample.Graphics\": {\n      \"texts\": [",
+            "\"Sample.Graphics\": {\n      \"missing\": [{ \"text\": \"the notices of a sample library\", \"note\": "
+                + "\"No source carries them.\" }],\n      \"texts\": [");
+        var gapIos = gap.Generate(Mode.Ios);
+        var gapRelease = gap.Generate(Mode.Release);
+        const string GapWords = "Sample.Graphics needs the notices of a sample library, which no source provides yet";
+        tally.Expect(
+            gapIos.Failures.Count == 0 && gapIos.Outputs is not null
+                && gapIos.Warnings.Any(warning => warning.Contains(GapWords, StringComparison.Ordinal))
+                && gapRelease.Outputs is null
+                && gapRelease.Failures.Any(failure => failure.Contains(GapWords, StringComparison.Ordinal)),
+            "a text that has no source yet is a warning in ios mode and a failure in release mode, named");
 
         foreach (var (component, word, description) in new[]
         {
@@ -2554,9 +3688,7 @@ internal static partial class SelfTest
             tally,
             root,
             "no-texts",
-            fixture => fixture.MappingText = EditMapping(
-                "\"Sample.Ui\": { \"texts\": [{ \"package\": \"Sample.Ui\", \"license\": \"MIT\" }] },",
-                string.Empty),
+            fixture => fixture.MappingText = EditMapping("\"Sample.Ui\": {", "\"Sample.Unused\": {"),
             ["missing license text of Sample.Ui"],
             "a component without texts fails");
         Expect(
@@ -2566,6 +3698,22 @@ internal static partial class SelfTest
             fixture => File.Delete(fixture.PackageFile("Sample.Graphics.Native", "2.0.0", "THIRD-PARTY-NOTICES.txt")),
             ["missing license text of Sample.Graphics", "THIRD-PARTY-NOTICES.txt"],
             "a missing license file fails, named");
+        foreach (var (name, content, words) in new[]
+        {
+            ("empty-text", Array.Empty<byte>(), "LICENSE.txt is empty"),
+            ("nul-text", "Sample\0graphics."u8.ToArray(), "LICENSE.txt is not text"),
+            ("latin-1-text", new byte[] { 0x53, 0xE9, 0x0A }, "LICENSE.txt is not UTF-8 text"),
+        })
+        {
+            Expect(
+                tally,
+                root,
+                name,
+                fixture => File.WriteAllBytes(fixture.PackageFile("Sample.Graphics", "2.0.0", "LICENSE.txt"), content),
+                ["missing license text of Sample.Graphics", words],
+                $"a text that is {name.Replace("-text", string.Empty, StringComparison.Ordinal)} counts as missing");
+        }
+
         Expect(
             tally,
             root,
@@ -2576,10 +3724,71 @@ internal static partial class SelfTest
         Expect(
             tally,
             root,
+            "no-copyright-word",
+            fixture => fixture.Package("Sample.Ui", "1.0.0", "expression", "MIT", "2020 Sample UI Authors"),
+            ["missing license text of Sample.Ui", "declares no copyright notice"],
+            "an MIT package whose copyright line says no copyright fails");
+        Expect(
+            tally,
+            root,
             "no-mit",
             fixture => fixture.Package("Sample.Ui", "1.0.0", "expression", "BSD-3-Clause", "Copyright 2020 Sample"),
             ["missing license text of Sample.Ui", "does not declare the expression MIT"],
             "an MIT text for a package that declares another license fails");
+        Expect(
+            tally,
+            root,
+            "mit-as-file",
+            fixture => fixture.Package("Sample.Ui", "1.0.0", "file", "MIT", "Copyright 2020 Sample UI Authors"),
+            ["missing license text of Sample.Ui", "does not declare the expression MIT"],
+            "an MIT text for a package that names a file called MIT, not the expression, fails");
+        var typed = Fixture.Create(root, "typed-expression");
+        typed.Package("Sample.Ui", "1.0.0", " Expression ", "MIT", "Copyright 2020 Sample UI Authors");
+        tally.Expect(
+            typed.Generate(Mode.Release).Failures.Count == 0,
+            "reads a license type as NuGet does, trimmed and without regard to case");
+        foreach (var type in new[] { "Expression", " expression ", "EXPRESSION" })
+        {
+            Expect(
+                tally,
+                root,
+                $"declared-{type.Trim()}",
+                fixture => fixture.Package("Sample.Graphics.Native", "2.0.0", type, "GPL-3.0-only", null),
+                ["Sample.Graphics.Native 2.0.0 declares GPL-3.0-only", "register row Sample.Graphics"],
+                $"a declared license is checked when the type is \"{type}\"");
+        }
+
+        Expect(
+            tally,
+            root,
+            "empty-expression",
+            fixture => fixture.Package("Sample.Graphics.Native", "2.0.0", "expression", string.Empty, null),
+            ["Sample.Graphics.Native 2.0.0 declares an empty license expression"],
+            "an empty license expression fails");
+        var unexpressed = Fixture.Create(root, "unexpressed");
+        unexpressed.Description("Sample.Ui.Extra", "1.0.0", "<licenseUrl>https://example.org/license</licenseUrl>");
+        unexpressed.Description("Sample.Graphics.Native", "2.0.0", "<license>MIT</license>");
+        string[] reported =
+        [
+            "Sample.Ui.Extra 1.0.0 declares its license only by licenseUrl",
+            "Sample.Graphics.Native 2.0.0 declares a license without a type",
+        ];
+        var unexpressedResult = unexpressed.Generate(Mode.Release);
+        tally.Expect(
+            unexpressedResult.Failures.Count == 0 && unexpressedResult.Unexpressed.SequenceEqual(reported),
+            "reports a package that declares its license only by licenseUrl, or without a type");
+        Expect(
+            tally,
+            root,
+            "other-component",
+            fixture => fixture.MappingText = EditMapping(
+                "{ \"package\": \"Sample.Graphics\", \"file\": \"LICENSE.txt\" }",
+                "{ \"package\": \"Sample.Apache\", \"file\": \"LICENSE.txt\" }"),
+            [
+                "a text of Sample.Graphics names the package Sample.Apache",
+                "gives to Sample.Apache, not to Sample.Graphics",
+            ],
+            "a text from a package of another component fails, naming both");
         Expect(
             tally,
             root,
@@ -2608,6 +3817,68 @@ internal static partial class SelfTest
             fixture => fixture.Locked.Add(new LockedPackage("Sample.Unmapped", "1.0.0")),
             ["Sample.Unmapped", "no row in eng/license-map.json"],
             "a package of the lock file that the license map lacks fails");
+
+        Expect(
+            tally,
+            root,
+            "upstream-missing",
+            fixture => File.Delete(fixture.Upstream(Fixture.ApacheTerms)),
+            ["missing license text of Sample.Apache", "is not in build/upstream/", UpstreamUrl.FetchStep],
+            "an upstream text that is not fetched fails, naming the step that fetches it");
+        Expect(
+            tally,
+            root,
+            "upstream-changed",
+            fixture => File.WriteAllText(fixture.Upstream(Fixture.ApacheTerms), "Changed."),
+            ["missing license text of Sample.Apache", "has the SHA-256", UpstreamUrl.FetchStep],
+            "an upstream text whose SHA-256 differs fails");
+        Expect(
+            tally,
+            root,
+            "range-past-end",
+            fixture => fixture.MappingText = EditMapping("\"lines\": [1, 4]", "\"lines\": [1, 99]"),
+            ["missing license text of Sample.Ui", "run past the end of src/Header.cs", "which has 7 lines"],
+            "a range of lines past the end of its file fails");
+        Expect(
+            tally,
+            root,
+            "range-code",
+            fixture => fixture.MappingText = EditMapping("\"lines\": [1, 4]", "\"lines\": [1, 5]"),
+            ["missing license text of Sample.Ui", "line 5 of src/Header.cs", "neither a comment nor blank"],
+            "a range with a line of code fails");
+        Expect(
+            tally,
+            root,
+            "apache-terms",
+            fixture => fixture.MappingText = EditMapping(
+                $",\n        {{ \"upstream\": \"{Fixture.ApacheUrl}\", \"sha256\": \""
+                    + $"{Fixture.Hash(Fixture.ApacheTerms)}\" }}",
+                string.Empty),
+            ["Sample.Apache is under Apache-2.0, but none of its texts holds the full terms of Apache-2.0"],
+            "an Apache-2.0 component with a short notice and no full terms fails");
+        Expect(
+            tally,
+            root,
+            "lgpl-terms",
+            fixture => fixture.MappingText = EditMapping(
+                ",\n        { \"repository\": \"external/Sample-lgpl/COPYING.LIB\" }",
+                string.Empty),
+            ["SteamKit2 is under LGPL-2.1, but none of its texts holds the full terms of LGPL-2.1"],
+            "an LGPL-2.1 component with a short notice and no full terms fails");
+        Expect(
+            tally,
+            root,
+            "declared-terms",
+            fixture =>
+            {
+                fixture.RegisterText = Fixture.Register.Replace(
+                    Fixture.GraphicsLicense,
+                    "MIT. Its native package is under Apache-2.0.",
+                    StringComparison.Ordinal);
+                fixture.Package("Sample.Graphics.Native", "2.0.0", "expression", "Apache-2.0", null);
+            },
+            ["Sample.Graphics is under Apache-2.0, but none of its texts holds the full terms"],
+            "a component whose package declares Apache-2.0 needs the full terms too");
         Expect(
             tally,
             root,
@@ -2622,12 +3893,48 @@ internal static partial class SelfTest
         Expect(
             tally,
             root,
+            "declared-lgpl",
+            fixture =>
+            {
+                fixture.RegisterText = Fixture.Register.Replace(
+                    Fixture.GraphicsLicense,
+                    "MIT. Its native package is under LGPL-2.1-only.",
+                    StringComparison.Ordinal);
+                fixture.Package("Sample.Graphics.Native", "2.0.0", "expression", "LGPL-2.1-only", null);
+            },
+            ["Sample.Graphics, under LGPL-2.1-only, is compiled into the main executable Sample"],
+            "so does a component in it whose package declares the LGPL");
+        var noted = Fixture.Create(root, "lgpl-in-a-note");
+        noted.RegisterText = Fixture.Register.Replace(
+            Fixture.GraphicsLicense,
+            "MIT. Its native framework holds a library under LGPL-2.1-or-later.",
+            StringComparison.Ordinal);
+        tally.Expect(
+            noted.Generate(Mode.Release).Failures.Count == 0,
+            "a register row that names the LGPL only after its leading expression does not make the component LGPL");
+        Expect(
+            tally,
+            root,
             "no-notice",
             fixture => fixture.MappingText = EditMapping(
                 ",\n        { \"package\": \"Sample.Apache\", \"file\": \"NOTICE.txt\" }",
                 string.Empty),
             ["Sample.Apache leaves out the NOTICE file NOTICE.txt"],
             "an Apache-2.0 NOTICE file left out fails");
+        Expect(
+            tally,
+            root,
+            "no-pack-notice",
+            fixture =>
+            {
+                fixture.RegisterText = Fixture.Register.Replace(
+                    "| Sample.Platform | Platform bindings | MIT |",
+                    "| Sample.Platform | Platform bindings | Apache-2.0 |",
+                    StringComparison.Ordinal);
+                Fixture.WriteFile(Path.Combine(fixture.Packs[1].Folder, "NOTICE.txt"), "Sample platform NOTICE.");
+            },
+            ["Sample.Platform leaves out the NOTICE file NOTICE.txt of the runtime pack Sample.Platform.Pack 7.0.0"],
+            "so does one of a runtime pack");
         Expect(
             tally,
             root,
@@ -2676,7 +3983,7 @@ internal static partial class SelfTest
     }
 
     private static string EditMapping(string from, string to) =>
-        Fixture.Mapping.ReplaceLineEndings("\n").Replace(from, to, StringComparison.Ordinal);
+        Fixture.Resolve(Fixture.Mapping).Replace(from, to, StringComparison.Ordinal);
 
     private static bool Holds(string text, params string[] parts) =>
         parts.All(part => text.Contains(part, StringComparison.Ordinal));
@@ -2689,16 +3996,19 @@ internal static partial class SelfTest
     private static bool MatchesNone(string pattern, params string[] paths) =>
         !paths.Any(Glob.ToRegex(pattern).IsMatch);
 
-    private static bool Rejects(Action action)
+    private static bool Rejects(Action action) => Message(action) is not null;
+
+    // The message of the InvalidDataException that the action throws, or null.
+    private static string? Message(Action action)
     {
         try
         {
             action();
-            return false;
+            return null;
         }
-        catch (InvalidDataException)
+        catch (InvalidDataException exception)
         {
-            return true;
+            return exception.Message;
         }
     }
 
@@ -2717,4 +4027,10 @@ internal static partial class SelfTest
 
     [GeneratedRegex(@"^\| \d+ \| (.+?) \| ")]
     private static partial Regex TableRow();
+
+    [GeneratedRegex(@"^## (\d+)\. (.+)$")]
+    private static partial Regex SectionHeading();
+
+    [GeneratedRegex(@"^- Text: \[(.+?)\]\((.+?)\)$")]
+    private static partial Regex TextLink();
 }

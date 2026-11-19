@@ -41,7 +41,7 @@ eng/mac/bootstrap.sh --ios
 dotnet build src/Paneport.iOS/Paneport.iOS.csproj -c Release
 ```
 
-The build makes `bin/Release/net10.0-ios/ios-arm64/Paneport.iOS.app`, unsigned; `eng/mac/sign-adhoc.sh`, `eng/mac/check-app.sh` and `eng/mac/package-ipa.sh` sign, check and package it as the `ios` job does. On Windows without a Mac, the `ios` job of CI builds both flavors and uploads their `.ipa` files ([dev-environment.md](../../docs/design/dev-environment.md)).
+The build makes `bin/Release/net10.0-ios/ios-arm64/Paneport.iOS.app`, unsigned; `tools/GenerateNotices.cs` places its third-party notices in it, and `eng/mac/sign-adhoc.sh`, `eng/mac/check-app.sh` and `eng/mac/package-ipa.sh` sign, check and package it as the `ios` job does. On Windows without a Mac, the `ios` job of CI builds both flavors and uploads their `.ipa` files ([dev-environment.md](../../docs/design/dev-environment.md)).
 
 - **Depends on:** Paneport.Core, Paneport.Steam, Paneport.UI and Paneport.Interop, and the Avalonia.iOS package. Nothing may depend on this project; the device test flavor compiles its sources instead.
 - **Build:** `net10.0-ios` for `ios-arm64` only. Release compiles everything ahead of time with the interpreter off (C-0009 section 3). The build signs nothing; CI signs the app ad hoc afterwards, with no Apple identity (C-0009 section 5). The bundle identifier is `io.github.recelilious.paneport` (D3). `eng/ci.slnf` leaves the project out (C-0011 section 4).

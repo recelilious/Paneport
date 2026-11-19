@@ -114,7 +114,7 @@ M2.2 added the **Signal gate** page of L2 steps 11 to 13: the startup check of t
 
 ## 11. Packaging, signing and the scan
 
-The `ios` job builds both flavors in Release with full AOT and the interpreter off, and without signing, then:
+The `ios` job builds both flavors in Release with full AOT and the interpreter off, and without signing, finds both bundles, self-tests `tools/GenerateNotices.cs`, and fetches the license texts that no package ships into `build/upstream/`, checking each by its SHA-256 ([repository-checks.md](repository-checks.md) section 6 lists every step of the job), then:
 
 1. `tools/GenerateNotices.cs` places the third-party notices of each app in `licenses/` at the root of its bundle: `THIRD_PARTY_NOTICES.md`, the license texts and their index (S9.1.1). It runs before signing, so that the signature seals them, and attributes every file of the bundle to Paneport or to components of the register; in this job an unattributed file is a warning ([release-engineering.md](release-engineering.md)).
 2. `eng/mac/sign-adhoc.sh` signs each framework and library in `Frameworks/` with `codesign --force --sign -`, then the app with `codesign --force --sign - --entitlements Entitlements.plist --generate-entitlement-der`, and verifies the result. An ad-hoc signature holds no Apple identity and no provisioning profile (C-0009 section 5), and embeds the entitlements that the user's sideloading tool requests when it re-signs the app, as C-0009 section 6 describes for releases. C-0011 section 4 has named this signature since version 1.1, which recelilious accepted on 2026-11-15 as plan section 8 expected.

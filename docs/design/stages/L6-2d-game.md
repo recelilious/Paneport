@@ -371,6 +371,10 @@ Out:
 
 **Hands over to.** M6.6 (buffer tuning for the test title), L6 (game audio, the interruption check and S6.0.1), L7 and L8 (games started from Steam use the same audio).
 
+**Notes from earlier stages.**
+
+- S9.1.1 ([L9 brief](L9-first-release.md), M9.1 session log of 2026-11-19): every file that this stage adds to the bundle needs a rule in `eng/release/bundle-components.json`, or the `ios` job warns, and a rule for a new component needs its texts there, such as a fork's license files as `{ "repository": "external/..." }`, or the job fails; a new NuGet package of the app needs a row of `eng/license-map.json` and texts too. `licenses/` at the root of the bundle belongs to the notices generator (`docs/design/release-engineering.md` sections 1 and 5).
+
 **Session log.**
 
 _No sessions yet._

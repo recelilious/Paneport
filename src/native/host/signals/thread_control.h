@@ -32,7 +32,9 @@ typedef struct pp_thread_state_t {
 // PP_E_INVALID_ARGUMENT for a NULL port or a thread without a port; PP_E_SYSTEM.
 pp_status_t pp_thread_control_open(pthread_t thread, uint32_t *port);
 
-// Gives the reference back. Returns PP_OK; PP_E_SYSTEM.
+// Gives the reference back, also once the thread has ended. Returns PP_OK;
+// PP_E_INVALID_ARGUMENT for a name that holds no send right or dead name of the process;
+// PP_E_SYSTEM.
 pp_status_t pp_thread_control_close(uint32_t port);
 
 // Suspends the thread; a thread suspended twice needs two resumes. Returns PP_OK;

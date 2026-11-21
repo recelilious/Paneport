@@ -10,7 +10,7 @@ Steam sign-in, licenses, app information and depot downloads, built on SteamKit2
 - **Depends on:** Paneport.Core only.
 - **Build:** a library with `IsAotCompatible` and an XML documentation file, like the other libraries (C-0010 sections 2 and 5).
 - **Tests:** [Paneport.Steam.Tests](../../tests/Paneport.Steam.Tests/README.md).
-- **Design:** `docs/design/steam-service.md`, which stage M2.3 writes.
+- **Design:** [steam-service.md](../../docs/design/steam-service.md).
 
 | Folder or file | What it holds |
 |---|---|

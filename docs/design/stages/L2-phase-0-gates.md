@@ -29,19 +29,19 @@ Back to the [development plan](../development-plan.md).
 | S2.2.5 | Crash-chaining call and installed check | Small | Done | [#27](https://github.com/recelilious/Paneport/pull/27) | 2026-11-17 |
 | S2.2.6 | Stress harness and screen | Small | Done | [#27](https://github.com/recelilious/Paneport/pull/27) | 2026-11-17 |
 | S2.2.7 | Signals design document | Small | Done | [#27](https://github.com/recelilious/Paneport/pull/27) | 2026-11-17 |
-| M2.3 | SteamKit2 on the device | Medium | Planned | | |
-| S2.3.1 | Connection | Small | Planned | | |
-| S2.3.2 | Sign-in flows | Small | Planned | | |
-| S2.3.3 | Token store integration | Small | Planned | | |
-| S2.3.4 | Licenses and app information | Small | Planned | | |
-| S2.3.5 | Depot key, manifest request code and manifest | Small | Planned | | |
-| S2.3.6 | Chunk download and verification | Small | Planned | | |
-| S2.3.7 | iOS networking | Small | Planned | | |
+| M2.3 | SteamKit2 on the device | Medium | In progress | [#33](https://github.com/recelilious/Paneport/pull/33) | 2026-11-21 |
+| S2.3.1 | Connection | Small | In progress | [#33](https://github.com/recelilious/Paneport/pull/33) | 2026-11-21 |
+| S2.3.2 | Sign-in flows | Small | In progress | [#33](https://github.com/recelilious/Paneport/pull/33) | 2026-11-21 |
+| S2.3.3 | Token store integration | Small | In progress | [#33](https://github.com/recelilious/Paneport/pull/33) | 2026-11-21 |
+| S2.3.4 | Licenses and app information | Small | In progress | [#33](https://github.com/recelilious/Paneport/pull/33) | 2026-11-21 |
+| S2.3.5 | Depot key, manifest request code and manifest | Small | In progress | [#33](https://github.com/recelilious/Paneport/pull/33) | 2026-11-21 |
+| S2.3.6 | Chunk download and verification | Small | In progress | [#33](https://github.com/recelilious/Paneport/pull/33) | 2026-11-21 |
+| S2.3.7 | iOS networking | Small | In progress | [#33](https://github.com/recelilious/Paneport/pull/33) | 2026-11-21 |
 | S2.3.8 | AOT and interpreter measurement | Small | Planned | | |
-| S2.3.9 | Developer test screen | Small | Planned | | |
-| S2.3.10 | QR code rendering | Small | Planned | | |
-| S2.3.11 | Secret-free logging | Small | Planned | | |
-| S2.3.12 | Steam service design document | Small | Planned | | |
+| S2.3.9 | Developer test screen | Small | In progress | [#33](https://github.com/recelilious/Paneport/pull/33) | 2026-11-21 |
+| S2.3.10 | QR code rendering | Small | In progress | [#33](https://github.com/recelilious/Paneport/pull/33) | 2026-11-21 |
+| S2.3.11 | Secret-free logging | Small | In progress | [#33](https://github.com/recelilious/Paneport/pull/33) | 2026-11-21 |
+| S2.3.12 | Steam service design document | Small | In progress | [#33](https://github.com/recelilious/Paneport/pull/33) | 2026-11-21 |
 
 ## L2 Phase 0 gates
 
@@ -524,4 +524,4 @@ This stage creates no script beyond its tests. The full gate run is L2 steps 16 
 
 **Session log.**
 
-_No sessions yet._
+- 2026-11-21 (first session). C-0003 1.7, which registers ZstdSharp and the QR code generator and names protobuf-net.Core and the LZMA SDK part of SteamKit2, was proposed and accepted by recelilious the same day, with decision D13 (Net.Codecrete.QrCodeGenerator) and the download of six packages; it waits in #32 on #29's branch. Built on the stage branch, PR #33: the state machines of the session, the sign-in flows, the saved sign-in, the gate's steps, chunk verification and the log filter behind internal ports, with fakes and tests (S2.3.1 to S2.3.6, S2.3.11); SteamKit2 4.0.0-Beta.2 with its adapters, the factory, SocketsHttpHandler for every HTTP client and the installation's machine identity (S2.3.1, S2.3.7); the gate page's view model and view with the QR code control (S2.3.9, S2.3.10); the desktop head's Developer section and the device test flavor's Steam gate entry with the app's foreground returns; and [steam-service.md](../steam-service.md) (S2.3.12). Left: recelilious's decisions on the trimming warnings of protobuf-net and protobuf-net.Core, which fail the trimmed test app and the iOS build, and on the LGPL source offer for SteamKit2; the notices of the new packages after S9.1.1 (#30); the desktop run and the device check (S2.3.8) by recelilious. Notes for M7.1 and M8.2 are in their briefs. The next session starts from steam-service.md section 15 and the pull request's body.

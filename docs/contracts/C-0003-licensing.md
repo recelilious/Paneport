@@ -198,7 +198,7 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 
 ## Proposed changes for 1.7
 
-**Not yet accepted.** Version 1.6 above stays binding until recelilious approves these changes. They come from stage M2.3, which builds the Steam service on SteamKit2 ([L2 brief](../design/stages/L2-phase-0-gates.md), section M2.3), and register what SteamKit2's package brings into the app before any of it is added (section 5).
+**Not yet accepted.** Version 1.6 above stays binding until recelilious approves these changes. They come from stage M2.3, which builds the Steam service on SteamKit2 ([L2 brief](../design/stages/L2-phase-0-gates.md), section M2.3), and register what SteamKit2's package brings into the app, and the QR code library that recelilious chose for the sign-in page (plan decision D13), before any of it is added (section 5).
 
 1. **Section 6, the row of SteamKit2.** Replace its license, "LGPL-2.1-only", with "LGPL-2.1-only. It carries part of the LZMA SDK, which its author placed in the public domain."
 
@@ -207,6 +207,10 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 3. **Section 6, a new row after protobuf-net.** Add: "| ZstdSharp (ZstdSharp.Port) | Zstandard decompression, a SteamKit2 dependency that unpacks depot chunks | MIT, for the port. It is a C# port of Zstandard, which is BSD-3-Clause or GPL-2.0-only; the ported code is used under BSD-3-Clause (section 5), and Zstandard's notice is kept beside the port's. | Allowed |". In the sentence above the table, replace "and on 2026-11-15 for the row that version 1.6 added" with "on 2026-11-15 for the row that version 1.6 added, and on 2026-11-21 for the rows that version 1.7 added or changed".
 
 4. **Section 12, new sources.** Add "ZstdSharp license: <https://github.com/oleg-st/ZstdSharp/blob/HEAD/LICENSE>", "Zstandard licenses: <https://github.com/facebook/zstd/blob/HEAD/LICENSE> and <https://github.com/facebook/zstd/blob/HEAD/COPYING>" and "LZMA SDK license: <https://www.7-zip.org/sdk.html>".
+
+5. **Section 6, a new row after ZstdSharp.** Add: "| QR code generator (Net.Codecrete.QrCodeGenerator) | Draws the Steam sign-in QR code (C-0007 section 3) | MIT. It began as a C# port of Project Nayuki's QR Code generator library, also MIT, whose notice is kept beside it. | Allowed |". recelilious chose this library over an encoder of our own on 2026-11-21 (plan decision D13).
+
+6. **Section 12, new sources.** Add "QR code generator license: <https://github.com/manuelbl/QrCodeGenerator/blob/HEAD/LICENSE>" and "Project Nayuki's QR Code generator: <https://github.com/nayuki/QR-Code-generator>".
 
 SteamKit2's package also depends on System.IO.Hashing, a package of the .NET runtime under MIT, which the row of the .NET runtime covers as it covers the runtime's other packages, such as Microsoft.Bcl.AsyncInterfaces. protobuf-net depends on System.Collections.Immutable, which .NET 10 provides itself, so restore prunes it. Microsoft.Windows.CsWin32 serves only SteamKit2's own build and is not a dependency of its package.
 

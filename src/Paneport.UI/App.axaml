@@ -25,6 +25,9 @@ SPDX-License-Identifier: MIT
     <DataTemplate DataType="vm:DiagnosticsViewModel">
       <views:DiagnosticsPage />
     </DataTemplate>
+    <DataTemplate DataType="vm:SteamGateViewModel">
+      <views:SteamGatePage />
+    </DataTemplate>
   </Application.DataTemplates>
 
   <Application.Styles>

@@ -30,4 +30,8 @@ internal sealed class SceneDelegate : UIResponder, IUIWindowSceneDelegate
         };
         Window.MakeKeyAndVisible();
     }
+
+    // UIKit calls it when the scene returns from the background, not when it first appears.
+    [Export("sceneWillEnterForeground:")]
+    public void WillEnterForeground(UIScene scene) => AppDelegate.Composition?.Lifecycle.NotifyEnteredForeground();
 }

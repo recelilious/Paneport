@@ -1,0 +1,121 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Paneport.Core.ViewModels"
+             xmlns:controls="using:Paneport.UI.Controls"
+             x:Class="Paneport.UI.Views.SteamGatePage"
+             x:DataType="vm:SteamGateViewModel">
+  <!--
+  The Steam gate page of L2 steps 16 to 28, in their order. It shows states, counts, sizes and
+  times, never a token, key, code or Steam ID; the QR code's text is only drawn.
+  -->
+  <ScrollViewer>
+    <StackPanel Margin="16" MaxWidth="640" HorizontalAlignment="Left" Spacing="24">
+      <StackPanel Spacing="6">
+        <TextBlock Classes="section" Text="Build" />
+        <TextBlock x:Name="Build" Text="{Binding BuildText}" TextWrapping="Wrap" />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Classes="section" Text="Session" />
+        <Grid Classes="row" ColumnDefinitions="Auto,*">
+          <TextBlock Classes="label" Text="State" />
+          <TextBlock x:Name="Session" Grid.Column="1" Text="{Binding SessionText}" TextWrapping="Wrap" />
+        </Grid>
+        <Grid Classes="row" ColumnDefinitions="Auto,*">
+          <TextBlock Classes="label" Text="Token stored" />
+          <TextBlock x:Name="TokenStored" Grid.Column="1" Text="{Binding TokenStoredText}" />
+        </Grid>
+        <Grid Classes="row" ColumnDefinitions="Auto,*">
+          <TextBlock Classes="label" Text="Transport" />
+          <TextBlock x:Name="Transport" Grid.Column="1" Text="{Binding TransportText}" />
+        </Grid>
+        <TextBlock x:Name="SessionProblem"
+                   Classes="error"
+                   Margin="0"
+                   Text="{Binding SessionProblem}"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding SessionProblem, Converter={x:Static ObjectConverters.IsNotNull}}" />
+      </StackPanel>
+
+      <StackPanel Spacing="8">
+        <TextBlock Classes="section" Text="Sign in" />
+        <TextBox x:Name="AccountName" PlaceholderText="Account name" Text="{Binding AccountName}" />
+        <TextBox x:Name="Password" PlaceholderText="Password" PasswordChar="*" Text="{Binding Password}" />
+        <CheckBox x:Name="EnterCodeInstead"
+                  Content="Enter a code instead of approving in the Steam mobile app"
+                  IsChecked="{Binding EnterCodeInstead}" />
+        <WrapPanel>
+          <Button x:Name="SignIn" Margin="0,0,12,8" Content="Sign in" Command="{Binding SignInCommand}" />
+          <Button x:Name="SignInWithQrCode" Margin="0,0,12,8" Content="Sign in with a QR code" Command="{Binding SignInWithQrCodeCommand}" />
+          <Button x:Name="CancelSignIn" Margin="0,0,12,8" Content="Cancel" Command="{Binding CancelSignInCommand}"
+                  IsVisible="{Binding IsSigningIn}" />
+          <Button x:Name="SignOut" Margin="0,0,12,8" Content="Sign out" Command="{Binding SignOutCommand}" />
+        </WrapPanel>
+        <TextBlock x:Name="SignInStage" Text="{Binding SignInStageText}" TextWrapping="Wrap" />
+        <Button x:Name="UseCodeInstead" Content="Enter a code instead" Command="{Binding UseCodeInsteadCommand}"
+                IsVisible="{Binding IsWaitingForApproval}" />
+        <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding IsWaitingForCode}">
+          <TextBox x:Name="Code" PlaceholderText="Code" MinWidth="160" Text="{Binding Code}" />
+          <Button x:Name="SubmitCode" Content="Send the code" Command="{Binding SubmitCodeCommand}" />
+        </StackPanel>
+        <controls:QrCodeView x:Name="QrCode"
+                             HorizontalAlignment="Left"
+                             Text="{Binding QrChallenge}"
+                             IsVisible="{Binding IsShowingQrCode}" />
+        <TextBlock x:Name="SignInTimes" Text="{Binding SignInTimesText}" TextWrapping="Wrap" />
+      </StackPanel>
+
+      <StackPanel Spacing="8">
+        <TextBlock Classes="section" Text="Steps" />
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <Button x:Name="Licenses" Content="Licenses" Command="{Binding CountLicensesCommand}" />
+          <TextBlock x:Name="LicensesResult" VerticalAlignment="Center" Text="{Binding LicensesText}" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBox x:Name="AppId" PlaceholderText="App ID" MinWidth="160" Text="{Binding AppIdText}" />
+          <Button x:Name="AppInfo" Content="App info" Command="{Binding ReadAppInfoCommand}" />
+        </StackPanel>
+        <TextBlock x:Name="AppInfoResult" Text="{Binding AppInfoText}" TextWrapping="Wrap" />
+        <ComboBox x:Name="Depots"
+                  MinWidth="280"
+                  ItemsSource="{Binding Depots}"
+                  SelectedItem="{Binding SelectedDepot}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:SteamDepotRow">
+              <TextBlock Text="{Binding Text}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <WrapPanel>
+          <Button x:Name="DepotKey" Margin="0,0,12,8" Content="Depot key" Command="{Binding GetDepotKeyCommand}" />
+          <Button x:Name="ManifestCode" Margin="0,0,12,8" Content="Manifest code" Command="{Binding GetManifestCodeCommand}" />
+          <Button x:Name="Manifest" Margin="0,0,12,8" Content="Manifest" Command="{Binding DownloadManifestCommand}" />
+          <Button x:Name="Chunks" Margin="0,0,12,8" Content="Chunks" Command="{Binding DownloadChunksCommand}" />
+          <Button x:Name="DeleteTestData" Margin="0,0,12,8" Content="Delete test data" Command="{Binding DeleteTestDataCommand}" />
+        </WrapPanel>
+        <TextBlock x:Name="DepotKeyResult" Text="{Binding DepotKeyText}" />
+        <TextBlock x:Name="ManifestCodeResult" Text="{Binding ManifestCodeText}" />
+        <TextBlock x:Name="ManifestResult" Text="{Binding ManifestText}" TextWrapping="Wrap" />
+        <TextBlock x:Name="ChunksResult" Text="{Binding ChunksText}" TextWrapping="Wrap" />
+        <TextBlock x:Name="StepProblem"
+                   Classes="error"
+                   Margin="0"
+                   Text="{Binding StepProblem}"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding StepProblem, Converter={x:Static ObjectConverters.IsNotNull}}" />
+      </StackPanel>
+
+      <StackPanel Spacing="8">
+        <TextBlock Classes="section" Text="Summary" />
+        <CheckBox x:Name="PermissionPrompt"
+                  Content="A system permission prompt appeared, such as Local Network"
+                  IsChecked="{Binding PermissionPromptSeen}" />
+        <SelectableTextBlock x:Name="Summary" Classes="timeline" Text="{Binding Summary}" TextWrapping="Wrap" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

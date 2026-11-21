@@ -6,6 +6,7 @@
 #include "thread_control.h"
 
 #include <mach/mach.h>
+#include <mach/mig_errors.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -17,8 +18,12 @@
 #error "The thread control helpers use the Mach calls of arm64 Apple platforms."
 #endif
 
-// A thread that has ended leaves a dead name or a terminated thread behind, which these
-// results report.
+// A thread that has ended leaves a terminated thread, a port without its thread or a dead name
+// behind, which these results report. A call can also meet the port's death, which comes when
+// the kernel frees the thread, possibly after pthread_join has returned: a request that finds
+// its port dead after it was copied in is destroyed unanswered, and its reply right then sends
+// the reply port a send-once notification, which MIG's stub reports as MIG_SERVER_DIED
+// (docs/design/signals.md section 8).
 static bool thread_ended(kern_return_t result) {
     switch (result) {
     case KERN_TERMINATED:
@@ -27,6 +32,7 @@ static bool thread_ended(kern_return_t result) {
     case KERN_INVALID_ARGUMENT:
     case KERN_INVALID_NAME:
     case KERN_INVALID_RIGHT:
+    case MIG_SERVER_DIED:
         return true;
     default:
         return false;

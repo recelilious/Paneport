@@ -1,0 +1,209 @@
+{
+  "mainExecutable": {
+    "components": ["Paneport", ".NET runtime", ".NET for iOS (dotnet/macios)"],
+    "paths": ["aot-instances.aotdata.*"],
+    "note": "The app's executable holds our code, the Mono runtime and the native code of .NET for iOS, which the build links into it, and the code of the packages that the app ships, which full ahead-of-time compilation puts into it (C-0003 section 3, C-0009 section 3). tools/GenerateNotices.cs maps it to the component of every package in the app's lock file, through eng/license-map.json, including packages that do not ship: build tasks, the native assets of other platforms and assemblies that the trimmer removes. That errs on the side of a notice too many. The ahead-of-time data of the generic instances that the compiler shares between all assemblies, aot-instances.aotdata.arm64, comes from the whole app in the same way."
+  },
+  "files": [
+    {
+      "path": "Info.plist",
+      "components": ["Paneport"],
+      "note": "The build writes it from the head's Info.plist."
+    },
+    {
+      "path": "PkgInfo",
+      "components": ["Paneport"],
+      "note": "The build writes it."
+    },
+    {
+      "path": "runtimeconfig.bin",
+      "components": ["Paneport"],
+      "note": "The runtime's configuration, which the build writes from the head's project, the build stamp included."
+    },
+    {
+      "path": "Paneport.*",
+      "components": ["Paneport"],
+      "note": "Our assemblies, those of the head and of the device test flavor among them, and their ahead-of-time data."
+    },
+    {
+      "path": "Frameworks/paneport_host.framework/**",
+      "components": ["Paneport"],
+      "note": "The native host (C-0009 section 4)."
+    },
+    {
+      "path": "Avalonia.*",
+      "components": ["Avalonia"],
+      "note": "The assemblies of Avalonia's packages and their ahead-of-time data."
+    },
+    {
+      "path": "CommunityToolkit.Mvvm.*",
+      "components": ["CommunityToolkit.Mvvm"],
+      "note": "Its assembly and its ahead-of-time data."
+    },
+    {
+      "path": "MicroCom.Runtime.*",
+      "components": ["MicroCom.Runtime"],
+      "note": "Its assembly and its ahead-of-time data."
+    },
+    {
+      "path": "SkiaSharp.*",
+      "components": ["SkiaSharp"],
+      "note": "SkiaSharp's assembly and its ahead-of-time data."
+    },
+    {
+      "path": "Frameworks/libSkiaSharp.framework/**",
+      "components": ["SkiaSharp"],
+      "note": "The native library of SkiaSharp.NativeAssets.iOS, Skia among its contents."
+    },
+    {
+      "path": "HarfBuzzSharp.*",
+      "components": ["HarfBuzzSharp"],
+      "note": "HarfBuzzSharp's assembly and its ahead-of-time data."
+    },
+    {
+      "path": "Frameworks/libHarfBuzzSharp.framework/**",
+      "components": ["HarfBuzzSharp"],
+      "note": "The native library of HarfBuzzSharp.NativeAssets.iOS, HarfBuzz among its contents."
+    },
+    {
+      "path": "Microsoft.iOS.*",
+      "components": [".NET for iOS (dotnet/macios)"],
+      "note": "The iOS bindings of .NET for iOS and their ahead-of-time data. It comes before Microsoft.*, because the first rule that matches a file attributes it."
+    },
+    {
+      "path": "Microsoft.*",
+      "components": [".NET runtime"],
+      "note": "The runtime's libraries whose names start with Microsoft, and their ahead-of-time data."
+    },
+    {
+      "path": "System.*",
+      "components": [".NET runtime"],
+      "note": "The runtime's libraries, System.Private.CoreLib among them, and their ahead-of-time data."
+    },
+    {
+      "path": "mscorlib.*",
+      "components": [".NET runtime"],
+      "note": "The runtime's compatibility facade and its ahead-of-time data."
+    },
+    {
+      "path": "netstandard.*",
+      "components": [".NET runtime"],
+      "note": "The runtime's .NET Standard facade and its ahead-of-time data, which a package built for .NET Standard brings in."
+    }
+  ],
+  "components": {
+    ".NET for iOS (dotnet/macios)": {
+      "texts": [
+        { "runtimePack": "Microsoft.iOS", "file": "LICENSE" },
+        { "runtimePack": "Microsoft.iOS.Runtimes", "file": "LICENSE" }
+      ],
+      "note": "Two runtime packs: Microsoft.iOS with the bindings, and Microsoft.iOS.Runtimes with the native code for ios-arm64 that the build links into the executable. Each carries the LICENSE of dotnet/macios, the MIT license followed by the notices of the third-party code that it carries, which the notices hold once."
+    },
+    ".NET runtime": {
+      "texts": [
+        { "runtimePack": "Microsoft.NETCore.App", "file": "LICENSE.TXT" },
+        { "runtimePack": "Microsoft.NETCore.App", "file": "THIRD-PARTY-NOTICES.TXT" },
+        {
+          "upstream": "https://raw.githubusercontent.com/kubernetes/kubernetes/d30db1f9a915aa95402e1190461469a1889d92be/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "terms": "Apache-2.0"
+        }
+      ],
+      "note": "The runtime pack that the app's build uses, Mono's for iOS. Its THIRD-PARTY-NOTICES.TXT names parts under Apache-2.0 without the license's terms, so the full Apache-2.0 text follows, from a pinned copy that is byte for byte the text at apache.org/licenses/LICENSE-2.0.txt, marked as carrying Apache-2.0 so that the notices title it by that license and do not list kubernetes/kubernetes among the sources; a notice too many is the accepted way to err, and the coverage review of M9.1 confirms which parts ship."
+    },
+    "Avalonia": {
+      "texts": [
+        {
+          "upstream": "https://raw.githubusercontent.com/AvaloniaUI/Avalonia/2d79ba55fae1b1e71c69f93a668080c9029e6a31/licence.md",
+          "sha256": "213814d306090074d234d760239ff0f67eb9b8d20eefb4d5631bb39dbe0b769b"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/AvaloniaUI/Avalonia/2d79ba55fae1b1e71c69f93a668080c9029e6a31/NOTICE.md",
+          "sha256": "dd6f80852d16320c865a2e403ffd1a8b07a0e34c5b37122c0bc2343639ff68e6"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/AvaloniaUI/Avalonia/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Avalonia.Base/Media/TextFormatting/Unicode/BiDiAlgorithm.cs",
+          "sha256": "245d9e90d33ff619f0507993ba41ca2670ec278ee40152e4a04c6f311929aa5b",
+          "lines": [1, 3]
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/AvaloniaUI/Avalonia/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Avalonia.Base/Utilities/SpringSolver.cs",
+          "sha256": "f10c8be8167c90c8a686d6994ea76412c69e349d8294de9ea84cac862a679be4",
+          "lines": [1, 26]
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/fribidi/linear-reorder/f2f872257d4d8b8e137fcf831f254d6d4db79d3c/linear-reorder.c",
+          "sha256": "a7d0a99b14421dc341de063cc4100201dc9a7db0cf9d6e2f48720892a6bba40e",
+          "lines": [1, 38]
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/kubernetes/kubernetes/d30db1f9a915aa95402e1190461469a1889d92be/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "terms": "Apache-2.0"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/ascora/LottieSharp/ab704fa19297edd25fabf7522f6441e64712adde/LICENSE",
+          "sha256": "f6b84f94878ea0832c5876a583a78da654414d960dc9fc3fc6d2e2034196240f"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/foliojs/linebreak/c7873ab973ca11576c50e49803b1fecbe531ed96/LICENSE",
+          "sha256": "cf22b8198f0886a8d4626121579114f23141070e1fceab02ab3c1c361e163440"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/foliojs/unicode-trie/8ab9b14025ff7c26c2aec1bbd1e71d5f83eb3bd1/LICENSE",
+          "sha256": "43439dbd4f43837aadab215cdbe5a422cc6323a50c4ea84d8d6bbc3671666a1d"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/HandyOrg/HandyControl/3f384cb0c2cb3992575b8cc0fdd2672e5063b7f0/LICENSE",
+          "sha256": "837a7bf3110bd614cf09ea15782a20bc2849512ce154ad3397b2ba769a30b8d3"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/unicode-org/cldr/e0748bce0d83f1e0a457cad76c123640c1a50719/LICENSE",
+          "sha256": "b49d0e9f8ead51ca8b7df6fec89cc3ae6809198b4b9d43c74216da0118f23f5b",
+          "terms": "Unicode-3.0"
+        }
+      ],
+      "credit": "BidiReorderer.cs in Avalonia.Base is a modified C# port of linear-reorder.c of fribidi/linear-reorder at commit f2f8722.",
+      "missing": [
+        {
+          "text": "the notice of the Stack Overflow answer https://stackoverflow.com/a/15994225, whose computation and comments PinchGestureRecognizer.cs in Avalonia.Base takes",
+          "note": "Stack Overflow publishes its answers under CC BY-SA, which C-0003 section 5 does not list, and no file on raw.githubusercontent.com holds the notice; the coverage review of M9.1 decides with recelilious whether and how it ships (docs/design/release-engineering.md section 10)."
+        }
+      ],
+      "note": "Avalonia's packages declare MIT and ship no license or notice file; their nuspecs record the repository commit 2d79ba55 of 12.1.4. The texts come from that commit and from the projects that its code names as sources. licence.md is Avalonia's own license as upstream wrote it. NOTICE.md holds the notices of the third-party code in Avalonia's repository, part of which is inside the shipped assemblies, such as Avalonia.Base, Avalonia.Controls and Avalonia.Skia: WPF, the Silverlight Toolkit under Ms-PL, wayland-protocols, Metsys.Bson, RichTextKit under Apache-2.0, Mono, Collections.Pooled, EllipticalArc.java, WinUI, Chromium, Flutter and Reactive Extensions; Metsys.Bson is in Avalonia.Remote.Protocol, which neither bundle holds. Lines 1 to 3 of BiDiAlgorithm.cs hold the notice of Six Labors, another holder of Apache-2.0 code in Avalonia.Base besides Ascora GmbH below, which NOTICE.md does not list. Lines 1 to 26 of SpringSolver.cs hold Apple's BSD-2-Clause notice of the WebKit code that it ports, and lines 1 to 38 of fribidi/linear-reorder's linear-reorder.c Google's notice of the reordering that BidiReorderer.cs ports; its terms ask for a notice in the documentation that the code was modified, which the credit gives. The full Apache-2.0 text comes from a pinned copy that is byte for byte the text at apache.org/licenses/LICENSE-2.0.txt, since RichTextKit's license.txt holds only the short notice; it is marked as carrying Apache-2.0, as in the .NET runtime's entry. LottieSharp's LICENSE at ab704fa, of 2018-09-19, is Apache-2.0 with the copyright of Ascora GmbH; ColorAnimator.cs already carried its comment on LottieSharp's color interpolation in Avalonia's commit 00167d61 of 2018-12-08, within that Apache-2.0 period, which ended when LottieSharp moved to MIT in 2022. LineBreak.cs and UnicodeTrie.cs are ported from foliojs/linebreak and foliojs/unicode-trie, and RelativePanel.cs in Avalonia.Controls from HandyControl, so their MIT licenses follow. The last text is the Unicode License V3 of unicode-org/cldr at e0748bce, with the copyright years 2004-2026 of Unicode, Inc., for the data that Avalonia.Base generates from the Unicode Character Database 17.0.0, whose files carry a copyright of 2025; the .NET runtime's notice of the Unicode data ends in 2024. It is marked as carrying Unicode-3.0, since cldr is not a source of Avalonia's code. docs/design/release-engineering.md section 4 records the scan of the shipped assemblies' source that found these notices."
+    },
+    "Avalonia.BuildServices": {
+      "texts": [
+        {
+          "upstream": "https://raw.githubusercontent.com/AvaloniaUI/Avalonia.BuildServices/777f975b0a0cecf0311273711d56697212c558c0/LICENSE",
+          "sha256": "94162c40c663bd96ec1b870e6aba6ef0a43f44c9eb500807e7965e7078f6dc47"
+        }
+      ],
+      "note": "It declares MIT and ships no license file; its nuspec records the repository commit 777f975, whose LICENSE is the text, as upstream wrote it."
+    },
+    "CommunityToolkit.Mvvm": {
+      "texts": [
+        { "package": "CommunityToolkit.Mvvm", "file": "License.md" },
+        { "package": "CommunityToolkit.Mvvm", "file": "ThirdPartyNotices.txt" }
+      ]
+    },
+    "HarfBuzzSharp": {
+      "texts": [
+        { "package": "HarfBuzzSharp", "file": "LICENSE.txt" },
+        { "package": "HarfBuzzSharp.NativeAssets.iOS", "file": "THIRD-PARTY-NOTICES.txt" }
+      ],
+      "note": "The native-asset package lists the further components of the native library in its THIRD-PARTY-NOTICES.txt (C-0003 section 6)."
+    },
+    "MicroCom.Runtime": {
+      "texts": [{ "package": "MicroCom.Runtime", "license": "MIT" }],
+      "note": "It declares MIT and ships no license file."
+    },
+    "SkiaSharp": {
+      "texts": [
+        { "package": "SkiaSharp", "file": "LICENSE.txt" },
+        { "package": "SkiaSharp.NativeAssets.iOS", "file": "THIRD-PARTY-NOTICES.txt" }
+      ],
+      "note": "The native-asset package lists the further components of the native library in its THIRD-PARTY-NOTICES.txt (C-0003 section 6)."
+    }
+  }
+}

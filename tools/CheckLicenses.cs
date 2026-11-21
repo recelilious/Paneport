@@ -1,3 +1,4 @@
+#!/usr/bin/env dotnet
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
@@ -7,7 +8,9 @@
 // lines and container images of the workflows and actions, because actions are CI tools under
 // C-0003 section 5. eng/license-map.json maps each of them to the register row that covers
 // it. A way to bring in a package that no lock file records fails too, as does a project
-// without a lock file, because the checker would not see its packages.
+// without a lock file, because the checker would not see its packages. The register and the
+// map are read by the shared files in tools/Shared/, which tools/GenerateNotices.cs includes
+// too.
 //
 //   dotnet run tools/CheckLicenses.cs                 check the repository
 //   dotnet run tools/CheckLicenses.cs -- --self-test  check the parsers and rules on fixtures
@@ -15,6 +18,8 @@
 // Exit codes: 0 every dependency is covered, 1 something is not, 2 usage or configuration
 // error. docs/design/repository-checks.md describes the mapping policy.
 
+#:include Shared/Register.cs
+#:include Shared/LicenseMap.cs
 #:property PublishAot=false
 
 using System.ComponentModel;
@@ -47,18 +52,8 @@ internal static class Cli
     }
 }
 
-internal enum Kind
-{
-    Package,
-    Tool,
-    Action,
-    Submodule,
-}
-
 // One place where the repository uses a dependency.
 internal sealed record Use(Kind Kind, string Name, string File, int Line);
-
-internal sealed record RegisterRow(string Component, string License, string Category, int Line);
 
 internal enum Reason
 {
@@ -70,162 +65,6 @@ internal enum Reason
 }
 
 internal sealed record Problem(Reason Reason, Kind Kind, string Name, string File, int Line, string Message);
-
-// The register table of C-0003 section 6. If the table changes shape, parsing fails with a
-// message that says what changed, rather than guessing.
-internal static partial class Register
-{
-    public const string FilePath = "docs/contracts/C-0003-licensing.md";
-    public const string Heading = "## 6. Component register";
-
-    public static readonly string[] Categories = ["Allowed", "Conditional", "Forbidden", "Under review", "Tool"];
-
-    private static readonly string[] s_columns = ["Component", "Purpose", "License", "Category"];
-
-    public static List<RegisterRow> Parse(string markdown)
-    {
-        var lines = markdown.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
-        var heading = Array.FindIndex(lines, line => line.Trim() == Heading);
-        if (heading < 0)
-        {
-            throw new InvalidDataException($"{FilePath} has no heading \"{Heading}\".");
-        }
-
-        var header = heading + 1;
-        while (header < lines.Length
-            && !IsTableLine(lines[header])
-            && !lines[header].StartsWith("## ", StringComparison.Ordinal))
-        {
-            header++;
-        }
-
-        if (header >= lines.Length || !IsTableLine(lines[header]))
-        {
-            throw new InvalidDataException($"{FilePath}: section 6 holds no table.");
-        }
-
-        var columns = Cells(lines[header]);
-        if (!columns.SequenceEqual(s_columns, StringComparer.Ordinal))
-        {
-            throw new InvalidDataException(
-                $"{FilePath} line {header + 1}: the register's columns are \"{string.Join(" | ", columns)}\", "
-                    + $"not \"{string.Join(" | ", s_columns)}\". Update tools/CheckLicenses.cs to the new shape.");
-        }
-
-        var rows = new List<RegisterRow>();
-        for (var index = header + 2; index < lines.Length && IsTableLine(lines[index]); index++)
-        {
-            var cells = Cells(lines[index]);
-            if (cells.Length != s_columns.Length)
-            {
-                throw new InvalidDataException(
-                    $"{FilePath} line {index + 1}: a register row has {cells.Length} cells, not {s_columns.Length}.");
-            }
-
-            var category = CategoryOf(cells[3]) ?? throw new InvalidDataException(
-                $"{FilePath} line {index + 1}: the category \"{cells[3]}\" starts with none of "
-                    + $"{string.Join(", ", Categories)}.");
-            if (rows.Any(row => row.Component == cells[0]))
-            {
-                throw new InvalidDataException($"{FilePath} line {index + 1}: \"{cells[0]}\" is registered twice.");
-            }
-
-            rows.Add(new RegisterRow(cells[0], cells[2], category, index + 1));
-        }
-
-        return rows.Count > 0
-            ? rows
-            : throw new InvalidDataException($"{FilePath}: the register table has no rows.");
-    }
-
-    // A category cell starts with its category, and may go on after a comma, semicolon or colon,
-    // as in "Allowed, under FTL" or "Under review: collect the notices".
-    public static string? CategoryOf(string cell) => Categories.FirstOrDefault(
-        category => cell == category
-            || (cell.StartsWith(category, StringComparison.Ordinal) && ",;:".Contains(cell[category.Length])));
-
-    private static bool IsTableLine(string line) => line.TrimStart().StartsWith('|');
-
-    private static string[] Cells(string line)
-    {
-        var trimmed = line.Trim();
-        trimmed = trimmed.StartsWith('|') ? trimmed[1..] : trimmed;
-        trimmed = trimmed.EndsWith('|') ? trimmed[..^1] : trimmed;
-        return CellSeparator()
-            .Split(trimmed)
-            .Select(cell => cell.Trim().Replace(@"\|", "|", StringComparison.Ordinal))
-            .ToArray();
-    }
-
-    [GeneratedRegex(@"(?<!\\)\|")]
-    private static partial Regex CellSeparator();
-}
-
-// eng/license-map.json: for each package ID, tool, action and submodule, the register row that
-// covers it. Package IDs compare without regard to case, as NuGet compares them.
-internal sealed class LicenseMap(Dictionary<Kind, Dictionary<string, string>> sections)
-{
-    public const string FilePath = "eng/license-map.json";
-
-    private static readonly Dictionary<string, Kind> s_sectionNames = new(StringComparer.Ordinal)
-    {
-        ["packages"] = Kind.Package,
-        ["tools"] = Kind.Tool,
-        ["actions"] = Kind.Action,
-        ["submodules"] = Kind.Submodule,
-    };
-
-    public IEnumerable<(Kind Kind, string Name, string Component)> Entries =>
-        sections.SelectMany(section => section.Value.Select(entry => (section.Key, entry.Key, entry.Value)));
-
-    public static LicenseMap Parse(string json)
-    {
-        var sections = Enum.GetValues<Kind>()
-            .ToDictionary(kind => kind, _ => new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                throw new InvalidDataException($"{FilePath} must be a JSON object.");
-            }
-
-            foreach (var section in document.RootElement.EnumerateObject())
-            {
-                if (!s_sectionNames.TryGetValue(section.Name, out var kind)
-                    || section.Value.ValueKind != JsonValueKind.Object)
-                {
-                    throw new InvalidDataException(
-                        $"{FilePath}: \"{section.Name}\" is not one of the sections "
-                            + $"{string.Join(", ", s_sectionNames.Keys)}.");
-                }
-
-                foreach (var entry in section.Value.EnumerateObject())
-                {
-                    var component = entry.Value.ValueKind == JsonValueKind.String ? entry.Value.GetString() : null;
-                    if (string.IsNullOrWhiteSpace(component))
-                    {
-                        throw new InvalidDataException($"{FilePath}: \"{entry.Name}\" must name a register row.");
-                    }
-
-                    if (!sections[kind].TryAdd(entry.Name, component))
-                    {
-                        throw new InvalidDataException(
-                            $"{FilePath}: \"{entry.Name}\" is listed twice in \"{section.Name}\".");
-                    }
-                }
-            }
-        }
-        catch (JsonException exception)
-        {
-            throw new InvalidDataException($"{FilePath} is not valid JSON: {exception.Message}");
-        }
-
-        return new LicenseMap(sections);
-    }
-
-    public string? ComponentFor(Kind kind, string name) => sections[kind].GetValueOrDefault(name);
-}
 
 internal static partial class Inventory
 {
@@ -302,15 +141,16 @@ internal static partial class Inventory
     // before the first token of the file: after blank lines, comments and preprocessor lines
     // such as #nullable, but not after #if. Reading stops where the compiler stops accepting.
     // The SDK also accepts whitespace after "#:", as in "#: package", so each directive comes
-    // back without it.
+    // back without it. Lines end at every line terminator of C#, so that a lone CR cannot hide a
+    // directive after a comment, and white space is what the compiler takes as white space.
     public static List<(int Line, string Text)> HeaderDirectives(string source)
     {
         var directives = new List<(int Line, string Text)>();
-        var lines = source.Split('\n');
+        var lines = SourceLines(source);
         var inComment = false;
-        for (var index = 0; index < lines.Length; index++)
+        for (var index = 0; index < lines.Count; index++)
         {
-            var line = lines[index].Trim();
+            var line = CompilerWhiteSpace(lines[index]).Trim();
             if (inComment)
             {
                 var end = line.IndexOf("*/", StringComparison.Ordinal);
@@ -349,6 +189,37 @@ internal static partial class Inventory
 
         return directives;
     }
+
+    // The lines of a C# source, split at CR LF, CR, LF, and NEL, LS and PS (U+0085, U+2028, U+2029),
+    // the line terminators of the C# specification.
+    public static List<string> SourceLines(string source)
+    {
+        var lines = new List<string>();
+        var start = 0;
+        for (var index = 0; index < source.Length; index++)
+        {
+            if (source[index] is not ('\r' or '\n' or (char)0x85 or (char)0x2028 or (char)0x2029))
+            {
+                continue;
+            }
+
+            lines.Add(source[start..index]);
+            if (source[index] == '\r' && index + 1 < source.Length && source[index + 1] == '\n')
+            {
+                index++;
+            }
+
+            start = index + 1;
+        }
+
+        lines.Add(source[start..]);
+        return lines;
+    }
+
+    // Roslyn's lexer takes U+FEFF and U+001A as white space, which string.Trim keeps, so that a
+    // line that starts with either is blank or a comment to the compiler, and not to Trim.
+    private static string CompilerWhiteSpace(string line) =>
+        line.Replace((char)0xFEFF, ' ').Replace((char)0x1A, ' ');
 
     // #:package Name@Version, #:package Name (with central package management), and
     // #:sdk Name@Version, which NuGet also resolves.
@@ -567,10 +438,50 @@ internal static partial class Unseen
         "NuGetLockFilePath moves the lock file where tools/CheckLicenses.cs does not look. Keep the lock file "
             + "next to the project, as packages.lock.json or packages.<project>.lock.json.";
 
+    // The properties that the tools set with #:property. Any other could import MSBuild files with
+    // package references, such as CustomAfterMicrosoftCommonTargets, or turn on #:ref.
+    private static readonly string[] s_toolProperties = ["PublishAot"];
+
     public static List<Problem> Find(IEnumerable<string> files, Func<string, string> read)
     {
         var tracked = files.Order(StringComparer.Ordinal).ToList();
         var problems = new List<Problem>();
+
+        // Two paths that differ only in letter case or in Unicode normalization are one file on a
+        // checkout that folds them, as macOS does for both and Windows for letter case alone, which then
+        // keeps only one of them: it can be the one that no rule reads, such as tools/shared/Register.CS
+        // beside tools/Shared/Register.cs on the Linux checks job. The key is the path in NFC, upper and
+        // then lower case, which also merges what OrdinalIgnoreCase keeps apart and APFS folds, such as
+        // U+017F with "s" and U+03F4 with U+03B8; it does not merge APFS's folds to several characters,
+        // such as U+00DF to "ss" and the ligatures.
+        var groups = tracked.GroupBy(Folded, StringComparer.Ordinal);
+        foreach (var same in groups.Where(group => group.Count() > 1))
+        {
+            foreach (var file in same.Skip(1))
+            {
+                problems.Add(Problem(
+                    file,
+                    0,
+                    $"the path differs from {same.First()} only in letter case or Unicode normalization, so a checkout "
+                        + "that folds them keeps one of the two, which may be the one that no rule reads. Rename "
+                        + "one of them."));
+            }
+        }
+
+        // A path under tools/ holds only the characters of an #:include path, which narrows the names there
+        // that a checkout's folding could merge with a file that a rule reads; it does not rule out every
+        // such fold.
+        foreach (var file in tracked.Where(file => file.StartsWith("tools/", StringComparison.Ordinal)
+            && !IncludePath().IsMatch(file)))
+        {
+            problems.Add(Problem(
+                file,
+                0,
+                "a path under tools/ may hold only letters, digits and \"_./-\", the characters of an #:include "
+                    + "path, since a checkout that folds case could make another name the file that a rule reads. "
+                    + "Rename it."));
+        }
+
         foreach (var project in tracked.Where(file => file.EndsWith(".csproj", StringComparison.Ordinal)))
         {
             var (folder, name) = Split(project);
@@ -605,6 +516,51 @@ internal static partial class Unseen
                 {
                     problems.Add(Problem(tool, line, LockFilePathMessage));
                 }
+                else if (PropertyDirective().Match(text) is { Success: true } property
+                    && !s_toolProperties.Contains(property.Groups[1].Value, StringComparer.OrdinalIgnoreCase))
+                {
+                    problems.Add(Problem(
+                        tool,
+                        line,
+                        $"#:property {property.Groups[1].Value} is not one that the tools set ("
+                            + $"{string.Join(", ", s_toolProperties)}). A property can import MSBuild files or turn on "
+                            + "#:ref, which the checker does not read; add it to the list in tools/CheckLicenses.cs "
+                            + "only after a review."));
+                }
+                else if (RefDirective().IsMatch(text))
+                {
+                    problems.Add(Problem(
+                        tool,
+                        line,
+                        "#:ref brings in another file-based app with its #: directives, which the checker does not "
+                            + "read. Share code through tools/Shared/ with #:include."));
+                }
+                else if (IncludeDirective().Match(text) is { Success: true } include
+                    && Included(folder, include.Groups[1].Value, tracked) is null)
+                {
+                    problems.Add(Problem(
+                        tool,
+                        line,
+                        "#:include names something other than a .cs file that git tracks in tools/Shared/. The SDK "
+                            + "reads the #: directives of an included file too, and expands MSBuild syntax in the "
+                            + "path, and the checker reads only the files under tools/, so include only those files, "
+                            + "by a plain path."));
+                }
+            }
+        }
+
+        // The SDK applies the #: directives of an included file to the tool that includes it (checked
+        // with SDK 10.0.403). So a shared file carries none, and each tool states its own, where this
+        // checker and the lock-file rule above see them.
+        foreach (var shared in tracked.Where(IsShared))
+        {
+            foreach (var (line, _) in Inventory.HeaderDirectives(read(shared)))
+            {
+                problems.Add(Problem(
+                    shared,
+                    line,
+                    "a shared file in tools/Shared/ carries no #: directive. Put it in each tool that includes the "
+                        + "file, where the checker and the tool's lock file see it."));
             }
         }
 
@@ -635,7 +591,53 @@ internal static partial class Unseen
     }
 
     private static bool IsTool(string file) =>
-        file.StartsWith("tools/", StringComparison.Ordinal) && file.EndsWith(".cs", StringComparison.Ordinal);
+        file.StartsWith("tools/", StringComparison.Ordinal) && file.EndsWith(".cs", StringComparison.Ordinal)
+            && !IsShared(file);
+
+    // The source files that tools include with #:include (docs/design/repository-checks.md section 2).
+    private static bool IsShared(string file) =>
+        file.StartsWith("tools/Shared/", StringComparison.Ordinal) && file.EndsWith(".cs", StringComparison.Ordinal);
+
+    // The file that an #:include of a tool in the folder names, when it is a .cs file that git tracks
+    // directly in tools/Shared/, and null for anything else: an absolute path, a path that leaves
+    // tools/Shared/, a file that git does not track, such as one behind a link, and a path with any
+    // character but letters, digits and "_./-", which rules out patterns, a drive and the MSBuild
+    // syntax that the SDK expands, such as $(Property), %2E or a semicolon between two paths. A
+    // backslash is refused too, since the SDK separates a path at "/" only on Linux and macOS and at
+    // "\" as well on Windows, where the windows-2025 dotnet job runs a tool, so one path names two
+    // files: "..\x/../Shared/Helper.cs" is tools/Shared/Helper.cs on Linux and macOS, and Shared/Helper.cs
+    // outside tools/ on Windows, and "../docs/x\../../tools/Shared/Register.cs" is
+    // docs/tools/Shared/Register.cs on Linux and macOS.
+    private static string? Included(string folder, string path, List<string> tracked)
+    {
+        var parts = new List<string>(folder.Split('/', StringSplitOptions.RemoveEmptyEntries));
+        if (!IncludePath().IsMatch(path) || path.StartsWith('/'))
+        {
+            return null;
+        }
+
+        foreach (var part in path.Split('/'))
+        {
+            if (part == "..")
+            {
+                if (parts.Count == 0)
+                {
+                    return null;
+                }
+
+                parts.RemoveAt(parts.Count - 1);
+            }
+            else if (part is not ("" or "."))
+            {
+                parts.Add(part);
+            }
+        }
+
+        var file = string.Join('/', parts);
+        return IsShared(file) && file.Count(character => character == '/') == 2 && tracked.Contains(file)
+            ? file
+            : null;
+    }
 
     private static (string Folder, string Name) Split(string file)
     {
@@ -680,8 +682,38 @@ internal static partial class Unseen
     private static Problem Problem(string file, int line, string message) =>
         new(Reason.Unseen, Kind.Package, file, file, line, message);
 
+    // The key under which two paths are one file on a checkout that folds case: the path in NFC, in
+    // upper and then lower case.
+    private static string Folded(string file) => Composed(file).ToUpperInvariant().ToLowerInvariant();
+
+    // A path in Unicode normalization form C, or as it is when it holds no valid Unicode.
+    private static string Composed(string file)
+    {
+        try
+        {
+            return file.Normalize(NormalizationForm.FormC);
+        }
+        catch (ArgumentException)
+        {
+            return file;
+        }
+    }
+
     [GeneratedRegex(@"^#:property\s+NuGetLockFilePath\b", RegexOptions.IgnoreCase)]
     private static partial Regex LockFilePathProperty();
+
+    [GeneratedRegex(@"^#:include\s+(.*?)\s*$")]
+    private static partial Regex IncludeDirective();
+
+    [GeneratedRegex(@"\A[A-Za-z0-9_./-]+\z")]
+    private static partial Regex IncludePath();
+
+    // A property's name, up to "=" or white space.
+    [GeneratedRegex(@"^#:property\s+([^=\s]+)")]
+    private static partial Regex PropertyDirective();
+
+    [GeneratedRegex(@"^#:ref\b")]
+    private static partial Regex RefDirective();
 
     // MSBuild project files of any language, .props and .targets files, and response files such
     // as Directory.Build.rsp, which can set properties for every build below them.
@@ -801,8 +833,10 @@ internal static class LicenseCheck
 
         Console.WriteLine("Dependency licenses (C-0011 section 2)");
         Console.WriteLine($"Register: {register.Count} rows in {Register.FilePath} section 6.");
+        var shared = tools.Count(file => IsIn(file, "tools/Shared/"));
         Console.WriteLine(
-            $"Read {lockFiles.Count} lock files, the directives of {tools.Count} file-based tools, "
+            $"Read {lockFiles.Count} lock files, the directives of {tools.Count - shared} file-based tools and "
+                + $"{shared} source files they share, "
                 + $"{actionFiles.Count} workflow and action files, "
                 + $"{(toolchain ? "eng/toolchain.json" : "no eng/toolchain.json")} "
                 + $"and {(gitModules ? ".gitmodules" : "no .gitmodules")}.");
@@ -1239,13 +1273,50 @@ internal static class SelfTest
             ["tools/Shared.cs"] = "#:package Sample.Shared@1.0.0\nreturn 0;",
             ["tools/Moved.cs"] = "// A tool.\n#:property NuGetLockFilePath=elsewhere.json\nreturn 0;",
             ["tools/Spaced.cs"] = "#: property NuGetLockFilePath=elsewhere.json\n#:\tpackage Sample.Spaced\nreturn 0;",
+            ["tools/Including.cs"] =
+                "#!/usr/bin/env dotnet\n#:include Shared/Helper.cs\n#: include ./Shared/Other.cs\nreturn 0;",
+            ["tools/Escaping.cs"] =
+                "#:include ../src/Helper.cs\n#:include Shared/../../src/Helper.cs\n#:include Shared/*.cs\n"
+                    + "#:include /Shared/Helper.cs\n#:include \\Shared\\Helper.cs\n#:include C:/../Shared/Helper.cs\n"
+                    + "#:include Shared/Helper.json\n#:include Shared/$(X).cs\n#:include Shared/%2E%2E/x.cs\n"
+                    + "#:include Shared/Helper.cs;../x.cs\n#:include Shared/link/Helper.cs\n"
+                    + "#:include Shared/Missing.cs\n#:include Shared/sub/Deep.cs\n#:include Shared\\Helper.cs\n"
+                    + "#:include Shared\\x/../Helper.cs\n#:include ..\\x/../Shared/Helper.cs\n"
+                    + "#:include Shared/$(X)/../Helper.cs\n#:include Shared/%2E/../Helper.cs\n"
+                    + "#:include Shared/a;/../Helper.cs\n#:include Shared/@(X)/../Helper.cs\n"
+                    + "#:include Shared/*/../Helper.cs\n#:include Shared/?/../Helper.cs\n"
+                    + "#:include ../src/Locked/packages.lock.json\n#:include ../../tools/Shared/Helper.cs\nreturn 0;",
+            ["tools/Marked.cs"] =
+                "#!/usr/bin/env dotnet\n" + (char)0xFEFF + "// A note after a byte-order mark\n"
+                    + "#:include ../docs/Evil.cs\n" + (char)0x1A + "#:property NuGetLockFilePath=x.json\nreturn 0;",
+            ["tools/Referring.cs"] =
+                "#:property ExperimentalFileBasedProgramEnableRefDirective=true\n#:ref ../src/Lib.cs\nreturn 0;",
+            ["tools/Hooked.cs"] =
+                "#:property CustomAfterMicrosoftCommonTargets=$(MSBuildProjectDirectory)/../docs/hook.xml\n"
+                    + "#:property publishaot=false\nreturn 0;",
+            ["tools/Terminated.cs"] =
+                "// A note\r#:include ../docs/Evil.cs\n// Another" + (char)0x2028 + "#:package Sample.Hidden@1.0.0\n"
+                    + "// More" + (char)0x85 + "#:ref ../src/Lib.cs\n// Last" + (char)0x2029
+                    + "#:property NuGetLockFilePath=x.json\nreturn 0;",
+            ["tools/Shared/Helper.cs"] = "// A shared file.\ninternal static class Helper;",
+            ["tools/Shared/Other.cs"] = "// Shared.\n#:package Sample.Hidden@1.0.0\ninternal static class Other;",
+            ["tools/Shared/sub/Deep.cs"] = "// Below tools/Shared/.\ninternal static class Deep;",
+            ["tools/shared/Helper.CS"] = "// The same path in another case.\n#:package Sample.Hidden@1.0.0\n",
+            ["docs/caf" + (char)0x00E9 + ".md"] = "A name with a composed letter.",
+            ["docs/cafe" + (char)0x0301 + ".md"] = "The same name, decomposed.",
+            ["tools/Shared/Helper.c" + (char)0x017F] =
+                "// A long s, which APFS folds to s.\n#:package Sample.Hidden@1.0.0\n",
+            ["tools/Caf" + (char)0x00E9 + ".md"] = "A name directly under tools/ with a letter outside the class.",
+            ["docs/case.md"] = "A plain name.",
+            ["docs/ca" + (char)0x017F + "e.md"] = "The same name with a long s.",
+            ["docs/" + (char)0x03B8 + ".md"] = "A small theta.",
+            ["docs/" + (char)0x03F4 + ".md"] = "The capital theta symbol, which APFS folds to the small theta.",
             ["tools/packages.lock.json"] = SampleLockFile,
             ["global.json"] = """{ "sdk": { "version": "1.0.0" }, "msbuild-sdks": { "Sample.Sdk": "1.0.0" } }""",
             [".config/dotnet-tools.json"] = """{ "version": 1, "isRoot": true, "tools": {} }""",
         };
-        var found = Unseen.Find(repository.Keys, file => repository[file])
-            .Select(problem => (problem.File, problem.Line))
-            .ToList();
+        var problems = Unseen.Find(repository.Keys, file => repository[file]);
+        var found = problems.Select(problem => (problem.File, problem.Line)).ToList();
         (string File, int Line)[] unlocked = [("src/Unlocked/Unlocked.csproj", 0)];
         (string File, int Line)[] sdks =
             [("src/Sdk/Sdk.csproj", 1), ("src/Sdk/Sdk.csproj", 2), ("src/Sdk/Sdk.csproj", 3)];
@@ -1255,6 +1326,18 @@ internal static class SelfTest
         (string File, int Line)[] moved =
             [("eng/Sample.props", 2), ("Directory.Build.rsp", 1), ("tools/Moved.cs", 2), ("tools/Spaced.cs", 1)];
         (string File, int Line)[] ownLockFiles = [("tools/Shared.cs", 0), ("tools/Spaced.cs", 0)];
+        (string File, int Line)[] includes = [.. Enumerable.Range(1, 24).Select(line => ("tools/Escaping.cs", line))];
+        (string File, int Line)[] directives =
+            [("tools/Referring.cs", 1), ("tools/Referring.cs", 2), ("tools/Hooked.cs", 1)];
+        (string File, int Line)[] terminated =
+        [
+            ("tools/Terminated.cs", 0),
+            ("tools/Terminated.cs", 2),
+            ("tools/Terminated.cs", 6),
+            ("tools/Terminated.cs", 8),
+        ];
+        (string File, int Line)[] marked = [("tools/Marked.cs", 3), ("tools/Marked.cs", 4)];
+        (string File, int Line)[] sharedDirectives = [("tools/Shared/Other.cs", 2)];
         (string File, int Line)[] others = [("global.json", 0), (".config/dotnet-tools.json", 0)];
         tally.Expect(unlocked.All(found.Contains), "a project without a lock file fails");
         tally.Expect(
@@ -1275,9 +1358,69 @@ internal static class SelfTest
             ownLockFiles.All(found.Contains)
                 && !found.Any(problem => problem.File is "tools/Owned.cs" or "tools/Plain.cs"),
             "a tool with package directives, also as #: package, needs a lock file of its own; others share one");
+        tally.Expect(
+            includes.All(found.Contains) && !found.Any(problem => problem.File == "tools/Including.cs"),
+            "#:include of a tracked .cs file in tools/Shared/ passes, also as #: include and with ./; one that "
+                + "leaves tools/Shared/, a pattern, an absolute path in three forms, a file of another kind, MSBuild "
+                + "syntax, also where .. would undo it, an untracked file, one behind a link, one below tools/Shared/ "
+                + "and a backslash fail");
+        tally.Expect(
+            directives.All(found.Contains) && !found.Any(problem => problem == ("tools/Hooked.cs", 2)),
+            "#:ref fails, and so does a #:property that the tools do not set; PublishAot passes, in any case");
+        tally.Expect(
+            terminated.All(found.Contains),
+            "a directive after a lone CR, NEL, LS or PS starts a line of its own, as the compiler reads it");
+        tally.Expect(
+            marked.All(found.Contains),
+            "a directive after a line that starts with U+FEFF, or that starts with U+001A, counts, since the "
+                + "compiler reads both as white space");
+        tally.Expect(
+            sharedDirectives.All(found.Contains)
+                && !found.Any(problem => problem.File is "tools/Shared/Helper.cs" or "tools/Shared/sub/Deep.cs")
+                && !found.Contains(("tools/Shared/Other.cs", 0)),
+            "a #: directive in a shared file fails, and a shared file needs no lock file of its own");
         tally.Expect(others.All(found.Contains), "msbuild-sdks in global.json fails, and so does a tool manifest");
+        var longS = "tools/Shared/Helper.c" + (char)0x017F;
+        (string File, int Line)[] collisions =
+        [
+            ("tools/shared/Helper.CS", 0),
+            ("docs/caf" + (char)0x00E9 + ".md", 0),
+            (longS, 0),
+            ("docs/ca" + (char)0x017F + "e.md", 0),
+            ("docs/" + (char)0x03F4 + ".md", 0),
+        ];
+        tally.Expect(
+            collisions.All(found.Contains),
+            "two paths that differ only in letter case, or only in Unicode normalization, fail, and so do names that "
+                + "APFS folds together and OrdinalIgnoreCase keeps apart, a long s with s and U+03F4 with theta");
+        var directly = "tools/Caf" + (char)0x00E9 + ".md";
+        (string File, int Line)[] characters = [(longS, 0), (directly, 0)];
+        tally.Expect(
+            problems.Count(problem => problem.File == longS) == 2
+                && problems.Any(problem => problem.File == longS
+                    && problem.Message.Contains("may hold only letters, digits", StringComparison.Ordinal))
+                && problems.Any(problem => problem.File == directly
+                    && problem.Message.Contains("may hold only letters, digits", StringComparison.Ordinal)),
+            "a path under tools/ with a character outside those of an #:include path fails, as well as its collision, "
+                + "directly under tools/ too");
+
+        // A path that is not valid Unicode, which no output of git holds, is compared as it is.
+        var lone = "docs/" + (char)0xD800;
+        List<Problem>? surrogates = null;
+        try
+        {
+            surrogates = Unseen.Find([lone + ".MD", lone + ".md"], _ => string.Empty);
+        }
+        catch (ArgumentException)
+        {
+        }
+
+        tally.Expect(
+            surrogates is [{ File: var named }] && named == lone + ".md",
+            "a path with a lone surrogate, which has no normalization form, is folded as it is");
         var count = unlocked.Length + sdks.Length + otherSdks.Length + downloads.Length + moved.Length
-            + ownLockFiles.Length + others.Length;
+            + ownLockFiles.Length + includes.Length + directives.Length + terminated.Length + marked.Length
+            + sharedDirectives.Length + others.Length + collisions.Length + characters.Length;
         tally.Expect(found.Count == count, $"exactly the {count} problems above are reported ({found.Count})");
     }
 

@@ -22,5 +22,5 @@ Steam sign-in, licenses, app information and depot downloads, built on SteamKit2
 | `Content/` | The manifest's summary, the check of a chunk against its manifest entry, and the test download folder. |
 | `Gate/` | The steps of the SteamKit2 gate after sign-in. |
 | `Logging/` | The filter that keeps secrets out of the log. |
-
-SteamKit2 is added with its adapters in stage M2.3, after the C-0003 change that registers its dependencies.
+| `SteamKit/` | The adapters of the ports over SteamKit2: the client and its callback thread, authentication, app information, content and the machine identity. |
+| `SteamServices.cs`, `SteamServiceOptions.cs`, `MachineIdentity.cs` | What the heads create: the service and the gate's steps over one SteamKit2 client, its options, and the installation's random identity in the keychain. |

@@ -33,12 +33,17 @@
     "Microsoft.Testing.Platform": "Microsoft.Testing.Platform",
     "Microsoft.Testing.Platform.MSBuild": "Microsoft.Testing.Platform",
     "Microsoft.Win32.Registry": ".NET runtime",
+    "Net.Codecrete.QrCodeGenerator": "QR code generator (Net.Codecrete.QrCodeGenerator)",
+    "protobuf-net": "protobuf-net",
+    "protobuf-net.Core": "protobuf-net",
     "SkiaSharp": "SkiaSharp",
     "SkiaSharp.NativeAssets.iOS": "SkiaSharp",
     "SkiaSharp.NativeAssets.Linux": "SkiaSharp",
     "SkiaSharp.NativeAssets.macOS": "SkiaSharp",
     "SkiaSharp.NativeAssets.WebAssembly": "SkiaSharp",
     "SkiaSharp.NativeAssets.Win32": "SkiaSharp",
+    "SteamKit2": "SteamKit2",
+    "System.IO.Hashing": ".NET runtime",
     "Tmds.DBus.Protocol": "Tmds.DBus.Protocol",
     "xunit.analyzers": "xunit.v3",
     "xunit.v3": "xunit.v3",
@@ -48,7 +53,8 @@
     "xunit.v3.extensibility.core": "xunit.v3",
     "xunit.v3.mtp-v1": "xunit.v3",
     "xunit.v3.runner.common": "xunit.v3",
-    "xunit.v3.runner.inproc.console": "xunit.v3"
+    "xunit.v3.runner.inproc.console": "xunit.v3",
+    "ZstdSharp.Port": "ZstdSharp (ZstdSharp.Port)"
   },
   "tools": {
     "bison": "GNU Bison",

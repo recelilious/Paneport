@@ -29,6 +29,24 @@ SPDX-License-Identifier: MIT
   </ItemGroup>
 
   <!--
+  The Steam service (C-0007) and the packages that SteamKit2's brings in, which C-0003 1.7
+  registers. 4.0.0-Beta.2 is the first release that serializes Steam's messages through a
+  compile-time protobuf-net model instead of reflection and emitted code, which full ahead-of-time
+  compilation on the device needs (docs/design/steam-service.md). protobuf-net is referenced and
+  pinned explicitly, so that SteamKit2's version range cannot move it
+  (avalonia_ui_layer.md section 3.4).
+  -->
+  <ItemGroup>
+    <PackageVersion Include="SteamKit2" Version="4.0.0-Beta.2" />
+    <PackageVersion Include="protobuf-net" Version="3.4.40" />
+  </ItemGroup>
+
+  <!-- The QR code of the Steam sign-in, plan decision D13 (C-0003 1.7). -->
+  <ItemGroup>
+    <PackageVersion Include="Net.Codecrete.QrCodeGenerator" Version="3.2.1" />
+  </ItemGroup>
+
+  <!--
   Test libraries. Avalonia.Headless.XUnit 12.1.4 is built against xunit.v3 3.2.2, so
   xunit.v3 moves only together with it.
   -->

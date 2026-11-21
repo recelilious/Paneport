@@ -8,6 +8,41 @@
         "resolved": "10.0.14",
         "contentHash": "YlTamXppEQls6DYWt7RdUuwWDb0lyw/vXCaGeQpLCpsLmfwGuCkOz/vIGgMTV7ECsJcavkCOkxZXv9s8rdAHkQ=="
       },
+      "protobuf-net": {
+        "type": "Direct",
+        "requested": "[3.4.40, )",
+        "resolved": "3.4.40",
+        "contentHash": "Gds96uOs0bZlDfLIYHRMee1xmrWxUTLM9HSOlDzUmyzkTGDcMWw3Lgx9TPUxD94r+/E/Y9OEL5Cf3PiTHn9bfw==",
+        "dependencies": {
+          "protobuf-net.Core": "3.4.40"
+        }
+      },
+      "SteamKit2": {
+        "type": "Direct",
+        "requested": "[4.0.0-Beta.2, )",
+        "resolved": "4.0.0-Beta.2",
+        "contentHash": "2hfK7nBMEKEyqR49d8pu5dzGuc4noWAdri/ro9niMqfBqd9ZAB1WOUOGqVi8x5HqAW48s2RKvH+/i5YmKeah8w==",
+        "dependencies": {
+          "System.IO.Hashing": "10.0.13",
+          "ZstdSharp.Port": "0.8.8",
+          "protobuf-net": "3.4.40"
+        }
+      },
+      "protobuf-net.Core": {
+        "type": "Transitive",
+        "resolved": "3.4.40",
+        "contentHash": "UDQ8fbEKqpQktJfFyqkZ22S7P01sJWNmqkYjzbwZdZUHFwHIDigmWIzxmExF7NjbNoTqmv2Dfsu3rOpRHXK5EA=="
+      },
+      "System.IO.Hashing": {
+        "type": "Transitive",
+        "resolved": "10.0.13",
+        "contentHash": "ZlcywyQ7FJmgOV2nctdfOEPGS0kRK8T2CdOoPr6F4HPYpmjSo6GQfj3yTyOzNO6B+2U84/JKSPkJJMWqLmVsMw=="
+      },
+      "ZstdSharp.Port": {
+        "type": "Transitive",
+        "resolved": "0.8.8",
+        "contentHash": "UIDFkA5DC3en3tOJ3Mof11yBx9kUQLsaeo/oFdvN6Bbkr9E9+VCqfIadHci8cu+I51K2Sl7XYWVl2R/mA75NBQ=="
+      },
       "paneport.core": {
         "type": "Project",
         "dependencies": {

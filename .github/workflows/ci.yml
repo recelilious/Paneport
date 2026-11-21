@@ -191,6 +191,12 @@ jobs:
     # fails when the two differ.
     runs-on: xcode-27
     timeout-minutes: 45
+    env:
+      # The image has System Integrity Protection disabled. With this setting,
+      # test_thread_control.destroyed_request_fails_as_ended, which reports itself skipped where
+      # SIP is enabled, fails instead, so that an image that enables it is noticed
+      # (docs/design/signals.md section 10).
+      PANEPORT_EXPECT_SIP_DISABLED: "1"
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

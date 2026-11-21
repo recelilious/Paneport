@@ -66,6 +66,26 @@
       "note": "The native library of HarfBuzzSharp.NativeAssets.iOS, HarfBuzz among its contents."
     },
     {
+      "path": "SteamKit2.*",
+      "components": ["SteamKit2"],
+      "note": "SteamKit2's assembly and its ahead-of-time data."
+    },
+    {
+      "path": "protobuf-net.*",
+      "components": ["protobuf-net"],
+      "note": "The assemblies of protobuf-net and protobuf-net.Core and their ahead-of-time data."
+    },
+    {
+      "path": "ZstdSharp.*",
+      "components": ["ZstdSharp (ZstdSharp.Port)"],
+      "note": "The assembly of ZstdSharp.Port and its ahead-of-time data."
+    },
+    {
+      "path": "Net.Codecrete.QrCodeGenerator.*",
+      "components": ["QR code generator (Net.Codecrete.QrCodeGenerator)"],
+      "note": "Its assembly and its ahead-of-time data."
+    },
+    {
       "path": "Microsoft.iOS.*",
       "components": [".NET for iOS (dotnet/macios)"],
       "note": "The iOS bindings of .NET for iOS and their ahead-of-time data. It comes before Microsoft.*, because the first rule that matches a file attributes it."
@@ -198,12 +218,61 @@
       "texts": [{ "package": "MicroCom.Runtime", "license": "MIT" }],
       "note": "It declares MIT and ships no license file."
     },
+    "protobuf-net": {
+      "texts": [
+        {
+          "upstream": "https://raw.githubusercontent.com/protobuf-net/protobuf-net/3aa672eaaf7763b86d62bec9ed7d7896b0511a8b/Licence.txt",
+          "sha256": "2054377b5c04fb70c67fe91ca12417e9d413e533169f1270ef69bd815f3053f3"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/kubernetes/kubernetes/d30db1f9a915aa95402e1190461469a1889d92be/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "terms": "Apache-2.0"
+        }
+      ],
+      "note": "protobuf-net and protobuf-net.Core declare Apache-2.0 and ship neither a license file nor a NOTICE file, and the copyright of their description only points to the repository. Their nuspecs record the repository commit 3aa672e, whose Licence.txt holds protobuf-net's copyright notice and its short Apache-2.0 notice, as upstream wrote it; the repository has no NOTICE file at that commit. The full Apache-2.0 text follows from the pinned copy of the .NET runtime's entry, marked as carrying Apache-2.0."
+    },
+    "QR code generator (Net.Codecrete.QrCodeGenerator)": {
+      "texts": [
+        {
+          "upstream": "https://raw.githubusercontent.com/manuelbl/QrCodeGenerator/6d9546ee4c8fd514e9aa4a5a65ea7133ab9c19e4/LICENSE",
+          "sha256": "0b779e4665125a151b77b93a636bfec5ceb2c9ce656408f46a4f312e80745c35"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/nayuki/QR-Code-generator/720f62bddb7226106071d4728c292cb1df519ceb/java/src/main/java/io/nayuki/qrcodegen/QrCode.java",
+          "sha256": "ab2d9f05bef0c2bedfaa888256f09987b2dbef5a4f432c540b9e549801c030ec",
+          "lines": [1, 22]
+        }
+      ],
+      "note": "Net.Codecrete.QrCodeGenerator declares MIT and ships no license file; its nuspec records the repository commit 6d9546e, whose LICENSE is the library's own, as upstream wrote it. The library began as a C# port of the Java version of Project Nayuki's QR Code generator library, which is MIT too, and its register row keeps Nayuki's notice beside its own (C-0003 section 6): lines 1 to 22 of that version's QrCode.java at the release v1.8.0, its leading comment, hold the notice and the license."
+    },
     "SkiaSharp": {
       "texts": [
         { "package": "SkiaSharp", "file": "LICENSE.txt" },
         { "package": "SkiaSharp.NativeAssets.iOS", "file": "THIRD-PARTY-NOTICES.txt" }
       ],
       "note": "The native-asset package lists the further components of the native library in its THIRD-PARTY-NOTICES.txt (C-0003 section 6)."
+    },
+    "SteamKit2": {
+      "texts": [
+        { "package": "SteamKit2", "file": "license.txt" },
+        { "package": "SteamKit2", "file": "3rd party.txt" },
+        { "repository": "external/Paneport-wine/COPYING.LIB" }
+      ],
+      "note": "The package's license.txt is a short LGPL notice and not the LGPL-2.1 text, so the full text follows from external/Paneport-wine/COPYING.LIB, at the commit that this repository records, which the ios job checks out before the notices step. Its 3rd party.txt names protobuf-net, whose texts are in that component's entry. The part of the LZMA SDK that its register row names is in the public domain and needs no text. SteamKit2 is the one LGPL component that full ahead-of-time compilation puts into the executable (C-0003 section 3)."
+    },
+    "ZstdSharp (ZstdSharp.Port)": {
+      "texts": [
+        {
+          "upstream": "https://raw.githubusercontent.com/oleg-st/ZstdSharp/2cd0c019693bc786a5fe5c3be94e107b24e7267e/LICENSE",
+          "sha256": "9a6a7216e532c4ee4f78881d31fb641c27148eb01b2d0e8e3235ffe9a70a662c"
+        },
+        {
+          "upstream": "https://raw.githubusercontent.com/facebook/zstd/f8745da6ff1ad1e7bab384bd1f9d742439278e99/LICENSE",
+          "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+        }
+      ],
+      "note": "ZstdSharp.Port declares MIT and ships no license file; its nuspec records the repository commit 2cd0c01, whose LICENSE is the port's MIT license with the porter's copyright, as upstream wrote it. The port is based on Zstandard v1.5.7, which is BSD-3-Clause or GPL-2.0-only; the ported code is used under BSD-3-Clause, and its register row keeps Zstandard's notice beside the port's (C-0003 section 6): the LICENSE of facebook/zstd at the release v1.5.7."
     }
   }
 }

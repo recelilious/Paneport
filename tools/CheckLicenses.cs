@@ -452,7 +452,8 @@ internal static partial class Unseen
         // keeps only one of them: it can be the one that no rule reads, such as tools/shared/Register.CS
         // beside tools/Shared/Register.cs on the Linux checks job. The key is the path in NFC, upper and
         // then lower case, which also merges what OrdinalIgnoreCase keeps apart and APFS folds, such as
-        // U+017F with "s" and U+03F4 with U+03B8.
+        // U+017F with "s" and U+03F4 with U+03B8; it does not merge APFS's folds to several characters,
+        // such as U+00DF to "ss" and the ligatures.
         var groups = tracked.GroupBy(Folded, StringComparer.Ordinal);
         foreach (var same in groups.Where(group => group.Count() > 1))
         {
@@ -467,8 +468,9 @@ internal static partial class Unseen
             }
         }
 
-        // A path under tools/ holds only the characters of an #:include path, so that no name there can
-        // fold, on any checkout, into a file that a rule reads.
+        // A path under tools/ holds only the characters of an #:include path, which narrows the names there
+        // that a checkout's folding could merge with a file that a rule reads; it does not rule out every
+        // such fold.
         foreach (var file in tracked.Where(file => file.StartsWith("tools/", StringComparison.Ordinal)
             && !IncludePath().IsMatch(file)))
         {
@@ -1304,6 +1306,7 @@ internal static class SelfTest
             ["docs/cafe" + (char)0x0301 + ".md"] = "The same name, decomposed.",
             ["tools/Shared/Helper.c" + (char)0x017F] =
                 "// A long s, which APFS folds to s.\n#:package Sample.Hidden@1.0.0\n",
+            ["tools/Caf" + (char)0x00E9 + ".md"] = "A name directly under tools/ with a letter outside the class.",
             ["docs/case.md"] = "A plain name.",
             ["docs/ca" + (char)0x017F + "e.md"] = "The same name with a long s.",
             ["docs/" + (char)0x03B8 + ".md"] = "A small theta.",
@@ -1390,12 +1393,16 @@ internal static class SelfTest
             collisions.All(found.Contains),
             "two paths that differ only in letter case, or only in Unicode normalization, fail, and so do names that "
                 + "APFS folds together and OrdinalIgnoreCase keeps apart, a long s with s and U+03F4 with theta");
-        (string File, int Line)[] characters = [(longS, 0)];
+        var directly = "tools/Caf" + (char)0x00E9 + ".md";
+        (string File, int Line)[] characters = [(longS, 0), (directly, 0)];
         tally.Expect(
             problems.Count(problem => problem.File == longS) == 2
                 && problems.Any(problem => problem.File == longS
+                    && problem.Message.Contains("may hold only letters, digits", StringComparison.Ordinal))
+                && problems.Any(problem => problem.File == directly
                     && problem.Message.Contains("may hold only letters, digits", StringComparison.Ordinal)),
-            "a path under tools/ with a character outside those of an #:include path fails, as well as its collision");
+            "a path under tools/ with a character outside those of an #:include path fails, as well as its collision, "
+                + "directly under tools/ too");
 
         // A path that is not valid Unicode, which no output of git holds, is compared as it is.
         var lone = "docs/" + (char)0xD800;

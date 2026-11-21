@@ -2654,6 +2654,8 @@ internal sealed class Tally(TextWriter output)
 
     public int Failed { get; private set; }
 
+    public int Skipped => _skipped.Count;
+
     public void Expect(bool passed, string description)
     {
         Total++;
@@ -4132,29 +4134,20 @@ internal static partial class SelfTest
                 && intact(textLink),
             "refuses a link among its own entries, also one among the texts, and keeps what they lead to");
 
-        // A link among the texts to a file, which Windows makes only with a right that the self-test
-        // does not ask for, so the check runs where the link can be made.
-        var fileLink = Path.Combine(fixture.Root, "file-link");
-        Output.Write(fileLink, outputs);
-        var outsideText = Path.Combine(fixture.Root, "outside.txt");
-        Fixture.WriteFile(outsideText, "kept");
-        const string FileLinkCheck =
-            "refuses a link to a file among the texts, and keeps its target and its own output";
-        if (Fixture.FileLink(Path.Combine(fileLink, Notices.TextsFolder, "01-x.txt"), outsideText))
-        {
-            tally.Expect(
-                Throws(() => Output.Write(fileLink, outputs)) && File.ReadAllText(outsideText) == "kept"
-                    && intact(fileLink),
-                FileLinkCheck);
-        }
-        else if (OperatingSystem.IsWindows())
-        {
-            tally.Skip(FileLinkCheck, "no file link without a right");
-        }
-        else
-        {
-            tally.Expect(false, $"{FileLinkCheck}: the link could not be made");
-        }
+        FileLinkAmongTexts(tally, Path.Combine(fixture.Root, "file-link"), outputs, intact, Fixture.FileLink);
+
+        // Where a link cannot be made, either check is skipped on Windows and fails on macOS and Linux,
+        // and never counts as passed: each runs again with a link maker that always fails.
+        var forcedFile = new Tally(TextWriter.Null);
+        var forcedFolder = Path.Combine(fixture.Root, "forced-file-link");
+        FileLinkAmongTexts(forcedFile, forcedFolder, outputs, intact, (_, _) => false);
+        var forcedRelative = new Tally(TextWriter.Null);
+        RelativeLinks(forcedRelative, Fixture.Create(root, "forced-relative-links").Repository, (_, _, _) => false);
+        tally.Expect(
+            new[] { forcedFile, forcedRelative }.All(forced => OperatingSystem.IsWindows()
+                ? forced.Total == 0 && forced.Skipped == 1
+                : forced.Total == 1 && forced.Failed == 1),
+            "a check whose link cannot be made is skipped on Windows and fails on macOS and Linux, never passed");
         // Only the index differs from the tool's own output: another format.
         var other = Path.Combine(fixture.Root, "other-format");
         Output.Write(other, outputs);
@@ -4200,7 +4193,9 @@ internal static partial class SelfTest
 
         // On Windows a ':' after the drive names a stream: docs\A::$INDEX_ALLOCATION names, and creates,
         // the folder docs\A inside the tracked docs/, and docs::$INDEX_ALLOCATION the folder docs itself;
-        // Path.Combine would also start over at a part such as C:x. Elsewhere these are names in docs/.
+        // Path.Combine would also start over at a part such as C:x. On macOS and Linux a backslash is no
+        // separator, so each of these paths is one name at the repository root, and the fourth starts with
+        // the root-level name docs\new\; there the build-folder rule refuses them.
         string[] colonPaths =
         [
             @"docs\A::$INDEX_ALLOCATION",
@@ -4211,8 +4206,9 @@ internal static partial class SelfTest
         ];
         bool refusedAsDevice(string path) =>
             Message(() => Output.EnsureBuildOutput(fixture.Repository, path, "--out")) is { } refusal
-                && (!OperatingSystem.IsWindows()
-                    || refusal.Contains("is a device or network path", StringComparison.Ordinal));
+                && refusal.Contains(
+                    OperatingSystem.IsWindows() ? "is a device or network path" : "in the repository, outside build/",
+                    StringComparison.Ordinal);
         Directory.CreateDirectory(Path.Combine(fixture.Repository, "docs", "new"));
         var realRepository = Output.RealPath(fixture.Repository);
         bool keptUnder(params string[] parts) =>
@@ -4221,8 +4217,8 @@ internal static partial class SelfTest
             colonPaths.All(refusedAsDevice)
                 && (!OperatingSystem.IsWindows()
                     || (keptUnder("docs", "new", "C:x") && keptUnder("docs", "no", "C:x"))),
-            "refuses on Windows a path with a ':' after its drive, and resolves a part such as C:x below the folder "
-                + "that holds it");
+            "refuses on Windows a path with a ':' after its drive as a device path, and resolves a part such as C:x "
+                + "below the folder that holds it; on macOS and Linux the build-folder rule refuses the five paths");
 
         // Links that the kernel of macOS and Linux follows part by part, from a made-up tree: build/a
         // leads to ../docs/x, and build/j to a/../y, which is docs/y and not build/y.
@@ -4272,27 +4268,61 @@ internal static partial class SelfTest
                 && Throws(() => Output.Write(Path.Combine(build, "out-link"), outputs)),
             "refuses a licenses/ folder in the bundle, or an output folder, that is a link");
 
-        // The made-up tree above on disk, where the kernel follows the links: on macOS and Linux only,
-        // since Windows makes a relative link only with a right that the self-test does not ask for.
-        var relative = Fixture.Create(root, "relative-links").Repository;
+        RelativeLinks(tally, Fixture.Create(root, "relative-links").Repository, Fixture.RelativeLink);
+    }
+
+    // A link among the texts to a file. Windows makes one only with a right that the self-test does not
+    // ask for, so there the check is skipped when the link cannot be made; elsewhere it fails then.
+    private static void FileLinkAmongTexts(
+        Tally tally,
+        string folder,
+        NoticeOutputs outputs,
+        Func<string, bool> intact,
+        Func<string, string, bool> makeFileLink)
+    {
+        Output.Write(folder, outputs);
+        var outsideText = folder + "-target.txt";
+        Fixture.WriteFile(outsideText, "kept");
+        const string Check = "refuses a link to a file among the texts, and keeps its target and its own output";
+        if (makeFileLink(Path.Combine(folder, Notices.TextsFolder, "01-x.txt"), outsideText))
+        {
+            tally.Expect(
+                Throws(() => Output.Write(folder, outputs)) && File.ReadAllText(outsideText) == "kept"
+                    && intact(folder),
+                Check);
+        }
+        else if (OperatingSystem.IsWindows())
+        {
+            tally.Skip(Check, "no file link without a right");
+        }
+        else
+        {
+            tally.Expect(false, $"{Check}: the link could not be made");
+        }
+    }
+
+    // The made-up tree of the output checks on disk, where the kernel follows the links: on macOS and
+    // Linux only, since Windows makes a relative link only with a right that the self-test does not ask for.
+    private static void RelativeLinks(Tally tally, string relative, Func<string, string, string, bool> makeRelativeLink)
+    {
         bool refusedThrough(params string[] parts) =>
             Message(() => Output.EnsureBuildOutput(relative, Path.Combine(parts), "--out")) is { } refusal
                 && refusal.Contains("leads to docs/y", StringComparison.Ordinal);
         bool relativeLink(string name, string target, string folder) =>
-            Fixture.RelativeLink(Path.Combine(relative, "build", name), target, Path.Combine(relative, "docs", folder));
-        const string RelativeLinkCheck =
+            makeRelativeLink(Path.Combine(relative, "build", name), target, Path.Combine(relative, "docs", folder));
+        const string Check =
             "on macOS and Linux, refuses build/j when it links to a/../y and build/a to ../docs/x, since that is "
                 + "docs/y";
         if (OperatingSystem.IsWindows())
         {
-            tally.Skip(RelativeLinkCheck, "no relative link without a right");
+            tally.Skip(Check, "no relative link without a right");
         }
         else
         {
             tally.Expect(
                 relativeLink("a", "../docs/x", "x") && relativeLink("j", "a/../y", "y")
                     && refusedThrough("build", "j") && refusedThrough("build", "j", "x"),
-                RelativeLinkCheck);
+                Check);
         }
     }
 

@@ -130,6 +130,27 @@ SPDX-License-Identifier: MIT
     </ItemGroup>
   </Target>
 
+  <!--
+  protobuf-net and protobuf-net.Core are not marked trimmable, so the SDK keeps them whole and the
+  trimmer analyzes all their code, which reflects over types known only at run time. recelilious
+  approved the list of their warnings in eng/trimming-allow-list.xml
+  (docs/design/repository-checks.md section 7), which the SDK passes to the trimmer as link
+  attributes. TrimmerSingleWarn=false on the two assemblies, the metadata that the SDK also sets
+  on project references, lists each of their warnings by code and method instead of one IL2104
+  per assembly, so a warning outside the list names itself.
+  -->
+  <ItemGroup>
+    <_ILLinkSuppressions Include="$(MSBuildThisFileDirectory)../../eng/trimming-allow-list.xml" />
+  </ItemGroup>
+
+  <Target Name="PaneportListProtobufWarnings" BeforeTargets="_ComputeManagedAssemblyToLink">
+    <ItemGroup>
+      <ResolvedFileToPublish Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'protobuf-net.dll' Or '%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'protobuf-net.Core.dll'">
+        <TrimmerSingleWarn>false</TrimmerSingleWarn>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Core/Paneport.Core.csproj" />
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Steam/Paneport.Steam.csproj" />

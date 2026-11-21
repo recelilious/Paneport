@@ -134,6 +134,10 @@ The Release build of the head is the first to trim Avalonia.Skia, SkiaSharp, Har
 - **IL2104 for `Avalonia.DesignerSupport`.** It serves only the XAML previewer and the app never loads it, but it is not marked trimmable, so the SDK kept it whole and the trimmer analyzed all of it. `AppHead.props` marks it trimmable, and it goes with the rest of the unused code.
 - **IL2037, eleven times, for Avalonia.iOS.** When .NET for iOS trims an assembly with NSObject subclasses, its `MarkNSObjectsStep` preserves their members through dynamic dependencies by name, and the names of explicitly implemented protocol members, such as those of Avalonia's `AvaloniaAppDelegate<TApp>`, `DefaultAvaloniaViewController` and the text input responder of `AvaloniaView`, do not resolve. Those members would then be trimmed away, and the keyboard's input with them. `AppHead.props` keeps Avalonia.iOS whole, with the `TrimMode` metadata `copy` on its item of `ResolvedFileToPublish`, the extension point that the SDK reads, so it keeps every member and gets no such dependency. The cost is the assembly's unused code in the app.
 
+M2.3 brought SteamKit2, which is marked trimmable, with protobuf-net and protobuf-net.Core, which are not:
+
+- **IL2104 for protobuf-net and protobuf-net.Core.** The SDK keeps both whole, so the trimmer analyzes all their code, and their reflection over types known only at run time gives 125 warnings. Much of that reflection is over their own generic types and methods, which trimming them could remove, so they stay whole. recelilious approved an allow list for these warnings on 2026-11-21 (repository-checks.md section 7). `AppHead.props` passes `eng/trimming-allow-list.xml` to the trimmer. It also sets the `TrimmerSingleWarn` metadata to false on the two assemblies' items of `ResolvedFileToPublish`, so that a warning outside the list shows by code and method instead of as IL2104. The device check S2.3.8 runs SteamKit2's messages in this build ([steam-service.md](steam-service.md) section 10).
+
 ## 13. Tests
 
 | Small stage | Tests |

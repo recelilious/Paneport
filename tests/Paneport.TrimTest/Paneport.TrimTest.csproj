@@ -41,4 +41,13 @@ SPDX-License-Identifier: MIT
     <TrimmerRootAssembly Include="Paneport.Steam" />
     <TrimmerRootAssembly Include="Paneport.UI" />
   </ItemGroup>
+
+  <!--
+  The warnings from inside protobuf-net and protobuf-net.Core that recelilious approved
+  (docs/design/repository-checks.md section 7). The SDK passes each file of _ILLinkSuppressions
+  to the trimmer as link attributes. This app reports 11 of the list's warnings.
+  -->
+  <ItemGroup>
+    <_ILLinkSuppressions Include="$(MSBuildThisFileDirectory)../../eng/trimming-allow-list.xml" />
+  </ItemGroup>
 </Project>

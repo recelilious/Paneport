@@ -144,6 +144,21 @@ SPDX-License-Identifier: MIT
     <_ILLinkSuppressions Include="$(MSBuildThisFileDirectory)../../eng/trimming/*.xml" />
   </ItemGroup>
 
+  <!--
+  The runtime's switch System.ComponentModel.DefaultValueAttribute.IsSupported, off as in every
+  other trimmed app. The SDK turns it off only when PublishTrimmed is true as the project is read,
+  and .NET for iOS sets PublishTrimmed later, in a target, so on iOS the switch stays unset. Unset,
+  the trimmer keeps the attribute's conversion of a string through a TypeConverter, which needs
+  unreferenced code (IL2026 inside System.Private.CoreLib), for SteamKit2's
+  [DefaultValue(typeof(ulong), "...")] on 64-bit fields. Off, the attribute carries no value; the
+  fields have ShouldSerialize methods, which protobuf-net uses instead of a default.
+  _DefaultValueAttributeSupport is the SDK's internal property for the switch; if it ever goes, the
+  warning comes back and fails the build.
+  -->
+  <PropertyGroup>
+    <_DefaultValueAttributeSupport>false</_DefaultValueAttributeSupport>
+  </PropertyGroup>
+
   <Target Name="PaneportListProtobufWarnings" BeforeTargets="_ComputeManagedAssemblyToLink">
     <ItemGroup>
       <ResolvedFileToPublish Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'protobuf-net.dll' Or '%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'protobuf-net.Core.dll'">

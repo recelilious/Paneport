@@ -3,8 +3,8 @@ SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 SPDX-License-Identifier: MIT
 -->
 <!--
-The trimming warnings inside protobuf-net.Core 3.4.40 that recelilious approved on 2026-11-21: 64 warnings
-in 60 methods, each by its code and method. Any other warning still fails the build.
+The trimming warnings inside protobuf-net.Core 3.4.40 that recelilious approved on 2026-11-21: 64 entries
+in 60 methods, each a warning code in one method. Any other warning still fails the build.
 eng/trimming/README.md says where they come from, who reads this file and when it changes.
 -->
 <linker>

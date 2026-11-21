@@ -3,8 +3,8 @@ SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 SPDX-License-Identifier: MIT
 -->
 <!--
-The trimming warnings inside protobuf-net 3.4.40 that recelilious approved on 2026-11-21: 61 warnings
-in 58 methods, each by its code and method. Any other warning still fails the build.
+The trimming warnings inside protobuf-net 3.4.40 that recelilious approved on 2026-11-21: 63 entries
+in 59 methods, each a warning code in one method. Any other warning still fails the build.
 eng/trimming/README.md says where they come from, who reads this file and when it changes.
 -->
 <linker>
@@ -62,6 +62,11 @@ eng/trimming/README.md says where they come from, who reads this file and when i
     </type>
     <type fullname="ProtoBuf.Compiler.CompilerContext/StateBasedReadMethods">
       <method signature="System.Collections.Generic.Dictionary`2&lt;System.String,System.Reflection.MethodInfo&gt; CreateAndAdd(System.Type)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2045</argument>
+          <property name="Justification">The iOS build removes every ObsoleteAttribute (MobileAggressiveAttributeTrimming of .NET for iOS). protobuf-net looks for it here only while it emits serializer code with Reflection.Emit, which the device build never does: it runs without dynamic code, compiled ahead of time with the interpreter off (C-0009 section 3).</property>
+        </attribute>
         <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
           <argument>Trimming</argument>
           <argument>IL2070</argument>
@@ -383,6 +388,13 @@ eng/trimming/README.md says where they come from, who reads this file and when i
           <argument>Trimming</argument>
           <argument>IL2071</argument>
           <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Void &lt;WriteAssemblyAttributes&gt;g__WriteAssemblyInfoAttributes|107_0(ProtoBuf.Meta.RuntimeTypeModel/CompilerOptions,System.Reflection.Emit.AssemblyBuilder)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2045</argument>
+          <property name="Justification">The iOS build removes every instance of these assembly attributes (MobileAggressiveAttributeTrimming of .NET for iOS). protobuf-net writes them here only when it compiles a model into a new assembly with Reflection.Emit, which the device build never does: it runs without dynamic code, compiled ahead of time with the interpreter off (C-0009 section 3).</property>
         </attribute>
       </method>
       <method signature="System.Void &lt;WriteAssemblyAttributes&gt;g__WriteAssemblyInfoAttribute|107_1&lt;TAttribute&gt;(ProtoBuf.Meta.RuntimeTypeModel/CompilerOptions,System.Reflection.Emit.AssemblyBuilder,System.String)">

@@ -1,0 +1,497 @@
+<!--
+SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+SPDX-License-Identifier: MIT
+-->
+<!--
+The trimming warnings inside protobuf-net.Core 3.4.40 that recelilious approved on 2026-11-21: 64 warnings
+in 60 methods, each by its code and method. Any other warning still fails the build.
+eng/trimming/README.md says where they come from, who reads this file and when it changes.
+-->
+<linker>
+  <assembly fullname="protobuf-net.Core">
+    <type fullname="ProtoBuf.BclHelpers">
+      <method signature="System.Object GetUninitializedObject(System.Type)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2067</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.ExtensibleUtil/&lt;GetExtendedValues&gt;d__4">
+      <method signature="System.Boolean MoveNext()">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2067</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Helpers">
+      <method signature="System.Reflection.ConstructorInfo GetConstructor(System.Type,System.Type[],System.Boolean)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2070</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Reflection.ConstructorInfo[] GetConstructors(System.Type,System.Boolean)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2070</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Reflection.MemberInfo[] GetInstanceFieldsAndProperties(System.Type,System.Boolean)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2070</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Reflection.MethodInfo GetInstanceMethod(System.Type,System.String)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2070</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Reflection.MethodInfo GetInstanceMethod(System.Type,System.String,System.Type[])">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2070</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Reflection.MethodInfo GetStaticMethod(System.Type,System.String)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2070</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Reflection.PropertyInfo GetProperty(System.Type,System.String,System.Boolean)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2070</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.IMeasuredProtoOutput`1">
+      <method signature="ProtoBuf.MeasureState`1&lt;T&gt; Measure&lt;T&gt;(T,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Void Serialize&lt;T&gt;(ProtoBuf.MeasureState`1&lt;T&gt;,TOutput)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Internal.DynamicStub">
+      <method signature="ProtoBuf.Internal.DynamicStub &lt;SlowGet&gt;g__TryCreateConcrete|9_0(System.Type,System.Type[])">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2055</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2067</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Type &lt;SlowGet&gt;g__ResolveProxies|9_1(System.Type)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2070</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Internal.DynamicStub/ConcreteStub`1">
+      <method signature="System.Boolean CanSerialize(ProtoBuf.Meta.TypeModel,ProtoBuf.Serializers.SerializerFeatures&amp;)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Boolean TryDeepClone(ProtoBuf.Meta.TypeModel,System.Object&amp;)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Boolean TryDeserialize(ProtoBuf.Internal.ObjectScope,ProtoBuf.Meta.TypeModel,ProtoBuf.ProtoReader/State&amp;,System.Object&amp;)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Boolean TryDeserializeRoot(ProtoBuf.Meta.TypeModel,ProtoBuf.ProtoReader/State&amp;,System.Object&amp;,System.Boolean)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Boolean TrySerializeAny(System.Int32,ProtoBuf.Serializers.SerializerFeatures,ProtoBuf.Meta.TypeModel,ProtoBuf.ProtoWriter/State&amp;,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Boolean TrySerializeRoot(ProtoBuf.Meta.TypeModel,ProtoBuf.ProtoWriter/State&amp;,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Internal.KeyValuePairSerializer`2">
+      <method signature="T CreateDefault&lt;T&gt;(ProtoBuf.ISerializationContext,ProtoBuf.Serializers.ISerializer`1&lt;T&gt;,ProtoBuf.Serializers.SerializerFeatures)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Internal.ThrowHelper">
+      <method signature="System.Void NoSerializerDefined(System.Type)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2070</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Internal.TypeHelper">
+      <method signature="System.Boolean ResolveUniqueEnumerableT(System.Type,System.Type&amp;)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2070</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Object CreateNonTrivialDefault(System.Type)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2067</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Internal.TypeHelper`1/&lt;&gt;c">
+      <method signature="T &lt;.cctor&gt;b__8_0(ProtoBuf.ISerializationContext)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Meta.TypeModel">
+      <method signature="ProtoBuf.MeasureState`1&lt;T&gt; ProtoBuf.IMeasuredProtoOutput&lt;System.Buffers.IBufferWriter&lt;System.Byte&gt;&gt;.Measure&lt;T&gt;(T,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="ProtoBuf.MeasureState`1&lt;T&gt; ProtoBuf.IMeasuredProtoOutput&lt;System.IO.Stream&gt;.Measure&lt;T&gt;(T,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="ProtoBuf.Serializers.IRepeatedSerializer`1&lt;T&gt; GetRepeatedSerializer&lt;T&gt;(ProtoBuf.Meta.TypeModel)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="ProtoBuf.Serializers.ISerializer`1&lt;T&gt; GetInbuiltSerializer&lt;T&gt;(ProtoBuf.CompatibilityLevel,ProtoBuf.DataFormat)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Boolean IsKnownType&lt;T&gt;(ProtoBuf.CompatibilityLevel)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Boolean TryDeserializeAuxiliaryType(ProtoBuf.ProtoReader/State&amp;,ProtoBuf.DataFormat,System.Int32,System.Type,System.Object&amp;,System.Boolean,System.Boolean,System.Boolean,System.Boolean,System.Object,System.Boolean)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2067</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Object CreateListInstance(System.Type,System.Type)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2067</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Object Deserialize(System.Buffers.ReadOnlySequence`1&lt;System.Byte&gt;,System.Type,System.Object,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2067</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Object Deserialize(System.IO.Stream,System.Object,System.Type,System.Int64,ProtoBuf.SerializationContext)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2067</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Object Deserialize(System.ReadOnlyMemory`1&lt;System.Byte&gt;,System.Type,System.Object,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2067</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Object DeserializeWithLengthPrefix(System.IO.Stream,System.Object,System.Type,ProtoBuf.PrefixStyle,System.Int32,ProtoBuf.TypeResolver,System.Int64&amp;,System.Boolean&amp;,ProtoBuf.SerializationContext)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2072</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Type DeserializeType(ProtoBuf.Meta.TypeModel,System.String)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2057</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Type ResolveKnownType(System.String,System.Reflection.Assembly)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2026</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2057</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Void ProtoBuf.IMeasuredProtoOutput&lt;System.Buffers.IBufferWriter&lt;System.Byte&gt;&gt;.Serialize&lt;T&gt;(ProtoBuf.MeasureState`1&lt;T&gt;,System.Buffers.IBufferWriter`1&lt;System.Byte&gt;)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Void ProtoBuf.IMeasuredProtoOutput&lt;System.IO.Stream&gt;.Serialize&lt;T&gt;(ProtoBuf.MeasureState`1&lt;T&gt;,System.IO.Stream)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Void ProtoBuf.IProtoOutput&lt;System.Buffers.IBufferWriter&lt;System.Byte&gt;&gt;.Serialize&lt;T&gt;(System.Buffers.IBufferWriter`1&lt;System.Byte&gt;,T,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Void ProtoBuf.IProtoOutput&lt;System.IO.Stream&gt;.Serialize&lt;T&gt;(System.IO.Stream,T,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Void SerializeWithLengthPrefix(System.IO.Stream,System.Object,System.Type,ProtoBuf.PrefixStyle,System.Int32,ProtoBuf.SerializationContext)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2072</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="T Deserialize&lt;T&gt;(System.Buffers.ReadOnlySequence`1&lt;System.Byte&gt;,T,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2095</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="T Deserialize&lt;T&gt;(System.ReadOnlyMemory`1&lt;System.Byte&gt;,T,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2095</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="T ProtoBuf.IProtoInput&lt;System.ArraySegment&lt;System.Byte&gt;&gt;.Deserialize&lt;T&gt;(System.ArraySegment`1&lt;System.Byte&gt;,T,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="T ProtoBuf.IProtoInput&lt;System.Byte[]&gt;.Deserialize&lt;T&gt;(System.Byte[],T,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="T ProtoBuf.IProtoInput&lt;System.IO.Stream&gt;.Deserialize&lt;T&gt;(System.IO.Stream,T,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Meta.TypeModel/DeserializeItemsIterator">
+      <method signature="System.Boolean MoveNext()">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2077</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Meta.TypeModel/Formatter">
+      <method signature="System.Object Deserialize(System.IO.Stream)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2046</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Void Serialize(System.IO.Stream,System.Object)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2046</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.ProtoIncludeAttribute">
+      <method signature="System.Type get_KnownType()">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2073</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.ProtoReader/State">
+      <method signature="System.Object DeserializeRootFallback(System.Object,System.Type)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2067</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.ProtoWriter/BufferWriterProtoWriter">
+      <method signature="System.Void WriteSubType&lt;T&gt;(ProtoBuf.ProtoWriter/State&amp;,T,ProtoBuf.Serializers.ISubTypeSerializer`1&lt;T&gt;)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2095</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+      <method signature="System.Void WriteWithLengthPrefix&lt;T&gt;(ProtoBuf.ProtoWriter/State&amp;,T,ProtoBuf.Serializers.ISubTypeSerializer`1&lt;T&gt;)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.ProtoWriter/NullProtoWriter">
+      <method signature="System.Void WriteSubType&lt;T&gt;(ProtoBuf.ProtoWriter/State&amp;,T,ProtoBuf.Serializers.ISubTypeSerializer`1&lt;T&gt;)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2095</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.ProtoWriter/State">
+      <method signature="System.Void WriteObject(System.Object,System.Type,ProtoBuf.PrefixStyle,System.Int32)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2072</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Serializers.ConcurrentDictionarySerializer`3">
+      <method signature="TCollection Initialize(TCollection,ProtoBuf.ISerializationContext)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Serializers.DefaultMemoryConverter`1">
+      <method signature="ProtoBuf.Serializers.IMemoryConverter`2&lt;TStorage,T&gt; GetFor&lt;TStorage&gt;(ProtoBuf.Meta.TypeModel)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Serializers.SerializerCache">
+      <method signature="System.Object GetInstance(System.Type,System.Type)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2071</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+    <type fullname="ProtoBuf.Serializers.SubTypeState`1">
+      <method signature="T &lt;Cast&gt;g__Merge|14_0(ProtoBuf.ISerializationContext,System.Object,T)">
+        <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+          <argument>Trimming</argument>
+          <argument>IL2091</argument>
+          <property name="Justification">protobuf-net reflects here over types known only at run time, for callers without a compile-time model. SteamKit2 serializes through its compile-time model, which the device check S2.3.8 runs (C-0009 section 3).</property>
+        </attribute>
+      </method>
+    </type>
+  </assembly>
+</linker>

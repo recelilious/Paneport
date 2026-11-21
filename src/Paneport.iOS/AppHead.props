@@ -133,14 +133,15 @@ SPDX-License-Identifier: MIT
   <!--
   protobuf-net and protobuf-net.Core are not marked trimmable, so the SDK keeps them whole and the
   trimmer analyzes all their code, which reflects over types known only at run time. recelilious
-  approved the list of their warnings in eng/trimming-allow-list.xml
-  (docs/design/repository-checks.md section 7), which the SDK passes to the trimmer as link
-  attributes. TrimmerSingleWarn=false on the two assemblies, the metadata that the SDK also sets
-  on project references, lists each of their warnings by code and method instead of one IL2104
-  per assembly, so a warning outside the list names itself.
+  approved the list of their warnings in eng/trimming/ (docs/design/repository-checks.md
+  section 7). The SDK passes each file of _ILLinkSuppressions, an internal item of its own, to the
+  trimmer as link attributes; if the item ever goes, the warnings come back and fail the build.
+  TrimmerSingleWarn=false on the two assemblies, the metadata that the SDK also sets on project
+  references, lists each of their warnings by code and method instead of one IL2104 per assembly,
+  so a warning outside the list names itself.
   -->
   <ItemGroup>
-    <_ILLinkSuppressions Include="$(MSBuildThisFileDirectory)../../eng/trimming-allow-list.xml" />
+    <_ILLinkSuppressions Include="$(MSBuildThisFileDirectory)../../eng/trimming/*.xml" />
   </ItemGroup>
 
   <Target Name="PaneportListProtobufWarnings" BeforeTargets="_ComputeManagedAssemblyToLink">

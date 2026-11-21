@@ -63,7 +63,8 @@ paneport_native_test(test_signal_guest CASES
     marked_thread_overflow_ends_with_record guest_handler_fault_ends_with_record
     probe_handler_fault_ends_with_record)
 paneport_native_test(test_thread_control CASES
-    register_change_seen_after_resume ended_thread_fails suspending_itself_refused)
+    register_change_seen_after_resume ended_thread_fails destroyed_request_fails_as_ended
+    suspending_itself_refused)
 paneport_native_test(test_signal_installed CASES
     passes_after_init fails_naming_replaced_signal fails_before_init stacks_follow_marks
     release_takes_stack_away uninstall_takes_stack_away last_resort_installed_at_load

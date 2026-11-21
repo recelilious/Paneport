@@ -19,5 +19,9 @@ SPDX-License-Identifier: MIT
 
   <ItemGroup>
     <Compile Include="..\Shared\ProjectReferences.cs" Link="Shared\ProjectReferences.cs" />
+    <Compile Include="..\Shared\Fakes\FakeTimeProvider.cs" Link="Shared\Fakes\FakeTimeProvider.cs" />
+    <Compile Include="..\Shared\Fakes\FakeTokenStore.cs" Link="Shared\Fakes\FakeTokenStore.cs" />
+    <Compile Include="..\Shared\Fakes\LogLine.cs" Link="Shared\Fakes\LogLine.cs" />
+    <Compile Include="..\Shared\Fakes\RecordingLog.cs" Link="Shared\Fakes\RecordingLog.cs" />
   </ItemGroup>
 </Project>

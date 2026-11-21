@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using System.Security.Cryptography;
 using Paneport.Steam.Content;
 using Paneport.Steam.Ports;
 using SteamKit2;
@@ -88,7 +89,7 @@ internal sealed class SteamKitContent : ISteamContent, IDisposable
                 .WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (InvalidDataException exception)
+        catch (Exception exception) when (IsRejection(exception))
         {
             throw new ChunkRejectedException("SteamKit2 rejected the chunk.", exception);
         }
@@ -99,6 +100,14 @@ internal sealed class SteamKitContent : ISteamContent, IDisposable
     }
 
     public void Dispose() => _cdn.Dispose();
+
+    // Whether an exception from SteamKit2's chunk processing means that the chunk arrived but is
+    // not the one its entry names: a failed length or Adler-32 check or bad compressed data, a
+    // padding that does not decrypt, as with a wrong key, or a zip entry that claims more than the
+    // entry's length. None of them is worth asking another server for.
+    internal static bool IsRejection(Exception exception) =>
+        exception is InvalidDataException or CryptographicException
+        || exception is ArgumentException and not ArgumentNullException;
 
     // A failure at the server or on the way, or null for one that is no download failure, such as
     // the caller's cancellation.

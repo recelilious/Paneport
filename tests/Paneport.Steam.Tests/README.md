@@ -16,6 +16,7 @@ Tests of [Paneport.Steam](../../src/Paneport.Steam/README.md). They never talk t
 | `AppInfoReaderTests.cs` | S2.3.4: the Windows depots and their sizes are found in synthetic app information, and missing sections are reported, not thrown. |
 | `GateStepsTests.cs` | S2.3.5 and S2.3.6: a missing key or a code of 0 gives "not granted"; a synthetic manifest gives the right file count, chunk count and size; a chunk that does not match its manifest entry is rejected and never written, and matching synthetic chunks pass. |
 | `ChunkVerifierTests.cs` | S2.3.6: a chunk passes only with the length and the SHA-1 hash of its manifest entry. |
+| `SteamKitChunkTests.cs` | S2.3.6 on SteamKit2's own processing: a chunk that the test compresses and encrypts as the depot format has it passes `DepotChunk.Process` and the check; a changed byte or a wrong key is a rejection for the content adapter; another chunk's ID under the same checksum fails the SHA-1 check. |
 | `RedactingLogTests.cs` | S2.3.11: the log filter, and a full fake run through a capturing log that shows no password, token, depot key, manifest request code, Steam ID or account name. |
 | `SteamServicesTests.cs` | The service over SteamKit2 as the heads create it connects to nothing, and the installation's machine identity is created once, kept in the secure item store and replaced when unreadable. |
 | `Fakes/` | The fakes of the ports, the clock's waits, the synthetic values and data, and `SteamTestKit`, which wires the service over them. |

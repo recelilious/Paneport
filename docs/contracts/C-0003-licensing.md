@@ -196,6 +196,20 @@ Rules:
 
 If an explicit patent grant becomes necessary, our own code can move to `MIT OR Apache-2.0` dual licensing. MIT stays the default.
 
+## Proposed changes for 1.7
+
+**Not yet accepted.** Version 1.6 above stays binding until recelilious approves these changes. They come from stage M2.3, which builds the Steam service on SteamKit2 ([L2 brief](../design/stages/L2-phase-0-gates.md), section M2.3), and register what SteamKit2's package brings into the app before any of it is added (section 5).
+
+1. **Section 6, the row of SteamKit2.** Replace its license, "LGPL-2.1-only", with "LGPL-2.1-only. It carries part of the LZMA SDK, which its author placed in the public domain."
+
+2. **Section 6, the row of protobuf-net.** Replace its purpose, "SteamKit2 dependency", with "SteamKit2 dependency, in two packages: protobuf-net, which also carries a build-time code generator and analyzers, and protobuf-net.Core".
+
+3. **Section 6, a new row after protobuf-net.** Add: "| ZstdSharp (ZstdSharp.Port) | Zstandard decompression, a SteamKit2 dependency that unpacks depot chunks | MIT, for the port. It is a C# port of Zstandard, which is BSD-3-Clause or GPL-2.0-only; the ported code is used under BSD-3-Clause (section 5), and Zstandard's notice is kept beside the port's. | Allowed |". In the sentence above the table, replace "and on 2026-11-15 for the row that version 1.6 added" with "on 2026-11-15 for the row that version 1.6 added, and on 2026-11-21 for the rows that version 1.7 added or changed".
+
+4. **Section 12, new sources.** Add "ZstdSharp license: <https://github.com/oleg-st/ZstdSharp/blob/HEAD/LICENSE>", "Zstandard licenses: <https://github.com/facebook/zstd/blob/HEAD/LICENSE> and <https://github.com/facebook/zstd/blob/HEAD/COPYING>" and "LZMA SDK license: <https://www.7-zip.org/sdk.html>".
+
+SteamKit2's package also depends on System.IO.Hashing, a package of the .NET runtime under MIT, which the row of the .NET runtime covers as it covers the runtime's other packages, such as Microsoft.Bcl.AsyncInterfaces. protobuf-net depends on System.Collections.Immutable, which .NET 10 provides itself, so restore prunes it. Microsoft.Windows.CsWin32 serves only SteamKit2's own build and is not a dependency of its package.
+
 ## 12. Sources
 
 - Wine license: <https://github.com/wine-mirror/wine/blob/HEAD/LICENSE>

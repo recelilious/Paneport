@@ -43,15 +43,16 @@ jobs:
 
       # NuGet's packages come from a cache that only main saves (plan decision D14). Saved for
       # every branch and pull request, as setup-dotnet's own cache did, they filled the
-      # repository's 10 GB of caches. Any entry of main for the same system is a fine start,
-      # because the locked restore fetches what it lacks.
+      # repository's 10 GB of caches. Elsewhere any entry of main for the same system is a fine
+      # start, because the locked restore fetches what it lacks. main itself takes only the exact
+      # key, so that an entry it saves never carries the packages of older lock files.
       - name: Restore NuGet's packages from the cache of main
         id: nuget-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json') }}
-          restore-keys: nuget-${{ runner.os }}-
+          restore-keys: ${{ github.ref != 'refs/heads/main' && format('nuget-{0}-', runner.os) || '' }}
 
       - name: Check the SDK against global.json
         run: dotnet run tools/CheckToolchain.cs

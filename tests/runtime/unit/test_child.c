@@ -133,6 +133,18 @@ static void errors_keep_their_tail(void) {
     pp_child_result_free(&result);
 }
 
+// A cut on the error stream's last read, here its only one, leaves the length at the limit, so
+// only the flag that the read itself sets reports the cut.
+static void errors_cut_on_the_last_read(void) {
+    pp_child_result_t result =
+        run_shell("printf 'abcdefghijklmnopqrstuvwxyz0123' >&2", NULL, 30U, 10U);
+    PP_CHECK(result.errors_truncated);
+    PP_CHECK_EQUAL(result.errors_length, 10);
+    PP_CHECK(equals(result.errors, result.errors_length, "uvwxyz0123"));
+    PP_CHECK_EQUAL(result.exit_code, 0);
+    pp_child_result_free(&result);
+}
+
 // A process that the child leaves behind with the same pipes does not hold the harness for
 // longer than the drain time, and ends with the case.
 static void leftover_does_not_hold(void) {
@@ -168,6 +180,7 @@ int main(int argc, char **argv) {
         {"signal_reported", signal_reported},
         {"output_cut_at_the_limit", output_cut_at_the_limit},
         {"errors_keep_their_tail", errors_keep_their_tail},
+        {"errors_cut_on_the_last_read", errors_cut_on_the_last_read},
         {"leftover_does_not_hold", leftover_does_not_hold},
         {"missing_program", missing_program},
     };

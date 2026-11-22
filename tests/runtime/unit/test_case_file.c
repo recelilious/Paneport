@@ -4,6 +4,8 @@
 // S4.2.5: the reader of the harness's case files.
 
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "case_file.h"
@@ -39,8 +41,85 @@ static void valid_case(void) {
     PP_CHECK_EQUAL(result.timeout_seconds, 120);
     PP_CHECK_EQUAL(result.exit_code, 3);
     PP_CHECK_TEXT(result.expected, "console.txt");
+    PP_CHECK_EQUAL(result.variable_count, 0);
+    PP_CHECK_EQUAL(result.runs, 1);
     pp_case_free(&result);
     PP_CHECK(result.program == NULL);
+}
+
+static void environment_and_runs(void) {
+    pp_case_t result;
+    char error[256] = "";
+    PP_CHECK(parse("{\"program\": \"seh.exe\", \"environment\": {\"FEX_MULTIBLOCK\": \"0\", "
+                   "\"A_1\": \"x y\", \"EMPTY\": \"\"}, \"runs\": 5, \"timeout_seconds\": 9, "
+                   "\"exit_code\": 0, \"expected\": \"seh.txt\"}",
+                   &result, error, sizeof error));
+    PP_CHECK_EQUAL(result.variable_count, 3);
+    PP_CHECK_TEXT(result.variables[0], "FEX_MULTIBLOCK=0");
+    PP_CHECK_TEXT(result.variables[1], "A_1=x y");
+    PP_CHECK_TEXT(result.variables[2], "EMPTY=");
+    PP_CHECK_EQUAL(result.runs, 5);
+    pp_case_free(&result);
+    PP_CHECK(result.variable_count == 0U && result.variables[0] == NULL);
+    PP_CHECK(parse("{\"program\": \"seh.exe\", \"environment\": {}, \"runs\": 100, "
+                   "\"timeout_seconds\": 9, \"exit_code\": 0, \"expected\": \"seh.txt\"}",
+                   &result, error, sizeof error));
+    PP_CHECK_EQUAL(result.variable_count, 0);
+    PP_CHECK_EQUAL(result.runs, 100);
+    pp_case_free(&result);
+}
+
+// Wraps one environment member and one runs member in an otherwise valid case.
+static void refused_with(const char *environment, const char *runs, const char *part) {
+    char text[512];
+    (void)snprintf(text, sizeof text,
+                   "{\"program\": \"a.exe\", \"environment\": %s, \"runs\": %s, "
+                   "\"timeout_seconds\": 5, \"exit_code\": 0, \"expected\": \"a.txt\"}",
+                   environment, runs);
+    refused(text, part);
+}
+
+static void environment_and_runs_refused(void) {
+    refused_with("{\"fex\": \"0\"}", "1", "capital letters");
+    refused_with("{\"1A\": \"0\"}", "1", "capital letters");
+    refused_with("{\"A-B\": \"0\"}", "1", "capital letters");
+    refused_with("{\"\": \"0\"}", "1", "capital letters");
+    refused_with("{\"WINEPREFIX\": \"/tmp\"}", "1", "WINEPREFIX");
+    refused_with("{\"A\": \"0\", \"A\": \"1\"}", "1", "twice");
+    refused_with("{\"A\": 0}", "1", "string");
+    refused_with("[\"A=0\"]", "1", "object");
+    refused_with("{\"A\" \"0\"}", "1", "expected :");
+    refused_with("{\"A\": \"0\" \"B\": \"1\"}", "1", "expected , or }");
+    refused_with("{}", "0", "from 1 to 100");
+    refused_with("{}", "101", "from 1 to 100");
+    refused_with("{}", "\"2\"", "integer");
+}
+
+static void environment_of_the_runs(void) {
+    pp_case_t result;
+    char error[256] = "";
+    PP_CHECK(parse("{\"program\": \"seh.exe\", \"environment\": {\"FEX_MULTIBLOCK\": \"0\"}, "
+                   "\"timeout_seconds\": 9, \"exit_code\": 0, \"expected\": \"seh.txt\"}",
+                   &result, error, sizeof error));
+    char path[] = "PATH=/bin";
+    char inherited[] = "FEX_MULTIBLOCK=1";
+    char longer[] = "FEX_MULTIBLOCKS=1";
+    char prefix[] = "WINEPREFIX=/old";
+    char *const base[] = {path, inherited, longer, prefix, NULL};
+    char *owned = NULL;
+    char **environment = pp_case_environment(&result, base, "/new", &owned);
+    PP_CHECK(environment != NULL);
+    if (environment != NULL) {
+        PP_CHECK_TEXT(environment[0], "PATH=/bin");
+        PP_CHECK_TEXT(environment[1], "FEX_MULTIBLOCKS=1");
+        PP_CHECK_TEXT(environment[2], "FEX_MULTIBLOCK=0");
+        PP_CHECK_TEXT(environment[3], "WINEPREFIX=/new");
+        PP_CHECK(environment[4] == NULL);
+        PP_CHECK(environment[3] == owned);
+    }
+    free((void *)environment);
+    free(owned);
+    pp_case_free(&result);
 }
 
 static void arguments_are_optional(void) {
@@ -124,6 +203,9 @@ static void error_names_the_line(void) {
 int main(int argc, char **argv) {
     static const pp_test_case_t cases[] = {
         {"valid_case", valid_case},
+        {"environment_and_runs", environment_and_runs},
+        {"environment_and_runs_refused", environment_and_runs_refused},
+        {"environment_of_the_runs", environment_of_the_runs},
         {"arguments_are_optional", arguments_are_optional},
         {"missing_or_repeated_member", missing_or_repeated_member},
         {"unknown_member", unknown_member},

@@ -5,7 +5,14 @@
 //
 //   "program"          the file name of a program in the programs folder, ending in .exe
 //   "arguments"        optional: an array of strings, the program's arguments
-//   "timeout_seconds"  how long the program may run, from 1 to 3600
+//   "environment"      optional: an object whose members are environment variables, each
+//                      with its value as a string, which every run of the program gets on top
+//                      of the harness's own environment. A name is capital letters, digits and
+//                      underscores, does not start with a digit, and is not WINEPREFIX
+//   "runs"             optional: how many times the program runs, from 1 to 100, 1 when it is
+//                      left out. The case passes only when every run passes, and its runs stop
+//                      at the first that fails
+//   "timeout_seconds"  how long each run of the program may take, from 1 to 3600
 //   "exit_code"        the exit code the program must return, from 0 to 255
 //   "expected"         the file name of its expected output in tests/runtime/expected, ending
 //                      in .txt
@@ -21,13 +28,20 @@
 #include <stddef.h>
 
 #define PP_CASE_MAX_ARGUMENTS 16U
+#define PP_CASE_MAX_VARIABLES 16U
+#define PP_CASE_MAX_RUNS 100
 #define PP_CASE_MAX_SIZE ((size_t)64U * 1024U)
+#define PP_CASE_MAX_ENVIRONMENT 4096U
 
 // One case. The strings are owned by the case and freed by pp_case_free.
 typedef struct pp_case_t {
     char *program;
     char *arguments[PP_CASE_MAX_ARGUMENTS];
     size_t argument_count;
+    // The environment's variables, each as "NAME=value".
+    char *variables[PP_CASE_MAX_VARIABLES];
+    size_t variable_count;
+    unsigned runs;
     unsigned timeout_seconds;
     int exit_code;
     char *expected;
@@ -41,6 +55,14 @@ bool pp_case_parse(const char *text, size_t length, pp_case_t *result, char *err
 
 // Reads and parses the case file at path, as pp_case_parse does.
 bool pp_case_read(const char *path, pp_case_t *result, char *error, size_t error_size);
+
+// The environment of a case's runs: the first PP_CASE_MAX_ENVIRONMENT entries of base, the
+// NULL-terminated environment that the harness got, without WINEPREFIX and without the variables
+// that the case sets; then the case's variables; then WINEPREFIX naming prefix. The caller frees
+// the array and the new WINEPREFIX, which owned returns; the other strings stay owned by base
+// and by the case. Returns NULL when out of memory.
+char **pp_case_environment(const pp_case_t *test, char *const base[], const char *prefix,
+                           char **owned);
 
 // Frees what pp_case_parse put in a case, and clears it.
 void pp_case_free(pp_case_t *value);

@@ -33,8 +33,9 @@ if(PANEPORT_TESTS)
     endfunction()
 
     paneport_harness_test(test_case_file CASES
-        valid_case arguments_are_optional missing_or_repeated_member unknown_member
-        wrong_type_or_range file_names_only malformed error_names_the_line)
+        valid_case environment_and_runs environment_and_runs_refused environment_of_the_runs
+        arguments_are_optional missing_or_repeated_member unknown_member wrong_type_or_range
+        file_names_only malformed error_names_the_line)
     paneport_harness_test(test_expected CASES
         literal_and_pattern_lines carriage_returns pattern_matches_whole_line
         literal_is_not_a_pattern first_difference_named missing_lines extra_lines

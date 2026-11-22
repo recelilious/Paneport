@@ -17,13 +17,14 @@ The runtime harness: our own C17 code under MIT that runs the Win32 test program
 
 ## Cases
 
-A case names the program, its arguments, its timeout, its exit code and its expected output:
+A case names the program, its arguments, the environment variables of its runs, how many times it runs, its timeout, its exit code and its expected output:
 
 ```json
 {"program": "console.exe", "arguments": ["3"], "timeout_seconds": 300, "exit_code": 3, "expected": "console.txt"}
+{"program": "seh.exe", "environment": {"FEX_MULTIBLOCK": "0"}, "runs": 3, "timeout_seconds": 300, "exit_code": 0, "expected": "seh.txt"}
 ```
 
-`arguments` is optional. Any other member, a missing one or a value of the wrong type fails the case, so that a typo does not go unnoticed. Names are file names without a folder.
+`arguments`, `environment` and `runs` are optional. `environment` adds its variables to the harness's own environment for every run; a name is capital letters, digits and underscores, does not start with a digit, and is not `WINEPREFIX`, which the harness sets. `runs`, from 1 to 100 and 1 when it is left out, runs the program that many times in the case's prefix, each run within the timeout and judged on its own, and the case fails at the first run that fails. Two cases use them: they run `seh.exe` and `threads.exe` several times under `FEX_MULTIBLOCK=0`, with which FEX translates one block at a time, so that a regression of the divisor race or of the syscall frame fails CI in at least 19 of 20 runs ([runtime-macos-harness.md](../../docs/design/runtime-macos-harness.md) section 4). Any other member, a missing one or a value of the wrong type fails the case, so that a typo does not go unnoticed. Names are file names without a folder.
 
 ## Expected outputs
 
@@ -45,7 +46,7 @@ The harness itself is `paneport_harness`, which the CMake preset `macos-harness`
 paneport_harness --case <file> --programs <folder> --expected <folder> --prefix <folder> --loader <file> --logs <folder> [--mode multi]
 ```
 
-It copies the program into the prefix at `C:\paneport-tests`, starts Wine's loader on it with `WINEPREFIX` naming the prefix, and prints `PASS <case>` or `FAIL <case>: <why>`. A case fails when a line differs, a line is missing or one more is printed, the exit code differs, the program runs past its timeout, or Wine reports an unhandled exception. It also fails when the output goes past 4 MiB, which is cut there, and when Wine's error output goes past 4 MiB: the harness keeps only its last 4 MiB, where Wine reports how the program ended, so a report in the part that was cut would be missed. Verbose `WINEDEBUG` channels can fill that much. It exits with 0 when the case passed, 1 when it failed and 2 when it could not run.
+It copies the program into the prefix at `C:\paneport-tests`, starts Wine's loader on it with `WINEPREFIX` naming the prefix and with the case's variables, once for each run, and prints `PASS <case>` or `FAIL <case>: <why>`, which names the failed run of a case of more than one. A run fails when a line differs, a line is missing or one more is printed, the exit code differs, the program runs past its timeout, or Wine reports an unhandled exception. It also fails when the output goes past 4 MiB, which is cut there, and when Wine's error output goes past 4 MiB: the harness keeps only its last 4 MiB, where Wine reports how the program ended, so a report in the part that was cut would be missed. Verbose `WINEDEBUG` channels can fill that much. It exits with 0 when the case passed, 1 when it failed and 2 when it could not run.
 
 ## Tests of the harness
 

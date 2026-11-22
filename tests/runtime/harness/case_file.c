@@ -10,6 +10,7 @@
 #include <string.h>
 
 #define PP_CASE_NAME_MAX 64U
+#define PP_CASE_VARIABLE_MAX 64U
 
 // The state of one parse: where it is, on which line, and the first error.
 typedef struct reader_t {
@@ -176,6 +177,95 @@ static bool read_arguments(reader_t *reader, pp_case_t *result) {
     }
 }
 
+// The name of an environment variable that a case may set: capital letters, digits and
+// underscores, not starting with a digit. WINEPREFIX is the harness's own.
+static bool is_variable_name(const char *name) {
+    size_t length = strlen(name);
+    if (length == 0U || length > PP_CASE_VARIABLE_MAX || isdigit((unsigned char)name[0]) != 0 ||
+        strcmp(name, "WINEPREFIX") == 0) {
+        return false;
+    }
+    for (size_t index = 0; index < length; index++) {
+        char next = name[index];
+        if ((next < 'A' || next > 'Z') && isdigit((unsigned char)next) == 0 && next != '_') {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Whether one of the case's variables, kept as "NAME=value", has this name.
+static bool has_variable(const pp_case_t *result, const char *name) {
+    size_t length = strlen(name);
+    for (size_t index = 0; index < result->variable_count; index++) {
+        if (strncmp(result->variables[index], name, length) == 0 &&
+            result->variables[index][length] == '=') {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Reads one member of "environment" into the case as "NAME=value".
+static bool read_variable(reader_t *reader, pp_case_t *result) {
+    if (result->variable_count == PP_CASE_MAX_VARIABLES) {
+        fail_at(reader, "a case sets at most 16 variables");
+        return false;
+    }
+    char *name = read_string(reader);
+    if (name == NULL) {
+        return false;
+    }
+    char *value = NULL;
+    bool read = false;
+    if (!is_variable_name(name)) {
+        fail_at(reader, "a variable's name is capital letters, digits and underscores, does not "
+                        "start with a digit, and is not WINEPREFIX");
+    } else if (has_variable(result, name)) {
+        fail_at(reader, "a variable appears twice");
+    } else if (take(reader, ':', "expected : after a variable's name")) {
+        value = read_string(reader);
+        read = value != NULL;
+    }
+    if (read) {
+        size_t size = strlen(name) + strlen(value) + 2U;
+        char *variable = malloc(size);
+        if (variable == NULL) {
+            fail_at(reader, "out of memory");
+            read = false;
+        } else {
+            (void)snprintf(variable, size, "%s=%s", name, value);
+            result->variables[result->variable_count] = variable;
+            result->variable_count++;
+        }
+    }
+    free(name);
+    free(value);
+    return read;
+}
+
+static bool read_environment(reader_t *reader, pp_case_t *result) {
+    if (!take(reader, '{', "\"environment\" must be an object of strings")) {
+        return false;
+    }
+    if (at(reader, '}')) {
+        reader->position++;
+        return true;
+    }
+    for (;;) {
+        if (!read_variable(reader, result)) {
+            return false;
+        }
+        if (at(reader, '}')) {
+            reader->position++;
+            return true;
+        }
+        if (!take(reader, ',', "expected , or } in \"environment\"")) {
+            return false;
+        }
+    }
+}
+
 // A file name without a folder: letters, digits, dots, hyphens and underscores, not starting
 // with a dot, ending in suffix.
 static bool is_file_name(const char *name, const char *suffix) {
@@ -198,6 +288,8 @@ static bool is_file_name(const char *name, const char *suffix) {
 typedef struct seen_t {
     bool program;
     bool arguments;
+    bool environment;
+    bool runs;
     bool timeout;
     bool exit_code;
     bool expected;
@@ -235,6 +327,15 @@ static void read_member(reader_t *reader, pp_case_t *result, seen_t *seen) {
         if (first_time(reader, &seen->arguments)) {
             (void)read_arguments(reader, result);
         }
+    } else if (strcmp(name, "environment") == 0) {
+        if (first_time(reader, &seen->environment)) {
+            (void)read_environment(reader, result);
+        }
+    } else if (strcmp(name, "runs") == 0) {
+        if (first_time(reader, &seen->runs)) {
+            read_bounded(reader, 1, PP_CASE_MAX_RUNS, &number, "\"runs\" must be from 1 to 100");
+            result->runs = (unsigned)number;
+        }
     } else if (strcmp(name, "timeout_seconds") == 0) {
         if (first_time(reader, &seen->timeout)) {
             read_bounded(reader, 1, 3600, &number, "\"timeout_seconds\" must be from 1 to 3600");
@@ -250,8 +351,8 @@ static void read_member(reader_t *reader, pp_case_t *result, seen_t *seen) {
             result->expected = read_string(reader);
         }
     } else {
-        fail_at(reader, "unknown member; a case has program, arguments, timeout_seconds, "
-                        "exit_code and expected");
+        fail_at(reader, "unknown member; a case has program, arguments, environment, runs, "
+                        "timeout_seconds, exit_code and expected");
     }
     free(name);
 }
@@ -270,7 +371,8 @@ bool pp_case_parse(const char *text, size_t length, pp_case_t *result, char *err
                    size_t error_size) {
     memset(result, 0, sizeof *result);
     reader_t reader = {text, length, 0U, 1U, error, error_size, false};
-    seen_t seen = {false, false, false, false, false};
+    result->runs = 1U;
+    seen_t seen = {false, false, false, false, false, false, false};
     if (take(&reader, '{', "a case is a JSON object")) {
         if (at(&reader, '}')) {
             reader.position++;
@@ -304,6 +406,54 @@ bool pp_case_parse(const char *text, size_t length, pp_case_t *result, char *err
         return false;
     }
     return true;
+}
+
+// Whether an entry of an environment, "NAME=value", names WINEPREFIX or a variable that the
+// case sets, so that the case's environment holds the case's value instead.
+static bool replaced(const char *entry, const pp_case_t *test) {
+    const char *equals = strchr(entry, '=');
+    size_t length = equals == NULL ? strlen(entry) : (size_t)(equals - entry);
+    if (length == strlen("WINEPREFIX") && strncmp(entry, "WINEPREFIX", length) == 0) {
+        return true;
+    }
+    for (size_t index = 0; index < test->variable_count; index++) {
+        if (strncmp(test->variables[index], entry, length) == 0 &&
+            test->variables[index][length] == '=') {
+            return true;
+        }
+    }
+    return false;
+}
+
+char **pp_case_environment(const pp_case_t *test, char *const base[], const char *prefix,
+                           char **owned) {
+    size_t count = 0;
+    while (base[count] != NULL && count < PP_CASE_MAX_ENVIRONMENT) {
+        count++;
+    }
+    char **result = (char **)calloc(count + test->variable_count + 2U, sizeof *result);
+    size_t size = strlen("WINEPREFIX=") + strlen(prefix) + 1U;
+    *owned = malloc(size);
+    if (result == NULL || *owned == NULL) {
+        free((void *)result);
+        free(*owned);
+        *owned = NULL;
+        return NULL;
+    }
+    (void)snprintf(*owned, size, "WINEPREFIX=%s", prefix);
+    size_t used = 0;
+    for (size_t index = 0; index < count; index++) {
+        if (!replaced(base[index], test)) {
+            result[used] = base[index];
+            used++;
+        }
+    }
+    for (size_t index = 0; index < test->variable_count; index++) {
+        result[used] = test->variables[index];
+        used++;
+    }
+    result[used] = *owned;
+    return result;
 }
 
 char *pp_read_file(const char *path, size_t limit, size_t *length, char *error, size_t error_size) {
@@ -352,6 +502,9 @@ void pp_case_free(pp_case_t *value) {
     free(value->program);
     for (size_t index = 0; index < value->argument_count; index++) {
         free(value->arguments[index]);
+    }
+    for (size_t index = 0; index < value->variable_count; index++) {
+        free(value->variables[index]);
     }
     free(value->expected);
     memset(value, 0, sizeof *value);

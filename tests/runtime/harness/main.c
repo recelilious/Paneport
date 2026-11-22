@@ -10,9 +10,11 @@
 //
 // In multi mode, the only one so far, the harness copies the program into the prefix's drive
 // C:, at C:\paneport-tests, and starts Wine's loader as a child process on it, with WINEPREFIX
-// naming the prefix. It prints one line, "PASS <case> (<seconds> s)" or "FAIL <case>: <why>",
-// writes the program's output, Wine's error output and the result into <logs>/<case>/, and
-// exits with 0 when the case passed, 1 when it failed and 2 when it could not run.
+// naming the prefix and with the case's variables, once for each of the case's runs. It prints
+// one line, "PASS <case> (<seconds> s)", with ", <n> runs" after the seconds for a case of more
+// than one run, or "FAIL <case>: <why>", which names the failed run in such a case. It writes
+// the last run's output, Wine's error output and the result into <logs>/<case>/, and exits with
+// 0 when the case passed, 1 when it failed and 2 when it could not run.
 
 #include <errno.h>
 #include <fcntl.h>
@@ -30,7 +32,6 @@
 #define PP_HARNESS_OUTPUT_LIMIT ((size_t)4U * 1024U * 1024U)
 #define PP_HARNESS_ERROR_SIZE 512U
 #define PP_HARNESS_REASONS_SIZE 4096U
-#define PP_HARNESS_MAX_ENVIRONMENT 4096U
 
 extern char **environ;
 
@@ -155,34 +156,6 @@ static bool copy_file(const char *source, const char *target) {
     return copied;
 }
 
-// The harness's own environment, with WINEPREFIX naming the case's prefix. The strings stay
-// owned by the environment, except the new WINEPREFIX, which the caller frees.
-static char **case_environment(const char *prefix, char **owned) {
-    size_t count = 0;
-    while (environ[count] != NULL && count < PP_HARNESS_MAX_ENVIRONMENT) {
-        count++;
-    }
-    char **result = (char **)calloc(count + 2U, sizeof *result);
-    size_t size = strlen("WINEPREFIX=") + strlen(prefix) + 1U;
-    *owned = malloc(size);
-    if (result == NULL || *owned == NULL) {
-        free((void *)result);
-        free(*owned);
-        *owned = NULL;
-        return NULL;
-    }
-    (void)snprintf(*owned, size, "WINEPREFIX=%s", prefix);
-    size_t used = 0;
-    for (size_t index = 0; index < count; index++) {
-        if (strncmp(environ[index], "WINEPREFIX=", strlen("WINEPREFIX=")) != 0) {
-            result[used] = environ[index];
-            used++;
-        }
-    }
-    result[used] = *owned;
-    return result;
-}
-
 static void add_reason(char *reasons, const char *reason) {
     size_t used = strlen(reasons);
     (void)snprintf(reasons + used, PP_HARNESS_REASONS_SIZE - used, "%s%s", used == 0U ? "" : "; ",
@@ -305,35 +278,50 @@ static int run_case(const options_t *options, const char *name) {
     }
     arguments[test.argument_count + 2U] = NULL;
     char *prefix_variable = NULL;
-    char **environment = case_environment(options->prefix, &prefix_variable);
+    char **environment = pp_case_environment(&test, environ, options->prefix, &prefix_variable);
     pp_child_result_t run;
     memset(&run, 0, sizeof run);
-    if (environment == NULL) {
+    bool started = environment != NULL;
+    if (!started) {
         (void)snprintf(run.message, sizeof run.message, "out of memory");
     }
-    bool started = false;
-    if (environment != NULL) {
+    // The runs stop at the first that fails, and the logs hold the last run.
+    char reasons[PP_HARNESS_REASONS_SIZE] = "";
+    unsigned runs_done = 0;
+    double seconds = 0.0;
+    while (started && runs_done < test.runs && reasons[0] == '\0') {
+        pp_child_result_free(&run);
         started = pp_child_run(arguments, environment, folder, test.timeout_seconds,
                                PP_HARNESS_OUTPUT_LIMIT, &run);
+        if (started) {
+            runs_done++;
+            seconds += run.seconds;
+            pp_comparison_t comparison;
+            judge(&test, &expected, &run, reasons, &comparison);
+        }
     }
     free((void *)environment);
     free(prefix_variable);
     if (!started) {
         (void)printf("ERROR %s: %s\n", name, run.message);
+        pp_child_result_free(&run);
         pp_expected_free(&expected);
         pp_case_free(&test);
         return 2;
     }
 
-    char reasons[PP_HARNESS_REASONS_SIZE] = "";
-    pp_comparison_t comparison;
-    judge(&test, &expected, &run, reasons, &comparison);
     char summary[PP_HARNESS_REASONS_SIZE + 128U];
     bool passed = reasons[0] == '\0';
-    if (passed) {
-        (void)snprintf(summary, sizeof summary, "PASS %s (%.1f s)\n", name, run.seconds);
-    } else {
+    if (passed && test.runs == 1U) {
+        (void)snprintf(summary, sizeof summary, "PASS %s (%.1f s)\n", name, seconds);
+    } else if (passed) {
+        (void)snprintf(summary, sizeof summary, "PASS %s (%.1f s, %u runs)\n", name, seconds,
+                       test.runs);
+    } else if (test.runs == 1U) {
         (void)snprintf(summary, sizeof summary, "FAIL %s: %s\n", name, reasons);
+    } else {
+        (void)snprintf(summary, sizeof summary, "FAIL %s: run %u of %u: %s\n", name, runs_done,
+                       test.runs, reasons);
     }
     (void)fputs(summary, stdout);
     if (!write_logs(options, name, &run, summary)) {

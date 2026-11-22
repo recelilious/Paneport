@@ -40,4 +40,4 @@ The target is a parameter. This stage builds x86-64; M7.3 adds the i686 builds, 
 
 ## On Windows
 
-The programs run natively on Windows 11 too, where they print the same lines, except the CPU line and the throughput, and exit with 0. That is an optional local check, with a Windows build of the pinned llvm-mingw.
+The programs are meant to run natively on Windows 11 too, where they should print the same lines, except the CPU line and the throughput, and exit with 0. That is an optional local check, with a Windows build of the pinned llvm-mingw, and it has not been done yet; lld warns on every link that an image with `/align` but without `/driver` may not run, which such a run would settle. `eng/mac/build-win32-tests.sh` lets that one link warning through and fails on any other.

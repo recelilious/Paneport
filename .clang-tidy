@@ -36,7 +36,9 @@
 # presets, which Apple's clang wrote, so it sees both the test builds and the framework that
 # the main app ships; .github/workflows/ci.yml lists the run, and
 # docs/design/native-host.md section 11 what to do when the pinned LLVM release disagrees
-# with Apple's clang about a flag.
+# with Apple's clang about a flag. The runtime job runs llvm-mingw's clang-tidy with this file on
+# build/win32/x86_64/compile_commands.json, which eng/mac/build-win32-tests.sh writes for the
+# Win32 test programs of tests/win32.
 Checks: >
   -*,
   bugprone-*,

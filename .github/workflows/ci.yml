@@ -238,6 +238,8 @@ jobs:
       # tools that build the forks; the fork's build script; the bootstrap; and select-xcode.sh.
       # A pin that no fork build uses, such as gitleaks', is in no key, so that moving it
       # rebuilds nothing. A key names its fork's commit in full; the rest is a SHA-256 prefix.
+      # The build steps only fetch a fork and call its script, with no option or environment of
+      # their own: every option that shapes a build lives in the keyed scripts.
       - name: Compute the cache keys
         id: keys
         run: |

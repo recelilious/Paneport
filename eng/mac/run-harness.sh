@@ -192,7 +192,9 @@ for name in "${names[@]}"; do
     mkdir -p "$runtime/prefixes"
     cp -Rc "$template" "$prefix" 2>/dev/null || cp -R "$template" "$prefix"
     # A wineserver of the case's own, started before the program and outside its process
-    # group, so that the program's end closes its output, and ended with the case.
+    # group, so that the server does not hold the program's output, and ended with the case.
+    # The session's first program runs wineboot --init, whose helpers keep the case's error
+    # stream open until the server ends.
     WINEPREFIX="$prefix" "$server" -p > "$logs/$name.wineserver.log" 2>&1 || true
     # The server never ends by itself, and the program runs in a process group of its own that
     # Ctrl-C does not reach, so an interrupted run ends them here.

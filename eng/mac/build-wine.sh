@@ -131,8 +131,13 @@ for loader in "$install/bin/wine" "$install/lib/wine/aarch64-unix/wine"; do
     [ -f "$loader" ] || fail "${loader#"$install/"} is missing."
     name=${loader#"$install/"}
     sdk=$(vtool -show-build "$loader" 2>/dev/null | awk '$1 == "sdk" { print $2 }' | head -n 1)
+    # The list is captured first, because a loop over a command substitution ignores its status:
+    # an otool that fails or lists nothing would leave nothing to check.
+    segments=$(otool -l "$loader" | awk '$1 == "vmaddr" { print $2 }') \
+        || fail "otool cannot read the segments of $name."
+    [ -n "$segments" ] || fail "otool lists no segment of $name."
     misaligned=0
-    for address in $(otool -l "$loader" | awk '$1 == "vmaddr" { print $2 }'); do
+    for address in $segments; do
         [ $((address % 16384)) -eq 0 ] || misaligned=$((misaligned + 1))
     done
     say "$name: SDK version ${sdk:-unknown}, $misaligned segments not aligned to 16 KiB"
@@ -142,12 +147,19 @@ done
     || fail "lib/wine/aarch64-unix/wine names SDK ${sdk:-unknown}, so macOS will not keep x18."
 
 # S4.2.2: every module that the build made for a PE architecture is installed in that
-# architecture's folder, and a sample of modules has the machine type of its folder.
+# architecture's folder, and a sample of modules has the machine type of its folder. The folders
+# are those of the architectures that configure's --enable-archs names: arm64ec and aarch64
+# share aarch64-windows, whose libraries are ARM64X files, and i386 has i386-windows. A folder
+# that the install left out fails the check.
 readobj="$LLVM_MINGW/bin/llvm-readobj"
 problems=0
-for folder in "$install"/lib/wine/*-windows; do
-    [ -d "$folder" ] || continue
-    arch=$(basename "$folder")
+for arch in aarch64-windows i386-windows; do
+    folder="$install/lib/wine/$arch"
+    if [ ! -d "$folder" ]; then
+        say "$arch: the folder is missing" >&2
+        problems=1
+        continue
+    fi
     built_list=$(cd "$work" && find dlls programs -path "*/$arch/*" -type f \
         \( -name '*.dll' -o -name '*.exe' -o -name '*.drv' -o -name '*.sys' -o -name '*.acm' \
         -o -name '*.cpl' -o -name '*.ocx' -o -name '*.tlb' -o -name '*.ax' -o -name '*.ds' \
@@ -168,7 +180,6 @@ for folder in "$install"/lib/wine/*-windows; do
     case "$arch" in
         aarch64-windows) expected=IMAGE_FILE_MACHINE_ARM64X programs="wineboot.exe" ;;
         i386-windows) expected=IMAGE_FILE_MACHINE_I386 ;;
-        x86_64-windows) expected=IMAGE_FILE_MACHINE_AMD64 ;;
         *) expected="" ;;
     esac
     # shellcheck disable=SC2086 # The sample names are words of their own.

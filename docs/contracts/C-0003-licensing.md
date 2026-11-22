@@ -198,6 +198,20 @@ Rules:
 
 If an explicit patent grant becomes necessary, our own code can move to `MIT OR Apache-2.0` dual licensing. MIT stays the default.
 
+## Proposed changes for 1.8
+
+**Not yet accepted.** Version 1.7 above stays binding until recelilious approves these changes, which are accepted together with C-0009 1.2. They come from stage M2.3 and from recelilious's decision of 2026-11-22 on how the app offers the source of SteamKit2. SteamKit2 comes as a NuGet package that the build compiles into the app's executable, and LGPL-2.1 section 6 asks that the library's complete source accompany each copy of the app or be offered from the same place (6(a) and 6(d)). The source archives of section 3 cover only this repository and the forks, so nothing offers SteamKit2's source beside a release or beside the apps that the `ios` CI job makes public.
+
+1. **Section 3, a new item after "Public source".** Add: "**Source of other LGPL components:** CI makes an archive of the exact corresponding source of each LGPL component that is neither this repository nor one of our forks, today SteamKit2, which comes as a package that the build compiles into the app. The archive comes from the upstream's repository at the commit that the shipped binaries were built from, and each release and the public artifacts of the `ios` CI job carry it beside the builds that contain the component (C-0009 section 6). It holds the library's complete source as LGPL-2.1 section 0 defines it: the source of all its modules, the interface definitions that its generated code comes from, with the tools that generate that code, and the scripts that build it, also where the upstream keeps them in a submodule. It leaves out the upstream's other programs, samples and tests, which are not part of the library and may hold what section 5 forbids, such as the headers from the Steamworks SDK in SteamKit2's NetHook2 tool."
+
+2. **Section 3, the item "Shipped with every release".** Replace "Each release attaches source archives of this repository and of every fork at exactly the released revisions, and its notes link to them (C-0009 section 6)." with "Each release attaches source archives of this repository and of every fork at exactly the released revisions, and the archive of each other LGPL component, and its notes link to them (C-0009 section 6)."
+
+3. **Section 12, new sources.** Add "LGPL-2.1, whose section 0 defines a library's complete source: <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html>" and "SteamKit2's NetHook2 headers at 4.0.0-Beta.2: <https://github.com/SteamRE/SteamKit/tree/4.0.0-Beta.2/Resources/NetHook2/NetHook2/steam>".
+
+4. **Change log.** On acceptance, add a row for 1.8, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0009 1.2. Comes from stage M2.3 and from recelilious's decision of 2026-11-22 on how the app offers the source of SteamKit2. Section 3 has each release and the public artifacts of the `ios` CI job carry the exact corresponding source of every LGPL component that is neither this repository nor a fork, today SteamKit2: the library's complete source as LGPL-2.1 section 0 defines it, without the upstream's other programs, samples and tests. Section 12 adds two sources: the text of LGPL-2.1 and the headers of SteamKit2's NetHook2 tool."
+
+The release tag of SteamKit2 4.0.0-Beta.2 points to the commit `082594a0d52fb8b3db112a5ed2e1587b85bab963`, which the package's own metadata also names as the commit it was built from. Its generated code comes from the protobuf definitions in its submodule `Resources/Protobufs` (SteamTracking/Protobufs, whose license file is the Unlicense) and from the files in `Resources/SteamLanguage`, through the generators in `Resources/ProtobufGen` and `Resources/SteamLanguageParser`. Its archive holds those, the library in `SteamKit2/SteamKit2` and the files that build and pack it, and leaves out NetHook2, NetHookAnalyzer2, ProtobufDumper, the samples and the tests.
+
 ## 12. Sources
 
 - Wine license: <https://github.com/wine-mirror/wine/blob/HEAD/LICENSE>

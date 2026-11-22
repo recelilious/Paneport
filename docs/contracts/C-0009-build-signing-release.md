@@ -108,6 +108,18 @@ The bundle identifier is chosen by recelilious.
   - source archives of this repository and of every fork at exactly the released revisions, with release notes that link to the tag and to each fork revision, so the source of every LGPL component is offered from the same place as the `.ipa` (LGPL-2.1 section 6).
 - Release acceptance follows C-0012 section 5.
 
+## Proposed changes for 1.2
+
+**Not yet accepted.** Version 1.1 above stays binding until recelilious approves these changes, which are accepted together with C-0003 1.8. They come from stage M2.3 and from recelilious's decision of 2026-11-22 on how the app offers the source of SteamKit2: each release and the public artifacts of the `ios` CI job carry the exact corresponding source of every LGPL component that is neither this repository nor a fork (C-0003 1.8, section 3).
+
+1. **Section 6, the last entry of what a GitHub release contains.** Replace "source archives of this repository and of every fork at exactly the released revisions, with release notes that link to the tag and to each fork revision, so the source of every LGPL component is offered from the same place as the `.ipa` (LGPL-2.1 section 6)." with "source archives of this repository and of every fork at exactly the released revisions, and an archive of the exact corresponding source of each LGPL component that is neither this repository nor a fork, such as SteamKit2 (C-0003 section 3), with release notes that link to the tag, to each fork revision and to each such component's upstream commit, so the source of every LGPL component is offered from the same place as the `.ipa` (LGPL-2.1 section 6)."
+
+2. **Section 6, a new item after that list.** Add: "CI makes the archive of each such component itself, with `git archive`, from the upstream's repository at the commit that the build used, and from each submodule whose files the archive holds, at the commit that the upstream's tree records. For a package, such as SteamKit2, that commit is the one of the upstream's release tag for the package's version, pinned in the repository; moving the pin is a reviewed change of its own, as for the pins of section 2, and when the package names the commit that it was built from, as SteamKit2's does, CI fails if the two differ. GitHub's generated archives of a tag are not used, because they are not guaranteed to stay byte-identical. `THIRD_PARTY_NOTICES.md` names each such commit and says where the archive is."
+
+3. **Section 6, a new item after the previous one.** Add: "The `ios` CI job uploads the same archives as artifacts of the run that builds the apps, kept as long as the apps, so that every build of the app that CI makes public offers the source of these components from the same place."
+
+4. **Change log.** On acceptance, add a row for 1.2, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0003 1.8. Comes from stage M2.3 and from recelilious's decision of 2026-11-22 on how the app offers the source of SteamKit2. Section 6 adds to each release an archive of the exact corresponding source of every LGPL component that is neither this repository nor a fork, which CI makes itself with `git archive` at the commit that the build used, for a package the commit of the upstream's release tag, pinned in the repository and checked against the commit that the package names. The `ios` CI job uploads the same archives beside its apps."
+
 ## Change log
 
 | Version | Date | Notes |

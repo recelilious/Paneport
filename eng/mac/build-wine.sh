@@ -58,9 +58,10 @@ install="$build_dir/wine/install"
 # llvm-mingw first, as the FEX wiki asks for the PE side; Xcode's clang still builds the Unix
 # side, because configure asks for it by name.
 export PATH="$LLVM_MINGW/bin:$PATH"
-say "Wine $(cat "$source/VERSION" 2>/dev/null || echo "(no VERSION file)"), commit $(git -C "$source" rev-parse --short=12 HEAD)"
-say "$(aarch64-w64-mingw32-clang --version | head -n 1)"
-say "$(clang --version | head -n 1)"
+wine_version=$(sed -n 's/^Wine version //p' "$source/VERSION" 2>/dev/null | head -n 1)
+[ -n "$wine_version" ] || fail "external/Paneport-wine/VERSION does not name a Wine version."
+say "Wine $wine_version, commit $(git -C "$source" rev-parse --short=12 HEAD)"
+say "the PE side: $(aarch64-w64-mingw32-clang --version | head -n 1)"
 say "$(bison --version | head -n 1); $(flex --version)"
 
 rm -rf "$work" "$install"
@@ -86,6 +87,14 @@ if ! "$source/configure" --prefix="$install" --enable-archs=arm64ec,aarch64,i386
     fail "configure failed; the end of its output and of config.log are above."
 fi
 grep -E '^configure: (WARNING|NOTICE)' configure.log || true
+# The compiler that configure chose for the Unix side, which is Xcode's, not llvm-mingw's.
+unix_cc=$(sed -n 's/^CC = //p' Makefile | head -n 1)
+if [ -n "$unix_cc" ]; then
+    # shellcheck disable=SC2086 # CC may carry flags after the compiler's name.
+    say "the Unix side: $unix_cc, $($unix_cc --version 2>&1 | head -n 1)"
+else
+    say "the Makefile names no CC for the Unix side"
+fi
 configured=$(date +%s)
 say "configured in $((configured - started)) s"
 
@@ -104,9 +113,15 @@ if ! make install > install.log 2>&1; then
 fi
 say "installed in $(($(date +%s) - built)) s into $install"
 
-# S4.2.1: the loader starts and prints its version.
-version=$("$install/bin/wine" --version) || fail "the installed loader does not start."
-say "the loader reports $version"
+# S4.2.1: the launcher and the loader start and print the version. bin/wine answers --version in
+# ntdll.so, inside its own process, before it would exec the loader, so the loader in
+# lib/wine/aarch64-unix, which macOS can refuse for its link alone, runs on its own as well.
+for program in bin/wine lib/wine/aarch64-unix/wine; do
+    version=$("$install/$program" --version) || fail "the installed $program does not start."
+    [ "$version" = "wine-$wine_version" ] \
+        || fail "the installed $program reports \"$version\", not wine-$wine_version."
+    say "$program reports $version"
+done
 
 # bin/wine is Wine's launcher, which execs the loader in lib/wine/aarch64-unix as the program's
 # process. macOS kills an arm64 executable whose segments are not aligned to its 16 KiB pages,
@@ -146,18 +161,18 @@ for folder in "$install"/lib/wine/*-windows; do
         printf '%s\n' "$missing" | sed "s/^/build-wine: $arch: built but not installed: /" >&2
         problems=1
     fi
-    # The 64-bit modules are hybrid ARM64X files, which llvm-readobj reports as such; the
-    # programs, such as wineboot.exe, exist for the 64-bit architecture only.
+    # The 64-bit libraries are hybrid ARM64X files, which hold the ARM64EC code that FEX runs;
+    # the programs, such as wineboot.exe, are plain ARM64 and exist for that architecture only.
     samples="ntdll.dll kernel32.dll kernelbase.dll ucrtbase.dll user32.dll"
+    programs=""
     case "$arch" in
-        aarch64-windows) expected="IMAGE_FILE_MACHINE_ARM64X IMAGE_FILE_MACHINE_ARM64"
-                         samples="$samples wineboot.exe" ;;
+        aarch64-windows) expected=IMAGE_FILE_MACHINE_ARM64X programs="wineboot.exe" ;;
         i386-windows) expected=IMAGE_FILE_MACHINE_I386 ;;
         x86_64-windows) expected=IMAGE_FILE_MACHINE_AMD64 ;;
         *) expected="" ;;
     esac
     # shellcheck disable=SC2086 # The sample names are words of their own.
-    for module in $samples; do
+    for module in $samples $programs; do
         if [ ! -f "$folder/$module" ]; then
             say "$arch: $module is missing" >&2
             problems=1
@@ -165,14 +180,20 @@ for folder in "$install"/lib/wine/*-windows; do
         fi
         headers=$("$readobj" --file-headers "$folder/$module")
         machine=$(printf '%s\n' "$headers" | sed -n 's/^ *Machine: \([A-Z0-9_]*\).*/\1/p' | head -n 1)
+        # The dump is read whole before it is searched, because a pipe into grep -q would end
+        # llvm-readobj early under pipefail.
+        load_config=$("$readobj" --coff-load-config "$folder/$module" 2>/dev/null || true)
         hybrid=""
-        if "$readobj" --coff-load-config "$folder/$module" 2>/dev/null |
-            grep -Eq 'CHPEMetadata(Pointer)?: 0x0*[1-9A-Fa-f]'; then
+        if [[ $load_config =~ CHPEMetadata(Pointer)?:\ 0x0*[1-9A-Fa-f] ]]; then
             hybrid=", with ARM64EC code (CHPE metadata)"
         fi
         say "$arch: $module is $machine$hybrid"
-        if [ -n "$expected" ] && ! [[ " $expected " == *" $machine "* ]]; then
-            say "$arch: $module should be one of: $expected" >&2
+        wanted=$expected
+        case " $programs " in
+            *" $module "*) wanted=IMAGE_FILE_MACHINE_ARM64 ;;
+        esac
+        if [ -n "$wanted" ] && [ "$machine" != "$wanted" ]; then
+            say "$arch: $module should be $wanted" >&2
             problems=1
         fi
     done

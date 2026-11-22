@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: MIT
 
 # Builds the Win32 test programs of tests/win32 with the pinned llvm-mingw (C-0009 section 3),
-# as C17 with every warning an error (C-0010 section 3), for one target:
+# as C17 with every compiler warning an error (C-0010 section 3) and every link warning an error
+# but one that the link of a 16 KiB-aligned image always prints, for one target:
 #
 #   eng/mac/build-win32-tests.sh <target>
 #
@@ -48,13 +49,18 @@ rm -rf "$out"
 mkdir -p "$out/objects"
 
 # UCRT formats the output, not mingw-w64's own printf, as for the C program of the runtime review
-# in docs/design/forks.md section 9. Source paths in the binaries are relative to the
-# repository (C-0009 section 6). Sections are aligned to 16 KiB, the page size of Apple
-# silicon, so that no host page holds both code and writable data
-# (docs/design/runtime-macos-harness.md).
+# in docs/design/forks.md section 9. The debug info names our sources relative to the
+# repository, the compilation folder as ".", and llvm-mingw's headers under "llvm-mingw", so
+# that no path of this machine reaches the binaries (C-0009 section 6); a check after the link
+# enforces it. Sections are aligned to 16 KiB, the page size of Apple silicon, so that no host
+# page holds both code and writable data (docs/design/runtime-macos-harness.md).
 cflags=(-std=c17 -O2 -g -Wall -Wextra -Wpedantic -Werror -Wvla
-    -D__USE_MINGW_ANSI_STDIO=0 "-ffile-prefix-map=$repo/=" -I "$repo/tests/win32/checks")
+    -D__USE_MINGW_ANSI_STDIO=0 "-ffile-prefix-map=$repo=." "-ffile-prefix-map=$LLVM_MINGW=llvm-mingw"
+    -I "$repo/tests/win32/checks")
 ldflags=(-Wl,--section-alignment,16384)
+# lld warns on every link that /align without /driver may give an image that does not run. The
+# 16 KiB alignment is intended, for the reason above; any other link warning fails the build.
+expected_link_warning="ld.lld: warning: /align specified without /driver; image may not run"
 
 echo "build-win32-tests: $("$compiler" --version | head -n 1), target $target-w64-mingw32"
 
@@ -119,8 +125,22 @@ for source in "${programs[@]}"; do
     name=$(basename "$source" .c)
     relative=${source#"$repo"/}
     object="$out/objects/$(printf '%s' "$relative" | tr '/' '_' | sed 's/\.c$/.o/')"
-    "$compiler" "${ldflags[@]}" "-Wl,-Map=$out/$name.map" -o "$out/$name.exe" \
-        "$object" "${shared_objects[@]}"
+    link_log="$out/$name.link.txt"
+    if ! "$compiler" "${ldflags[@]}" "-Wl,-Map=$out/$name.map" -o "$out/$name.exe" \
+        "$object" "${shared_objects[@]}" 2> "$link_log"; then
+        cat "$link_log" >&2
+        fail "the link of $name.exe failed."
+    fi
+    unexpected=$(grep -v -x -F -- "$expected_link_warning" "$link_log" || true)
+    if [ -n "$unexpected" ]; then
+        printf '%s\n' "$unexpected" >&2
+        fail "the link of $name.exe printed more than the expected warning about /align."
+    fi
+    for local_path in "$repo" "$LLVM_MINGW"; do
+        if LC_ALL=C grep -q -a -F -- "$local_path" "$out/$name.exe"; then
+            fail "$name.exe holds the path $local_path of this machine."
+        fi
+    done
     # The machine type and the section alignment, read back from the program's headers.
     headers=$("$readobj" --file-headers "$out/$name.exe")
     machine=$(printf '%s\n' "$headers" | sed -n 's/^ *Machine: \([A-Z0-9_]*\).*/\1/p' | head -n 1)

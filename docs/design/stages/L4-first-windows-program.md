@@ -12,7 +12,7 @@ Back to the [development plan](../development-plan.md).
 |---|---|---|---|---|---|
 | L4 | First Windows program on the iPhone | Large | Planned | | |
 | M4.1 | Forks, submodules and toolchains | Medium | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| M4.2 | ARM64EC Wine with FEX on macOS | Medium | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
+| M4.2 | ARM64EC Wine with FEX on macOS | Medium | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
 | M4.3 | Single-process Wine on macOS | Medium | Planned | | |
 | M4.4 | Runtime on iOS | Medium | Planned | | |
 | S4.0.1 | In-app console and the Run sample program action | Small | Planned | | |
@@ -21,12 +21,12 @@ Back to the [development plan](../development-plan.md).
 | S4.1.3 | Toolchain pins and Mac bootstrap update | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | S4.1.4 | C-0003 register proposal and mingw-w64 runtime review | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | S4.1.5 | Forks design document | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
-| S4.2.1 | Wine build script for macOS | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
-| S4.2.2 | PE-side build | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
-| S4.2.3 | FEX ARM64EC build for Darwin | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
-| S4.2.4 | Win32 test programs | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
-| S4.2.5 | Harness, runner and expected outputs | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
-| S4.2.6 | Runtime CI job, layout proposal and build caching | Small | In progress | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
+| S4.2.1 | Wine build script for macOS | Small | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
+| S4.2.2 | PE-side build | Small | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
+| S4.2.3 | FEX ARM64EC build for Darwin | Small | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
+| S4.2.4 | Win32 test programs | Small | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
+| S4.2.5 | Harness, runner and expected outputs | Small | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
+| S4.2.6 | Runtime CI job, layout proposal and build caching | Small | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
 | S4.3.1 | Single-process design document | Small | Planned | | |
 | S4.3.2 | wineserver thread and in-process connections | Small | Planned | | |
 | S4.3.3 | In-process start of the first process | Small | Planned | | |
@@ -426,6 +426,10 @@ Out: single-process mode, the native host and the bridge (M4.3); iOS builds (M4.
   - **Left.** The merge of #29, then the rebase onto `main` and a green run of every job. The message of FEX's `aa8f7a6` does not say why iOS needs the change: its depth check guards the write scope that iOS enforces. That reason goes into the FEX fork's next commit, or into the message when the branch is next rebased, without rewriting the branch before then (forks.md section 4.4, K6).
   - **Correction.** The log of 2026-11-16 says that twelve licenses and three notices are not on C-0003 section 5's list, and that FEX's Cephes has no license text. The notices are four, range-v3's three and the University of Michigan's notice that OpenLDAP carries, and Cephes has a license text, `External/cephes/LICENSE`, which rests on an e-mail in which its author allowed BSD terms (runtime-macos-harness.md section 10).
   - **For later sessions.** Notes left in the briefs of M4.3 (the dispatchers' prologue state for its context code, and the race in the ARM64EC suspension), M4.4 (Wine's x64 syscall thunks and the shared user data) and M7.3 in the [L7 brief](L7-steam-library.md) (the same thunks, and the shared user data of the i386 build).
+- **2026-11-22 (UTC), rebase onto `main` after #29.** The same branch and pull request. The coordinating session's check of fix round 2 found no defect, and #29 merged as `ea8ee29`, which brings C-0011 1.3, C-0004 1.1, C-0003 1.6 and C-0010 1.1 to `main`.
+  - **Done.** The branch, rebased onto `ea8ee29` without conflicts: its tree differs from `ccf0625` only by #29's changes under `docs/contracts/`. With `actions/cache` in the register on `main`, the license check of the `checks` job passes too. M4.2 and S4.2.1 to S4.2.6 are set to Done, since only the merge is left of the Done-when list (plan section 3.3).
+  - **Verification.** CI on the rebased head, which the pull request lists.
+  - **Left.** recelilious merges #22. Then each fork's `paneport/integration` is fast-forwarded to the recorded commit, Wine's `51a6336` and FEX's `aa8f7a6`, by recelilious or by Claude when recelilious asks, and the forks' `paneport/M4.2` branches are deleted (forks.md section 4.2). The items that wait on recelilious stay as fix round 2 lists them.
 
 ## M4.3 Single-process Wine on macOS
 

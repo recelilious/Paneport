@@ -49,15 +49,16 @@ rm -rf "$out"
 mkdir -p "$out/objects"
 
 # UCRT formats the output, not mingw-w64's own printf, as for the C program of the runtime review
-# in docs/design/forks.md section 9. The debug info names our sources relative to the
-# repository, the compilation folder as ".", and llvm-mingw's headers under "llvm-mingw", so
-# that no path of this machine reaches the binaries (C-0009 section 6); a check after the link
-# enforces it. Sections are aligned to 16 KiB, the page size of Apple silicon, so that no host
-# page holds both code and writable data (docs/design/runtime-macos-harness.md).
-cflags=(-std=c17 -O2 -g -Wall -Wextra -Wpedantic -Werror -Wvla
+# in docs/design/forks.md section 9. The programs carry no debug info: the runtime objects of
+# llvm-mingw hold the paths of the machine that built them, and ours would hold this one's, so
+# the link drops it, and __FILE__ names our sources relative to the repository and llvm-mingw's
+# headers under "llvm-mingw". A check after the link fails on any path of a home or temporary
+# folder (C-0009 section 6). Sections are aligned to 16 KiB, the page size of Apple silicon, so
+# that no host page holds both code and writable data (docs/design/runtime-macos-harness.md).
+cflags=(-std=c17 -O2 -Wall -Wextra -Wpedantic -Werror -Wvla
     -D__USE_MINGW_ANSI_STDIO=0 "-ffile-prefix-map=$repo=." "-ffile-prefix-map=$LLVM_MINGW=llvm-mingw"
     -I "$repo/tests/win32/checks")
-ldflags=(-Wl,--section-alignment,16384)
+ldflags=(-Wl,--section-alignment,16384 -Wl,--strip-debug)
 # lld warns on every link that /align without /driver may give an image that does not run. The
 # 16 KiB alignment is intended, for the reason above; any other link warning fails the build.
 expected_link_warning="ld.lld: warning: /align specified without /driver; image may not run"
@@ -136,11 +137,15 @@ for source in "${programs[@]}"; do
         printf '%s\n' "$unexpected" >&2
         fail "the link of $name.exe printed more than the expected warning about /align."
     fi
-    for local_path in "$repo" "$LLVM_MINGW"; do
+    for local_path in "$repo" "$LLVM_MINGW" "$HOME"; do
         if LC_ALL=C grep -q -a -F -- "$local_path" "$out/$name.exe"; then
             fail "$name.exe holds the path $local_path of this machine."
         fi
     done
+    if LC_ALL=C grep -q -a -E -- "/(Users|home|private/var|private/tmp|var/folders|tmp)/" \
+        "$out/$name.exe"; then
+        fail "$name.exe holds the path of a home or temporary folder."
+    fi
     # The machine type and the section alignment, read back from the program's headers.
     headers=$("$readobj" --file-headers "$out/$name.exe")
     machine=$(printf '%s\n' "$headers" | sed -n 's/^ *Machine: \([A-Z0-9_]*\).*/\1/p' | head -n 1)

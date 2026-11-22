@@ -35,6 +35,7 @@ The programs land in `build/win32/x86_64/`, with a linker map beside each one an
 - `-fms-extensions`, for `__try`, `__except` and `__finally`. clang accepts them for MinGW targets with this flag. It has no asynchronous exceptions there, so it catches only exceptions raised inside a call: every fault happens in a function of its own that the `__try` block calls. The keyword warning that `-Wpedantic` gives for `__try` is turned off around those functions alone. Only `checks/seh_check.c` gets the flag: with it, clang-tidy's `readability-duplicate-include` reports includes that are not repeated, which that file alone tells it to ignore.
 - `-D__USE_MINGW_ANSI_STDIO=0`, so that the UCRT formats the output, as in the C program of the mingw-w64 runtime review ([forks.md](../../docs/design/forks.md) section 9).
 - `-Wl,--section-alignment,16384`, so that no 16 KB page of Apple silicon holds both code and writable data.
+- `-Wl,--strip-debug`, and no `-g`, so that the programs hold no debug info: llvm-mingw's runtime objects carry the paths of the machine that built them. `-ffile-prefix-map` keeps the paths of the checkout and of llvm-mingw out of `__FILE__`, and the build fails if a program holds the path of the checkout, of llvm-mingw, of the home folder, or of any home or temporary folder (C-0009 section 6).
 
 The target is a parameter. This stage builds x86-64; M7.3 adds the i686 builds, whose code paths the checks already have but no build has run yet.
 

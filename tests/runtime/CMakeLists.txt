@@ -41,7 +41,8 @@ if(PANEPORT_TESTS)
         control_characters_quoted bad_expected_files crossed_parentheses_refused unhandled_reported)
     paneport_harness_test(test_child CASES
         output_and_exit_code input_is_empty directory_is_used timeout_ends_the_group
-        signal_reported output_cut_at_the_limit leftover_does_not_hold missing_program)
+        signal_reported output_cut_at_the_limit errors_keep_their_tail leftover_does_not_hold
+        missing_program)
     paneport_harness_test(test_files CASES cases_are_valid expected_outputs_are_valid)
     target_compile_definitions(test_files PRIVATE
         "PP_REPOSITORY_ROOT=\"${PANEPORT_REPOSITORY_ROOT}\"")

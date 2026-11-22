@@ -238,8 +238,12 @@ static void judge(const pp_case_t *test, const pp_expected_t *expected,
         (void)snprintf(reason, sizeof reason, "Wine reported: %s", line);
         add_reason(reasons, reason);
     }
-    if (run->truncated) {
+    if (run->output_truncated) {
         add_reason(reasons, "the output went past 4 MiB and was cut");
+    }
+    if (run->errors_truncated) {
+        add_reason(reasons, "the error stream went past 4 MiB and only its last 4 MiB were kept, "
+                            "so a report of Wine's in the part that was cut would be missed");
     }
 }
 

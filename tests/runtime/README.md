@@ -45,7 +45,7 @@ The harness itself is `paneport_harness`, which the CMake preset `macos-harness`
 paneport_harness --case <file> --programs <folder> --expected <folder> --prefix <folder> --loader <file> --logs <folder> [--mode multi]
 ```
 
-It copies the program into the prefix at `C:\paneport-tests`, starts Wine's loader on it with `WINEPREFIX` naming the prefix, and prints `PASS <case>` or `FAIL <case>: <why>`. A case fails when a line differs, a line is missing or one more is printed, the exit code differs, the program runs past its timeout, or Wine reports an unhandled exception. It exits with 0 when the case passed, 1 when it failed and 2 when it could not run.
+It copies the program into the prefix at `C:\paneport-tests`, starts Wine's loader on it with `WINEPREFIX` naming the prefix, and prints `PASS <case>` or `FAIL <case>: <why>`. A case fails when a line differs, a line is missing or one more is printed, the exit code differs, the program runs past its timeout, or Wine reports an unhandled exception. It also fails when the output goes past 4 MiB, which is cut there, and when Wine's error output goes past 4 MiB: the harness keeps only its last 4 MiB, where Wine reports how the program ended, so a report in the part that was cut would be missed. Verbose `WINEDEBUG` channels can fill that much. It exits with 0 when the case passed, 1 when it failed and 2 when it could not run.
 
 ## Tests of the harness
 

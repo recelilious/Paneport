@@ -19,12 +19,15 @@
 #define PP_CHILD_READ_SIZE 4096U
 #define PP_CHILD_POLL_MS 100
 
-// One captured stream: the harness's end of its pipe, while it is open, and what came so far.
+// One captured stream: the harness's end of its pipe, while it is open, what came so far, whether
+// it keeps its last bytes rather than its first once it passes the limit, and whether it did.
 typedef struct stream_t {
     int descriptor;
     char *data;
     size_t length;
     size_t capacity;
+    bool keep_tail;
+    bool truncated;
 } stream_t;
 
 static double now_seconds(void) {
@@ -51,7 +54,24 @@ static void close_stream(stream_t *stream) {
     }
 }
 
-static void read_stream(stream_t *stream, size_t limit, bool *truncated) {
+static bool reserve(stream_t *stream, size_t needed) {
+    if (stream->data != NULL && needed <= stream->capacity) {
+        return true;
+    }
+    size_t capacity = stream->capacity == 0U ? (size_t)2U * PP_CHILD_READ_SIZE : stream->capacity;
+    while (capacity < needed) {
+        capacity *= 2U;
+    }
+    char *grown = realloc(stream->data, capacity);
+    if (grown == NULL) {
+        return false;
+    }
+    stream->data = grown;
+    stream->capacity = capacity;
+    return true;
+}
+
+static void read_stream(stream_t *stream, size_t limit) {
     char buffer[PP_CHILD_READ_SIZE];
     ssize_t count = read(stream->descriptor, buffer, sizeof buffer);
     if (count < 0) {
@@ -64,33 +84,47 @@ static void read_stream(stream_t *stream, size_t limit, bool *truncated) {
         close_stream(stream);
         return;
     }
+    const char *start = buffer;
     size_t keep = (size_t)count;
-    if (stream->length + keep > limit) {
-        keep = limit - stream->length;
-        *truncated = true;
+    if (!stream->keep_tail) {
+        if (stream->length + keep > limit) {
+            keep = limit - stream->length;
+            stream->truncated = true;
+        }
+    } else if (stream->length + keep > (size_t)2U * limit) {
+        // The tail grows to twice the limit before its oldest bytes go, so that they go rarely;
+        // finish_stream cuts it to the limit.
+        if (keep > limit) {
+            start += keep - limit;
+            keep = limit;
+        }
+        size_t kept = limit - keep;
+        if (kept > 0U && stream->data != NULL) {
+            memmove(stream->data, stream->data + stream->length - kept, kept);
+        }
+        stream->length = kept;
+        stream->truncated = true;
     }
     if (keep == 0U) {
         return;
     }
-    if (stream->data == NULL || stream->length + keep + 1U > stream->capacity) {
-        size_t capacity = stream->capacity;
-        if (capacity == 0U) {
-            capacity = (size_t)2U * PP_CHILD_READ_SIZE;
-        }
-        while (capacity < stream->length + keep + 1U) {
-            capacity *= 2U;
-        }
-        char *grown = realloc(stream->data, capacity);
-        if (grown == NULL) {
-            *truncated = true;
-            return;
-        }
-        stream->data = grown;
-        stream->capacity = capacity;
+    if (!reserve(stream, stream->length + keep + 1U)) {
+        stream->truncated = true;
+        return;
     }
-    memcpy(stream->data + stream->length, buffer, keep);
+    memcpy(stream->data + stream->length, start, keep);
     stream->length += keep;
     stream->data[stream->length] = '\0';
+}
+
+// Cuts a stream that keeps its tail to its last limit bytes.
+static void finish_stream(stream_t *stream, size_t limit) {
+    if (stream->keep_tail && stream->length > limit && stream->data != NULL) {
+        memmove(stream->data, stream->data + stream->length - limit, limit);
+        stream->length = limit;
+        stream->data[limit] = '\0';
+        stream->truncated = true;
+    }
 }
 
 // The working folder of the child. macOS 26 names the action as POSIX 2024 does and deprecates
@@ -185,7 +219,7 @@ static int collect(pid_t child, stream_t streams[2], unsigned timeout_seconds, s
         for (nfds_t index = 0; ready > 0 && index < count; index++) {
             unsigned events = (unsigned)watched[index].revents;
             if ((events & ((unsigned)POLLIN | (unsigned)POLLHUP | (unsigned)POLLERR)) != 0U) {
-                read_stream(owners[index], limit, &result->truncated);
+                read_stream(owners[index], limit);
             }
         }
     }
@@ -215,7 +249,10 @@ bool pp_child_run(char *const arguments[], char *const environment[], const char
     int status = start_child(&child, arguments, environment, directory, output, errors);
     (void)close(output[1]);
     (void)close(errors[1]);
-    stream_t streams[2] = {{output[0], NULL, 0U, 0U}, {errors[0], NULL, 0U, 0U}};
+    stream_t streams[2] = {
+        {output[0], NULL, 0U, 0U, false, false},
+        {errors[0], NULL, 0U, 0U, true, false},
+    };
     if (status != 0) {
         char reason[128] = "unknown error";
         (void)strerror_r(status, reason, sizeof reason);
@@ -229,6 +266,9 @@ bool pp_child_run(char *const arguments[], char *const environment[], const char
     int wait_status = collect(child, streams, timeout_seconds, limit, result);
     close_stream(&streams[0]);
     close_stream(&streams[1]);
+    finish_stream(&streams[1], limit);
+    result->output_truncated = streams[0].truncated;
+    result->errors_truncated = streams[1].truncated;
     result->seconds = now_seconds() - start;
     result->output = streams[0].data;
     result->output_length = streams[0].length;

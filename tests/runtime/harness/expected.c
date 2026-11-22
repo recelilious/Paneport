@@ -76,10 +76,10 @@ static bool parse_line(line_t line, unsigned number, pp_expected_line_t *result,
     if (result->kind == PP_EXPECTED_LITERAL) {
         return true;
     }
-    // The pattern must match the whole line.
-    char anchored[PP_EXPECTED_MAX_LINE + 5U];
-    (void)snprintf(anchored, sizeof anchored, "^(%s)$", result->text);
-    int status = regcomp(&result->pattern, anchored, REG_EXTENDED | REG_NOSUB);
+    // The pattern compiles as it stands, and line_matches requires its match to span the whole
+    // line. Wrapping it in "^(...)$" instead would let crossed parentheses, as in "a)|(b",
+    // escape the anchors.
+    int status = regcomp(&result->pattern, result->text, REG_EXTENDED);
     if (status != 0) {
         char reason[128];
         (void)regerror(status, &result->pattern, reason, sizeof reason);
@@ -155,7 +155,13 @@ static bool line_matches(const pp_expected_line_t *expected, line_t line) {
     char copy[PP_OUTPUT_MAX_LINE + 1U];
     memcpy(copy, line.start, line.length);
     copy[line.length] = '\0';
-    return regexec(&expected->pattern, copy, 0, NULL, 0) == 0;
+    // POSIX takes the longest of the leftmost matches, so the match spans the line whenever the
+    // pattern can match all of it.
+    regmatch_t match;
+    if (regexec(&expected->pattern, copy, 1U, &match, 0) != 0 || match.rm_so != 0) {
+        return false;
+    }
+    return (size_t)match.rm_eo == line.length;
 }
 
 // Prints a line of output into a message, cut where it would not fit and with control

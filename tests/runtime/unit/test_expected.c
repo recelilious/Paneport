@@ -53,6 +53,18 @@ static void pattern_matches_whole_line(void) {
     PP_CHECK(!comparison.matches);
     PP_CHECK_EQUAL(comparison.first_difference, 1);
     PP_CHECK(compared("~ b|c\n", "c\n").matches);
+    PP_CHECK(!compared("~ b\n", "ab\n").matches);
+    PP_CHECK(!compared("~ a\n", "ab\n").matches);
+    PP_CHECK(compared("~ (ab|a)(c|bc)\n", "abc\n").matches);
+}
+
+// Crossed parentheses must not escape the whole-line rule: a pattern that does not compile by
+// itself is refused, instead of matching any line that starts with "a" or ends with "b".
+static void crossed_parentheses_refused(void) {
+    pp_expected_t expected;
+    char error[256] = "";
+    PP_CHECK(!pp_expected_parse("~ a)|(b\n", 8U, &expected, error, sizeof error));
+    holds(error, "does not compile");
 }
 
 static void literal_is_not_a_pattern(void) {
@@ -129,6 +141,7 @@ int main(int argc, char **argv) {
         {"extra_lines", extra_lines},
         {"control_characters_quoted", control_characters_quoted},
         {"bad_expected_files", bad_expected_files},
+        {"crossed_parentheses_refused", crossed_parentheses_refused},
         {"unhandled_reported", unhandled_reported},
     };
     return pp_run_case(argc, argv, cases, PP_CASE_COUNT(cases));

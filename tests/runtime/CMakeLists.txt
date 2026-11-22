@@ -38,7 +38,7 @@ if(PANEPORT_TESTS)
     paneport_harness_test(test_expected CASES
         literal_and_pattern_lines carriage_returns pattern_matches_whole_line
         literal_is_not_a_pattern first_difference_named missing_lines extra_lines
-        control_characters_quoted bad_expected_files unhandled_reported)
+        control_characters_quoted bad_expected_files crossed_parentheses_refused unhandled_reported)
     paneport_harness_test(test_child CASES
         output_and_exit_code input_is_empty directory_is_used timeout_ends_the_group
         signal_reported output_cut_at_the_limit leftover_does_not_hold missing_program)

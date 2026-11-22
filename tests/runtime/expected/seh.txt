@@ -2,4 +2,5 @@
 = seh: access violation, divide by zero and RaiseException caught: pass
 = seh: a __finally block ran during the unwind: pass
 = seh: vectored handlers ran first and continued execution: pass
+= seh: a division reads its divisor once while another thread changes it: pass
 = result: pass

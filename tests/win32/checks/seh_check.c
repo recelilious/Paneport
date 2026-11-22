@@ -17,6 +17,14 @@
 // does Wine on macOS, where the first 4 GB are the executable's page zero.
 #define PP_SEH_FAULT_ADDRESS ((ULONG_PTR)0x10U)
 
+// The rounds of the race check, which stops at the first wrong division: at least the first
+// number, then on until both outcomes have shown, up to the second, because the thread that flips
+// the divisor sometimes does not run while the first rounds divide. And how long the check waits
+// for that thread to end.
+#define PP_SEH_RACE_ROUNDS 20000U
+#define PP_SEH_RACE_MAX_ROUNDS 1000000U
+#define PP_SEH_WAIT_MS 30000U
+
 // EXCEPTION_SOFTWARE_ORIGINATE, which Windows 11 adds to the flags of every exception that
 // RaiseException raises, and which Wine leaves out. mingw-w64's headers do not name it.
 #define PP_SEH_SOFTWARE_ORIGINATE 0x80U
@@ -77,6 +85,28 @@ __attribute__((noinline)) static int32_t divide(int32_t dividend, int32_t diviso
     return quotient;
 }
 
+// The division of the race check: 100 divided by the divisor in memory, which the instruction
+// reads itself, once, as x86 does. The quotient and remainder come back through result.
+struct division {
+    ULONG_PTR quotient;
+    ULONG_PTR remainder;
+};
+
+__attribute__((noinline)) static void divide_by_memory(const volatile ULONG_PTR *divisor,
+                                                       struct division *result) {
+    ULONG_PTR quotient = 100U;
+    ULONG_PTR high = 0U;
+#ifdef __x86_64__
+    // NOLINTNEXTLINE(portability-no-assembler): the divisor must be the instruction's operand.
+    __asm__ volatile("divq %2" : "+a"(quotient), "+d"(high) : "m"(*divisor) : "cc");
+#else
+    // NOLINTNEXTLINE(portability-no-assembler): the divisor must be the instruction's operand.
+    __asm__ volatile("divl %2" : "+a"(quotient), "+d"(high) : "m"(*divisor) : "cc");
+#endif
+    result->quotient = quotient;
+    result->remainder = high;
+}
+
 __attribute__((noinline)) static void raise_with_parameters(DWORD code, ULONG_PTR first) {
     ULONG_PTR parameters[2] = {first, 0x5678U};
     RaiseException(code, 0, 2, parameters);
@@ -107,6 +137,18 @@ static bool catch_divide_by_zero(struct seh_record *record, int32_t divisor) {
     }
     (void)quotient;
     return handled;
+}
+
+// Returns whether the division raised the divide error; otherwise result holds its outcome.
+static bool divide_or_catch(const volatile ULONG_PTR *divisor, struct division *result) {
+    bool raised = false;
+    __try {
+        divide_by_memory(divisor, result);
+    } __except (_exception_code() == EXCEPTION_INT_DIVIDE_BY_ZERO ? EXCEPTION_EXECUTE_HANDLER
+                                                                  : EXCEPTION_CONTINUE_SEARCH) {
+        raised = true;
+    }
+    return raised;
 }
 
 static bool catch_raised(struct seh_record *record, ULONG_PTR first) {
@@ -250,9 +292,75 @@ static bool check_vectored(struct pp_test_run *run, const char *area) {
     return passed;
 }
 
+// The divisor that a second thread flips between 0 and 1 while the race check divides by it, and
+// whether that thread has started and should stop.
+struct divisor_race {
+    volatile ULONG_PTR divisor;
+    volatile LONG started;
+    volatile LONG stop;
+};
+
+static DWORD WINAPI flip_divisor(void *parameter) {
+    struct divisor_race *race = parameter;
+    InterlockedExchange(&race->started, 1);
+    while (race->stop == 0) {
+        race->divisor = 0U;
+        race->divisor = 1U;
+    }
+    return 0;
+}
+
+// One thread flips a divisor in memory between 0 and 1 while this one divides 100 by it. x86
+// reads the divisor once, so each division either raises the divide error or gives 100 with a
+// remainder of 0; an emulator that tests one read of the divisor and divides by another can give
+// a quotient of 0 instead, or raise the error for a divisor of 1.
+static bool check_divisor_race(struct pp_test_run *run, const char *area) {
+    unsigned failures = run->failures;
+    struct divisor_race race = {1U, 0, 0};
+    HANDLE thread = CreateThread(NULL, 0, flip_divisor, &race, 0, NULL);
+    if (!pp_test_check(run, thread != NULL,
+                       "CreateThread starts the thread that flips the divisor")) {
+        return false;
+    }
+    // Wine starts a thread more slowly than the divisions run, so they wait for it to flip.
+    for (unsigned waited = 0; race.started == 0 && waited < PP_SEH_WAIT_MS; waited++) {
+        Sleep(1);
+    }
+    pp_test_check(run, race.started != 0, "the thread that flips the divisor runs");
+    unsigned raised = 0;
+    unsigned divided = 0;
+    unsigned wrong = 0;
+    for (unsigned round = 0; round < PP_SEH_RACE_MAX_ROUNDS && wrong == 0U; round++) {
+        if (round >= PP_SEH_RACE_ROUNDS && raised > 0U && divided > 0U) {
+            break;
+        }
+        struct division result = {0U, 0U};
+        if (divide_or_catch(&race.divisor, &result)) {
+            raised++;
+        } else if (result.quotient == 100U && result.remainder == 0U) {
+            divided++;
+        } else {
+            wrong++;
+        }
+    }
+    InterlockedExchange(&race.stop, 1);
+    pp_test_check(run, WaitForSingleObject(thread, PP_SEH_WAIT_MS) == WAIT_OBJECT_0,
+                  "the thread that flips the divisor ends");
+    CloseHandle(thread);
+    pp_test_check(run, wrong == 0U,
+                  "each division by a changing divisor raises the divide error or divides by 1");
+    pp_test_check(run, raised > 0U, "some divisions found the divisor 0");
+    pp_test_check(run, divided > 0U, "some divisions found the divisor 1");
+    bool passed = run->failures == failures;
+    pp_test_line(run, "%s: a division reads its divisor once while another thread changes it: %s",
+                 area, pp_test_verdict(passed));
+    return passed;
+}
+
 bool pp_seh_extended(struct pp_test_run *run, const char *area) {
     unsigned failures = run->failures;
     check_finally(run, area);
     check_vectored(run, area);
+    check_divisor_race(run, area);
     return run->failures == failures;
 }

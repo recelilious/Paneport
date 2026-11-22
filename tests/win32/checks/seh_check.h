@@ -23,8 +23,9 @@
 bool pp_seh_basic(struct pp_test_run *run, const char *area);
 
 // Checks that a __finally block runs while an exception unwinds through it, that a vectored
-// handler runs before the frame's handler, and that a vectored handler can continue execution
-// after RaiseException. Prints one line for each and returns whether all passed.
+// handler runs before the frame's handler, that a vectored handler can continue execution
+// after RaiseException, and that a division reads its divisor once while another thread
+// changes it. Prints one line for each and returns whether all passed.
 bool pp_seh_extended(struct pp_test_run *run, const char *area);
 
 #endif

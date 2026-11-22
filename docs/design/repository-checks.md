@@ -20,7 +20,7 @@ This document records how the repository rules of C-0011 section 2 are checked: 
 | Personal data and forbidden files | `tools/ScanPersonalData.cs` | `checks`: personal data and forbidden files | `eng/personal-data-allow-list.json` |
 | Links in Markdown | lychee | `checks`: lychee | `eng/lychee.toml` |
 | Dependency licenses | `tools/CheckLicenses.cs` | `checks`: dependency licenses | `eng/license-map.json` |
-| Toolchain pins (C-0009 section 2) | `tools/CheckToolchain.cs` | `dotnet`: the SDK and the runner image; `checks`: also the CI tools; `ios`: also Xcode, the iOS workload set, CMake and the build tools of the forks, through `eng/mac/bootstrap.sh --ios --forks`; `native`: also Xcode, CMake, clang-format and clang-tidy, through `eng/mac/bootstrap.sh --native`; `runtime`: also Xcode, CMake and the build tools of the forks, through `eng/mac/bootstrap.sh --forks` | `global.json`, `eng/toolchain.json`, `.github/workflows/` |
+| Toolchain pins (C-0009 section 2) | `tools/CheckToolchain.cs` | `dotnet`: the SDK and the runner image; `checks`: also the CI tools; `ios`: also Xcode, the iOS workload set, CMake and the build tools of the forks, through `eng/mac/bootstrap.sh --ios --forks`; `native`: also Xcode, CMake, clang-format and clang-tidy, through `eng/mac/bootstrap.sh --native`; `runtime`: also Xcode, CMake and the build tools of the forks, through `eng/mac/bootstrap.sh --forks`, and llvm-mingw's clang-format and clang-tidy against the llvm pin, with `--llvm` in Analyze the Win32 test programs | `global.json`, `eng/toolchain.json`, `.github/workflows/` |
 | C# formatting of Paneport.iOS | `dotnet format` | `ios`: Check the formatting of Paneport.iOS | `.editorconfig` |
 | Native formatting | clang-format, through `eng/mac/check-native-style.sh format` | `native`: Check the format of the native code; a planted error fails it | `.clang-format` |
 | Native analysis | clang-tidy, through `eng/mac/check-native-style.sh tidy`, and the compiler's warnings as errors | `native`: Analyze the native code, and every build | `.clang-tidy`, `src/native/CMakeLists.txt` |
@@ -186,7 +186,7 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 
 **`dotnet`**, on `windows-2025` and `ubuntu-24.04`:
 
-1. Check out, install the SDK that `global.json` pins, and restore NuGet's packages from the cache with `actions/cache/restore`: the entry of `main` for the same system and the same lock files, or else the newest entry of `main` for the system, which the locked restore completes.
+1. Check out, install the SDK that `global.json` pins, and restore NuGet's packages from the cache with `actions/cache/restore`: the entry of `main` for the same system and the same lock files, and on another branch or in a pull request, failing that, the newest entry of `main` for the system, which the locked restore completes. A push to `main` takes the exact entry only, so that what it saves never carries the packages of older lock files.
 2. Check the SDK against `global.json` (`dotnet run tools/CheckToolchain.cs`).
 3. Restore `eng/ci.slnf` from the lock files, as M0.1 set it up.
 4. Check that no lock file was written: in locked mode, NuGet writes a missing lock file instead of failing, so `git status` must show no new or changed `*.lock.json` after the restore and the tool's run.

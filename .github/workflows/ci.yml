@@ -212,9 +212,11 @@ jobs:
     # About twice the slowest steps seen so far, which build Wine from scratch (D14).
     timeout-minutes: 90
     # A newer run of the same pull request waits for this one instead of cancelling it, so that
-    # a cold build of Wine is never thrown away halfway through (D14).
+    # a cold build of Wine is never thrown away halfway through (D14). Each push to main has a
+    # group of its own, because GitHub keeps one pending run per group and cancels it when a
+    # newer one queues, which would leave a commit of main without a runtime run.
     concurrency:
-      group: runtime-${{ github.event.pull_request.number || github.ref }}
+      group: runtime-${{ github.event.pull_request.number || github.sha }}
       cancel-in-progress: false
     steps:
       - name: Check out

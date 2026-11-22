@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.6 |
-| Date | 2026-11-17 |
+| Version | 1.7 |
+| Date | 2026-11-21 |
 | Owner | recelilious |
 
 These are engineering rules for managing licenses, not legal advice. Before a formal public release, have a professional review them if possible. That review must cover the provenance of the AI-written code in the forks (section 10).
@@ -70,7 +70,7 @@ For dual-licensed components, choose the less restrictive option. For example, F
 
 ## 6. Component register
 
-Checked on 2026-10-28, on 2026-10-29 for the rows that version 1.2 added, on 2026-10-31 for the rows that version 1.3 added, on 2026-11-10 for the rows that version 1.4 added or changed, and on 2026-11-15 for the row that version 1.6 added. Licenses are taken from each repository's license file.
+Checked on 2026-10-28, on 2026-10-29 for the rows that version 1.2 added, on 2026-10-31 for the rows that version 1.3 added, on 2026-11-10 for the rows that version 1.4 added or changed, on 2026-11-15 for the row that version 1.6 added, and on 2026-11-21 for the rows that version 1.7 added or changed. Licenses are taken from each repository's license file.
 
 | Component | Purpose | License | Category |
 |---|---|---|---|
@@ -83,8 +83,10 @@ Checked on 2026-10-28, on 2026-10-29 for the rows that version 1.2 added, on 202
 | SPIRV-Cross | Shader translation, a MoltenVK dependency | Apache-2.0 | Allowed |
 | DXVK | Direct3D to Vulkan, probably unused on iOS | Zlib | Allowed |
 | vkd3d-proton | Direct3D 12 to Vulkan, probably unused on iOS | LGPL-2.1 | Conditional |
-| SteamKit2 | Steam network protocol | LGPL-2.1-only | Conditional |
-| protobuf-net | SteamKit2 dependency | Apache-2.0 | Allowed |
+| SteamKit2 | Steam network protocol | LGPL-2.1-only. It carries part of the LZMA SDK, which its author placed in the public domain. | Conditional |
+| protobuf-net | SteamKit2 dependency, in two packages: protobuf-net, which also carries a build-time code generator and analyzers, and protobuf-net.Core | Apache-2.0 | Allowed |
+| ZstdSharp (ZstdSharp.Port) | Zstandard decompression, a SteamKit2 dependency that unpacks depot chunks | MIT, for the port. It is a C# port of Zstandard, which is BSD-3-Clause or GPL-2.0-only; the ported code is used under BSD-3-Clause (section 5), and Zstandard's notice is kept beside the port's. | Allowed |
+| QR code generator (Net.Codecrete.QrCodeGenerator) | Draws the Steam sign-in QR code (C-0007 section 3) | MIT. It began as a C# port of Project Nayuki's QR Code generator library, also MIT, whose notice is kept beside it. | Allowed |
 | Avalonia | UI shell | MIT | Allowed |
 | SkiaSharp | Avalonia's rendering library | MIT. Its native-asset packages contain the Skia library (BSD-3-Clause) and list the further third-party components they contain in their `THIRD-PARTY-NOTICES.txt`. | Allowed |
 | Avalonia.BuildServices | Usage statistics that Avalonia's packages collect at build time; CI turns them off with `AVALONIA_TELEMETRY_OPTOUT` | MIT | Allowed |
@@ -204,6 +206,11 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - FEX-Emu contribution policy: <https://github.com/FEX-Emu/FEX/blob/HEAD/CONTRIBUTING.md>
 - SteamKit2 license: <https://github.com/SteamRE/SteamKit/blob/HEAD/LICENSE>
 - protobuf-net license: <https://github.com/protobuf-net/protobuf-net/blob/HEAD/Licence.txt>
+- ZstdSharp license: <https://github.com/oleg-st/ZstdSharp/blob/HEAD/LICENSE>
+- Zstandard licenses: <https://github.com/facebook/zstd/blob/HEAD/LICENSE> and <https://github.com/facebook/zstd/blob/HEAD/COPYING>
+- LZMA SDK license: <https://www.7-zip.org/sdk.html>
+- QR code generator license: <https://github.com/manuelbl/QrCodeGenerator/blob/HEAD/LICENSE>
+- Project Nayuki's QR Code generator: <https://github.com/nayuki/QR-Code-generator>
 - Madeira: <https://github.com/willfaust/Madeira>
 - madeira-dock: <https://github.com/125hz/madeira-dock>
 - FEX-darwin: <https://github.com/dbc-hbin/FEX-darwin>
@@ -259,3 +266,4 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 | 1.4 | 2026-11-10 | Accepted by recelilious. Comes from stage M4.1, which sets up the forks of Wine, FEX-Emu and DXMT, and from recelilious's decision on the provenance of AI-written fork code. The preamble makes that provenance a required item of the review before a public release. Section 4 requires a row for third-party code that a fork carries before a build ships it, keeps forbidden submodules of forks unfetched, and records that no rule marks changed LGPL files yet. Section 5 allows ZPL-2.1, gdtoa's and Sun's notices and public-domain code, and says how vendor code that an upstream embeds and a vendor SDK submodule of a fork are treated. Section 6 moves the mingw-w64 runtime to Allowed after its review, records llvm-mingw's license, corrects FEX-darwin's row for its MPL-2.0 patch, and registers Python, GNU Bison, flex, GNU Autoconf and the mingw-w64 DirectX headers. Section 10 lists the AI policies of Wine and DXMT, keeps all fork changes in the forks, and adds the provenance rule. |
 | 1.5 | 2026-11-11 | Accepted by recelilious, narrowed to the GPL. Comes from a check of stage M4.1's forks, which found upstream files under licenses that section 5 forbids where no build ships them, and from recelilious's decision of 2026-11-11 to allow GPL-2.0 and GPL-3.0 files there. Section 4 lets a fork, and a submodule of a fork that a build needs, keep upstream files under GPL-2.0 or GPL-3.0, with or without an exception such as the Autoconf exception, as long as nothing that ships compiles, links or copies them, their notices stay and no shipped binary contains them, and lets the source archives of a release hold them; a submodule of a fork that no build needs and that holds content that section 5 forbids stays unfetched, and section 4 no longer counts FEX-Emu's submodules. Section 5's Forbidden row points to that rule for GPL-2.0 and GPL-3.0 files and keeps AGPL-3.0, SSPL, non-commercial-only code and code with no license out of the forks and their submodules entirely. |
 | 1.6 | 2026-11-17 | Accepted by recelilious, together with C-0010 1.1. Comes from stage M4.2, which caches the builds of the forks in its `runtime` CI job and makes the first changes to files of the Wine fork, and from recelilious's decisions of 2026-11-15, confirmed on 2026-11-17, on FEX-darwin, Hadron and Arknights-MacOS-Runtime. Section 6 registers actions/cache. Section 4 asks for the notice in a file under the LGPL that we change in any fork as well, with the date of each change, and points to C-0010 section 4 for how it is marked. FEX-darwin's row moves from section 6 to the reference-only list of section 7, which now also covers projects whose code comes from an existing product, gains rows for Hadron and Arknights-MacOS-Runtime, and records that Paneport takes no code from the three. |
+| 1.7 | 2026-11-21 | Accepted by recelilious. Comes from stage M2.3, which builds the Steam service on SteamKit2, and from recelilious's decision D13 of 2026-11-21 on how the sign-in QR code is drawn. Section 6 registers ZstdSharp (ZstdSharp.Port), whose ported Zstandard code is used under BSD-3-Clause with Zstandard's notice kept, and the QR code generator Net.Codecrete.QrCodeGenerator, which keeps Project Nayuki's notice beside its own; the row of protobuf-net names protobuf-net.Core and the build-time code generator and analyzers of its package, and the row of SteamKit2 records the part of the LZMA SDK that it carries, which is in the public domain. Section 12 adds the sources of these licenses. |

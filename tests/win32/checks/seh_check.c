@@ -139,13 +139,23 @@ static bool catch_divide_by_zero(struct seh_record *record, int32_t divisor) {
     return handled;
 }
 
+// Whether an exception is the divide error of the race's division. Windows tells a zero divisor
+// from a quotient too large for its register by reading the divisor again while it handles the
+// fault, so when the other thread has written 1 back by then, it reports
+// EXCEPTION_INT_OVERFLOW. Neither 100 / 0 nor 100 / 1 can overflow, so either code is the
+// divide error of a zero divisor.
+static int divide_error_filter(DWORD code) {
+    return code == EXCEPTION_INT_DIVIDE_BY_ZERO || code == EXCEPTION_INT_OVERFLOW
+               ? EXCEPTION_EXECUTE_HANDLER
+               : EXCEPTION_CONTINUE_SEARCH;
+}
+
 // Returns whether the division raised the divide error; otherwise result holds its outcome.
 static bool divide_or_catch(const volatile ULONG_PTR *divisor, struct division *result) {
     bool raised = false;
     __try {
         divide_by_memory(divisor, result);
-    } __except (_exception_code() == EXCEPTION_INT_DIVIDE_BY_ZERO ? EXCEPTION_EXECUTE_HANDLER
-                                                                  : EXCEPTION_CONTINUE_SEARCH) {
+    } __except (divide_error_filter(_exception_code())) {
         raised = true;
     }
     return raised;

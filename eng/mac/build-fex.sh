@@ -49,12 +49,11 @@ submodule update --init --depth 1 external/Paneport-FEX"
 # The submodules that the MinGW build of FEX needs (docs/design/forks.md section 5.3); the
 # others stay unfetched.
 needed="External/fmt External/xxhash External/range-v3 External/unordered_dense External/rpmalloc Source/Common/cpp-optparse"
-for submodule in $needed; do
-    if [ -z "$(ls -A "$source/$submodule" 2>/dev/null)" ]; then
-        say "fetching FEX's submodule $submodule"
-        git -C "$source" submodule update --init --depth 1 "$submodule"
-    fi
-done
+# Every run moves them to the commits that the fork records, which does nothing when they are
+# there already, so that a folder left by an earlier fork commit is never built.
+say "updating FEX's submodules: $needed"
+# shellcheck disable=SC2086 # The submodule paths are words of their own.
+git -C "$source" submodule update --init --depth 1 -- $needed
 
 build_dir=${PANEPORT_BUILD_DIR:-$repo/build}
 case $build_dir in
@@ -107,34 +106,40 @@ module=$(find "$work" -name libarm64ecfex.dll -type f | head -n 1)
 cp "$module" "$install/libarm64ecfex.dll"
 
 # llvm-readobj reports an ARM64EC module as IMAGE_FILE_MACHINE_ARM64EC, and the CHPE metadata
-# of its load configuration describes its ARM64EC code.
+# of its load configuration describes its ARM64EC code. The dump is read whole before it is
+# searched, because a pipe into grep -q would end llvm-readobj early under pipefail.
 readobj="$LLVM_MINGW/bin/llvm-readobj"
 headers=$("$readobj" --file-headers "$install/libarm64ecfex.dll")
 machine=$(printf '%s\n' "$headers" | sed -n 's/^ *Machine: \([A-Z0-9_]*\).*/\1/p' | head -n 1)
 alignment=$(printf '%s\n' "$headers" | sed -n 's/^ *SectionAlignment: \([0-9]*\).*/\1/p' | head -n 1)
-"$readobj" --coff-load-config "$install/libarm64ecfex.dll" | grep -Eq 'CHPEMetadata(Pointer)?: 0x0*[1-9A-Fa-f]' \
+[ "$machine" = IMAGE_FILE_MACHINE_ARM64EC ] \
+    || fail "libarm64ecfex.dll has the machine type ${machine:-unknown}, not IMAGE_FILE_MACHINE_ARM64EC."
+[ "$alignment" = 16384 ] \
+    || fail "libarm64ecfex.dll has the section alignment ${alignment:-unknown}, not 16384."
+load_config=$("$readobj" --coff-load-config "$install/libarm64ecfex.dll")
+[[ $load_config =~ CHPEMetadata(Pointer)?:\ 0x0*[1-9A-Fa-f] ]] \
     || fail "libarm64ecfex.dll has no CHPE metadata, so it is not an ARM64EC module."
 say "libarm64ecfex.dll: $machine with CHPE metadata, sections aligned to $alignment bytes, $(wc -c < "$install/libarm64ecfex.dll" | tr -d ' ') bytes"
 
-# The input files of the link, for the check against the runtime review of
-# docs/design/forks.md section 9. lld's map names an archive member without its archive, but
-# mingw-w64 names the members of its runtime after their library, as in
-# lib64_libmingwex_a-strtod.o, so those show which runtime objects the link took.
+# The input files of the link, checked against the runtime review of docs/design/forks.md
+# section 9. lld's map names an archive member without its archive, but mingw-w64 names the
+# members of its runtime after their library, as in lib64_libmingwex_a-strtod.o, so those show
+# which runtime objects the link took. The review found none in this module, so any one fails
+# the build until the review covers its file.
 map="$install/libarm64ecfex.map"
-if [ -f "$map" ]; then
-    inputs=$(sed -n -E 's/^[0-9A-Fa-f]+ +[0-9A-Fa-f]+ +[0-9]+ +([^ ].*):\([^)]*\)$/\1/p' "$map" \
-        | sed 's|.*/||' | sort -u)
-    say "input files in the map: $(printf '%s\n' "$inputs" | sed '/^$/d' | wc -l | tr -d ' ')"
-    runtime=$(printf '%s\n' "$inputs" | grep -E '^lib[a-z0-9]*_lib[a-z0-9_]*_a-' || true)
-    if [ -n "$runtime" ]; then
-        printf '%s\n' "$runtime" | sed 's/^/build-fex:   mingw-w64 runtime object: /'
-    elif [ -n "$inputs" ]; then
-        say "no object of mingw-w64's runtime"
-    else
-        say "the map is not in the expected format; its first lines are:" >&2
-        head -n 12 "$map" | sed 's/^/build-fex:   /' >&2
-    fi
-else
-    say "the link wrote no map at $map" >&2
+[ -r "$map" ] || fail "the link wrote no readable map at $map."
+inputs=$(sed -n -E 's/^[0-9A-Fa-f]+ +[0-9A-Fa-f]+ +[0-9]+ +([^ ].*):\([^)]*\)$/\1/p' "$map" \
+    | sed 's|.*/||' | sort -u)
+if [ -z "$inputs" ]; then
+    say "the map is not in the expected format; its first lines are:" >&2
+    head -n 12 "$map" | sed 's/^/build-fex:   /' >&2
+    fail "the map at $map names no input file."
 fi
+say "input files in the map: $(printf '%s\n' "$inputs" | sed '/^$/d' | wc -l | tr -d ' ')"
+runtime=$(printf '%s\n' "$inputs" | grep -E '^lib[a-z0-9]*_lib[a-z0-9_]*_a-' || true)
+if [ -n "$runtime" ]; then
+    printf '%s\n' "$runtime" | sed 's/^/build-fex:   mingw-w64 runtime object: /' >&2
+    fail "the link took objects of mingw-w64's runtime, which the review of docs/design/forks.md section 9 does not cover for this module."
+fi
+say "no object of mingw-w64's runtime"
 say "ready"

@@ -70,12 +70,14 @@ internal sealed class FakeAuthenticator : ISteamAuthenticator
         return Task.FromResult<IQrAuthSession>(session);
     }
 
-    // Approves the pending wait for an approval in the Steam mobile app.
+    // Approves the open request for an approval in the Steam mobile app.
     public void Approve() => TakeApproval().TrySetResult();
 
-    // Ends the pending wait for an approval with Steam's result, as a denial or an expiry would.
+    // Ends the open request for an approval with Steam's result, as a denial or an expiry would.
     public void DeclineApproval(SteamResult result) => TakeApproval().TrySetException(new SteamAuthException(result));
 
+    // Whether a request for an approval is open: from the start of a credentials session, when the
+    // account allows an approval, until the test answers it, the flow chooses a code or the wait ends.
     public bool WaitsForApproval
     {
         get
@@ -99,7 +101,11 @@ internal sealed class FakeAuthenticator : ISteamAuthenticator
         }
     }
 
-    private async Task WaitForApprovalAsync(CancellationToken cancellationToken)
+    // Steam sends the request to the Steam mobile app when a credentials session begins, so the
+    // test can answer it from then on, even before the session waits for the answer. The flow shows
+    // that it waits for the approval before the session waits, as SteamKit2 asks the code source
+    // first and polls afterwards.
+    private TaskCompletionSource OfferApproval()
     {
         var approval = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_lock)
@@ -107,19 +113,29 @@ internal sealed class FakeAuthenticator : ISteamAuthenticator
             _approval = approval;
         }
 
+        return approval;
+    }
+
+    private void WithdrawApproval(TaskCompletionSource approval)
+    {
+        lock (_lock)
+        {
+            if (ReferenceEquals(_approval, approval))
+            {
+                _approval = null;
+            }
+        }
+    }
+
+    private async Task WaitForApprovalAsync(TaskCompletionSource approval, CancellationToken cancellationToken)
+    {
         try
         {
             await approval.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            lock (_lock)
-            {
-                if (ReferenceEquals(_approval, approval))
-                {
-                    _approval = null;
-                }
-            }
+            WithdrawApproval(approval);
         }
     }
 
@@ -133,12 +149,14 @@ internal sealed class FakeAuthenticator : ISteamAuthenticator
                 case AccountGuard.None:
                     return owner.Tokens();
                 case AccountGuard.Approval:
+                    var approval = owner.OfferApproval();
                     if (await codes.AcceptApprovalAsync().ConfigureAwait(false))
                     {
-                        await owner.WaitForApprovalAsync(cancellationToken).ConfigureAwait(false);
+                        await owner.WaitForApprovalAsync(approval, cancellationToken).ConfigureAwait(false);
                         return owner.Tokens();
                     }
 
+                    owner.WithdrawApproval(approval);
                     break;
                 case AccountGuard.Email:
                     kind = SteamCodeKind.Email;

@@ -335,15 +335,22 @@ jobs:
           key: ${{ steps.keys.outputs.fex }}
 
       # S4.2.4: the Win32 test programs, which the device test flavor bundles from M4.4 on. They
-      # build with the pinned llvm-mingw and every warning an error, and clang-tidy analyzes them
-      # with the compile database of the build. llvm-mingw's own clang-tidy is used, of the LLVM
-      # release that the llvm pin names, because it finds llvm-mingw's MinGW headers
-      # (runtime-macos-harness.md section 8).
-      - name: Build and analyze the Win32 test programs (eng/mac/build-win32-tests.sh)
+      # build with the pinned llvm-mingw, with every compiler warning an error and every link
+      # warning an error but the expected one that eng/mac/build-win32-tests.sh names.
+      - name: Build the Win32 test programs (eng/mac/build-win32-tests.sh)
         id: win32
         if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: eng/mac/build-win32-tests.sh x86_64
+
+      # clang-tidy analyzes the programs with the compile database of the build, in a step of
+      # its own, so that a finding does not keep the cases from running. llvm-mingw's own
+      # clang-tidy is used, because it finds llvm-mingw's MinGW headers, and tools/CheckToolchain.cs
+      # checks first that it is of the LLVM release that the llvm pin names
+      # (runtime-macos-harness.md section 8).
+      - name: Analyze the Win32 test programs (llvm-mingw's clang-tidy)
+        if: ${{ !cancelled() && steps.win32.outcome == 'success' }}
         run: |
-          eng/mac/build-win32-tests.sh x86_64
+          PATH="$LLVM_MINGW/bin:$PATH" dotnet run tools/CheckToolchain.cs -- --llvm
           PATH="$LLVM_MINGW/bin:$PATH" eng/mac/check-native-style.sh tidy build/win32/x86_64
 
       - name: Build the harness (CMake preset macos-harness)

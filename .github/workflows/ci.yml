@@ -383,11 +383,13 @@ jobs:
             echo "::error title=Planted cases::The planted cases passed."
             exit 1
           fi
-          if ! grep -q "^FAIL wrong_line: line 1 differs" <<< "$output"; then
+          # Whole lines, so that a planted case that also crashed or drew a report from Wine,
+          # which the harness adds after "; ", does not pass.
+          if ! grep -qxF "FAIL wrong_line: line 1 differs: expected = console: hello from an i686 build, printed console: hello from an x86-64 build" <<< "$output"; then
             echo "::error title=Planted cases::The run did not name wrong_line and its wrong line."
             exit 1
           fi
-          if ! grep -q "^FAIL wrong_exit_code: exited with 3, not 4" <<< "$output"; then
+          if ! grep -qxF "FAIL wrong_exit_code: exited with 3, not 4" <<< "$output"; then
             echo "::error title=Planted cases::The run did not name wrong_exit_code and its exit code."
             exit 1
           fi

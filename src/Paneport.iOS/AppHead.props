@@ -167,6 +167,25 @@ SPDX-License-Identifier: MIT
     </ItemGroup>
   </Target>
 
+  <!--
+  SteamKit2 picks its machine-information provider at run time with RuntimeInformation.IsOSPlatform,
+  which the trimmer cannot decide, so it keeps the provider for macOS even when the app gives
+  SteamKit2 a provider of its own, as the test flavor does. That provider's P/Invokes name
+  DiskArbitration, a framework that only macOS has. .NET for iOS links every framework that a kept
+  P/Invoke names unless its own table marks the framework unavailable, and the table does not know
+  DiskArbitration, so the native link failed: "ld: framework 'DiskArbitration' not found". On iOS
+  the P/Invokes of an assembly outside the SDK are looked up at run time (dlsym), so no symbol needs
+  the framework when the app is linked, and the provider never runs on iOS. SteamKit2 itself stays
+  unchanged. _NativeExecutableFrameworks is the internal item that the native link takes its
+  frameworks from, the one .NET for iOS removes BrowserEngineKit from; if the item ever goes, the
+  link fails again with the same error.
+  -->
+  <Target Name="PaneportDropDiskArbitration" AfterTargets="_ComputeLinkNativeExecutableInputs">
+    <ItemGroup>
+      <_NativeExecutableFrameworks Remove="DiskArbitration" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Core/Paneport.Core.csproj" />
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Steam/Paneport.Steam.csproj" />

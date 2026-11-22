@@ -70,6 +70,11 @@ harness="$build_dir/native/macos-harness/runtime/paneport_harness"
 runtime="$build_dir/runtime"
 logs="$runtime/logs"
 
+# Ends the wineserver of the current case's prefix, with every Wine process that uses it.
+end_case_server() {
+    WINEPREFIX="$prefix" "$server" -k > /dev/null 2>&1 || true
+}
+
 # Runs a command and ends it after the given number of seconds; returns 124 then.
 with_timeout() {
     local seconds=$1
@@ -96,8 +101,10 @@ if [ "$build" = true ]; then
     [ -f "$fex_install/libarm64ecfex.dll" ] || eng/mac/build-fex.sh
     # The test programs and the harness take seconds, so they are always built again.
     eng/mac/build-win32-tests.sh x86_64
-    (cd src/native && cmake --preset macos-harness > /dev/null && cmake --build --preset macos-harness \
-        --parallel > /dev/null) || fail "the harness does not build; run cmake --preset macos-harness in src/native."
+    # The preset builds into build/native/macos-harness; -B moves that under PANEPORT_BUILD_DIR.
+    (cd src/native && cmake --preset macos-harness -B "$build_dir/native/macos-harness" > /dev/null &&
+        cmake --build "$build_dir/native/macos-harness" --parallel > /dev/null) ||
+        fail "the harness does not build; run cmake --preset macos-harness in src/native."
 fi
 [ -x "$wine_install/bin/wine" ] || fail "Wine is not built; run eng/mac/build-wine.sh."
 [ -f "$fex_install/libarm64ecfex.dll" ] || fail "FEX is not built; run eng/mac/build-fex.sh."
@@ -187,9 +194,15 @@ for name in "${names[@]}"; do
     # A wineserver of the case's own, started before the program and outside its process
     # group, so that the program's end closes its output, and ended with the case.
     WINEPREFIX="$prefix" "$server" -p > "$logs/$name.wineserver.log" 2>&1 || true
+    # The server never ends by itself, and the program runs in a process group of its own that
+    # Ctrl-C does not reach, so an interrupted run ends them here.
+    trap end_case_server EXIT
+    trap 'end_case_server; exit 130' INT
+    trap 'end_case_server; exit 143' TERM
     line=$("$harness" --mode "$mode" --case "$case_file" --programs "$programs" \
         --expected "$expected" --prefix "$prefix" --loader "$loader" --logs "$logs") || true
-    WINEPREFIX="$prefix" "$server" -k > /dev/null 2>&1 || true
+    end_case_server
+    trap - EXIT INT TERM
     rm -rf "$prefix"
     printf '%s\n' "$line"
     case "$line" in

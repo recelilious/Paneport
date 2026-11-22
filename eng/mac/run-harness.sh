@@ -104,12 +104,12 @@ if [ "$build" = true ]; then
     # The preset builds into build/native/macos-harness; -B moves that under PANEPORT_BUILD_DIR.
     (cd src/native && cmake --preset macos-harness -B "$build_dir/native/macos-harness" > /dev/null &&
         cmake --build "$build_dir/native/macos-harness" --parallel > /dev/null) ||
-        fail "the harness does not build; run cmake --preset macos-harness in src/native."
+        fail "the harness does not build; run cmake --preset macos-harness -B $build_dir/native/macos-harness in src/native to see why."
 fi
 [ -x "$wine_install/bin/wine" ] || fail "Wine is not built; run eng/mac/build-wine.sh."
 [ -f "$fex_install/libarm64ecfex.dll" ] || fail "FEX is not built; run eng/mac/build-fex.sh."
 [ -f "$programs/console.exe" ] || fail "the test programs are not built; run eng/mac/build-win32-tests.sh x86_64."
-[ -x "$harness" ] || fail "the harness is not built; run cmake --build --preset macos-harness in src/native."
+[ -x "$harness" ] || fail "the harness is not built; run this script without --no-build, which builds it in $build_dir/native/macos-harness."
 
 rm -rf "$logs"
 mkdir -p "$logs"

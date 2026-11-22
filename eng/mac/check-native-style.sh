@@ -3,8 +3,10 @@
 # SPDX-License-Identifier: MIT
 
 # Checks our own C, Objective-C and C++ code with the pinned clang-format and clang-tidy
-# (C-0010 section 3, C-0011 section 2), which eng/mac/bootstrap.sh --native installs. The
-# root .clang-format and .clang-tidy hold the rules.
+# (C-0010 section 3, C-0011 section 2), the first of each on PATH: those that
+# eng/mac/bootstrap.sh --native installs, or for the Win32 test programs llvm-mingw's, which
+# find its MinGW headers and come from the same LLVM release, as the runtime job checks with
+# tools/CheckToolchain.cs --llvm. The root .clang-format and .clang-tidy hold the rules.
 #
 #   eng/mac/check-native-style.sh format [file ...]
 #       clang-format in check mode, on every such file of src/, tests/ and tools/ that git

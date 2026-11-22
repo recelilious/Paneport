@@ -17,6 +17,10 @@
 // does Wine on macOS, where the first 4 GB are the executable's page zero.
 #define PP_SEH_FAULT_ADDRESS ((ULONG_PTR)0x10U)
 
+// EXCEPTION_SOFTWARE_ORIGINATE, which Windows 11 adds to the flags of every exception that
+// RaiseException raises, and which Wine leaves out. mingw-w64's headers do not name it.
+#define PP_SEH_SOFTWARE_ORIGINATE 0x80U
+
 // What the vectored handler of pp_seh_extended reports. It reaches the handler as the first
 // parameter of the exceptions raised for it, so that no global state is needed.
 struct vectored_report {
@@ -188,7 +192,10 @@ bool pp_seh_basic(struct pp_test_run *run, const char *area) {
     memset(&raised, 0, sizeof raised);
     pp_test_check(run, catch_raised(&raised, 0x1234U),
                   "RaiseException reaches the handler of its __try block");
-    pp_test_check(run, raised.flags == 0U, "the raised exception keeps its flags");
+    // RaiseException got no flags, so the exception is continuable. Windows 11 also sets
+    // PP_SEH_SOFTWARE_ORIGINATE, which says no more than that software raised it.
+    pp_test_check(run, (raised.flags & ~(DWORD)PP_SEH_SOFTWARE_ORIGINATE) == 0U,
+                  "the raised exception is continuable");
     pp_test_check(run, raised.parameters == 2U, "the raised exception keeps two parameters");
     pp_test_check(run, raised.information[0] == 0x1234U,
                   "the raised exception keeps its first parameter");

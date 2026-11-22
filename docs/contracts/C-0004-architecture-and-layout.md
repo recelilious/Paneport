@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.0 |
-| Date | 2026-10-28 |
+| Version | 1.1 |
+| Date | 2026-11-17 |
 | Owner | recelilious |
 
 This contract fixes how Paneport is split into components, who owns what at run time, and where every kind of file lives, both in the repository and on the device. Later contracts refine the individual interfaces. The reasoning behind these choices is in [the roadmap](../research/roadmap-2026-10.md).
@@ -92,7 +92,11 @@ Paneport/
 │   ├── Paneport.Steam.Tests/
 │   ├── Paneport.UI.Tests/
 │   ├── Paneport.Interop.Tests/
+│   ├── Paneport.TrimTest/
+│   ├── Shared/
 │   ├── native/
+│   ├── runtime/
+│   ├── win32/
 │   └── device/
 ├── external/
 ├── compat/
@@ -118,7 +122,7 @@ Paneport/
 | Folder | Holds |
 |---|---|
 | `src/` | Original code only, all MIT (C-0003 section 4). |
-| `tests/` | Automated tests and the on-device test app (C-0011). |
+| `tests/` | Automated tests, the runtime harness in `runtime/` with the Win32 test programs of our own in `win32/` that it runs, and the on-device test app (C-0011). |
 | `external/` | Git submodules only: our fork repositories (`Paneport-<upstream>`, C-0003 section 4), and unmodified upstream source dependencies registered under C-0003, each pinned to an upstream release tag. |
 | `compat/` | The compatibility database, the list of verified iOS builds, and their JSON schemas (C-0006, C-0008). |
 | `tools/` | C# file-based tools for building and checking the repository. |
@@ -162,3 +166,4 @@ All paths are inside the app container.
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious |
+| 1.1 | 2026-11-17 | Accepted by recelilious. Comes from stage M4.2, which adds the runtime harness in `tests/runtime/` and the Win32 test programs of our own in `tests/win32/` that it runs. Section 3 lists both in the tree, together with `Paneport.TrimTest/` and `Shared/`, which existed already, so that the tree shows every folder of `tests/`, and the row of `tests/` says what the new folders hold. Section 2 does not change: the harness and the test programs are tests, not components of the main app. |

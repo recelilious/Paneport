@@ -17,6 +17,14 @@
 #define PP_THREADS_WAIT_MS 30000U
 #define PP_THREADS_REDIRECT_EXIT_CODE 42U
 
+// The thread that loops on a syscall: how often it is suspended, has its context read and is
+// resumed, how many calls it makes first, so that FEX has translated its loop, the code it ends
+// with, and how long the check spins for its next call before it sleeps.
+#define PP_THREADS_SYSCALL_ROUNDS 1000U
+#define PP_THREADS_SYSCALL_WARM_UP 1000
+#define PP_THREADS_SYSCALL_EXIT_CODE 43U
+#define PP_THREADS_SYSCALL_SPINS 100000U
+
 // The clocks must advance across a sleep of 100 ms by 50 ms to 10 s: Sleep may wake a tick
 // early, and a loaded runner late. The interrupt time counts in units of 100 ns.
 #define PP_THREADS_CLOCK_SLEEP_MS 100U
@@ -66,6 +74,15 @@ struct suspend_state {
     volatile LONG spins;
     volatile LONG redirected;
     volatile ULONG_PTR marker;
+};
+
+// The thread that loops on a syscall: whether it runs and should stop, how many calls it made,
+// and how many of them gave a wrong result.
+struct syscall_loop_state {
+    volatile LONG running;
+    volatile LONG stop;
+    volatile LONG calls;
+    volatile LONG wrong;
 };
 
 // The buffer of the misaligned accesses, and how many of them read back another value.
@@ -138,6 +155,26 @@ static DWORD WINAPI spinner(void *parameter) {
     for (;;) {
         state->spins++;
     }
+}
+
+// Calls QueryPerformanceCounter until told to stop. Under Wine it is a short syscall,
+// NtQueryPerformanceCounter, so a suspension often finds the thread entering or leaving Wine's
+// syscall dispatcher, where Wine builds the syscall frame from the signal context. Each counter
+// must be written and must not go back.
+static DWORD WINAPI syscall_looper(void *parameter) {
+    struct syscall_loop_state *state = parameter;
+    LONGLONG last = 0;
+    InterlockedExchange(&state->running, 1);
+    while (state->stop == 0) {
+        LARGE_INTEGER counter;
+        counter.QuadPart = -1;
+        if (QueryPerformanceCounter(&counter) == FALSE || counter.QuadPart < last) {
+            InterlockedIncrement(&state->wrong);
+        }
+        last = counter.QuadPart;
+        InterlockedIncrement(&state->calls);
+    }
+    return PP_THREADS_SYSCALL_EXIT_CODE;
 }
 
 // Where the suspended worker continues once its context is changed. It never returns: no
@@ -286,7 +323,7 @@ static bool advanced(ULONGLONG milliseconds) {
 }
 
 // GetTickCount, GetTickCount64 and QueryUnbiasedInterruptTime read the shared user data in
-// kernel32 and kernelbase. Wine on Apple silicon places that data where macOS chooses, since its
+// kernel32 and ntdll. Wine on Apple silicon places that data where macOS chooses, since its
 // fixed address lies in the page zero, so these clocks show whether the ARM64EC side follows it.
 static bool check_clocks(struct pp_test_run *run, const char *area, bool detailed) {
     unsigned failures = run->failures;
@@ -425,6 +462,89 @@ static bool check_suspend_and_context(struct pp_test_run *run, const char *area,
     return passed;
 }
 
+// Waits for the looping thread's next call: by spinning first, since the thread runs on another
+// CPU, and then by sleeping, as wait_for does.
+static bool wait_for_call(const struct syscall_loop_state *state, LONG at_least) {
+    for (unsigned spin = 0; spin < PP_THREADS_SYSCALL_SPINS; spin++) {
+        if (state->calls >= at_least) {
+            return true;
+        }
+        YieldProcessor();
+    }
+    return wait_for(&state->calls, at_least);
+}
+
+// One round: suspends the looping thread, reads its context and resumes it. Returns whether every
+// step succeeded. Under Wine the suspension itself has the thread build its syscall frame from
+// the signal context when it is inside a dispatcher, and the thread applies its context again on
+// resume, so a frame built wrongly breaks it although the check sets nothing. Setting the context
+// too met a separate race, an open item in section 11 of docs/design/runtime-macos-harness.md.
+static bool suspend_in_syscall_loop(HANDLE thread) {
+    if (SuspendThread(thread) != 0U) {
+        return false;
+    }
+    CONTEXT context;
+    memset(&context, 0, sizeof context);
+    context.ContextFlags = CONTEXT_FULL;
+    bool passed = GetThreadContext(thread, &context) != FALSE;
+    if (ResumeThread(thread) != 1U) {
+        passed = false;
+    }
+    return passed;
+}
+
+// Suspends a thread that loops on a syscall, again and again, reading its context each time, and
+// checks that the thread lives on, keeps its results right and ends.
+static bool check_syscall_loop(struct pp_test_run *run, const char *area, bool detailed) {
+    unsigned failures = run->failures;
+    struct syscall_loop_state state;
+    memset((void *)&state, 0, sizeof state);
+    HANDLE thread = CreateThread(NULL, 0, syscall_looper, &state, 0, NULL);
+    if (!pp_test_check(run, thread != NULL,
+                       "CreateThread starts the thread that loops on a syscall")) {
+        return false;
+    }
+    if (pp_test_check(run, wait_for(&state.running, 1),
+                      "the thread that loops on a syscall starts") &&
+        pp_test_check(run, wait_for_call(&state, PP_THREADS_SYSCALL_WARM_UP),
+                      "the thread that loops on a syscall makes its first calls")) {
+        bool steps_ok = true;
+        bool calls_go_on = true;
+        for (unsigned round = 0; round < PP_THREADS_SYSCALL_ROUNDS && steps_ok && calls_go_on;
+             round++) {
+            calls_go_on = wait_for_call(&state, state.calls + 1);
+            if (calls_go_on) {
+                steps_ok = suspend_in_syscall_loop(thread);
+            }
+        }
+        pp_test_check(run, steps_ok,
+                      "SuspendThread, GetThreadContext and ResumeThread succeed on the thread in "
+                      "its syscall loop");
+        pp_test_check(run, calls_go_on, "the thread goes on calling after each resume");
+    }
+    InterlockedExchange(&state.stop, 1);
+    bool ended = WaitForSingleObject(thread, PP_THREADS_WAIT_MS) == WAIT_OBJECT_0;
+    pp_test_check(run, ended, "the thread that loops on a syscall ends");
+    DWORD exit_code = 0;
+    if (ended) {
+        pp_test_check(run, GetExitCodeThread(thread, &exit_code) != FALSE,
+                      "GetExitCodeThread reads the looping thread's exit code");
+        pp_test_check(run, exit_code == PP_THREADS_SYSCALL_EXIT_CODE,
+                      "the looping thread returns from its function");
+    } else {
+        TerminateThread(thread, 1);
+    }
+    CloseHandle(thread);
+    pp_test_check(run, state.wrong == 0,
+                  "each QueryPerformanceCounter call of the thread is right");
+    bool passed = run->failures == failures;
+    if (detailed) {
+        pp_test_line(run, "%s: syscall loop: %u suspensions with the context read: %s", area,
+                     PP_THREADS_SYSCALL_ROUNDS, pp_test_verdict(passed));
+    }
+    return passed;
+}
+
 bool pp_threads_report(struct pp_test_run *run, const char *area, bool detailed) {
     unsigned failures = run->failures;
     check_interlocked(run, area, detailed);
@@ -433,11 +553,12 @@ bool pp_threads_report(struct pp_test_run *run, const char *area, bool detailed)
     check_clocks(run, area, detailed);
     check_unaligned(run, area, detailed);
     check_suspend_and_context(run, area, detailed);
+    check_syscall_loop(run, area, detailed);
     bool passed = run->failures == failures;
     if (!detailed) {
         pp_test_line(run,
-                     "%s: interlocked, critical section, events, clocks, unaligned access and "
-                     "suspend with context: %s",
+                     "%s: interlocked, critical section, events, clocks, unaligned access, "
+                     "suspend with context and suspend in a syscall loop: %s",
                      area, pp_test_verdict(passed));
     }
     return passed;

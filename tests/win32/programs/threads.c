@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
-// threads.exe: interlocked updates, a critical section, events, and one worker suspended, its
-// context changed, then resumed, each on a line of its own with its counts.
+// threads.exe: interlocked updates, a critical section, events, the clocks, misaligned accesses
+// from a second thread, one worker suspended, its context changed, then resumed, and a thread
+// that loops on a syscall suspended again and again, each on a line of its own with its counts.
 
 #include "test_output.h"
 #include "threads_check.h"

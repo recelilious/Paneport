@@ -12,9 +12,10 @@
 
 #include "test_output.h"
 
-// Runs the six checks. With detailed set, it prints one line per check, with its counts;
-// otherwise one line, "<area>: interlocked, critical section, events, clocks, unaligned access
-// and suspend with context: pass", or fail. Returns whether every check passed.
+// Runs the seven checks. With detailed set, it prints one line per check, with its counts;
+// otherwise one line, "<area>: interlocked, critical section, events, clocks, unaligned access,
+// suspend with context and suspend in a syscall loop: pass", or fail. Returns whether every
+// check passed.
 bool pp_threads_report(struct pp_test_run *run, const char *area, bool detailed);
 
 #endif

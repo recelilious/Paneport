@@ -63,6 +63,14 @@ ldflags=(-Wl,--section-alignment,16384 -Wl,--strip-debug)
 # 16 KiB alignment is intended, for the reason above; any other link warning fails the build.
 expected_link_warning="ld.lld: warning: /align specified without /driver; image may not run"
 
+# The paths of this machine that no program may hold. HOME may be unset or empty, as in a
+# stripped environment, and an empty or root HOME would match every program, so it counts only
+# when it names a folder below the root.
+local_paths=("$repo" "$LLVM_MINGW")
+if [ -n "${HOME:-}" ] && [ "${HOME:-}" != / ]; then
+    local_paths+=("$HOME")
+fi
+
 echo "build-win32-tests: $("$compiler" --version | head -n 1), target $target-w64-mingw32"
 
 checks=()
@@ -137,15 +145,21 @@ for source in "${programs[@]}"; do
         printf '%s\n' "$unexpected" >&2
         fail "the link of $name.exe printed more than the expected warning about /align."
     fi
-    for local_path in "$repo" "$LLVM_MINGW" "$HOME"; do
-        if LC_ALL=C grep -q -a -F -- "$local_path" "$out/$name.exe"; then
+    # The searches read the image with its NUL bytes removed and its backslashes turned into
+    # slashes, so that they also find a path in a UTF-16LE string, and a __FILE__, which clang
+    # writes with backslashes for this target once a prefix map is given.
+    searched="$out/$name.searched"
+    LC_ALL=C tr -d '\000' < "$out/$name.exe" | LC_ALL=C tr '\\' '/' > "$searched"
+    for local_path in "${local_paths[@]}"; do
+        if LC_ALL=C grep -q -a -F -- "$local_path" "$searched"; then
             fail "$name.exe holds the path $local_path of this machine."
         fi
     done
     if LC_ALL=C grep -q -a -E -- "/(Users|home|private/var|private/tmp|var/folders|tmp)/" \
-        "$out/$name.exe"; then
+        "$searched"; then
         fail "$name.exe holds the path of a home or temporary folder."
     fi
+    rm -f "$searched"
     # The machine type and the section alignment, read back from the program's headers.
     headers=$("$readobj" --file-headers "$out/$name.exe")
     machine=$(printf '%s\n' "$headers" | sed -n 's/^ *Machine: \([A-Z0-9_]*\).*/\1/p' | head -n 1)

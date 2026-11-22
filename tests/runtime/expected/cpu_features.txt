@@ -1,0 +1,5 @@
+= cpu_features: an x86-64 build
+~ cpu_features: vendor [!-~]{12}, features sse sse2( [a-z0-9.]+)*
+= cpu_features: IsProcessorFeaturePresent agrees on sse, sse2 and sse3
+= cpu_features: GetLargePageMinimum gives 0 or a power of two
+= result: pass

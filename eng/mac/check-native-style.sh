@@ -3,15 +3,18 @@
 # SPDX-License-Identifier: MIT
 
 # Checks our own C, Objective-C and C++ code with the pinned clang-format and clang-tidy
-# (C-0010 section 3, C-0011 section 2), which eng/mac/bootstrap.sh --native installs. The
-# root .clang-format and .clang-tidy hold the rules.
+# (C-0010 section 3, C-0011 section 2), the first of each on PATH: those that
+# eng/mac/bootstrap.sh --native installs, or for the Win32 test programs llvm-mingw's, which
+# find its MinGW headers and come from the same LLVM release, as the runtime job checks with
+# tools/CheckToolchain.cs --llvm. The root .clang-format and .clang-tidy hold the rules.
 #
 #   eng/mac/check-native-style.sh format [file ...]
 #       clang-format in check mode, on every such file of src/, tests/ and tools/ that git
 #       tracks or would add, or on the files given.
 #   eng/mac/check-native-style.sh tidy <build folder> ...
-#       clang-tidy on every source file of src/native and tests/native in the compile
-#       database of each build folder, which CMake writes when it configures a preset.
+#       clang-tidy on every source file of src/native, tests/native, tests/runtime and
+#       tests/win32 in the compile database of each build folder, which CMake writes when it
+#       configures a preset, and eng/mac/build-win32-tests.sh writes for the Win32 programs.
 #
 # Exit codes: 0 nothing to report, 1 a finding, 2 a usage error. Bash 3.2 (C-0010 section 1).
 
@@ -60,7 +63,8 @@ case "$mode" in
             while IFS= read -r file; do
                 files+=("$file")
             done < <(sed -n 's/^ *"file": "\(.*\)",\{0,1\}$/\1/p' "$database" \
-                | grep -e '/src/native/' -e '/tests/native/' | grep -v '/build/' | sort -u)
+                | grep -e '/src/native/' -e '/tests/native/' -e '/tests/runtime/' -e '/tests/win32/' \
+                | grep -v '/build/' | sort -u)
             [ ${#files[@]} -gt 0 ] || { echo "$database lists no source file of ours." >&2; exit 2; }
             echo "Analyzing ${#files[@]} files with $database."
             clang-tidy --quiet -p "$build" "${files[@]}" || status=1

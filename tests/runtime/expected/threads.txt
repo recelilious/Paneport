@@ -1,0 +1,9 @@
+= threads: an x86-64 build
+= threads: interlocked: 400000 increments and a sum of 19999800000: pass
+= threads: critical section: 400000 increments: pass
+= threads: events: 1000 round trips and a manual-reset event: pass
+= threads: clocks: GetTickCount, GetTickCount64 and QueryUnbiasedInterruptTime advance across a sleep: pass
+= threads: unaligned access: 1000 stores and loads across 16 bytes: pass
+= threads: suspend, context change and resume: pass
+= threads: syscall loop: 1000 suspensions with the context read: pass
+= result: pass

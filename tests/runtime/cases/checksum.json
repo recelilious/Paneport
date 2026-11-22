@@ -1,0 +1,1 @@
+{"program": "checksum.exe", "timeout_seconds": 300, "exit_code": 0, "expected": "checksum.txt"}

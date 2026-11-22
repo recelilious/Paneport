@@ -40,8 +40,19 @@ jobs:
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
-          cache: true
-          cache-dependency-path: "**/packages.lock.json"
+
+      # NuGet's packages come from a cache that only main saves (plan decision D14). Saved for
+      # every branch and pull request, as setup-dotnet's own cache did, they filled the
+      # repository's 10 GB of caches. Elsewhere any entry of main for the same system is a fine
+      # start, because the locked restore fetches what it lacks. main itself takes only the exact
+      # key, so that an entry it saves never carries the packages of older lock files.
+      - name: Restore NuGet's packages from the cache of main
+        id: nuget-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: ${{ github.ref != 'refs/heads/main' && format('nuget-{0}-', runner.os) || '' }}
 
       - name: Check the SDK against global.json
         run: dotnet run tools/CheckToolchain.cs
@@ -82,6 +93,13 @@ jobs:
       - name: Publish the trimmed test app, with every trimming warning shown
         if: ${{ !cancelled() }}
         run: dotnet publish tests/Paneport.TrimTest/Paneport.TrimTest.csproj -c Release --no-build
+
+      - name: Save NuGet's packages to the cache, on main only
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.nuget-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json') }}
 
   checks:
     runs-on: ubuntu-24.04
@@ -182,6 +200,231 @@ jobs:
       - name: Check dependency licenses
         if: ${{ !cancelled() }}
         run: dotnet run tools/CheckLicenses.cs
+
+  # The runtime tests (C-0011 sections 1 and 4): our own Win32 test programs of tests/win32,
+  # run under the Wine and FEX forks on the macOS harness (docs/design/runtime-macos-harness.md).
+  # Plan decision D14: it runs for every pull request and every push to main, and a merge
+  # waits for it; a push to another branch skips it, because the pull request's run covers it.
+  runtime:
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    # eng/toolchain.json pins this image as macos-runner-image, and tools/CheckToolchain.cs
+    # fails when the two differ.
+    runs-on: xcode-27
+    # About twice the slowest steps seen so far, which build Wine from scratch (D14).
+    timeout-minutes: 90
+    # A newer run of the same pull request waits for this one instead of cancelling it, so that
+    # a cold build of Wine is never thrown away halfway through (D14). Each push to main has a
+    # group of its own, because GitHub keeps one pending run per group and cancels it when a
+    # newer one queues, which would leave a commit of main without a runtime run.
+    concurrency:
+      group: runtime-${{ github.event.pull_request.number || github.sha }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the SDK that global.json pins
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Select the Xcode that eng/toolchain.json pins (eng/mac/select-xcode.sh)
+        run: eng/mac/select-xcode.sh
+
+      # The keys of C-0011 section 4. The build tools: their pins in eng/toolchain.json and the
+      # bootstrap. A fork's build: the fork's commit; the pins of the macOS image and of the
+      # tools that build the forks; the fork's build script; the bootstrap; and select-xcode.sh.
+      # A pin that no fork build uses, such as gitleaks', is in no key, so that moving it
+      # rebuilds nothing. A key names its fork's commit in full; the rest is a SHA-256 prefix.
+      # The build steps only fetch a fork and call its script, with no option or environment of
+      # their own: every option that shapes a build lives in the keyed scripts.
+      - name: Compute the cache keys
+        id: keys
+        run: |
+          set -o pipefail
+          pins() {
+            for tool in "$@"; do
+              printf '%s ' "$tool"
+              if ! plutil -extract "tools.$tool" json -o - eng/toolchain.json; then
+                echo "::error title=Cache keys::eng/toolchain.json has no pin for $tool." >&2
+                exit 1
+              fi
+              echo
+            done
+          }
+          digest() { shasum -a 256 | cut -c1-16; }
+          tools=$({ pins cmake python llvm-mingw meson ninja bison; cat eng/mac/bootstrap.sh; } | digest)
+          forks=$({ pins macos-runner-image xcode llvm-mingw cmake ninja python bison flex
+            cat eng/mac/bootstrap.sh eng/mac/select-xcode.sh; } | digest)
+          wine=$({ echo "$forks"; cat eng/mac/build-wine.sh; } | digest)
+          fex=$({ echo "$forks"; cat eng/mac/build-fex.sh; } | digest)
+          {
+            echo "tools=runtime-tools-$tools"
+            echo "wine=runtime-wine-$(git rev-parse HEAD:external/Paneport-wine)-$wine"
+            echo "fex=runtime-fex-$(git rev-parse HEAD:external/Paneport-FEX)-$fex"
+          } | tee -a "$GITHUB_OUTPUT"
+
+      # Only an exact key restores anything, so that a stale build is never used.
+      - name: Restore the build tools of the forks from the cache
+        id: tools-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/Library/Caches/paneport-tools
+          key: ${{ steps.keys.outputs.tools }}
+
+      # It checks the SDK and Xcode against their pins, installs what the cache did not bring of
+      # CMake, Python, llvm-mingw, Meson, Ninja and GNU Bison, and checks them against their
+      # pins. llvm-mingw stays off the PATH, in LLVM_MINGW.
+      - name: Check the toolchain and install the fork tools (eng/mac/bootstrap.sh --forks)
+        id: tools
+        run: eng/mac/bootstrap.sh --forks
+
+      - name: Save the build tools of the forks to the cache
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' && steps.tools-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/Library/Caches/paneport-tools
+          key: ${{ steps.keys.outputs.tools }}
+
+      - name: Restore Wine's build from the cache
+        id: wine-cache
+        if: ${{ !cancelled() }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/wine/install
+          key: ${{ steps.keys.outputs.wine }}
+
+      # Only when the cache does not have it: the Wine fork at the commit that this repository
+      # records, fetched at depth 1, then built, installed and checked by the script.
+      - name: Build Wine (eng/mac/build-wine.sh)
+        id: wine
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' && steps.wine-cache.outputs.cache-hit != 'true' }}
+        run: |
+          git submodule update --init --depth 1 external/Paneport-wine
+          eng/mac/build-wine.sh
+          du -sh build/wine/install
+
+      # Right after the build, so that a failing harness, a timeout or a cancelled run keeps it.
+      - name: Save Wine's build to the cache
+        if: ${{ always() && steps.wine.outcome == 'success' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/wine/install
+          key: ${{ steps.keys.outputs.wine }}
+
+      - name: Restore FEX's module from the cache
+        id: fex-cache
+        if: ${{ !cancelled() }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/fex/install
+          key: ${{ steps.keys.outputs.fex }}
+
+      # The script fetches the submodules of FEX that the build needs.
+      - name: Build FEX's ARM64EC module (eng/mac/build-fex.sh)
+        id: fex
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' && steps.fex-cache.outputs.cache-hit != 'true' }}
+        run: |
+          git submodule update --init --depth 1 external/Paneport-FEX
+          eng/mac/build-fex.sh
+
+      - name: Save FEX's module to the cache
+        if: ${{ always() && steps.fex.outcome == 'success' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/fex/install
+          key: ${{ steps.keys.outputs.fex }}
+
+      # S4.2.4: the Win32 test programs, which the device test flavor bundles from M4.4 on. They
+      # build with the pinned llvm-mingw, with every compiler warning an error and every link
+      # warning an error but the expected one that eng/mac/build-win32-tests.sh names.
+      - name: Build the Win32 test programs (eng/mac/build-win32-tests.sh)
+        id: win32
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: eng/mac/build-win32-tests.sh x86_64
+
+      # clang-tidy analyzes the programs with the compile database of the build, in a step of
+      # its own, so that a finding does not keep the cases from running. llvm-mingw's own
+      # clang-tidy is used, because it finds llvm-mingw's MinGW headers, and tools/CheckToolchain.cs
+      # checks first that it is of the LLVM release that the llvm pin names
+      # (runtime-macos-harness.md section 8).
+      - name: Analyze the Win32 test programs (llvm-mingw's clang-tidy)
+        if: ${{ !cancelled() && steps.win32.outcome == 'success' }}
+        run: |
+          PATH="$LLVM_MINGW/bin:$PATH" dotnet run tools/CheckToolchain.cs -- --llvm
+          PATH="$LLVM_MINGW/bin:$PATH" eng/mac/check-native-style.sh tidy build/win32/x86_64
+
+      - name: Build the harness (CMake preset macos-harness)
+        id: harness
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        working-directory: src/native
+        run: |
+          cmake --preset macos-harness
+          cmake --build --preset macos-harness --parallel
+
+      # S4.2.5: every case passes. The runner makes a template prefix with wineboot, runs each
+      # case in a fresh harness process with a fresh copy of it, and writes a summary.
+      - name: Run the harness's cases (eng/mac/run-harness.sh --mode multi)
+        id: cases
+        if: ${{ !cancelled() && (steps.wine-cache.outputs.cache-hit == 'true' || steps.wine.outcome == 'success') && (steps.fex-cache.outputs.cache-hit == 'true' || steps.fex.outcome == 'success') && steps.win32.outcome == 'success' && steps.harness.outcome == 'success' }}
+        run: eng/mac/run-harness.sh --mode multi --no-build
+
+      # Each run of the runner replaces its logs, so the cases' logs are kept before the next.
+      - name: Keep the logs of the cases
+        if: ${{ always() && steps.cases.outcome != 'skipped' }}
+        run: |
+          if [ -d build/runtime/logs ]; then
+            mkdir -p build/runtime-logs
+            cp -R build/runtime/logs build/runtime-logs/cases
+          fi
+
+      # S4.2.5: each planted case has one wrong expectation, so the run must fail and name both.
+      # The job's summary keeps the table of the real cases only.
+      - name: Run the planted cases, which must fail and be named
+        id: planted
+        if: ${{ !cancelled() && steps.cases.outcome != 'skipped' }}
+        run: |
+          status=0
+          output=$(GITHUB_STEP_SUMMARY= eng/mac/run-harness.sh --planted --no-build 2>&1) || status=$?
+          echo "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "::error title=Planted cases::The planted cases passed."
+            exit 1
+          fi
+          # Whole lines, so that a planted case that also crashed or drew a report from Wine,
+          # which the harness adds after "; ", does not pass.
+          if ! grep -qxF "FAIL wrong_line: line 1 differs: expected = console: hello from an i686 build, printed console: hello from an x86-64 build" <<< "$output"; then
+            echo "::error title=Planted cases::The run did not name wrong_line and its wrong line."
+            exit 1
+          fi
+          if ! grep -qxF "FAIL wrong_exit_code: exited with 3, not 4" <<< "$output"; then
+            echo "::error title=Planted cases::The run did not name wrong_exit_code and its exit code."
+            exit 1
+          fi
+          echo "The planted cases failed with their names, as expected."
+
+      - name: Keep the logs of the planted cases
+        if: ${{ always() && steps.planted.outcome != 'skipped' }}
+        run: |
+          if [ -d build/runtime/logs ]; then
+            mkdir -p build/runtime-logs
+            cp -R build/runtime/logs build/runtime-logs/planted
+          fi
+
+      # The cases' logs, and the logs of a fork build that ran in this job.
+      - name: Upload the logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: runtime-logs-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_attempt }}
+          path: |
+            build/runtime-logs/
+            build/wine/build/*.log
+            build/fex/*.log
+          if-no-files-found: ignore
+          retention-days: 14
 
   # The native host (C-0011 section 4): its format and analysis checks, its CTest suite with
   # both sanitizer presets, and the binding tests of Paneport.Interop against the host's test

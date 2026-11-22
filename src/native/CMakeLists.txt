@@ -18,6 +18,7 @@ set(PANEPORT_HOST_FORM "static" CACHE STRING
 set_property(CACHE PANEPORT_HOST_FORM PROPERTY STRINGS framework shared static)
 option(PANEPORT_TEST_BUILD "Build the test exports and the test rule for the main thread." OFF)
 option(PANEPORT_TESTS "Build the CTest suite of tests/native." OFF)
+option(PANEPORT_HARNESS "Build the runtime harness of tests/runtime for macOS." OFF)
 set(PANEPORT_SANITIZERS "" CACHE STRING
     "The sanitizers for -fsanitize, such as address,undefined or thread; empty for none.")
 set(PANEPORT_FRAMEWORK_IDENTIFIER "io.github.recelilious.paneport.host" CACHE STRING
@@ -136,4 +137,10 @@ if(PANEPORT_TESTS)
 
     enable_testing()
     add_subdirectory("${PANEPORT_REPOSITORY_ROOT}/tests/native" "${CMAKE_BINARY_DIR}/tests")
+endif()
+
+# The runtime harness and, in the test presets, the CTest cases of its parts. It runs on macOS
+# only, so the iOS presets leave it out.
+if(PANEPORT_TESTS OR PANEPORT_HARNESS)
+    add_subdirectory("${PANEPORT_REPOSITORY_ROOT}/tests/runtime" "${CMAKE_BINARY_DIR}/runtime")
 endif()

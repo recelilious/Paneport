@@ -17,3 +17,10 @@ SPDX-License-Identifier = "MIT"
 path = ["*.json", "**/*.json", "**/*.slnf"]
 SPDX-FileCopyrightText = "2026 recelilious and the Paneport contributors"
 SPDX-License-Identifier = "MIT"
+
+# The expected outputs of the runtime harness hold exactly the lines a program prints, so they
+# cannot hold a comment either.
+[[annotations]]
+path = "tests/runtime/expected/*.txt"
+SPDX-FileCopyrightText = "2026 recelilious and the Paneport contributors"
+SPDX-License-Identifier = "MIT"

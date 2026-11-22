@@ -1,0 +1,3 @@
+= checksum: an x86-64 build
+~ checksum: 0x5e75a40f80343ce2 \(expected 0x5e75a40f80343ce2\), [0-9]+ MiB/s
+= result: pass

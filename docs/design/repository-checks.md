@@ -20,7 +20,7 @@ This document records how the repository rules of C-0011 section 2 are checked: 
 | Personal data and forbidden files | `tools/ScanPersonalData.cs` | `checks`: personal data and forbidden files | `eng/personal-data-allow-list.json` |
 | Links in Markdown | lychee | `checks`: lychee | `eng/lychee.toml` |
 | Dependency licenses | `tools/CheckLicenses.cs` | `checks`: dependency licenses | `eng/license-map.json` |
-| Toolchain pins (C-0009 section 2) | `tools/CheckToolchain.cs` | `dotnet`: the SDK and the runner image; `checks`: also the CI tools; `ios`: also Xcode, the iOS workload set, CMake and the build tools of the forks, through `eng/mac/bootstrap.sh --ios --forks`; `native`: also Xcode, CMake, clang-format and clang-tidy, through `eng/mac/bootstrap.sh --native` | `global.json`, `eng/toolchain.json`, `.github/workflows/` |
+| Toolchain pins (C-0009 section 2) | `tools/CheckToolchain.cs` | `dotnet`: the SDK and the runner image; `checks`: also the CI tools; `ios`: also Xcode, the iOS workload set, CMake and the build tools of the forks, through `eng/mac/bootstrap.sh --ios --forks`; `native`: also Xcode, CMake, clang-format and clang-tidy, through `eng/mac/bootstrap.sh --native`; `runtime`: also Xcode, CMake and the build tools of the forks, through `eng/mac/bootstrap.sh --forks`, and llvm-mingw's clang-format and clang-tidy against the llvm pin, with `--llvm` in Analyze the Win32 test programs | `global.json`, `eng/toolchain.json`, `.github/workflows/` |
 | C# formatting of Paneport.iOS | `dotnet format` | `ios`: Check the formatting of Paneport.iOS | `.editorconfig` |
 | Native formatting | clang-format, through `eng/mac/check-native-style.sh format` | `native`: Check the format of the native code; a planted error fails it | `.clang-format` |
 | Native analysis | clang-tidy, through `eng/mac/check-native-style.sh tidy`, and the compiler's warnings as errors | `native`: Analyze the native code, and every build | `.clang-tidy`, `src/native/CMakeLists.txt` |
@@ -28,6 +28,8 @@ This document records how the repository rules of C-0011 section 2 are checked: 
 | Interface conformance (C-0005 section 5) | `tests/Paneport.Interop.Tests` | `native`: Run tests/Paneport.Interop.Tests | Its project file |
 | The host frameworks | `eng/mac/check-framework.sh` | `ios`: Check the host frameworks | The public headers, whose `PP_EXPORT` declarations are the expected exports |
 | C# formatting of tests/Paneport.Interop.Tests | `dotnet format` | `native`: Check the formatting of tests/Paneport.Interop.Tests | `.editorconfig` |
+| Native analysis of the Win32 test programs | llvm-mingw's clang-tidy, through `eng/mac/check-native-style.sh tidy`, and llvm-mingw's compiler warnings as errors, with every link warning but the expected one about `/align` | `runtime`: Build the Win32 test programs, and Analyze the Win32 test programs | `.clang-tidy`, `eng/mac/build-win32-tests.sh` |
+| Runtime tests (C-0011 section 1) | The harness of `tests/runtime`, through `eng/mac/run-harness.sh` | `runtime`: Run the harness's cases; the planted cases fail it | `tests/runtime/cases/`, `tests/runtime/expected/`, `tests/runtime/planted/` |
 
 The compatibility data check comes with M8.3. [native-host.md](native-host.md) section 11 describes the native checks.
 
@@ -180,17 +182,18 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 
 ## 6. The CI jobs
 
-`.github/workflows/ci.yml` runs on every push and every pull request (C-0011 section 4), except the `ios` job, which runs for every pull request and every push to `main` (D7); a push to another branch skips it, because the `pull_request` run of the same commit builds the merge result. Actions are pinned to full commit hashes, runner images to explicit versions, and the workflow's token can only read the repository. In every job, every step after the setup runs even when an earlier step failed (`if: ${{ !cancelled() }}`), so that one run shows every failure.
+`.github/workflows/ci.yml` runs on every push and every pull request (C-0011 section 4), except the `ios` and `runtime` jobs, which run for every pull request and every push to `main` (D7, D14); a push to another branch skips them, because the `pull_request` run of the same commit builds the merge result. Actions are pinned to full commit hashes, runner images to explicit versions, and the workflow's token can only read the repository. In every job, every step after the setup runs even when an earlier step failed (`if: ${{ !cancelled() }}`), so that one run shows every failure.
 
 **`dotnet`**, on `windows-2025` and `ubuntu-24.04`:
 
-1. Check out, and install the SDK that `global.json` pins.
+1. Check out, install the SDK that `global.json` pins, and restore NuGet's packages from the cache with `actions/cache/restore`: the entry of `main` for the same system and the same lock files, and on another branch or in a pull request, failing that, the newest entry of `main` for the system, which the locked restore completes. A push to `main` takes the exact entry only, so that what it saves never carries the packages of older lock files.
 2. Check the SDK against `global.json` (`dotnet run tools/CheckToolchain.cs`).
 3. Restore `eng/ci.slnf` from the lock files, as M0.1 set it up.
 4. Check that no lock file was written: in locked mode, NuGet writes a missing lock file instead of failing, so `git status` must show no new or changed `*.lock.json` after the restore and the tool's run.
 5. Build `eng/ci.slnf` in Release, run its tests, and check its formatting, as M0.1 set them up.
 6. Check the formatting of the tools.
 7. Publish the trimmed test app (section 7).
+8. On a push to `main` only, and when step 1 did not restore an entry with the same lock files: save NuGet's packages to the cache with `actions/cache/save`. A pull request saves none, because its cache would be visible only to itself and the repository keeps only 10 GB of caches (D14).
 
 **`checks`**, on `ubuntu-24.04`:
 
@@ -228,6 +231,20 @@ gitleaks 8.30.1, released on 2026-03-21, and lychee 0.24.2, released on 2026-05-
 19. Only if every earlier step of the job passed: upload both `.ipa` files with `actions/upload-artifact`, as `Paneport-main-<commit>` and `Paneport-test-<commit>`, named by the pull request's head commit, or on a push by the pushed commit.
 
 Steps 10 and 14 to 18 each go on with the other flavor when one fails, and a flavor whose bundle exists is checked even when its signing failed.
+
+**`runtime`**, on the macOS image that `eng/toolchain.json` pins, for every pull request and every push to `main`, but not for a push to another branch (D14; [runtime-macos-harness.md](runtime-macos-harness.md) section 7). It stops after 90 minutes, and a newer push to the same pull request waits for a running job instead of cancelling it, while each push to `main` gets a concurrency group of its own, named after its commit, so that a waiting run is never cancelled for a newer one.
+
+1. Check out, install the SDK that `global.json` pins, and select the pinned Xcode with `eng/mac/select-xcode.sh`, as `ios` does.
+2. Compute the cache keys of C-0011 section 4. The build tools: a SHA-256 of their pins in `eng/toolchain.json` (CMake, Python, llvm-mingw, Meson, Ninja and GNU Bison) and of `eng/mac/bootstrap.sh`. Wine's install and FEX's module: the fork's commit as this repository records it, and a SHA-256 of the pins of the macOS image, Xcode, llvm-mingw, CMake, Ninja, Python, GNU Bison and flex, of the fork's build script, of `eng/mac/bootstrap.sh` and of `eng/mac/select-xcode.sh`. Every restore needs the exact key.
+3. Restore the build tools from the cache, run `eng/mac/bootstrap.sh --forks`, which installs what is missing and checks the SDK, Xcode and every tool against its pin, and save the tools if they were not restored.
+4. For Wine and then FEX: restore the build from the cache, or else fetch the fork at depth 1 and build it with `eng/mac/build-wine.sh` or `eng/mac/build-fex.sh`, which run their own checks, and save it to the cache right after the build, so that a later failure, a timeout or a cancelled run keeps it.
+5. Build the Win32 test programs of `tests/win32` for x86-64 with `eng/mac/build-win32-tests.sh`, with every compiler warning an error and every link warning an error but the one about `/align` that each 16 KiB-aligned link prints, and fail if a program holds a path of the runner. Then, in a step of its own, so that a finding does not keep the cases from running: check llvm-mingw's clang-format and clang-tidy against the llvm pin with `tools/CheckToolchain.cs --llvm`, and run `eng/mac/check-native-style.sh tidy` on the compile database of the build with llvm-mingw's clang-tidy, which finds llvm-mingw's MinGW headers.
+6. Build `paneport_harness` with the CMake preset `macos-harness`.
+7. Run every case with `eng/mac/run-harness.sh --mode multi --no-build`, which makes a template prefix with `wineboot`, runs each case in a fresh harness process with a fresh copy of it, and fails unless every case passes.
+8. The planted cases: run `eng/mac/run-harness.sh --planted --no-build`, and pass only if it fails and prints exactly the two expected lines, `wrong_line` with its wrong line and `wrong_exit_code` with its exit code, so that a planted case that also crashed does not pass.
+9. Whatever passed before: upload the logs of steps 7 and 8, and the logs of a fork build of step 4, as `runtime-logs-<commit>-<attempt>`, kept for 14 days.
+
+The harness's own unit tests run in `native`, with the rest of the CTest suite.
 
 **`native`**, on the macOS image that `eng/toolchain.json` pins, for every push and every pull request, like `dotnet` and `checks`:
 
@@ -269,6 +286,8 @@ From the repository root, with the SDK that `global.json` pins. Setting `DOTNET_
 | Native format and analysis | On a Mac, with the bootstrap's tools on the PATH: `eng/mac/check-native-style.sh format`, and `eng/mac/check-native-style.sh tidy build/native/asan-ubsan build/native/ios-device-test` once both presets are configured |
 | Native tests | On a Mac, from `src/native`: `cmake --preset asan-ubsan`, `cmake --build --preset asan-ubsan`, `ctest --preset asan-ubsan`, and the same with `tsan`; with System Integrity Protection enabled, `test_thread_control.destroyed_request_fails_as_ended` is skipped |
 | Interface conformance and bindings | On a Mac, after `cmake --preset macos-test` and `cmake --build --preset macos-test` in `src/native`: `PANEPORT_HOST_LIBRARY="$PWD/build/native/macos-test/libpaneport_host.dylib" dotnet test tests/Paneport.Interop.Tests/Paneport.Interop.Tests.csproj` from the repository root |
+| Win32 test programs | On a Mac, with the tools of `eng/mac/bootstrap.sh --forks`: `eng/mac/build-win32-tests.sh x86_64`, then `PATH="$LLVM_MINGW/bin:$PATH" eng/mac/check-native-style.sh tidy build/win32/x86_64` |
+| Runtime harness | On a Mac with Apple silicon: `eng/mac/run-harness.sh`, which builds what is missing and runs every case, and `eng/mac/run-harness.sh --planted`, which must fail and name both planted cases ([runtime-macos-harness.md](runtime-macos-harness.md) section 6) |
 | Host frameworks | On a Mac, after building the presets `ios-device` and `ios-device-test`: `eng/mac/check-framework.sh build/native/ios-device/paneport_host.framework build/native/ios-device-test/paneport_host.framework` |
 | App packages | `dotnet run tools/ScanPackage.cs -- --self-test` anywhere; on a Mac, after building, signing and packaging the apps as the `ios` job does, `eng/mac/check-app.sh <app> main` (or `test`) and `dotnet run tools/ScanPackage.cs -- <ipa>...` |
 | Third-party notices | `dotnet run tools/GenerateNotices.cs -- --self-test` anywhere; on a Mac, after building an app and before signing it, with each text that `dotnet run tools/GenerateNotices.cs -- --list-upstream` prints fetched into `build/upstream/<sha256>` as step 13 of the `ios` job does, `dotnet run tools/GenerateNotices.cs -- --mode ios --project src/Paneport.iOS/Paneport.iOS.csproj --app <app> --out build/notices/main`, or the same with `tests/device/Paneport.DeviceTest.csproj` for the device test flavor |
@@ -296,6 +315,8 @@ Each check is shown to fail once, on a draft pull request from a scratch branch 
 | A reflection call in Paneport.Core that the trimming analyzers reject | Build in `dotnet` |
 
 A run passes when each planted change fails its step and that step's output names the file. The planted build error also fails the test step and the trimmed publish, which need the build. The forbidden-file rule is checked by its self-test only. The pull request of the stage links the run.
+
+The `runtime` job plants its own failures on every run as well: after the cases, it runs the two planted cases of `tests/runtime/planted`, each with one wrong expectation, and passes only if that run fails and prints exactly their two expected lines (section 6).
 
 The `ios` job plants its own failures on every run: it runs the bootstrap against another Xcode on the image and passes only if the bootstrap fails and names both versions, and it runs `--fork-tools` with another Python first on the PATH and without llvm-mingw, and passes only if the check fails and names both (section 6). A change to `eng/mac/bootstrap.sh`, to the Xcode check or to the checks of the build tools of the forks is therefore tested by every run of the job. The `native` job plants a format error in a scratch copy on every run and passes only if the format check fails on it (section 6), and `tests/Paneport.Interop.Tests` plants a wrong definition of `pp_memory_budget_t` that the conformance test must report by struct and member ([interop.md](interop.md) section 8). The self-test of `tools/ScanPackage.cs`, which the `checks` job runs, plants a provisioning profile, team identifiers and application-identifier prefixes in packages that it builds in memory, and passes only if each fails and names its file. The self-test of `tools/GenerateNotices.cs`, which the `ios` job runs, plants each failure of [release-engineering.md](release-engineering.md) section 3 in a bundle that it generates, and passes only if each fails and names what fails. The self-test of `tools/CheckLicenses.cs` plants an `#:include` that leaves `tools/Shared/` and a directive in a shared file.
 

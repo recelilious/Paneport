@@ -17,12 +17,15 @@
 // does Wine on macOS, where the first 4 GB are the executable's page zero.
 #define PP_SEH_FAULT_ADDRESS ((ULONG_PTR)0x10U)
 
-// The rounds of the race check, which stops at the first wrong division: at least the first
-// number, then on until both outcomes have shown, up to the second, because the thread that flips
-// the divisor sometimes does not run while the first rounds divide. And how long the check waits
-// for that thread to end.
+// The race check stops at the first wrong division. Otherwise it runs for this many rounds
+// after the first divide error and on until both outcomes have shown, but for no longer than the
+// time below: the thread that flips the divisor sometimes gets no time for a while, and a
+// million divisions by 1 take only tens of milliseconds under FEX, so a bound in rounds alone
+// would fail a correct runtime. It reads the clock once every so many rounds. And how long the
+// check waits for that thread to end.
 #define PP_SEH_RACE_ROUNDS 20000U
-#define PP_SEH_RACE_MAX_ROUNDS 1000000U
+#define PP_SEH_RACE_MS 10000U
+#define PP_SEH_RACE_CLOCK_ROUNDS 256U
 #define PP_SEH_WAIT_MS 30000U
 
 // EXCEPTION_SOFTWARE_ORIGINATE, which Windows 11 adds to the flags of every exception that
@@ -340,9 +343,16 @@ static bool check_divisor_race(struct pp_test_run *run, const char *area) {
     unsigned raised = 0;
     unsigned divided = 0;
     unsigned wrong = 0;
-    for (unsigned round = 0; round < PP_SEH_RACE_MAX_ROUNDS && wrong == 0U; round++) {
-        if (round >= PP_SEH_RACE_ROUNDS && raised > 0U && divided > 0U) {
-            break;
+    unsigned after_first_raise = 0;
+    unsigned since_clock = 0;
+    ULONGLONG started = GetTickCount64();
+    while (wrong == 0U && (after_first_raise < PP_SEH_RACE_ROUNDS || divided == 0U)) {
+        since_clock++;
+        if (since_clock == PP_SEH_RACE_CLOCK_ROUNDS) {
+            since_clock = 0;
+            if (GetTickCount64() - started >= PP_SEH_RACE_MS) {
+                break;
+            }
         }
         struct division result = {0U, 0U};
         if (divide_or_catch(&race.divisor, &result)) {
@@ -351,6 +361,9 @@ static bool check_divisor_race(struct pp_test_run *run, const char *area) {
             divided++;
         } else {
             wrong++;
+        }
+        if (raised > 0U) {
+            after_first_raise++;
         }
     }
     InterlockedExchange(&race.stop, 1);

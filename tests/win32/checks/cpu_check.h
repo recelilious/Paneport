@@ -19,4 +19,9 @@ bool pp_cpu_report(struct pp_test_run *run, const char *area);
 // prints one line that says so. Returns whether they agree.
 bool pp_cpu_compare_with_windows(struct pp_test_run *run, const char *area);
 
+// Checks that GetLargePageMinimum gives 0 or a power of two, and prints one line that says so.
+// kernelbase reads it from the shared user data, which Wine on Apple silicon places where macOS
+// chooses. Returns whether it did.
+bool pp_cpu_check_large_pages(struct pp_test_run *run, const char *area);
+
 #endif

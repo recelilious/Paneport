@@ -2,5 +2,5 @@
 ~ cpu: vendor [!-~]{12}, features sse sse2( [a-z0-9.]+)*
 ~ checksum: 0x5e75a40f80343ce2 \(expected 0x5e75a40f80343ce2\), [0-9]+ MiB/s
 = seh: access violation, divide by zero and RaiseException caught: pass
-= threads: interlocked, critical section, events and suspend with context: pass
+= threads: interlocked, critical section, events, clocks, unaligned access and suspend with context: pass
 = result: pass

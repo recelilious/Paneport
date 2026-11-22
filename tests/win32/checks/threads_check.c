@@ -8,12 +8,32 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+// QueryUnbiasedInterruptTime.
+#include <realtimeapiset.h>
 
 #define PP_THREADS_WORKERS 4U
 #define PP_THREADS_ITERATIONS 100000U
 #define PP_THREADS_ROUND_TRIPS 1000U
 #define PP_THREADS_WAIT_MS 30000U
 #define PP_THREADS_REDIRECT_EXIT_CODE 42U
+
+// The clocks must advance across a sleep of 100 ms by 50 ms to 10 s: Sleep may wake a tick
+// early, and a loaded runner late. The interrupt time counts in units of 100 ns.
+#define PP_THREADS_CLOCK_SLEEP_MS 100U
+#define PP_THREADS_CLOCK_MIN_MS 50U
+#define PP_THREADS_CLOCK_MAX_MS 10000U
+#define PP_THREADS_INTERRUPT_UNITS_PER_MS 10000U
+
+// The misaligned access: its rounds, and its place in a 16-byte-aligned buffer, so that it
+// crosses 16 bytes, with 8 bytes on x86-64 and 4 on i686.
+#define PP_THREADS_UNALIGNED_ROUNDS 1000U
+#ifdef __x86_64__
+#define PP_THREADS_UNALIGNED_OFFSET 12U
+#define PP_THREADS_UNALIGNED_MOVE "movq"
+#else
+#define PP_THREADS_UNALIGNED_OFFSET 14U
+#define PP_THREADS_UNALIGNED_MOVE "movl"
+#endif
 
 // The value that the suspended worker receives in its second register argument once its
 // context is changed. On x86-64 it fills the whole register, so that a truncated context shows.
@@ -48,6 +68,12 @@ struct suspend_state {
     volatile ULONG_PTR marker;
 };
 
+// The buffer of the misaligned accesses, and how many of them read back another value.
+struct unaligned_state {
+    _Alignas(16) unsigned char bytes[32];
+    unsigned mismatches;
+};
+
 static DWORD WINAPI interlocked_worker(void *parameter) {
     struct counters *counters = parameter;
     for (ULONG index = 0; index < PP_THREADS_ITERATIONS; index++) {
@@ -78,6 +104,29 @@ static DWORD WINAPI pong_worker(void *parameter) {
         if (SetEvent(game->pong) == FALSE) {
             game->waits_ok = false;
             return 1;
+        }
+    }
+    return 0;
+}
+
+// Stores a value where it crosses 16 bytes and loads it back, through RCX (ECX on i686), not
+// RSP. Under FEX both accesses get TSO's ordering, the host faults on them, and FEX's handler
+// for misaligned accesses rewrites the two instructions in its code buffer, which must then
+// still store and load the value.
+static DWORD WINAPI unaligned_worker(void *parameter) {
+    struct unaligned_state *state = parameter;
+    unsigned char *at = state->bytes + PP_THREADS_UNALIGNED_OFFSET;
+    for (ULONG_PTR index = 0; index < PP_THREADS_UNALIGNED_ROUNDS; index++) {
+        ULONG_PTR value = PP_THREADS_MARKER ^ index;
+        ULONG_PTR back = 0;
+        // NOLINTNEXTLINE(portability-no-assembler): the test needs these two accesses as written.
+        __asm__ volatile(PP_THREADS_UNALIGNED_MOVE " %1, (%2)\n\t" PP_THREADS_UNALIGNED_MOVE
+                                                   " (%2), %0"
+                         : "=&d"(back)
+                         : "a"(value), "c"(at)
+                         : "memory");
+        if (back != value) {
+            state->mismatches++;
         }
     }
     return 0;
@@ -229,6 +278,60 @@ static bool check_events(struct pp_test_run *run, const char *area, bool detaile
     return passed;
 }
 
+// Whether a clock advanced by about the time slept, in one comparison: below the minimum, the
+// unsigned difference wraps around and exceeds the range.
+static bool advanced(ULONGLONG milliseconds) {
+    return milliseconds - PP_THREADS_CLOCK_MIN_MS <=
+           PP_THREADS_CLOCK_MAX_MS - PP_THREADS_CLOCK_MIN_MS;
+}
+
+// GetTickCount, GetTickCount64 and QueryUnbiasedInterruptTime read the shared user data in
+// kernel32 and kernelbase. Wine on Apple silicon places that data where macOS chooses, since its
+// fixed address lies in the page zero, so these clocks show whether the ARM64EC side follows it.
+static bool check_clocks(struct pp_test_run *run, const char *area, bool detailed) {
+    unsigned failures = run->failures;
+    ULONGLONG unbiased = 0;
+    ULONGLONG unbiased_after = 0;
+    DWORD tick = GetTickCount();
+    ULONGLONG tick64 = GetTickCount64();
+    pp_test_check(run, QueryUnbiasedInterruptTime(&unbiased) != FALSE,
+                  "QueryUnbiasedInterruptTime reads the interrupt time");
+    Sleep(PP_THREADS_CLOCK_SLEEP_MS);
+    DWORD ticks = GetTickCount() - tick;
+    ULONGLONG ticks64 = GetTickCount64() - tick64;
+    pp_test_check(run, QueryUnbiasedInterruptTime(&unbiased_after) != FALSE,
+                  "QueryUnbiasedInterruptTime reads the interrupt time again");
+    pp_test_check(run, advanced(ticks), "GetTickCount advances by about the time slept");
+    pp_test_check(run, advanced(ticks64), "GetTickCount64 advances by about the time slept");
+    pp_test_check(run, unbiased_after >= unbiased, "QueryUnbiasedInterruptTime does not go back");
+    pp_test_check(run, advanced((unbiased_after - unbiased) / PP_THREADS_INTERRUPT_UNITS_PER_MS),
+                  "QueryUnbiasedInterruptTime advances by about the time slept");
+    bool passed = run->failures == failures;
+    if (detailed) {
+        pp_test_line(run,
+                     "%s: clocks: GetTickCount, GetTickCount64 and QueryUnbiasedInterruptTime "
+                     "advance across a sleep: %s",
+                     area, pp_test_verdict(passed));
+    }
+    return passed;
+}
+
+static bool check_unaligned(struct pp_test_run *run, const char *area, bool detailed) {
+    unsigned failures = run->failures;
+    struct unaligned_state state;
+    memset(&state, 0, sizeof state);
+    pp_test_check(run, run_workers(unaligned_worker, &state, 1U),
+                  "a second thread makes misaligned accesses");
+    pp_test_check(run, state.mismatches == 0U,
+                  "each misaligned access reads back the value it stored");
+    bool passed = run->failures == failures;
+    if (detailed) {
+        pp_test_line(run, "%s: unaligned access: %u stores and loads across 16 bytes: %s", area,
+                     PP_THREADS_UNALIGNED_ROUNDS, pp_test_verdict(passed));
+    }
+    return passed;
+}
+
 // Points the context of a suspended thread at redirect_target, with the state and the marker as
 // its two arguments, on a stack below the one the thread was using, aligned as at a function's
 // entry: 16 bytes, less the return address that a call would have pushed.
@@ -327,10 +430,14 @@ bool pp_threads_report(struct pp_test_run *run, const char *area, bool detailed)
     check_interlocked(run, area, detailed);
     check_critical_section(run, area, detailed);
     check_events(run, area, detailed);
+    check_clocks(run, area, detailed);
+    check_unaligned(run, area, detailed);
     check_suspend_and_context(run, area, detailed);
     bool passed = run->failures == failures;
     if (!detailed) {
-        pp_test_line(run, "%s: interlocked, critical section, events and suspend with context: %s",
+        pp_test_line(run,
+                     "%s: interlocked, critical section, events, clocks, unaligned access and "
+                     "suspend with context: %s",
                      area, pp_test_verdict(passed));
     }
     return passed;

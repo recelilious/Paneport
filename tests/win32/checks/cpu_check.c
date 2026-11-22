@@ -213,3 +213,14 @@ bool pp_cpu_compare_with_windows(struct pp_test_run *run, const char *area) {
     }
     return passed;
 }
+
+bool pp_cpu_check_large_pages(struct pp_test_run *run, const char *area) {
+    SIZE_T minimum = GetLargePageMinimum();
+    // Zero, when large pages are not supported, passes as well.
+    bool passed = pp_test_check(run, (minimum & (minimum - 1U)) == 0U,
+                                "GetLargePageMinimum gives 0 or a power of two");
+    if (passed) {
+        pp_test_line(run, "%s: GetLargePageMinimum gives 0 or a power of two", area);
+    }
+    return passed;
+}

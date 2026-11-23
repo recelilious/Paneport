@@ -15,7 +15,7 @@ Back to the [development plan](../development-plan.md).
 | M4.2 | ARM64EC Wine with FEX on macOS | Medium | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
 | M4.3 | Single-process Wine on macOS | Medium | Planned | | |
 | M4.4 | Runtime on iOS | Medium | Planned | | |
-| M4.5 | Shared user data for x86-64 guests | Medium | Ready | | |
+| M4.5 | Shared user data for x86-64 guests | Medium | In progress | `feat/m4-5-shared-user-data` | 2026-11-23 |
 | S4.0.1 | In-app console and the Run sample program action | Small | Planned | | |
 | S4.1.1 | Fork repositories and integration branches | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | S4.1.2 | Submodules | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
@@ -45,9 +45,9 @@ Back to the [development plan](../development-plan.md).
 | S4.4.6 | Template prefix generation and install | Small | Planned | | |
 | S4.4.7 | Guest console capture on iOS | Small | Planned | | |
 | S4.4.8 | Bundle layout check and size report | Small | Planned | | |
-| S4.5.1 | FEX's redirection of guest reads of the shared user data | Small | Planned | | |
-| S4.5.2 | x86-64 check of the shared user data and ntdll's syscall exports | Small | Planned | | |
-| S4.5.3 | Record in the design document, and notes for M4.4 and M7.3 | Small | Planned | | |
+| S4.5.1 | FEX's redirection of guest reads of the shared user data | Small | In progress | `feat/m4-5-shared-user-data` | 2026-11-23 |
+| S4.5.2 | x86-64 check of the shared user data and ntdll's syscall exports | Small | In progress | `feat/m4-5-shared-user-data` | 2026-11-23 |
+| S4.5.3 | Record in the design document, and notes for M4.4 and M7.3 | Small | In progress | `feat/m4-5-shared-user-data` | 2026-11-23 |
 
 ## L4 First Windows program on the iPhone
 

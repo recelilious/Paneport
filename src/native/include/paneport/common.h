@@ -22,7 +22,7 @@
  * The minor version of the host interface. It changes when a function is added or a member
  * is appended to a struct.
  */
-#define PP_ABI_VERSION_MINOR 2
+#define PP_ABI_VERSION_MINOR 3
 
 /** Marks a function that the host exports. Every other symbol of the host is hidden. */
 #if defined(__GNUC__) || defined(__clang__)

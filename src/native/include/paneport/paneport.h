@@ -12,6 +12,7 @@
 
 #include "paneport/common.h"
 #include "paneport/host.h"
+#include "paneport/jit.h"
 #include "paneport/memory.h"
 
 #endif /* PP_PANEPORT_H */

@@ -39,6 +39,24 @@ static inline void pp_signal_context_set_pc(void *context, uint64_t program_coun
     }
 }
 
+// Returns the link register of a signal's context, or 0 without one. In a leaf routine that
+// has not changed it, it holds the address that the routine returns to.
+static inline uint64_t pp_signal_context_lr(const void *context) {
+    const ucontext_t *user_context = context;
+    if (user_context == NULL || user_context->uc_mcontext == NULL) {
+        return 0U;
+    }
+    return (uint64_t)user_context->uc_mcontext->__ss.__lr;
+}
+
+// Sets the general register x0 of a signal's context, which holds a routine's return value.
+static inline void pp_signal_context_set_x0(void *context, uint64_t value) {
+    ucontext_t *user_context = context;
+    if (user_context != NULL && user_context->uc_mcontext != NULL) {
+        user_context->uc_mcontext->__ss.__x[0] = value;
+    }
+}
+
 // The planting functions are always inlined, so that the instruction lies in the caller's own
 // body at every optimization level, as a test of routing by program counter needs.
 

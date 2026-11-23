@@ -59,6 +59,12 @@ set(PANEPORT_HOST_SOURCES
     host/event_queue.c
     host/event_thread.c
     host/host.c
+    host/jit/jit_flags.c
+    host/jit/jit_machine.c
+    host/jit/jit_map.c
+    host/jit/jit_probe.c
+    host/jit/jit_probe_handler.c
+    host/jit/jit_provider.c
     host/log.c
     host/memory_budget.c
     host/platform_darwin.c
@@ -68,6 +74,13 @@ set(PANEPORT_HOST_SOURCES
     host/signals/thread_control.c
     host/thread_role.c
 )
+# The JIT provider's backend (docs/design/jit.md section 2): the debugger broker on iOS, and the
+# simulated broker of the test builds and the harness on macOS.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    list(APPEND PANEPORT_HOST_SOURCES host/jit/jit_backend_ios.c)
+else()
+    list(APPEND PANEPORT_HOST_SOURCES host/jit/jit_backend_macos.c)
+endif()
 set(PANEPORT_HOST_TEST_SOURCES
     host/signal_harness.c host/signal_harness_handler.c host/test_exports.c)
 

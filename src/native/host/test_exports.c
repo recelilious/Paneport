@@ -15,6 +15,7 @@
 #include "log.h"
 #include "memory_budget.h"
 #include "paneport/host.h"
+#include "paneport/jit.h"
 #include "paneport/memory.h"
 #include "paneport/testing.h"
 #include "signals/signals.h"
@@ -86,6 +87,26 @@ static const pp_test_layout_member_t k_signal_counters_members[] = {
     PP_MEMBER(pp_test_signal_counters_t, runtime_faults),
 };
 
+static const pp_test_layout_member_t k_jit_status_members[] = {
+    PP_MEMBER(pp_jit_status_t, struct_size),
+    PP_MEMBER(pp_jit_status_t, state),
+    PP_MEMBER(pp_jit_status_t, failure),
+    PP_MEMBER(pp_jit_status_t, debugged_since_launch),
+    PP_MEMBER(pp_jit_status_t, attached_now),
+    PP_MEMBER(pp_jit_status_t, enabler_opened),
+    PP_MEMBER(pp_jit_status_t, foreign_debugger),
+    PP_MEMBER(pp_jit_status_t, requested_mib),
+    PP_MEMBER(pp_jit_status_t, pool_mib),
+    PP_MEMBER(pp_jit_status_t, regions_planned),
+    PP_MEMBER(pp_jit_status_t, regions_mapped),
+    PP_MEMBER(pp_jit_status_t, in_state_ms),
+    PP_MEMBER(pp_jit_status_t, debugger_attached_ms),
+    PP_MEMBER(pp_jit_status_t, requesting_ms),
+    PP_MEMBER(pp_jit_status_t, waiting_detach_ms),
+    PP_MEMBER(pp_jit_status_t, verifying_ms),
+    PP_MEMBER(pp_jit_status_t, authorization_ms),
+};
+
 // Every struct that crosses the interface (C-0005 section 5). A struct added to a header is
 // added here in the same change, and to the C# definitions of Paneport.Interop.
 static const pp_test_layout_struct_t k_layout_table[] = {
@@ -93,6 +114,7 @@ static const pp_test_layout_struct_t k_layout_table[] = {
     PP_STRUCT(pp_event_t, k_event_members),
     PP_STRUCT(pp_log_line_t, k_log_line_members),
     PP_STRUCT(pp_memory_budget_t, k_memory_budget_members),
+    PP_STRUCT(pp_jit_status_t, k_jit_status_members),
     PP_STRUCT(pp_test_layout_member_t, k_layout_member_members),
     PP_STRUCT(pp_test_layout_struct_t, k_layout_struct_members),
     PP_STRUCT(pp_test_signal_harness_config_t, k_harness_config_members),

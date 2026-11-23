@@ -11,6 +11,7 @@
 #include "error.h"
 #include "event_thread.h"
 #include "host_state.h"
+#include "jit/jit_provider.h"
 #include "log.h"
 #include "paneport/host.h"
 #include "platform.h"
@@ -37,8 +38,11 @@ PP_EXPORT uint32_t pp_abi_version(void) {
 
 PP_EXPORT void pp_free(void *memory) { free(memory); }
 
-// Checks what a [main] function needs: a running host, called on the main thread.
-static pp_status_t check_main_call(const char *function) {
+bool pp_host_is_running(void) {
+    return atomic_load_explicit(&s_host.state, memory_order_acquire) == PP_HOST_RUNNING;
+}
+
+pp_status_t pp_host_check_main_call(const char *function) {
     if (atomic_load_explicit(&s_host.state, memory_order_acquire) != PP_HOST_RUNNING) {
         return pp_error_set(PP_E_NOT_INITIALIZED, "%s needs a running host: call pp_init first.",
                             function);
@@ -117,12 +121,14 @@ PP_EXPORT pp_status_t pp_init(const pp_init_config_t *config) {
 
 PP_EXPORT pp_status_t pp_shutdown(void) {
     pp_error_clear();
-    const pp_status_t status = check_main_call("pp_shutdown");
+    const pp_status_t status = pp_host_check_main_call("pp_shutdown");
     if (status != PP_OK) {
         return status;
     }
 
     (void)pp_log(PP_LOG_INFO, "The native host is stopping.");
+    // The JIT provider's last events still reach the callback, before the event thread stops.
+    pp_jit_provider_stop();
     pp_event_thread_stop();
     atomic_store_explicit(&s_host.state, PP_HOST_STOPPED, memory_order_release);
     return PP_OK;
@@ -130,7 +136,7 @@ PP_EXPORT pp_status_t pp_shutdown(void) {
 
 PP_EXPORT pp_status_t pp_set_event_callback(pp_event_callback_t callback, void *user_data) {
     pp_error_clear();
-    const pp_status_t status = check_main_call("pp_set_event_callback");
+    const pp_status_t status = pp_host_check_main_call("pp_set_event_callback");
     if (status != PP_OK) {
         return status;
     }
@@ -140,7 +146,7 @@ PP_EXPORT pp_status_t pp_set_event_callback(pp_event_callback_t callback, void *
 
 PP_EXPORT pp_status_t pp_set_log_callback(pp_log_callback_t callback, void *user_data) {
     pp_error_clear();
-    const pp_status_t status = check_main_call("pp_set_log_callback");
+    const pp_status_t status = pp_host_check_main_call("pp_set_log_callback");
     if (status != PP_OK) {
         return status;
     }

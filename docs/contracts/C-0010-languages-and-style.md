@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.1 |
-| Date | 2026-11-17 |
+| Version | 1.2 |
+| Date | 2026-11-23 |
 | Owner | recelilious |
 
 This contract fixes which languages each part of Paneport uses and how code in them is written.
@@ -19,7 +19,6 @@ This contract fixes which languages each part of Paneport uses and how code in t
 | Native host | C, with Objective-C where Apple APIs need it | C17; Objective-C with ARC |
 | Dock host | C | C17, built as a Windows program with llvm-mingw |
 | Code inside the forks | The upstream project's language and standard | As upstream |
-| JIT broker script | JavaScript | The language level that StikDebug's script interface supports, recorded in the broker's design document |
 | Build steps that run only on macOS | Bash | Bash 3.2, which macOS ships |
 | Cross-platform tools | C# file-based apps, run with `dotnet run <file>.cs` | .NET 10 |
 | Build and configuration files | CMake, MSBuild XML, GitHub Actions YAML, JSON and JSON Schema (draft 2020-12), Xcode configuration files | Versions pinned under C-0009 section 2 |
@@ -104,3 +103,4 @@ SPDX-License-Identifier: MIT
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious |
 | 1.1 | 2026-11-17 | Accepted by recelilious, together with C-0003 1.6. Comes from stage M4.2, which makes the first changes to files of the Wine fork; LGPL-2.1 section 2(b) asks that a changed file carry a prominent notice with the date of each change. Section 4 says which changed fork files carry the notice: those under the LGPL or Apache-2.0, or in a fork under one of them. It gives the notice's form, one line for each stage with the UTC dates of its changes, its place, the commit it comes in, when a generated file needs a line of its own and when a line goes, and names the notice as the second deviation from upstream style. Section 6 applies section 4 to changed files as well as new ones. |
+| 1.2 | 2026-11-23 | Accepted by recelilious, together with C-0003 1.9, C-0004 1.2, C-0006 1.1 and C-0009 1.3. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 1 drops the row of the JIT broker script, because Paneport writes no JavaScript. |

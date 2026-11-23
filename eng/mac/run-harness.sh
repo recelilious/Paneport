@@ -4,17 +4,20 @@
 
 # Runs the cases of tests/runtime on the macOS harness (docs/design/runtime-macos-harness.md):
 # builds what is missing, prepares a template prefix, then runs each case in a fresh harness
-# process with a fresh copy of that prefix, writes a summary, and exits non-zero on any
-# failure.
+# process, writes a summary, and exits non-zero on any failure.
 #
-#   eng/mac/run-harness.sh [--mode multi] [--planted] [--no-build] [<case> ...]
+#   eng/mac/run-harness.sh [--mode single|multi] [--planted] [--no-build] [<case> ...]
 #
-#   --mode multi  Wine as upstream runs it, with the wineserver and every Windows process as
-#                 processes of their own; the only mode until M4.3 adds single
-#   --planted     run the planted cases of tests/runtime/planted instead: each has one wrong
-#                 expectation, so the run fails and names them, which CI checks
-#   --no-build    use what is built, and fail when something is missing
-#   <case>        the names of the cases to run, such as console; all of them by default
+#   --mode single  the default: the wineserver as a thread and the program as a group of threads
+#                  in one process, the harness's child, started through the native host's session
+#                  API, with a fresh copy of the template prefix for each run (M4.3)
+#   --mode multi   Wine as upstream runs it, with the wineserver and every Windows process as
+#                  processes of their own and a copy of the template prefix for each case, for
+#                  comparisons; it skips the session cases
+#   --planted      run the planted cases of tests/runtime/planted instead: each has one wrong
+#                  expectation, so the run fails and names them, which CI checks
+#   --no-build     use what is built, and fail when something is missing
+#   <case>         the names of the cases to run, such as console; all of them by default
 #
 # Build output lives under $PANEPORT_BUILD_DIR, by default build/ in the repository, and the
 # logs under $PANEPORT_BUILD_DIR/runtime/logs. The fork tools come from eng/mac/bootstrap.sh
@@ -34,7 +37,7 @@ fail() {
     exit 1
 }
 
-mode=multi
+mode=single
 planted=false
 build=true
 names=()
@@ -52,8 +55,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 case "$mode" in
-    multi) ;;
-    single) fail "single-process mode comes with M4.3." ;;
+    single | multi) ;;
     pool) fail "pool mode comes with M4.4." ;;
     *) fail "unknown mode $mode." ;;
 esac
@@ -73,6 +75,12 @@ logs="$runtime/logs"
 # Ends the wineserver of the current case's prefix, with every Wine process that uses it.
 end_case_server() {
     WINEPREFIX="$prefix" "$server" -k > /dev/null 2>&1 || true
+}
+
+# Ends the harness child of the current case in single mode, by its command line, which names
+# the case's file.
+end_case_child() {
+    pkill -KILL -f -- "--run-single $case_file " > /dev/null 2>&1 || true
 }
 
 # Runs a command and ends it after the given number of seconds; returns 124 then.
@@ -154,6 +162,13 @@ WINEPREFIX="$template" "$loader" reg add 'HKLM\Software\Microsoft\Wow64\amd64' /
 WINEPREFIX="$template" "$loader" reg add 'HKCU\Software\Wine\Drivers' /v Graphics /t REG_SZ \
     /d null /f >> "$logs/prefix.log" 2>&1 || fail "reg add for the display driver failed."
 WINEPREFIX="$template" with_timeout 120 "$server" -w >> "$logs/prefix.log" 2>&1 || true
+if [ "$mode" = single ]; then
+    # Single mode runs no wineboot and no wineserver of its own. The fork publishes the drive
+    # letters itself, C: from dosdevices/c:, and no drive maps the host's root (S4.3.7); a
+    # .update-timestamp that says disable keeps any later wineboot from updating the prefix.
+    rm -f "$template/dosdevices/z:"
+    printf 'disable\n' > "$template/.update-timestamp"
+fi
 say "template prefix ready in $(($(date +%s) - started)) s"
 
 # --- The cases ------------------------------------------------------------------------------
@@ -190,25 +205,40 @@ for name in "${names[@]}"; do
     prefix="$runtime/prefixes/$name"
     rm -rf "$prefix"
     mkdir -p "$runtime/prefixes"
-    cp -Rc "$template" "$prefix" 2>/dev/null || cp -R "$template" "$prefix"
-    # A wineserver of the case's own, started before the program and outside its process
-    # group, so that the server does not hold the program's output, and ended with the case.
-    # The session's first program runs wineboot --init, whose helpers keep the case's error
-    # stream open until the server ends.
-    WINEPREFIX="$prefix" "$server" -p > "$logs/$name.wineserver.log" 2>&1 || true
-    # The server never ends by itself, and the program runs in a process group of its own that
-    # Ctrl-C does not reach, so an interrupted run ends them here.
-    trap end_case_server EXIT
-    trap 'end_case_server; exit 130' INT
-    trap 'end_case_server; exit 143' TERM
-    line=$("$harness" --mode "$mode" --case "$case_file" --programs "$programs" \
-        --expected "$expected" --prefix "$prefix" --loader "$loader" --logs "$logs") || true
-    end_case_server
-    trap - EXIT INT TERM
+    if [ "$mode" = single ]; then
+        # The harness makes the prefix a fresh copy of the template before each run, and its
+        # child runs the session in a process of its own, with no wineserver beside it. The
+        # child's process group, which Ctrl-C does not reach, ends here when the run is
+        # interrupted.
+        trap 'end_case_child; exit 130' INT
+        trap 'end_case_child; exit 143' TERM
+        line=$("$harness" --mode single --case "$case_file" --programs "$programs" \
+            --expected "$expected" --template "$template" --prefix "$prefix" \
+            --loader "$loader" --logs "$logs") || true
+        trap - INT TERM
+    else
+        cp -Rc "$template" "$prefix" 2>/dev/null || cp -R "$template" "$prefix"
+        # A wineserver of the case's own, started before the program and outside its process
+        # group, so that the server does not hold the program's output, and ended with the
+        # case. The session's first program runs wineboot --init, whose helpers keep the case's
+        # error stream open until the server ends.
+        WINEPREFIX="$prefix" "$server" -p > "$logs/$name.wineserver.log" 2>&1 || true
+        # The server never ends by itself, and the program runs in a process group of its own
+        # that Ctrl-C does not reach, so an interrupted run ends them here.
+        trap end_case_server EXIT
+        trap 'end_case_server; exit 130' INT
+        trap 'end_case_server; exit 143' TERM
+        line=$("$harness" --mode multi --case "$case_file" --programs "$programs" \
+            --expected "$expected" --prefix "$prefix" --loader "$loader" --logs "$logs") || true
+        end_case_server
+        trap - EXIT INT TERM
+    fi
     rm -rf "$prefix"
     printf '%s\n' "$line"
+    # A session case has no session to run in multi mode, so it neither passes nor fails there.
     case "$line" in
         "PASS "*) passed=$((passed + 1)) ;;
+        "SKIP "*) ;;
         *) failed=$((failed + 1)) ;;
     esac
     printf '| %s | %s |\n' "$name" "$(printf '%s' "$line" | sed 's/|/\\|/g')" >> "$summary"

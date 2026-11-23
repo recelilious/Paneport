@@ -427,13 +427,14 @@ jobs:
           fi
 
       # S4.2.5: each planted case has one wrong expectation, so the run must fail and name both.
-      # The job's summary keeps the table of the real cases only.
+      # The job's summary keeps the table of the real cases only. It runs in the mode of the cases
+      # above, which name it, since the runner's default became single mode in M4.3.
       - name: Run the planted cases, which must fail and be named
         id: planted
         if: ${{ !cancelled() && steps.cases.outcome != 'skipped' }}
         run: |
           status=0
-          output=$(GITHUB_STEP_SUMMARY= eng/mac/run-harness.sh --planted --no-build 2>&1) || status=$?
+          output=$(GITHUB_STEP_SUMMARY= eng/mac/run-harness.sh --planted --mode multi --no-build 2>&1) || status=$?
           echo "$output"
           if [ "$status" -eq 0 ]; then
             echo "::error title=Planted cases::The planted cases passed."

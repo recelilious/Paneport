@@ -293,7 +293,50 @@ typedef struct seen_t {
     bool timeout;
     bool exit_code;
     bool expected;
+    bool session;
 } seen_t;
+
+// The kinds of session case, by the value of their "session" member.
+static const struct {
+    const char *name;
+    pp_case_kind_t kind;
+} k_session_kinds[] = {
+    {"start_stop", PP_CASE_START_STOP},
+    {"second_start", PP_CASE_SECOND_START},
+    {"jit_not_ready", PP_CASE_JIT_NOT_READY},
+    {"dispatcher_check", PP_CASE_DISPATCHER_CHECK},
+};
+
+#define PP_SESSION_KIND_COUNT (sizeof k_session_kinds / sizeof k_session_kinds[0])
+
+const char *pp_case_kind_name(pp_case_kind_t kind) {
+    for (size_t index = 0; index < PP_SESSION_KIND_COUNT; index++) {
+        if (k_session_kinds[index].kind == kind) {
+            return k_session_kinds[index].name;
+        }
+    }
+    return "program";
+}
+
+// Reads the value of "session" into the case's kind.
+static void read_session(reader_t *reader, pp_case_t *result) {
+    char *name = read_string(reader);
+    if (name == NULL) {
+        return;
+    }
+    bool known = false;
+    for (size_t index = 0; index < PP_SESSION_KIND_COUNT && !known; index++) {
+        if (strcmp(name, k_session_kinds[index].name) == 0) {
+            result->kind = k_session_kinds[index].kind;
+            known = true;
+        }
+    }
+    if (!known) {
+        fail_at(reader, "\"session\" must be start_stop, second_start, jit_not_ready or "
+                        "dispatcher_check");
+    }
+    free(name);
+}
 
 // Marks a member as seen, and fails the parse when it was seen before.
 static bool first_time(reader_t *reader, bool *flag) {
@@ -311,13 +354,10 @@ static void read_bounded(reader_t *reader, long low, long high, long *value, con
     }
 }
 
-// Reads one member; a failure shows in reader->failed.
-static void read_member(reader_t *reader, pp_case_t *result, seen_t *seen) {
-    char *name = read_string(reader);
-    if (name == NULL || !take(reader, ':', "expected : after a member's name")) {
-        free(name);
-        return;
-    }
+// Reads a member that describes the program, when name is one: program, arguments, exit_code or
+// expected. Returns whether it was one; a failure shows in reader->failed.
+static bool read_program_member(reader_t *reader, const char *name, pp_case_t *result,
+                                seen_t *seen) {
     long number = 0;
     if (strcmp(name, "program") == 0) {
         if (first_time(reader, &seen->program)) {
@@ -326,6 +366,29 @@ static void read_member(reader_t *reader, pp_case_t *result, seen_t *seen) {
     } else if (strcmp(name, "arguments") == 0) {
         if (first_time(reader, &seen->arguments)) {
             (void)read_arguments(reader, result);
+        }
+    } else if (strcmp(name, "exit_code") == 0) {
+        if (first_time(reader, &seen->exit_code)) {
+            read_bounded(reader, 0, 255, &number, "\"exit_code\" must be from 0 to 255");
+            result->exit_code = (int)number;
+        }
+    } else if (strcmp(name, "expected") == 0) {
+        if (first_time(reader, &seen->expected)) {
+            result->expected = read_string(reader);
+        }
+    } else {
+        return false;
+    }
+    return true;
+}
+
+// Reads a member that describes the runs, when name is one: session, environment, runs or
+// timeout_seconds. Returns whether it was one; a failure shows in reader->failed.
+static bool read_run_member(reader_t *reader, const char *name, pp_case_t *result, seen_t *seen) {
+    long number = 0;
+    if (strcmp(name, "session") == 0) {
+        if (first_time(reader, &seen->session)) {
+            read_session(reader, result);
         }
     } else if (strcmp(name, "environment") == 0) {
         if (first_time(reader, &seen->environment)) {
@@ -341,23 +404,37 @@ static void read_member(reader_t *reader, pp_case_t *result, seen_t *seen) {
             read_bounded(reader, 1, 3600, &number, "\"timeout_seconds\" must be from 1 to 3600");
             result->timeout_seconds = (unsigned)number;
         }
-    } else if (strcmp(name, "exit_code") == 0) {
-        if (first_time(reader, &seen->exit_code)) {
-            read_bounded(reader, 0, 255, &number, "\"exit_code\" must be from 0 to 255");
-            result->exit_code = (int)number;
-        }
-    } else if (strcmp(name, "expected") == 0) {
-        if (first_time(reader, &seen->expected)) {
-            result->expected = read_string(reader);
-        }
     } else {
+        return false;
+    }
+    return true;
+}
+
+// Reads one member; a failure shows in reader->failed.
+static void read_member(reader_t *reader, pp_case_t *result, seen_t *seen) {
+    char *name = read_string(reader);
+    if (name == NULL || !take(reader, ':', "expected : after a member's name")) {
+        free(name);
+        return;
+    }
+    if (!read_program_member(reader, name, result, seen) &&
+        !read_run_member(reader, name, result, seen)) {
         fail_at(reader, "unknown member; a case has program, arguments, environment, runs, "
-                        "timeout_seconds, exit_code and expected");
+                        "timeout_seconds, exit_code, expected and session");
     }
     free(name);
 }
 
 static void check_complete(reader_t *reader, const pp_case_t *result, const seen_t *seen) {
+    if (seen->session) {
+        if (seen->program || seen->arguments || seen->exit_code || seen->expected) {
+            fail_at(reader, "a session case runs no program, so it has no program, arguments, "
+                            "exit_code or expected");
+        } else if (!seen->timeout) {
+            fail_at(reader, "a session case needs timeout_seconds");
+        }
+        return;
+    }
     if (!seen->program || !seen->timeout || !seen->exit_code || !seen->expected) {
         fail_at(reader, "a case needs program, timeout_seconds, exit_code and expected");
     } else if (!is_file_name(result->program, ".exe")) {
@@ -372,7 +449,8 @@ bool pp_case_parse(const char *text, size_t length, pp_case_t *result, char *err
     memset(result, 0, sizeof *result);
     reader_t reader = {text, length, 0U, 1U, error, error_size, false};
     result->runs = 1U;
-    seen_t seen = {false, false, false, false, false, false, false};
+    result->kind = PP_CASE_PROGRAM;
+    seen_t seen = {false, false, false, false, false, false, false, false};
     if (take(&reader, '{', "a case is a JSON object")) {
         if (at(&reader, '}')) {
             reader.position++;
@@ -409,7 +487,8 @@ bool pp_case_parse(const char *text, size_t length, pp_case_t *result, char *err
 }
 
 // Whether an entry of an environment, "NAME=value", names WINEPREFIX or a variable that the
-// case sets, so that the case's environment holds the case's value instead.
+// case sets, which the environment of the case's runs does not inherit: multi mode puts the
+// case's values in their place, and single mode hands them to the session.
 static bool replaced(const char *entry, const pp_case_t *test) {
     const char *equals = strchr(entry, '=');
     size_t length = equals == NULL ? strlen(entry) : (size_t)(equals - entry);
@@ -453,6 +532,25 @@ char **pp_case_environment(const pp_case_t *test, char *const base[], const char
         used++;
     }
     result[used] = *owned;
+    return result;
+}
+
+char **pp_case_inherited_environment(const pp_case_t *test, char *const base[]) {
+    size_t count = 0;
+    while (base[count] != NULL && count < PP_CASE_MAX_ENVIRONMENT) {
+        count++;
+    }
+    char **result = (char **)calloc(count + 1U, sizeof *result);
+    if (result == NULL) {
+        return NULL;
+    }
+    size_t used = 0;
+    for (size_t index = 0; index < count; index++) {
+        if (!replaced(base[index], test)) {
+            result[used] = base[index];
+            used++;
+        }
+    }
     return result;
 }
 

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000652,
+    "slug": "fixture-earlier-report"
+  },
+  "name": "Fixture Earlier Report",
+  "rating": "playable",
+  "reports": [
+    {
+      "date": "2026-12-01",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "playable",
+      "evidence": "docs/evidence/2026-12-01-fixture-first-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    },
+    {
+      "date": "2026-12-08",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "boots",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md"
+    }
+  ]
+}

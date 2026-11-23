@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000657,
+    "slug": "fixture-other-device"
+  },
+  "name": "Fixture Other Device",
+  "rating": "runs",
+  "reports": [
+    {
+      "date": "2026-12-08",
+      "device": "iPhone17,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "runs",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md",
+      "fpsMedian": 24,
+      "fpsLow1": 17.5,
+      "peakMemoryMiB": 2210
+    }
+  ]
+}

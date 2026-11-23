@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [
+      "8b1633ac7e8f7db2c18c2fc83ffcdd4f60bfc0c3979f6bb5159d0d3adc275fc7"
+    ],
+    "slug": "fixture-right-slug"
+  },
+  "name": "Fixture Right Slug",
+  "executable": {
+    "path": "RightSlug.exe"
+  }
+}

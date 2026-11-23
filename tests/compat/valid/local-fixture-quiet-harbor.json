@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [
+      "873cac065e57946e051f5d3a709e8fe93ae82e8728eb4e7f458d2e85afc40b3c"
+    ],
+    "slug": "fixture-quiet-harbor"
+  },
+  "name": "Fixture Quiet Harbor",
+  "executable": {
+    "path": "bin/QuietHarbor.exe"
+  }
+}

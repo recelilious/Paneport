@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000505,
+    "slug": "fixture-release-order"
+  },
+  "name": "Fixture Release Order",
+  "rating": "boots",
+  "reports": [
+    {
+      "date": "2026-12-01",
+      "device": "iPhone19,3",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.9.0",
+      "gameBuild": "20261201",
+      "rating": "perfect",
+      "evidence": "docs/evidence/2026-12-01-fixture-first-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    },
+    {
+      "date": "2026-12-08",
+      "device": "iPhone19,3",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.10.0",
+      "gameBuild": "20261201",
+      "rating": "boots",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md"
+    },
+    {
+      "date": "2026-12-15",
+      "device": "iPhone19,3",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.10.0-rc.1",
+      "gameBuild": "20261201",
+      "rating": "perfect",
+      "evidence": "docs/evidence/2026-12-15-fixture-third-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    }
+  ]
+}

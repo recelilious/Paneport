@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000608,
+    "slug": "fixture-fraction"
+  },
+  "name": "Fixture Fraction",
+  "jitPoolMiB": 512.0
+}

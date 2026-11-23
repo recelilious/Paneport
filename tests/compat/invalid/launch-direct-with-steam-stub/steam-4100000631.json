@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000631,
+    "slug": "fixture-direct-steam-stub"
+  },
+  "name": "Fixture Direct Steam Stub",
+  "executable": {
+    "path": "DirectSteamStub.exe"
+  },
+  "drm": {
+    "steamApi": false,
+    "steamStub": true,
+    "ceg": "no"
+  },
+  "launch": "direct"
+}

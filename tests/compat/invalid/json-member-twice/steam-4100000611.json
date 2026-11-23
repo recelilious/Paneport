@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000611,
+    "slug": "fixture-member-twice"
+  },
+  "name": "Fixture Member Twice",
+  "prefix": "shared",
+  "prefix": "isolated"
+}

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000654,
+    "slug": "fixture-lower-release"
+  },
+  "name": "Fixture Lower Release",
+  "rating": "perfect",
+  "reports": [
+    {
+      "date": "2026-12-01",
+      "device": "iPhone18,2",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.9.0",
+      "gameBuild": "20261201",
+      "rating": "perfect",
+      "evidence": "docs/evidence/2026-12-01-fixture-first-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    },
+    {
+      "date": "2026-12-08",
+      "device": "iPhone18,2",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.10.0",
+      "gameBuild": "20261201",
+      "rating": "boots",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md"
+    }
+  ]
+}

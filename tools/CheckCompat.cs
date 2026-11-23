@@ -2,29 +2,37 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
-// The compatibility check of C-0011 section 1, so far for the list of verified iOS builds:
-// compat/ios-builds.json must match compat/schema/ios-builds.schema.json (C-0006 section 6),
-// each build and device model may appear only once, and every evidence record that an entry
-// names must exist. The validator is our own: it implements only the JSON Schema keywords
-// (draft 2020-12) that the schema uses, each only in the forms that it implements, so that no
-// keyword goes unchecked. It refuses a schema with any other keyword or another form of a
-// keyword's value; with a $schema other than draft 2020-12, or a $schema or $id below the
-// root; with a title, description or $id that is not a string; with a required list that names
-// a member twice; and with a member that appears twice. The title files of compat/titles/ join
-// with M8.3, which records decision D8 of 2026-11-23: a validator of our own, which M8.3
-// extends (C-0011 section 5).
+// The compatibility check of C-0011 section 1:
+//
+// - Every title file in compat/titles/ reads as JSON the way the app reads it, matches
+//   compat/schema/title.schema.json, is named after its id, holds to the launch and allow-list rules of
+//   C-0008 section 5 and the rating rule of C-0008 section 3, and names evidence records that exist. The
+//   environment allow-list of the title schema holds no Steam variable (C-0008 section 5).
+// - compat/ios-builds.json matches compat/schema/ios-builds.schema.json (C-0006 section 6), each build and
+//   model appears only once, and every evidence record that an entry names exists.
+//
+// The validator is our own (plan decision D8 of 2026-11-23): it implements only the JSON Schema keywords (draft
+// 2020-12) that the schemas use, each only in the forms that it implements, so that no keyword goes unchecked.
+// Each schema may use only the keywords and annotations that it uses now, which the check lists for it. The
+// validator refuses a schema with any other keyword or another form of a keyword's value; with a $schema other
+// than draft 2020-12, or a $schema or $id below the root; with a title, description, $comment or $id that is not
+// a string; with a required list that names a member twice; and with a member that appears twice.
 //
 //   dotnet run tools/CheckCompat.cs                 check the repository
 //   dotnet run tools/CheckCompat.cs -- --self-test  check the validator and the rules on fixtures
 //
 // A problem names the file, the JSON pointer and the rule, never the value. Exit codes: 0 the
 // data is valid, 1 it is not, 2 usage or configuration error. docs/design/repository-checks.md
-// describes the check.
+// describes the check, and docs/design/compat-db.md the rules of the title files.
 
 #:property PublishAot=false
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 try
@@ -52,15 +60,41 @@ internal static class Cli
     }
 }
 
-// One problem: the file, the JSON pointer of the value, the rule it breaks, and what the rule
-// wants. The value itself is never part of it.
+// One problem: the file, the JSON pointer of the value, the rule it breaks, and what the rule wants. The value
+// itself is never part of it. A problem that the schema finds also knows where in the schema its keyword sits.
 internal sealed record Problem(string File, string Pointer, string Rule, string Detail)
 {
+    public string Location { get; init; } = "";
+
     public override string ToString() => $"{File}: {(Pointer.Length == 0 ? "/" : Pointer)}: {Rule}: {Detail}";
 }
 
-// The validator of the keywords that the schema uses. The annotations of s_annotations take no
-// part in validation; CheckAnnotation checks their values.
+// The segment of a member name in a JSON pointer (RFC 6901). A name of the data that is not a plain one might
+// hold a local path or other personal data, so it shows as <name not shown>, as the app and the personal-data
+// scanner print such names. A plain name holds neither ~ nor /, so it needs no escape. A name of a schema, which
+// is our own, shows in full, escaped as RFC 6901 escapes it.
+internal static class JsonPointer
+{
+    public const string NameNotShown = "<name not shown>";
+
+    public static string Segment(string name) =>
+        name.Length is > 0 and <= 64 && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-')
+            ? name
+            : NameNotShown;
+
+    public static string Escape(string name) =>
+        name.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal);
+}
+
+// The validator of the JSON Schema keywords (draft 2020-12) that the schemas in compat/schema use, and of no
+// other. Each schema has a vocabulary, the keywords and annotations that it uses now, and may use no other, so
+// that a keyword it starts to use comes with self-test cases of its own. The validator refuses a schema with a
+// keyword outside its vocabulary, with a keyword's value in a form that it does not implement, with a format
+// other than date, with a part of a pattern that EcmaPattern does not translate, or with an annotation that
+// breaks a rule of CheckAnnotation. Annotations take no part in validation. Where the app's reader is stricter
+// than JSON Schema, the validator follows the reader, so that the check passes no file that the app rejects
+// (docs/design/compat-db.md section 9): an integer is written without a fraction or an exponent, a number is
+// finite, a number matches a const or an enum only as the same text, and format date is asserted.
 internal sealed class SchemaValidator
 {
     private const string DefinitionPrefix = "#/$defs/";
@@ -68,29 +102,74 @@ internal sealed class SchemaValidator
     // The dialect that the validator implements (C-0010 section 1).
     private const string Dialect = "https://json-schema.org/draft/2020-12/schema";
 
-    private static readonly HashSet<string> s_annotations = ["$schema", "$id", "title", "description"];
+    // What the validator implements: the annotations and keywords of the schemas' vocabularies, and no more.
+    private static readonly HashSet<string> s_annotations =
+        ["$schema", "$id", "title", "description", "$comment", "default"];
 
     private static readonly HashSet<string> s_keywords =
     [
-        "type", "required", "properties", "additionalProperties", "const", "items", "$ref", "$defs",
-        "pattern", "minItems", "uniqueItems",
+        "type", "required", "properties", "additionalProperties", "const", "enum", "items", "$ref", "$defs",
+        "pattern", "minItems", "uniqueItems", "maxLength", "minimum", "maximum", "exclusiveMinimum", "format",
+        "allOf", "anyOf", "oneOf", "not", "if", "then", "else",
     ];
 
-    private static readonly HashSet<string> s_types = ["object", "array", "string", "boolean", "null", "number", "integer"];
+    private static readonly HashSet<string> s_types =
+        ["object", "array", "string", "boolean", "null", "number", "integer"];
+
+    // Everything that the validator implements, the vocabulary of its own cases in the self-test.
+    public static readonly IReadOnlySet<string> Everything = s_annotations.Union(s_keywords).ToHashSet(StringComparer.Ordinal);
+
+    // A member that appears twice in one object is refused, in a schema and in the data: a reader that takes one
+    // copy would see a value that the check never saw.
+    public static readonly JsonDocumentOptions Options = new() { AllowDuplicateProperties = false };
 
     private readonly JsonElement _root;
-    private readonly Dictionary<string, Regex> _patterns = [];
+    private readonly string _name;
+    private readonly IReadOnlySet<string> _vocabulary;
+    private readonly HashSet<string> _used = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Regex> _patterns = new(StringComparer.Ordinal);
 
-    // Reads the schema, and refuses it when, anywhere in it, a keyword is one that this validator
-    // does not implement, a keyword's value takes a form that it does not implement, or an
-    // annotation breaks a rule of CheckAnnotation.
-    public SchemaValidator(JsonElement root, string name)
+    // Reads the schema, and refuses it when, anywhere in it, a keyword is outside its vocabulary, a keyword's
+    // value takes a form that this validator does not implement, or an annotation breaks a rule of
+    // CheckAnnotation.
+    private SchemaValidator(JsonElement root, string name, IReadOnlySet<string> vocabulary)
     {
         _root = root;
-        CheckKeywords(root, root, "", name);
+        _name = name;
+        _vocabulary = vocabulary;
+        CheckSchema(root, "");
     }
 
-    private static void CheckKeywords(JsonElement root, JsonElement schema, string pointer, string name)
+    // The schema's root, which outlives the text that it was read from.
+    public JsonElement Root => _root;
+
+    // The keywords and annotations that the schema uses, which the self-test compares with its vocabulary.
+    public IReadOnlySet<string> Used => _used;
+
+    // Loads a schema as the check reads it: parsed with Options, and refused when it is not JSON, repeats a
+    // member or is refused by the validator. Each refusal names the file.
+    public static SchemaValidator LoadSchema(string text, string name, IReadOnlySet<string> vocabulary)
+    {
+        JsonDocument schema;
+        try
+        {
+            schema = JsonDocument.Parse(text, Options);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException(
+                $"{name}: the schema is not JSON, or repeats a member: {exception.Message}", exception);
+        }
+        using (schema)
+        {
+            return new SchemaValidator(schema.RootElement.Clone(), name, vocabulary);
+        }
+    }
+
+    private InvalidDataException Refuse(string pointer, string reason) =>
+        new($"{_name}: {(pointer.Length == 0 ? "/" : pointer)}: {reason}");
+
+    private void CheckSchema(JsonElement schema, string pointer)
     {
         if (schema.ValueKind is JsonValueKind.True or JsonValueKind.False)
         {
@@ -98,153 +177,239 @@ internal sealed class SchemaValidator
         }
         if (schema.ValueKind != JsonValueKind.Object)
         {
-            throw Refuse(name, pointer, "a schema must be an object or a boolean.");
+            throw Refuse(pointer, "a schema must be an object or a boolean.");
         }
         foreach (var keyword in schema.EnumerateObject())
         {
-            var at = $"{pointer}/{Escape(keyword.Name)}";
-            var value = keyword.Value;
+            var at = $"{pointer}/{JsonPointer.Escape(keyword.Name)}";
+            if (!Everything.Contains(keyword.Name))
+            {
+                throw Refuse(at, "tools/CheckCompat.cs does not implement this keyword.");
+            }
+            if (!_vocabulary.Contains(keyword.Name))
+            {
+                throw Refuse(at, "tools/CheckCompat.cs takes only the keywords that this schema uses, and this is "
+                    + "not one of them.");
+            }
+            _used.Add(keyword.Name);
             if (s_annotations.Contains(keyword.Name))
             {
-                CheckAnnotation(keyword.Name, value, pointer, at, name);
+                CheckAnnotation(keyword.Name, keyword.Value, pointer, at);
                 continue;
             }
-            if (!s_keywords.Contains(keyword.Name))
-            {
-                throw Refuse(name, at, "tools/CheckCompat.cs does not implement this keyword.");
-            }
-            switch (keyword.Name)
-            {
-                case "properties" or "$defs" when value.ValueKind != JsonValueKind.Object:
-                    throw Refuse(name, at, "the keyword needs an object of schemas.");
-                case "properties" or "$defs":
-                    foreach (var child in value.EnumerateObject())
-                    {
-                        CheckKeywords(root, child.Value, $"{at}/{Escape(child.Name)}", name);
-                    }
-                    break;
-                case "items" or "additionalProperties":
-                    CheckKeywords(root, value, at, name);
-                    break;
-                case "type" when value.ValueKind != JsonValueKind.String || !s_types.Contains(value.GetString()!):
-                    throw Refuse(name, at, "the keyword needs one of the seven type names of JSON Schema.");
-                case "required" when value.ValueKind != JsonValueKind.Array
-                    || value.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.String):
-                    throw Refuse(name, at, "the keyword needs a list of member names.");
-                case "required" when value.EnumerateArray().Select(item => item.GetString())
-                    .Distinct(StringComparer.Ordinal).Count() != value.GetArrayLength():
-                    throw Refuse(name, at, "the keyword names each member once.");
-                case "minItems" when value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var least) || least < 0:
-                    throw Refuse(name, at, "the keyword needs a non-negative integer.");
-                case "uniqueItems" when value.ValueKind is not (JsonValueKind.True or JsonValueKind.False):
-                    throw Refuse(name, at, "the keyword needs true or false.");
-                case "pattern" when value.ValueKind != JsonValueKind.String || !Compiles(value.GetString()!):
-                    throw Refuse(name, at, "the keyword needs a regular expression.");
-                case "$ref" when !Resolves(root, value):
-                    throw Refuse(name, at, "only a reference to a member of the root's $defs is implemented.");
-            }
+            CheckKeyword(keyword.Name, keyword.Value, at);
         }
     }
 
-    // The annotations take no part in validation, but JSON Schema 2020-12 wants each to be a
-    // string, $schema names the dialect, which must be the one that this validator implements,
-    // and below the root $schema and $id would start a schema of their own, which it does not
-    // implement.
-    private static void CheckAnnotation(string keyword, JsonElement value, string pointer, string at, string name)
+    private void CheckKeyword(string keyword, JsonElement value, string at)
+    {
+        switch (keyword)
+        {
+            case "properties" or "$defs":
+                Expect(value, JsonValueKind.Object, at, "the keyword needs an object of schemas.");
+                foreach (var child in value.EnumerateObject())
+                {
+                    CheckSchema(child.Value, $"{at}/{JsonPointer.Escape(child.Name)}");
+                }
+                break;
+            case "items" or "additionalProperties" or "not" or "if" or "then" or "else":
+                CheckSchema(value, at);
+                break;
+            case "allOf" or "anyOf" or "oneOf":
+                Expect(value, JsonValueKind.Array, at, "the keyword needs a list of schemas.");
+                if (value.GetArrayLength() == 0)
+                {
+                    throw Refuse(at, "the list of schemas is empty.");
+                }
+                var index = 0;
+                foreach (var branch in value.EnumerateArray())
+                {
+                    CheckSchema(branch, $"{at}/{index++}");
+                }
+                break;
+            case "$ref":
+                _ = Definition(value, at);
+                break;
+            case "type":
+                if (value.ValueKind != JsonValueKind.String || !s_types.Contains(value.GetString()!))
+                {
+                    throw Refuse(at, "the keyword needs one of the seven type names of JSON Schema.");
+                }
+                break;
+            case "format":
+                if (value.ValueKind != JsonValueKind.String || value.GetString() != "date")
+                {
+                    throw Refuse(at, "only the format date is implemented.");
+                }
+                break;
+            case "pattern":
+                Expect(value, JsonValueKind.String, at, "the keyword needs a regular expression.");
+                _ = Pattern(value.GetString()!, at);
+                break;
+            case "required":
+                if (value.ValueKind != JsonValueKind.Array
+                    || value.EnumerateArray().Any(name => name.ValueKind != JsonValueKind.String))
+                {
+                    throw Refuse(at, "the keyword needs a list of member names.");
+                }
+                if (value.EnumerateArray().Select(name => name.GetString()).Distinct(StringComparer.Ordinal).Count()
+                    != value.GetArrayLength())
+                {
+                    throw Refuse(at, "the keyword names each member once.");
+                }
+                break;
+            case "enum":
+                Expect(value, JsonValueKind.Array, at, "the keyword needs a list of values.");
+                break;
+            case "minItems" or "maxLength":
+                if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var limit) || limit < 0)
+                {
+                    throw Refuse(at, "the keyword needs a non-negative integer.");
+                }
+                break;
+            case "minimum" or "maximum" or "exclusiveMinimum":
+                Expect(value, JsonValueKind.Number, at, "the keyword needs a number.");
+                break;
+            case "uniqueItems":
+                if (value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                {
+                    throw Refuse(at, "the keyword needs true or false.");
+                }
+                break;
+        }
+    }
+
+    // The annotations take no part in validation, but JSON Schema 2020-12 wants $schema, $id, title,
+    // description and $comment each to be a string; default may be any value. $schema names the dialect, which
+    // must be the one that this validator implements, and below the root $schema and $id would start a schema of
+    // their own, whose references this validator does not resolve.
+    private void CheckAnnotation(string keyword, JsonElement value, string pointer, string at)
     {
         if (keyword is "$schema" or "$id" && pointer.Length > 0)
         {
-            throw Refuse(name, at, "only the root may give $schema or $id.");
+            throw Refuse(at, "only the root may give $schema or $id.");
         }
-        if (value.ValueKind != JsonValueKind.String)
+        if (keyword != "default" && value.ValueKind != JsonValueKind.String)
         {
-            throw Refuse(name, at, "the keyword needs a string.");
+            throw Refuse(at, "the keyword needs a string.");
         }
         if (keyword == "$schema" && value.GetString() != Dialect)
         {
-            throw Refuse(name, at, $"tools/CheckCompat.cs implements only the dialect {Dialect}.");
+            throw Refuse(at, $"tools/CheckCompat.cs implements only the dialect {Dialect}.");
         }
     }
 
-    private static InvalidDataException Refuse(string name, string pointer, string detail) =>
-        new($"{name}: {(pointer.Length == 0 ? "/" : pointer)}: {detail}");
-
-    // A reference names a member of the root's $defs, written plainly: #/$defs/name.
-    private static bool Resolves(JsonElement root, JsonElement reference)
+    private void Expect(JsonElement value, JsonValueKind kind, string at, string reason)
     {
-        if (reference.ValueKind != JsonValueKind.String)
+        if (value.ValueKind != kind)
         {
-            return false;
+            throw Refuse(at, reason);
         }
-        var text = reference.GetString()!;
-        if (!text.StartsWith(DefinitionPrefix, StringComparison.Ordinal))
-        {
-            return false;
-        }
-        var definition = text[DefinitionPrefix.Length..];
-        return definition.Length > 0
-            && definition.IndexOfAny(['/', '~']) < 0
-            && root.TryGetProperty("$defs", out var definitions)
-            && definitions.ValueKind == JsonValueKind.Object
-            && definitions.TryGetProperty(definition, out _);
     }
 
-    private static bool Compiles(string pattern)
+    // A reference names a member of the root's $defs, written plainly: #/$defs/name, with neither / nor ~ in the
+    // name, which a JSON pointer would read as a step deeper or as an escape.
+    private JsonElement Definition(JsonElement reference, string at)
     {
-        try
+        var text = reference.ValueKind == JsonValueKind.String ? reference.GetString()! : "";
+        var name = text.StartsWith(DefinitionPrefix, StringComparison.Ordinal) ? text[DefinitionPrefix.Length..] : "";
+        if (name.Length == 0
+            || name.IndexOfAny(['/', '~']) >= 0
+            || !_root.TryGetProperty("$defs", out var definitions)
+            || definitions.ValueKind != JsonValueKind.Object
+            || !definitions.TryGetProperty(name, out var target))
         {
-            _ = Translate(pattern);
-            return true;
+            throw Refuse(at, "only a reference to a member of the root's $defs is implemented.");
         }
-        catch (ArgumentException)
+        return target;
+    }
+
+    private Regex Pattern(string pattern, string at)
+    {
+        if (!_patterns.TryGetValue(pattern, out var regex))
         {
-            return false;
+            try
+            {
+                regex = new Regex(
+                    EcmaPattern.Translate(pattern), RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+            }
+            catch (ArgumentException exception)
+            {
+                throw Refuse(
+                    at, $"tools/CheckCompat.cs does not implement a part of this pattern: {exception.Message}.");
+            }
+            _patterns[pattern] = regex;
         }
+        return regex;
     }
 
     public void Validate(JsonElement instance, string file, List<Problem> problems) =>
-        Validate(_root, instance, "", file, problems);
+        Validate(_root, instance, "", "", file, problems);
 
-    private void Validate(JsonElement schema, JsonElement instance, string pointer, string file, List<Problem> problems)
+    // Whether the instance matches the schema, for the subschemas of anyOf, oneOf, not and if, whose own
+    // problems are never reported.
+    private bool Passes(JsonElement schema, JsonElement instance)
     {
+        var problems = new List<Problem>();
+        Validate(schema, instance, "", "", "", problems);
+        return problems.Count == 0;
+    }
+
+    private void Validate(
+        JsonElement schema, JsonElement instance, string pointer, string location, string file, List<Problem> problems)
+    {
+        void add(string keyword, string detail) =>
+            problems.Add(new Problem(file, pointer, keyword, detail) { Location = $"{location}/{keyword}" });
+
         if (schema.ValueKind == JsonValueKind.True)
         {
             return;
         }
         if (schema.ValueKind == JsonValueKind.False)
         {
-            problems.Add(new Problem(file, pointer, "false", "no value is allowed here"));
+            problems.Add(new Problem(file, pointer, "false", "no value is allowed here") { Location = location });
             return;
         }
         if (schema.TryGetProperty("$ref", out var reference))
         {
-            var target = _root.GetProperty("$defs").GetProperty(reference.GetString()![DefinitionPrefix.Length..]);
-            Validate(target, instance, pointer, file, problems);
+            Validate(Definition(reference, location), instance, pointer, $"{location}/$ref", file, problems);
         }
         if (schema.TryGetProperty("type", out var type) && !HasType(instance, type.GetString()!))
         {
-            problems.Add(new Problem(file, pointer, "type", $"the value must be of type {type.GetString()}"));
+            add("type", type.GetString() == "number" && instance.ValueKind == JsonValueKind.Number
+                ? "the number is too large to read"
+                : $"the value must be of type {type.GetString()}");
             return;
         }
-        if (schema.TryGetProperty("const", out var constant) && !JsonElement.DeepEquals(instance, constant))
+        if (schema.TryGetProperty("const", out var constant) && !Same(instance, constant))
         {
-            problems.Add(new Problem(file, pointer, "const", $"the value must be {constant.GetRawText()}"));
+            add("const", $"the value must be {constant.GetRawText()}");
+        }
+        if (schema.TryGetProperty("enum", out var choices)
+            && !choices.EnumerateArray().Any(choice => Same(instance, choice)))
+        {
+            add("enum", "the value is not one of those that the schema lists");
         }
         switch (instance.ValueKind)
         {
             case JsonValueKind.Object:
-                ValidateObject(schema, instance, pointer, file, problems);
+                ValidateObject(schema, instance, pointer, location, file, problems);
                 break;
             case JsonValueKind.Array:
-                ValidateArray(schema, instance, pointer, file, problems);
+                ValidateArray(schema, instance, pointer, location, file, problems);
                 break;
             case JsonValueKind.String:
-                ValidateString(schema, instance.GetString()!, pointer, file, problems);
+                ValidateString(schema, instance.GetString()!, location, add);
+                break;
+            case JsonValueKind.Number:
+                ValidateNumber(schema, instance, add);
                 break;
         }
+        ValidateApplicators(schema, instance, pointer, location, file, problems, add);
     }
 
-    private void ValidateObject(JsonElement schema, JsonElement instance, string pointer, string file, List<Problem> problems)
+    private void ValidateObject(
+        JsonElement schema, JsonElement instance, string pointer, string location, string file, List<Problem> problems)
     {
         if (schema.TryGetProperty("required", out var required))
         {
@@ -252,38 +417,51 @@ internal sealed class SchemaValidator
             {
                 if (!instance.TryGetProperty(name, out _))
                 {
-                    problems.Add(new Problem(file, pointer, "required", $"the member {name} is missing"));
+                    problems.Add(new Problem(file, pointer, "required", $"the member {name} is missing")
+                    {
+                        Location = $"{location}/required",
+                    });
                 }
             }
         }
         var properties = schema.TryGetProperty("properties", out var declared) ? declared : default;
         foreach (var member in instance.EnumerateObject())
         {
-            var at = $"{pointer}/{Escape(member.Name)}";
-            if (properties.ValueKind == JsonValueKind.Object && properties.TryGetProperty(member.Name, out var memberSchema))
+            var at = $"{pointer}/{JsonPointer.Segment(member.Name)}";
+            if (properties.ValueKind == JsonValueKind.Object
+                && properties.TryGetProperty(member.Name, out var memberSchema))
             {
-                Validate(memberSchema, member.Value, at, file, problems);
+                Validate(
+                    memberSchema, member.Value, at, $"{location}/properties/{JsonPointer.Escape(member.Name)}", file,
+                    problems);
             }
             else if (schema.TryGetProperty("additionalProperties", out var additional))
             {
                 if (additional.ValueKind == JsonValueKind.False)
                 {
-                    problems.Add(new Problem(file, at, "additionalProperties", "the schema has no such member"));
+                    problems.Add(new Problem(file, at, "additionalProperties", "the schema has no such member")
+                    {
+                        Location = $"{location}/additionalProperties",
+                    });
                 }
                 else
                 {
-                    Validate(additional, member.Value, at, file, problems);
+                    Validate(additional, member.Value, at, $"{location}/additionalProperties", file, problems);
                 }
             }
         }
     }
 
-    private void ValidateArray(JsonElement schema, JsonElement instance, string pointer, string file, List<Problem> problems)
+    private void ValidateArray(
+        JsonElement schema, JsonElement instance, string pointer, string location, string file, List<Problem> problems)
     {
         var items = instance.EnumerateArray().ToList();
         if (schema.TryGetProperty("minItems", out var minimum) && items.Count < minimum.GetInt32())
         {
-            problems.Add(new Problem(file, pointer, "minItems", $"the list needs at least {minimum.GetInt32()} items"));
+            problems.Add(new Problem(file, pointer, "minItems", $"the list needs at least {minimum.GetInt32()} items")
+            {
+                Location = $"{location}/minItems",
+            });
         }
         if (schema.TryGetProperty("uniqueItems", out var unique) && unique.ValueKind == JsonValueKind.True)
         {
@@ -291,7 +469,11 @@ internal sealed class SchemaValidator
             {
                 if (items.Take(index).Any(earlier => JsonElement.DeepEquals(earlier, items[index])))
                 {
-                    problems.Add(new Problem(file, $"{pointer}/{index}", "uniqueItems", "the item repeats an earlier one"));
+                    problems.Add(new Problem(
+                        file, $"{pointer}/{index}", "uniqueItems", "the item repeats an earlier one")
+                    {
+                        Location = $"{location}/uniqueItems",
+                    });
                 }
             }
         }
@@ -299,39 +481,95 @@ internal sealed class SchemaValidator
         {
             for (var index = 0; index < items.Count; index++)
             {
-                Validate(itemSchema, items[index], $"{pointer}/{index}", file, problems);
+                Validate(itemSchema, items[index], $"{pointer}/{index}", $"{location}/items", file, problems);
             }
         }
     }
 
-    private void ValidateString(JsonElement schema, string value, string pointer, string file, List<Problem> problems)
+    // JSON Schema counts the length of a text in characters, as code points, not in UTF-16 units.
+    private void ValidateString(JsonElement schema, string value, string location, Action<string, string> add)
     {
-        if (schema.TryGetProperty("pattern", out var pattern) && !Pattern(pattern.GetString()!).IsMatch(value))
+        if (schema.TryGetProperty("maxLength", out var maximum) && value.EnumerateRunes().Count() > maximum.GetInt32())
         {
-            problems.Add(new Problem(file, pointer, "pattern", $"the text must match {pattern.GetString()}"));
+            add("maxLength", $"the text may have at most {maximum.GetInt32()} characters");
+        }
+        if (schema.TryGetProperty("pattern", out var pattern)
+            && !Pattern(pattern.GetString()!, location).IsMatch(value))
+        {
+            add("pattern", $"the text must match {pattern.GetString()}");
+        }
+        if (schema.TryGetProperty("format", out _) && !IsDate(value))
+        {
+            add("format", "the text must be a calendar date, YYYY-MM-DD (RFC 3339 full-date)");
         }
     }
 
-    private Regex Pattern(string pattern)
+    private static void ValidateNumber(JsonElement schema, JsonElement instance, Action<string, string> add)
     {
-        if (!_patterns.TryGetValue(pattern, out var regex))
+        if (schema.TryGetProperty("minimum", out var minimum) && Compare(instance, minimum) < 0)
         {
-            regex = Translate(pattern);
-            _patterns[pattern] = regex;
+            add("minimum", $"the number must be at least {minimum.GetRawText()}");
         }
-        return regex;
+        if (schema.TryGetProperty("maximum", out var maximum) && Compare(instance, maximum) > 0)
+        {
+            add("maximum", $"the number must be at most {maximum.GetRawText()}");
+        }
+        if (schema.TryGetProperty("exclusiveMinimum", out var exclusive) && Compare(instance, exclusive) <= 0)
+        {
+            add("exclusiveMinimum", $"the number must be greater than {exclusive.GetRawText()}");
+        }
     }
 
-    // JSON Schema's patterns are ECMA-262 regular expressions, whose $ is the end of the text;
-    // .NET's $ also matches before a final line break, so a closing $ becomes \z.
-    private static Regex Translate(string pattern)
+    private void ValidateApplicators(
+        JsonElement schema,
+        JsonElement instance,
+        string pointer,
+        string location,
+        string file,
+        List<Problem> problems,
+        Action<string, string> add)
     {
-        var text = pattern.EndsWith('$') && !pattern.EndsWith(@"\$", StringComparison.Ordinal)
-            ? pattern[..^1] + @"\z"
-            : pattern;
-        return new Regex(text, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        if (schema.TryGetProperty("allOf", out var allOf))
+        {
+            var index = 0;
+            foreach (var branch in allOf.EnumerateArray())
+            {
+                Validate(branch, instance, pointer, $"{location}/allOf/{index++}", file, problems);
+            }
+        }
+        if (schema.TryGetProperty("anyOf", out var anyOf)
+            && !anyOf.EnumerateArray().Any(branch => Passes(branch, instance)))
+        {
+            add("anyOf", "the value has none of the forms that the schema allows here");
+        }
+        if (schema.TryGetProperty("oneOf", out var oneOf))
+        {
+            var matches = oneOf.EnumerateArray().Count(branch => Passes(branch, instance));
+            if (matches != 1)
+            {
+                add("oneOf", "the value must have exactly one of the forms that the schema lists here, "
+                    + $"and has {matches}");
+            }
+        }
+        if (schema.TryGetProperty("not", out var not) && Passes(not, instance))
+        {
+            var why = not.ValueKind == JsonValueKind.Object && not.TryGetProperty("$comment", out var comment)
+                ? $": {comment.GetString()}"
+                : "";
+            add("not", $"the value has a form that the schema forbids here{why}");
+        }
+        if (schema.TryGetProperty("if", out var condition))
+        {
+            var branch = Passes(condition, instance) ? "then" : "else";
+            if (schema.TryGetProperty(branch, out var consequence))
+            {
+                Validate(consequence, instance, pointer, $"{location}/{branch}", file, problems);
+            }
+        }
     }
 
+    // An integer is written without a fraction or an exponent, as the app's reader requires, and a number is
+    // finite, as the reader checks with double.IsFinite.
     private static bool HasType(JsonElement instance, string type) => type switch
     {
         "object" => instance.ValueKind == JsonValueKind.Object,
@@ -339,13 +577,257 @@ internal sealed class SchemaValidator
         "string" => instance.ValueKind == JsonValueKind.String,
         "boolean" => instance.ValueKind is JsonValueKind.True or JsonValueKind.False,
         "null" => instance.ValueKind == JsonValueKind.Null,
-        "number" => instance.ValueKind == JsonValueKind.Number,
+        "number" => instance.ValueKind == JsonValueKind.Number && double.IsFinite(instance.GetDouble()),
         "integer" => instance.ValueKind == JsonValueKind.Number && instance.TryGetInt64(out _),
         _ => throw new InvalidDataException($"the schema names the type {type}, which JSON Schema does not have."),
     };
 
-    // A member name in a JSON pointer (RFC 6901).
-    private static string Escape(string name) => name.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal);
+    // A number equals another only as the same text, so that 1.0 does not stand for the 1 of a const, which the
+    // app reads as an integer. Other values compare as JSON Schema compares them.
+    private static bool Same(JsonElement value, JsonElement expected) =>
+        value.ValueKind == JsonValueKind.Number && expected.ValueKind == JsonValueKind.Number
+            ? value.GetRawText() == expected.GetRawText()
+            : JsonElement.DeepEquals(value, expected);
+
+    // Numbers compare exactly where both fit a decimal, as JSON Schema compares them, and as doubles otherwise.
+    private static int Compare(JsonElement value, JsonElement limit) =>
+        value.TryGetDecimal(out var exact) && limit.TryGetDecimal(out var exactLimit)
+            ? exact.CompareTo(exactLimit)
+            : value.GetDouble().CompareTo(limit.GetDouble());
+
+    // RFC 3339's full-date, which format date names: four digits of year, two of month and two of day, for a
+    // day that the calendar has.
+    private static bool IsDate(string value) =>
+        value.Length == 10
+        && value[4] == '-'
+        && value[7] == '-'
+        && value.Where((_, index) => index is not (4 or 7)).All(char.IsAsciiDigit)
+        && DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+}
+
+// JSON Schema's patterns are ECMA-262 regular expressions, which .NET reads differently in places: its $ also
+// matches before a final line break, its . also matches a carriage return and the line and paragraph
+// separators, and its \s, \d and \w take in other characters than ECMA-262's. The translation gives each
+// construct its ECMA-262 meaning, and refuses a construct whose meaning differs and that the schemas do not
+// use: a word boundary, an escape other than those below, a group other than (?:, (?= and (?!, an empty class,
+// a [ inside a class, which .NET reads as a subtraction, and \S, \D or \W inside a class.
+internal static class EcmaPattern
+{
+    // ECMA-262's white space and line terminators, the characters of \s, as escapes for .NET.
+    private static readonly string s_space =
+        Escapes(0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x20, 0xA0, 0x1680) + Escape(0x2000) + "-" + Escape(0x200A)
+        + Escapes(0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF);
+
+    private static readonly string s_lineTerminators = Escapes(0x0A, 0x0D, 0x2028, 0x2029);
+
+    private const string Digit = "0-9";
+    private const string Word = "A-Za-z0-9_";
+
+    public static string Translate(string pattern)
+    {
+        var text = new StringBuilder(pattern.Length + 16);
+        var inClass = false;
+        var classStart = false;
+        for (var index = 0; index < pattern.Length; index++)
+        {
+            var current = pattern[index];
+            if (current == '\\')
+            {
+                if (++index == pattern.Length)
+                {
+                    throw new ArgumentException("the pattern ends in a backslash");
+                }
+                text.Append(TranslateEscape(pattern, ref index, inClass));
+                classStart = false;
+                continue;
+            }
+            if (inClass)
+            {
+                if (current == ']' && classStart)
+                {
+                    throw new ArgumentException("an empty class, which .NET reads otherwise");
+                }
+                if (current == '[')
+                {
+                    throw new ArgumentException("a [ inside a class, which .NET reads as a subtraction");
+                }
+                inClass = current != ']';
+                classStart = false;
+                text.Append(current);
+                continue;
+            }
+            switch (current)
+            {
+                case '[':
+                    inClass = true;
+                    classStart = true;
+                    text.Append('[');
+                    if (index + 1 < pattern.Length && pattern[index + 1] == '^')
+                    {
+                        text.Append('^');
+                        index++;
+                    }
+                    break;
+                case '$':
+                    text.Append("\\z");
+                    break;
+                case '.':
+                    text.Append("[^").Append(s_lineTerminators).Append(']');
+                    break;
+                case '(' when index + 1 < pattern.Length && pattern[index + 1] == '?'
+                    && !(index + 2 < pattern.Length && pattern[index + 2] is ':' or '=' or '!'):
+                    throw new ArgumentException("a group other than (?:, (?= and (?!");
+                default:
+                    text.Append(current);
+                    break;
+            }
+        }
+        if (inClass)
+        {
+            throw new ArgumentException("a class that is not closed");
+        }
+        return text.ToString();
+    }
+
+    private static string TranslateEscape(string pattern, ref int index, bool inClass)
+    {
+        var letter = pattern[index];
+        switch (letter)
+        {
+            case 's':
+                return inClass ? s_space : $"[{s_space}]";
+            case 'd':
+                return inClass ? Digit : $"[{Digit}]";
+            case 'w':
+                return inClass ? Word : $"[{Word}]";
+            case 'S' or 'D' or 'W' when inClass:
+                throw new ArgumentException($"the escape \\{letter} inside a class");
+            case 'S':
+                return $"[^{s_space}]";
+            case 'D':
+                return $"[^{Digit}]";
+            case 'W':
+                return $"[^{Word}]";
+            case 'u':
+                if (index + 4 >= pattern.Length || !pattern.Substring(index + 1, 4).All(char.IsAsciiHexDigit))
+                {
+                    throw new ArgumentException("an escape of a code unit without four hexadecimal digits");
+                }
+                index += 4;
+                return $"\\u{pattern.Substring(index - 3, 4)}";
+            case 't' or 'n' or 'r' or 'f' or 'v':
+                return $"\\{letter}";
+            case '^' or '$' or '\\' or '.' or '*' or '+' or '?' or '(' or ')' or '[' or ']' or '{' or '}' or '|' or '/'
+                or '-':
+                return $"\\{letter}";
+            default:
+                throw new ArgumentException($"the escape \\{letter}");
+        }
+    }
+
+    private static string Escape(int code) => "\\u" + code.ToString("x4", CultureInfo.InvariantCulture);
+
+    private static string Escapes(params int[] codes) => string.Concat(codes.Select(Escape));
+}
+
+// Reads a file of the compatibility data the way the app's reader does (docs/design/compat-db.md section 6): at
+// most 1 MiB of UTF-8, with or without a byte-order mark, holding one JSON value without comments or trailing
+// commas, with no string or member name that escapes half of a surrogate pair and no member twice in one
+// object. A file that breaks one of these breaks the json rule, and nothing else of it is checked.
+internal static class JsonText
+{
+    public const int MaxBytes = 1 << 20;
+
+    private static readonly UTF8Encoding s_utf8 =
+        new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    public static JsonDocument? Read(byte[] bytes, string file, List<Problem> problems)
+    {
+        if (bytes.Length > MaxBytes)
+        {
+            problems.Add(new Problem(file, "", "json", "the file holds more than 1 MiB, which the app does not read"));
+            return null;
+        }
+        var start = bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble) ? Encoding.UTF8.Preamble.Length : 0;
+        string text;
+        try
+        {
+            text = s_utf8.GetString(bytes, start, bytes.Length - start);
+        }
+        catch (DecoderFallbackException)
+        {
+            problems.Add(new Problem(file, "", "json", "the file is not UTF-8 text"));
+            return null;
+        }
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(text);
+        }
+        catch (JsonException exception)
+        {
+            problems.Add(new Problem(
+                file, "", "json",
+                "the file is not one JSON value without comments and trailing commas "
+                + $"(line {exception.LineNumber + 1}, byte {exception.BytePositionInLine + 1})"));
+            return null;
+        }
+        var count = problems.Count;
+        Scan(document.RootElement, "", file, problems);
+        if (problems.Count > count)
+        {
+            document.Dispose();
+            return null;
+        }
+        return document;
+    }
+
+    private static void Scan(JsonElement element, string pointer, string file, List<Problem> problems)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var names = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var member in element.EnumerateObject())
+                {
+                    string name;
+                    try
+                    {
+                        name = member.Name;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        problems.Add(new Problem(
+                            file, pointer, "json", "a member name escapes half of a surrogate pair"));
+                        continue;
+                    }
+                    var at = $"{pointer}/{JsonPointer.Segment(name)}";
+                    if (!names.Add(name))
+                    {
+                        problems.Add(new Problem(file, at, "json", "the member appears twice in one object"));
+                    }
+                    Scan(member.Value, at, file, problems);
+                }
+                break;
+            case JsonValueKind.Array:
+                var index = 0;
+                foreach (var item in element.EnumerateArray())
+                {
+                    Scan(item, $"{pointer}/{index++}", file, problems);
+                }
+                break;
+            case JsonValueKind.String:
+                try
+                {
+                    _ = element.GetString();
+                }
+                catch (InvalidOperationException)
+                {
+                    problems.Add(new Problem(file, pointer, "json", "the text escapes half of a surrogate pair"));
+                }
+                break;
+        }
+    }
 }
 
 // The checks of the list of verified iOS builds: the schema, then the two rules beyond it.
@@ -354,29 +836,17 @@ internal static class IosBuilds
     public const string DataPath = "compat/ios-builds.json";
     public const string SchemaPath = "compat/schema/ios-builds.schema.json";
 
-    // A member that appears twice in one object is refused, in the data and in the schema: a
-    // reader that takes one copy would see a value that the check never saw.
-    public static readonly JsonDocumentOptions Options = new() { AllowDuplicateProperties = false };
-
-    // Loads the schema as the check reads it: parsed with Options, and refused when it is not
-    // JSON, repeats a member or is refused by SchemaValidator. Each refusal names the file.
-    public static SchemaValidator LoadSchema(string schemaText)
+    // The vocabulary of the schema: the keywords and annotations that it uses (SchemaValidator).
+    public static readonly IReadOnlySet<string> Vocabulary = new HashSet<string>(StringComparer.Ordinal)
     {
-        JsonDocument schema;
-        try
-        {
-            schema = JsonDocument.Parse(schemaText, Options);
-        }
-        catch (JsonException exception)
-        {
-            throw new InvalidDataException(
-                $"{SchemaPath}: the schema is not JSON, or repeats a member: {exception.Message}", exception);
-        }
-        using (schema)
-        {
-            return new SchemaValidator(schema.RootElement.Clone(), SchemaPath);
-        }
-    }
+        "$schema", "$id", "title", "description",
+        "type", "required", "properties", "additionalProperties", "const", "items", "$ref", "$defs", "pattern",
+        "minItems", "uniqueItems",
+    };
+
+    // Loads the schema as the check reads it, with its vocabulary.
+    public static SchemaValidator LoadSchema(string schemaText) =>
+        SchemaValidator.LoadSchema(schemaText, SchemaPath, Vocabulary);
 
     public static List<Problem> Check(string dataText, string schemaText, Func<string, bool> evidenceExists)
     {
@@ -385,7 +855,7 @@ internal static class IosBuilds
         JsonDocument data;
         try
         {
-            data = JsonDocument.Parse(dataText, Options);
+            data = JsonDocument.Parse(dataText, SchemaValidator.Options);
         }
         catch (JsonException exception)
         {
@@ -434,19 +904,464 @@ internal static class IosBuilds
     }
 }
 
+// The title schema, and what the rules read from it: the model identifiers of the target devices, whose reports
+// count for the rating (C-0008 section 3), and the names of the environment allow-list (C-0008 section 5).
+internal sealed class TitleSchema
+{
+    public const string SchemaPath = "compat/schema/title.schema.json";
+
+    // The vocabulary of the schema: the keywords and annotations that it uses (SchemaValidator).
+    public static readonly IReadOnlySet<string> Vocabulary = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "$schema", "title", "description", "$comment", "default",
+        "type", "required", "properties", "additionalProperties", "const", "enum", "items", "$ref", "$defs",
+        "pattern", "minItems", "uniqueItems", "maxLength", "minimum", "maximum", "exclusiveMinimum", "format",
+        "allOf", "anyOf", "oneOf", "not", "if", "then", "else",
+    };
+
+    public TitleSchema(string text)
+    {
+        Validator = SchemaValidator.LoadSchema(text, SchemaPath, Vocabulary);
+        var root = Validator.Root;
+        TargetDevices = Find(root, "$defs", "targetDevices", "enum").EnumerateArray()
+            .Select(device => device.GetString() ?? throw new InvalidDataException(
+                $"{SchemaPath}: /$defs/targetDevices/enum lists a value that is not a model identifier."))
+            .ToHashSet(StringComparer.Ordinal);
+        if (TargetDevices.Count == 0)
+        {
+            throw new InvalidDataException($"{SchemaPath}: /$defs/targetDevices/enum lists no device.");
+        }
+        EnvironmentNames =
+        [
+            .. Find(root, "properties", "environment", "properties").EnumerateObject().Select(member => member.Name),
+        ];
+    }
+
+    public SchemaValidator Validator { get; }
+
+    public HashSet<string> TargetDevices { get; }
+
+    public List<string> EnvironmentNames { get; }
+
+    private static JsonElement Find(JsonElement root, params string[] path)
+    {
+        var element = root;
+        foreach (var name in path)
+        {
+            if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out element))
+            {
+                throw new InvalidDataException($"{SchemaPath}: /{string.Join('/', path)} is missing.");
+            }
+        }
+        return element;
+    }
+
+    // C-0008 section 5: the environment allow-list never holds SteamAppId, SteamGameId, SteamAppPath or another
+    // variable that steam_api or a DRM wrapper reads. Windows reads environment names in any letter case, so a
+    // name that starts with Steam in any case is refused, as the app's schema test does (compat-db.md section 2).
+    public List<Problem> CheckAllowList() =>
+    [
+        .. EnvironmentNames.Where(IsSteamVariable).Select(name => new Problem(
+            SchemaPath, $"/properties/environment/properties/{JsonPointer.Segment(name)}", "allow-list",
+            "the environment allow-list never holds a variable that steam_api or a DRM wrapper reads "
+            + "(C-0008 section 5)")),
+    ];
+
+    public static bool IsSteamVariable(string name) => name.StartsWith("Steam", StringComparison.OrdinalIgnoreCase);
+}
+
+// The title files of compat/titles/ (C-0008): each reads as the app reads it, matches the title schema, is named
+// after its id, and holds to the rules of C-0008 sections 3 and 5 that the check states in code.
+internal static class Titles
+{
+    public const string FolderPath = "compat/titles";
+
+    // Where the title schema states a rule of C-0008 section 5. A problem found there is that rule's, so that a
+    // file that breaks the rule fails it by name, whichever keyword finds it (docs/design/compat-db.md section 5).
+    private static readonly (string Location, string Rule, string Why)[] s_ruleLocations =
+    [
+        ("/allOf/0/", "launch", "as the schema states the launch rule of C-0008 section 5"),
+        ("/allOf/1/", "launch", "as the schema states the launch rule of C-0008 section 5"),
+        ("/allOf/2/then/properties/", "launch", "as the schema states the launch rule of C-0008 section 5"),
+        ("/properties/translator/additionalProperties", "allow-list", "as the name is not on the schema's allow-list "
+            + "(C-0008 section 2)"),
+        ("/properties/environment/additionalProperties", "allow-list", "as the name is not on the schema's allow-list "
+            + "(C-0008 sections 2 and 5)"),
+    ];
+
+    private static readonly Regex s_titleName =
+        new(@"^(steam-[1-9][0-9]*|local-[a-z0-9]+(-[a-z0-9]+)*)\.json\z", RegexOptions.CultureInvariant);
+
+    private static readonly Regex s_slug = new(@"^[a-z0-9]+(-[a-z0-9]+)*\z", RegexOptions.CultureInvariant);
+
+    // Checks every entry of a folder as C-0008 section 1 lays out compat/titles/: one file per title, and the
+    // README.md, which is not a title file. A file whose name ends in .json in any letter case is read as a
+    // title file, as the app's loader reads it, and must then have its exact name.
+    public static (List<Problem> Problems, int Files) CheckFolder(
+        string folder, string shownFolder, TitleSchema schema, Func<string, bool> evidenceExists)
+    {
+        var problems = new List<Problem>();
+        foreach (var directory in Directory.EnumerateDirectories(folder).Order(StringComparer.Ordinal))
+        {
+            problems.Add(new Problem(
+                $"{shownFolder}/{Path.GetFileName(directory)}", "", "file-name",
+                "the folder of the title files holds no folder (C-0008 section 1)"));
+        }
+        var files = 0;
+        foreach (var path in Directory.EnumerateFiles(folder).Order(StringComparer.Ordinal))
+        {
+            var name = Path.GetFileName(path);
+            var file = $"{shownFolder}/{name}";
+            if (name == "README.md")
+            {
+                continue;
+            }
+            if (!name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                problems.Add(new Problem(
+                    file, "", "file-name",
+                    "the folder of the title files holds only its README.md and title files (C-0008 section 1)"));
+                continue;
+            }
+            files++;
+            problems.AddRange(CheckFile(file, name, File.ReadAllBytes(path), schema, evidenceExists));
+        }
+        return (problems, files);
+    }
+
+    // The schema comes first. The rules in code run only on a file that matches it, because they read its
+    // values; the file name is checked in any case, from what the id gives.
+    public static List<Problem> CheckFile(
+        string file, string name, byte[] bytes, TitleSchema schema, Func<string, bool> evidenceExists)
+    {
+        var problems = new List<Problem>();
+        using var document = JsonText.Read(bytes, file, problems);
+        if (document is null)
+        {
+            return problems;
+        }
+        var root = document.RootElement;
+        var found = new List<Problem>();
+        schema.Validator.Validate(root, file, found);
+        problems.AddRange(found.Select(Attribute));
+        CheckName(file, name, root, problems);
+        if (found.Count == 0)
+        {
+            CheckLaunch(file, root, problems);
+            CheckEnvironment(file, root, problems);
+            CheckRating(file, root, schema.TargetDevices, problems);
+            CheckEvidence(file, root, evidenceExists, problems);
+        }
+        return problems;
+    }
+
+    private static Problem Attribute(Problem problem)
+    {
+        foreach (var (location, rule, why) in s_ruleLocations)
+        {
+            if (problem.Location.StartsWith(location, StringComparison.Ordinal))
+            {
+                return problem with { Rule = rule, Detail = $"{problem.Detail}, {why}" };
+            }
+        }
+        return problem;
+    }
+
+    // C-0008 section 1: a Steam title is named steam-<appid>.json and a local title local-<slug>.json. Where the
+    // id cannot give the name, because the schema rejects it, the name only has to have one of the two forms.
+    private static void CheckName(string file, string name, JsonElement root, List<Problem> problems)
+    {
+        var expected = ExpectedName(root);
+        if (expected is null ? !s_titleName.IsMatch(name) : name != expected)
+        {
+            problems.Add(new Problem(
+                file, expected is null ? "" : "/id", "file-name",
+                "a Steam title's file is named steam-<steamAppId>.json and a local title's local-<slug>.json, "
+                + "after its id (C-0008 section 1)"));
+        }
+    }
+
+    private static string? ExpectedName(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("id", out var id)
+            || id.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+        if (id.TryGetProperty("steamAppId", out var appId))
+        {
+            return appId.ValueKind == JsonValueKind.Number && appId.TryGetInt64(out var number) && number > 0
+                ? $"steam-{number.ToString(CultureInfo.InvariantCulture)}.json"
+                : null;
+        }
+        return id.TryGetProperty("exeSha256", out _)
+            && id.TryGetProperty("slug", out var slug)
+            && slug.ValueKind == JsonValueKind.String
+            && s_slug.IsMatch(slug.GetString()!)
+                ? $"local-{slug.GetString()}.json"
+                : null;
+    }
+
+    // C-0008 section 5, stated again in code, so that a change of the schema cannot drop it unnoticed. An entry
+    // states direct only where its own drm opens the Direct path and it names the program to start (C-0007
+    // section 5); it states dock only where its own drm keeps that path closed, which is narrower than the text
+    // of the contract on purpose (docs/design/compat-db.md section 5); and a local title states no other path
+    // than direct and shows no Steam marker.
+    private static void CheckLaunch(string file, JsonElement root, List<Problem> problems)
+    {
+        var drm = root.TryGetProperty("drm", out var classification) ? classification : default;
+        bool? marker(string name) =>
+            drm.ValueKind == JsonValueKind.Object && drm.TryGetProperty(name, out var flag) ? flag.GetBoolean() : null;
+        var steamApi = marker("steamApi");
+        var steamStub = marker("steamStub");
+        var ceg = drm.ValueKind == JsonValueKind.Object && drm.TryGetProperty("ceg", out var value)
+            ? value.GetString()
+            : null;
+        var launch = root.TryGetProperty("launch", out var stated) ? stated.GetString() : null;
+        var local = root.GetProperty("id").TryGetProperty("exeSha256", out _);
+        void add(string pointer, string detail) => problems.Add(new Problem(file, pointer, "launch", detail));
+
+        if (launch == "direct" && !(steamApi == false && steamStub == false && ceg == "no"))
+        {
+            add("/launch", "an entry states direct only where its own drm sets steamApi and steamStub to false "
+                + "and ceg to no (C-0008 section 5)");
+        }
+        if (launch == "direct" && !root.TryGetProperty("executable", out _))
+        {
+            add("/launch", "an entry that states direct names the program to start in executable (C-0007 section 5)");
+        }
+        if (launch == "dock" && drm.ValueKind == JsonValueKind.Object && ceg == "no"
+            && steamApi != true && steamStub != true)
+        {
+            add("/launch", "an entry states dock only where its own drm keeps the Direct path closed: "
+                + "steamApi or steamStub true, or ceg other than no (C-0008 section 5)");
+        }
+        if (local && launch == "dock")
+        {
+            add("/launch", "a local title is launched only on the Direct path (C-0008 section 5)");
+        }
+        if (local && (steamApi == true || steamStub == true || ceg == "yes"))
+        {
+            add("/drm", "a local title shows no Steam marker: steamApi or steamStub true, or ceg yes "
+                + "(C-0008 section 5)");
+        }
+    }
+
+    // C-0008 section 5, stated again in code for the same reason: the environment never holds a variable that
+    // steam_api or a DRM wrapper reads.
+    private static void CheckEnvironment(string file, JsonElement root, List<Problem> problems)
+    {
+        if (!root.TryGetProperty("environment", out var environment))
+        {
+            return;
+        }
+        var names = environment.EnumerateObject().Select(member => member.Name);
+        foreach (var name in names.Where(TitleSchema.IsSteamVariable))
+        {
+            problems.Add(new Problem(
+                file, $"/environment/{JsonPointer.Segment(name)}", "allow-list",
+                "the environment never holds a variable that steam_api or a DRM wrapper reads (C-0008 section 5)"));
+        }
+    }
+
+    // C-0008 section 3: the rating is computed from the reports, and a file whose rating differs is rejected. A
+    // file without a rating has the schema's default, untested.
+    private static void CheckRating(
+        string file, JsonElement root, HashSet<string> targetDevices, List<Problem> problems)
+    {
+        var reports = root.TryGetProperty("reports", out var list)
+            ? list.EnumerateArray().Select((report, index) => new TestReport(
+                index,
+                report.GetProperty("date").GetString()!,
+                report.GetProperty("device").GetString()!,
+                report.GetProperty("paneportVersion").GetString()!,
+                report.GetProperty("rating").GetString()!)).ToList()
+            : [];
+        var computed = Rating.Compute(reports, targetDevices);
+        var stated = root.TryGetProperty("rating", out var rating) ? rating.GetString() : Rating.Untested;
+        if (stated != computed)
+        {
+            problems.Add(new Problem(
+                file, "/rating", "rating",
+                $"the rating that the reports give is {computed} (C-0008 section 3); "
+                + "the rating is computed, not edited"));
+        }
+    }
+
+    // Every report names its evidence record (C-0008 sections 4 and 5), which must exist (C-0012 section 4).
+    private static void CheckEvidence(
+        string file, JsonElement root, Func<string, bool> evidenceExists, List<Problem> problems)
+    {
+        if (!root.TryGetProperty("reports", out var reports))
+        {
+            return;
+        }
+        var index = 0;
+        foreach (var report in reports.EnumerateArray())
+        {
+            if (!evidenceExists(report.GetProperty("evidence").GetString()!))
+            {
+                problems.Add(new Problem(
+                    file, $"/reports/{index}/evidence", "evidence-file",
+                    "the evidence record does not exist in the repository"));
+            }
+            index++;
+        }
+    }
+}
+
+// What the rating reads of a report, with its place in the file's list.
+internal sealed record TestReport(int Index, string Date, string Device, string Version, string Rating);
+
+// The rating of C-0008 section 3, computed from the reports.
+internal static class Rating
+{
+    public const string Untested = "untested";
+
+    // The observed ratings, from the lowest to the highest.
+    private static readonly string[] s_order = ["broken", "boots", "runs", "playable", "perfect"];
+
+    // 1. Only reports whose paneportVersion is a release tag and whose device is a target device count.
+    // 2. Among those, the reports for the highest release count.
+    // 3. If target devices disagree on that release, the lower rating wins; otherwise the latest report wins.
+    //
+    // What a device says on the release is its latest report for it: the one with the latest date, and of two
+    // on one date the later in the list, since a new report is added at its end. The devices disagree when what
+    // they say differs. The rating is then the lowest of what they say, which is also the latest report's
+    // rating when they agree (docs/design/compat-db.md section 2.2).
+    public static string Compute(IEnumerable<TestReport> reports, HashSet<string> targetDevices)
+    {
+        var counting = reports
+            .Where(report => targetDevices.Contains(report.Device))
+            .Select(report => (
+                Report: report,
+                Release: ReleaseVersion.TryParse(report.Version, out var release) ? release : null))
+            .Where(item => item.Release is not null)
+            .ToList();
+        if (counting.Count == 0)
+        {
+            return Untested;
+        }
+        var highest = counting.Select(item => item.Release!).Max()!;
+        return counting
+            .Where(item => item.Release!.CompareTo(highest) == 0)
+            .GroupBy(item => item.Report.Device, StringComparer.Ordinal)
+            .Select(device => device
+                .Select(item => item.Report)
+                .OrderBy(report => report.Date, StringComparer.Ordinal)
+                .ThenBy(report => report.Index)
+                .Last())
+            .MinBy(report => Array.IndexOf(s_order, report.Rating))!
+            .Rating;
+    }
+}
+
+// A release tag: v and a Semantic Version without build metadata, as the title schema's pattern has it (C-0009
+// section 6), ordered by the precedence of Semantic Versioning 2.0.0, its section 11. A pre-release, such as
+// v0.1.0-rc.1, is a release tag too, and comes before its release.
+internal sealed class ReleaseVersion : IComparable<ReleaseVersion>
+{
+    private static readonly Regex s_tag = new(
+        @"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?\z",
+        RegexOptions.CultureInvariant);
+
+    private readonly string[] _numbers;
+    private readonly string[] _preRelease;
+
+    private ReleaseVersion(string[] numbers, string[] preRelease)
+    {
+        _numbers = numbers;
+        _preRelease = preRelease;
+    }
+
+    public static bool TryParse(string text, [NotNullWhen(true)] out ReleaseVersion? version)
+    {
+        var match = s_tag.Match(text);
+        version = match.Success
+            ? new ReleaseVersion(
+                [match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value],
+                match.Groups[4].Success ? match.Groups[4].Value[1..].Split('.') : [])
+            : null;
+        return version is not null;
+    }
+
+    public int CompareTo(ReleaseVersion? other)
+    {
+        if (other is null)
+        {
+            return 1;
+        }
+        for (var index = 0; index < 3; index++)
+        {
+            var order = CompareNumbers(_numbers[index], other._numbers[index]);
+            if (order != 0)
+            {
+                return order;
+            }
+        }
+        // A release comes after each of its pre-releases.
+        if (_preRelease.Length == 0 || other._preRelease.Length == 0)
+        {
+            return other._preRelease.Length.CompareTo(0) - _preRelease.Length.CompareTo(0);
+        }
+        for (var index = 0; index < Math.Min(_preRelease.Length, other._preRelease.Length); index++)
+        {
+            var order = CompareIdentifiers(_preRelease[index], other._preRelease[index]);
+            if (order != 0)
+            {
+                return order;
+            }
+        }
+        return _preRelease.Length.CompareTo(other._preRelease.Length);
+    }
+
+    // Identifiers of digits only compare as numbers and come before the others, which compare in ASCII order.
+    private static int CompareIdentifiers(string left, string right)
+    {
+        var leftNumber = left.All(char.IsAsciiDigit);
+        var rightNumber = right.All(char.IsAsciiDigit);
+        return (leftNumber, rightNumber) switch
+        {
+            (true, true) => CompareNumbers(left, right),
+            (true, false) => -1,
+            (false, true) => 1,
+            _ => Math.Sign(string.CompareOrdinal(left, right)),
+        };
+    }
+
+    // Numbers of any length: without leading zeros, the longer is the larger.
+    private static int CompareNumbers(string left, string right)
+    {
+        left = left.TrimStart('0');
+        right = right.TrimStart('0');
+        return left.Length != right.Length
+            ? left.Length.CompareTo(right.Length)
+            : Math.Sign(string.CompareOrdinal(left, right));
+    }
+}
+
 internal static class CompatCheck
 {
     public static int Run()
     {
         var root = Git.TopLevel();
+        bool evidenceExists(string path) => File.Exists(Path.Combine(root, path));
         var problems = IosBuilds.Check(
             File.ReadAllText(Path.Combine(root, IosBuilds.DataPath)),
             File.ReadAllText(Path.Combine(root, IosBuilds.SchemaPath)),
-            path => File.Exists(Path.Combine(root, path)));
+            evidenceExists);
+        var titleSchema = new TitleSchema(File.ReadAllText(Path.Combine(root, TitleSchema.SchemaPath)));
+        problems.AddRange(titleSchema.CheckAllowList());
+        var (titleProblems, titleFiles) = Titles.CheckFolder(
+            Path.Combine(root, Titles.FolderPath), Titles.FolderPath, titleSchema, evidenceExists);
+        problems.AddRange(titleProblems);
+        var annotate = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true";
         foreach (var problem in problems)
         {
-            Console.WriteLine(Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true"
-                ? $"::error file={problem.File},title=Compatibility data::{problem}"
+            Console.WriteLine(annotate
+                ? $"::error file={Annotation(problem.File, true)},title=Compatibility data::"
+                    + Annotation(problem.ToString(), false)
                 : problem.ToString());
         }
         if (problems.Count > 0)
@@ -455,7 +1370,21 @@ internal static class CompatCheck
             return 1;
         }
         Console.WriteLine($"{IosBuilds.DataPath} matches {IosBuilds.SchemaPath}, and its rules hold.");
+        Console.WriteLine(
+            $"{Titles.FolderPath}: {titleFiles} title file(s); each matches {TitleSchema.SchemaPath}, "
+            + "is named after its id, and holds to the launch, allow-list, rating and evidence rules.");
         return 0;
+    }
+
+    // A workflow command ends at a line break, so its message escapes them, and a property also escapes , and :.
+    private static string Annotation(string value, bool property)
+    {
+        var escaped = value.Replace("%", "%25", StringComparison.Ordinal)
+            .Replace("\r", "%0D", StringComparison.Ordinal)
+            .Replace("\n", "%0A", StringComparison.Ordinal);
+        return property
+            ? escaped.Replace(":", "%3A", StringComparison.Ordinal).Replace(",", "%2C", StringComparison.Ordinal)
+            : escaped;
     }
 }
 
@@ -476,6 +1405,24 @@ internal static class Git
             throw new IOException("Run tools/CheckCompat.cs inside the repository.");
         }
         return output;
+    }
+}
+
+// Counts the self-test's cases and prints each failure.
+internal sealed class Tally
+{
+    public int Cases { get; private set; }
+
+    public int Failures { get; private set; }
+
+    public void Expect(bool passed, string name, string found)
+    {
+        Cases++;
+        if (!passed)
+        {
+            Failures++;
+            Console.WriteLine($"FAIL {name}: {found}");
+        }
     }
 }
 
@@ -546,10 +1493,10 @@ internal static class SelfTest
             "\"evidence\": [\"docs/evidence/2026-12-02-l3-jit.md\"], \"evidence\":", StringComparison.Ordinal)), "json"),
     ];
 
-    // Schemas that the check refuses, each with the part of the refusal that names its place: an
-    // unknown keyword anywhere, a keyword that the schema does not use, a keyword's value in a
-    // form that the validator does not implement, an annotation that breaks its rules, and a
-    // member that appears twice, which names the file.
+    // Schemas that the check refuses in place of the list's schema, each with the part of the refusal that
+    // names its place: an unknown keyword anywhere, a keyword outside the schema's vocabulary, which the title
+    // schema may use, a keyword's value in a form that the validator does not implement, an annotation that
+    // breaks its rules, and a member that appears twice, which names the file.
     private static readonly (string Name, string Schema, string Refusal)[] s_plantedSchemas =
     [
         ("an unknown keyword in a property", """{ "type": "object", "properties": { "a": { "minimum": 1 } } }""",
@@ -595,47 +1542,248 @@ internal static class SelfTest
     // A list document around one entry.
     private static string Doc(string entry) => $$"""{ "schemaVersion": 1, "builds": [{{entry}}] }""";
 
+    // The fixtures of the title files are in tests/compat (docs/design/repository-checks.md section 9). The
+    // evidence records that their reports name exist for the self-test only.
+    private const string Fixtures = "tests/compat";
+
+    private static readonly HashSet<string> s_fixtureRecords =
+    [
+        "docs/evidence/2026-12-01-fixture-first-run.md",
+        "docs/evidence/2026-12-08-fixture-second-run.md",
+        "docs/evidence/2026-12-15-fixture-third-run.md",
+    ];
+
+    // Each folder of tests/compat/invalid holds one title file that breaks one rule, and the check must find that
+    // rule and no other (S8.3.4). A rule of the schema is named by its keyword.
+    private static readonly (string Case, string Rule)[] s_invalidTitles =
+    [
+        ("schema-architecture-arm64", "enum"),
+        ("schema-render-scale-above-one", "maximum"),
+        ("schema-report-on-february-30", "format"),
+        ("schema-missing-name", "required"),
+        ("schema-unknown-member", "additionalProperties"),
+        ("schema-both-ids", "oneOf"),
+        ("schema-path-to-parent-folder", "not"),
+        ("schema-integer-with-fraction", "type"),
+        ("schema-version-without-v", "anyOf"),
+        ("schema-runs-without-frame-rates", "required"),
+        ("json-member-twice", "json"),
+        ("json-comment", "json"),
+        ("json-half-a-surrogate-pair", "json"),
+        ("file-name-of-another-app-id", "file-name"),
+        ("file-name-of-another-slug", "file-name"),
+        ("file-name-steam-title-named-as-local", "file-name"),
+        ("file-name-app-id-with-leading-zero", "file-name"),
+        ("launch-direct-with-steam-stub", "launch"),
+        ("launch-direct-without-ceg", "launch"),
+        ("launch-direct-without-executable", "launch"),
+        ("launch-dock-where-direct-is-open", "launch"),
+        ("launch-local-with-steam-api", "launch"),
+        ("launch-local-with-ceg-yes", "launch"),
+        ("launch-local-on-the-dock-path", "launch"),
+        ("allow-list-environment-steam-app-id", "allow-list"),
+        ("allow-list-environment-name-not-listed", "allow-list"),
+        ("allow-list-translator-option-not-listed", "allow-list"),
+        ("rating-higher-of-a-tie", "rating"),
+        ("rating-earlier-report-of-a-device", "rating"),
+        ("rating-earlier-report-of-one-day", "rating"),
+        ("rating-lower-release", "rating"),
+        ("rating-pre-release-over-release", "rating"),
+        ("rating-commit-report-counted", "rating"),
+        ("rating-other-device-counted", "rating"),
+        ("rating-left-out", "rating"),
+        ("evidence-record-missing", "evidence-file"),
+    ];
+
+    private const string IfThenElse =
+        """{ "if": { "minimum": 10 }, "then": { "maximum": 20 }, "else": { "maximum": 5 } }""";
+
+    // Cases of the validator's keywords: a schema, a value, and the rule it must find, or none.
+    private static readonly (string Name, string Schema, string Instance, string? Rule)[] s_keywordCases =
+    [
+        ("a number under minimum", """{ "minimum": 1 }""", "0", "minimum"),
+        ("a number at minimum", """{ "minimum": 1 }""", "1", null),
+        ("a number just over maximum, compared exactly", """{ "maximum": 1 }""", "1.0000000000000001", "maximum"),
+        ("a number at an exclusive minimum", """{ "exclusiveMinimum": 0 }""", "0", "exclusiveMinimum"),
+        ("a number over an exclusive minimum", """{ "exclusiveMinimum": 0 }""", "0.5", null),
+        ("two characters outside the BMP, at maxLength 2", """{ "maxLength": 2 }""",
+            "\"\\ud83d\\ude00\\ud83d\\ude00\"", null),
+        ("three characters, over maxLength 2", """{ "maxLength": 2 }""", "\"abc\"", "maxLength"),
+        ("an integer with a fraction", """{ "type": "integer" }""", "512.0", "type"),
+        ("an integer with an exponent", """{ "type": "integer" }""", "5e2", "type"),
+        ("an integer", """{ "type": "integer" }""", "512", null),
+        ("a number too large to read", """{ "type": "number" }""", "1e400", "type"),
+        ("1.0 for a const of 1", """{ "const": 1 }""", "1.0", "const"),
+        ("an escaped letter for an enum of the letter", """{ "enum": ["a"] }""", "\"\\u0061\"", null),
+        ("allOf, its second part broken", """{ "allOf": [{ "minimum": 1 }, { "maximum": 3 }] }""", "5", "maximum"),
+        ("anyOf, no part matched", """{ "anyOf": [{ "const": "a" }, { "const": "b" }] }""", "\"c\"", "anyOf"),
+        ("anyOf, one part matched", """{ "anyOf": [{ "const": "a" }, { "const": "b" }] }""", "\"b\"", null),
+        ("oneOf, both parts matched", """{ "oneOf": [{ "minimum": 1 }, { "maximum": 5 }] }""", "3", "oneOf"),
+        ("oneOf, one part matched", """{ "oneOf": [{ "minimum": 1 }, { "maximum": 5 }] }""", "7", null),
+        ("not, its part matched", """{ "not": { "const": "x" } }""", "\"x\"", "not"),
+        ("if and then", IfThenElse, "25", "maximum"),
+        ("if and else", IfThenElse, "7", "maximum"),
+        ("if, else passed", IfThenElse, "3", null),
+        ("a failed if, never reported", """{ "if": { "type": "string" } }""", "5", null),
+        ("a leap day", """{ "format": "date" }""", "\"2024-02-29\"", null),
+        ("the 30th of February", """{ "format": "date" }""", "\"2026-02-30\"", "format"),
+        ("a month of one digit", """{ "format": "date" }""", "\"2026-2-01\"", "format"),
+        ("a text before a final line break, against $", """{ "pattern": "^a$" }""", "\"a\\n\"", "pattern"),
+        ("a text before a final line break, against $ in an alternative", """{ "pattern": "^a$|^b$" }""",
+            "\"b\\n\"", "pattern"),
+        ("a carriage return, against .", """{ "pattern": "^.$" }""", "\"\\r\"", "pattern"),
+        ("U+0085, against \\s", """{ "pattern": "^\\s$" }""", "\"\\u0085\"", "pattern"),
+        ("U+FEFF, against \\s", """{ "pattern": "^\\s$" }""", "\"\\ufeff\"", null),
+        ("U+00A0, against \\s", """{ "pattern": "^\\s$" }""", "\"\\u00a0\"", null),
+        ("an Arabic-Indic digit, against \\d", """{ "pattern": "^\\d$" }""", "\"\\u0660\"", "pattern"),
+        ("a letter with an accent, against \\w", """{ "pattern": "^\\w$" }""", "\"\\u00e9\"", "pattern"),
+        ("an item twice", """{ "uniqueItems": true }""", "[\"a\", \"a\"]", "uniqueItems"),
+        ("a missing member", """{ "required": ["a"] }""", "{}", "required"),
+    ];
+
+    // Schemas that the validator must refuse with everything that it implements, and the place in the schema that
+    // its message must name.
+    private static readonly (string Name, string Schema, string Place)[] s_refusedSchemas =
+    [
+        ("a keyword that is not implemented", """{ "type": "object", "properties": { "a": { "multipleOf": 2 } } }""",
+            "/properties/a/multipleOf"),
+        ("a format other than date", """{ "format": "email" }""", "/format"),
+        ("a reference outside $defs", """{ "$ref": "https://example.com/schema" }""", "/$ref"),
+        ("a reference to a definition that does not exist", """{ "$ref": "#/$defs/missing" }""", "/$ref"),
+        ("a list of types", """{ "type": ["string", "null"] }""", "/type"),
+        ("a word boundary in a pattern", """{ "pattern": "\\bword" }""", "/pattern"),
+        ("an empty class in a pattern", """{ "pattern": "[]" }""", "/pattern"),
+        ("inline options in a pattern", """{ "pattern": "(?i)a" }""", "/pattern"),
+        ("a class subtraction in a pattern", """{ "pattern": "[a-z-[aeiou]]" }""", "/pattern"),
+        ("\\S inside a class", """{ "pattern": "[\\S]" }""", "/pattern"),
+        ("a $comment that is not text", """{ "not": { "$comment": 5 } }""", "/not/$comment"),
+    ];
+
+    // Release tags in ascending order of precedence, the chain of Semantic Versioning 2.0.0 section 11 among them.
+    private static readonly string[] s_releaseOrder =
+    [
+        "v0.0.9", "v0.1.0", "v0.9.0", "v0.10.0", "v1.0.0-alpha", "v1.0.0-alpha.1", "v1.0.0-alpha.beta", "v1.0.0-beta",
+        "v1.0.0-beta.2", "v1.0.0-beta.11", "v1.0.0-rc.1", "v1.0.0", "v2.0.0", "v10.0.0", "v99999999999999999999.0.0",
+        "v100000000000000000000.0.0",
+    ];
+
+    private static readonly string[] s_notReleaseTags =
+        ["0.1.0", "v0.1", "v01.0.0", "v1.0.0+build.5", "v1.0.0-", "3a44fa2c92a67a2d0c3223bf247361c77937be76"];
+
     public static int Run()
     {
-        var schemaText = File.ReadAllText(Path.Combine(Git.TopLevel(), IosBuilds.SchemaPath));
-        var failures = 0;
-        foreach (var (name, data, rule) in s_fixtures)
+        var root = Git.TopLevel();
+        var tally = new Tally();
+        CheckIosBuilds(root, tally);
+        CheckPlantedSchemas(tally);
+        CheckKeywords(tally);
+        CheckReading(tally);
+        CheckReleases(tally);
+        var schemaText = File.ReadAllText(Path.Combine(root, TitleSchema.SchemaPath));
+        var schema = new TitleSchema(schemaText);
+        tally.Expect(
+            schema.CheckAllowList().Count == 0,
+            "the environment allow-list of the title schema",
+            "a Steam variable");
+        CheckVocabularies(root, schema, tally);
+        CheckTitleFixtures(root, schema, tally);
+        CheckFolderLayout(schema, tally);
+        CheckLoaderFixtures(root, schema, tally);
+        CheckDrift(root, schemaText, tally);
+        if (tally.Failures > 0)
         {
-            var problems = IosBuilds.Check(data, schemaText, path => path is Record or GateRecord);
-            var rules = problems.Select(problem => problem.Rule).Distinct().ToList();
-            var passed = rule is null ? problems.Count == 0 : rules.Count == 1 && rules[0] == rule;
-            if (!passed)
-            {
-                failures++;
-                Console.WriteLine($"FAIL {name}: expected {rule ?? "no problem"}, found {string.Join(", ", problems)}");
-            }
-        }
-
-        foreach (var (name, schema, refusal) in s_plantedSchemas)
-        {
-            var found = Refusal(schema);
-            if (found is null || !found.Contains(refusal, StringComparison.Ordinal))
-            {
-                failures++;
-                Console.WriteLine($"FAIL the planted schema with {name}: expected a refusal at {refusal}, found {found ?? "none"}");
-            }
-        }
-
-        if (failures > 0)
-        {
-            Console.WriteLine($"{failures} self-test case(s) failed.");
+            Console.WriteLine($"{tally.Failures} of {tally.Cases} self-test cases failed.");
             return 1;
         }
-        Console.WriteLine($"All {s_fixtures.Length + s_plantedSchemas.Length} self-test cases passed.");
+        Console.WriteLine($"All {tally.Cases} self-test cases passed.");
         return 0;
     }
 
-    // Loads a schema through the check's own loader, and returns why it was refused, or null.
-    private static string? Refusal(string schema)
+    private static void CheckIosBuilds(string root, Tally tally)
+    {
+        var schemaText = File.ReadAllText(Path.Combine(root, IosBuilds.SchemaPath));
+        foreach (var (name, data, rule) in s_fixtures)
+        {
+            var problems = IosBuilds.Check(data, schemaText, path => path is Record or GateRecord);
+            tally.Expect(OnlyRule(problems, rule), $"ios builds, {name}", Found(rule, problems));
+        }
+    }
+
+    // The planted schemas go through the loader that the check uses for the list's schema.
+    private static void CheckPlantedSchemas(Tally tally)
+    {
+        foreach (var (name, schema, refusal) in s_plantedSchemas)
+        {
+            var found = Refusal(() => IosBuilds.LoadSchema(schema));
+            tally.Expect(
+                found is not null && found.Contains(refusal, StringComparison.Ordinal),
+                $"the planted schema with {name}",
+                $"expected a refusal at {refusal}, found {found ?? "none"}");
+        }
+    }
+
+    private static void CheckKeywords(Tally tally)
+    {
+        foreach (var (name, schemaText, instanceText, rule) in s_keywordCases)
+        {
+            using var instance = JsonDocument.Parse(instanceText);
+            var problems = new List<Problem>();
+            SchemaValidator.LoadSchema(schemaText, "keyword case", SchemaValidator.Everything)
+                .Validate(instance.RootElement, "case", problems);
+            tally.Expect(OnlyRule(problems, rule), $"keyword, {name}", Found(rule, problems));
+        }
+
+        // A member whose name is not a plain one is not shown.
+        using (var instance = JsonDocument.Parse("""{ "a b": 1 }"""))
+        {
+            var problems = new List<Problem>();
+            SchemaValidator.LoadSchema("""{ "additionalProperties": false }""", "keyword case", SchemaValidator.Everything)
+                .Validate(instance.RootElement, "case", problems);
+            tally.Expect(
+                problems is [{ Pointer: "/" + JsonPointer.NameNotShown }],
+                "keyword, a name that is not plain", string.Join(", ", problems));
+        }
+
+        foreach (var (name, schemaText, place) in s_refusedSchemas)
+        {
+            var found = Refusal(() => SchemaValidator.LoadSchema(schemaText, "refused schema", SchemaValidator.Everything));
+            tally.Expect(
+                found is not null && found.StartsWith($"refused schema: {place}: ", StringComparison.Ordinal),
+                $"refused schema, {name}",
+                found ?? "the schema was taken");
+        }
+    }
+
+    // Each schema uses exactly its vocabulary, and the validator implements exactly what the vocabularies hold,
+    // so that it implements no keyword that no schema uses.
+    private static void CheckVocabularies(string root, TitleSchema titleSchema, Tally tally)
+    {
+        var iosBuilds = IosBuilds.LoadSchema(File.ReadAllText(Path.Combine(root, IosBuilds.SchemaPath)));
+        var cases = new (string Name, IReadOnlySet<string> Used, IReadOnlySet<string> Vocabulary)[]
+        {
+            (IosBuilds.SchemaPath, iosBuilds.Used, IosBuilds.Vocabulary),
+            (TitleSchema.SchemaPath, titleSchema.Validator.Used, TitleSchema.Vocabulary),
+        };
+        foreach (var (name, used, vocabulary) in cases)
+        {
+            tally.Expect(
+                used.SetEquals(vocabulary),
+                $"vocabulary, {name} uses all of its vocabulary",
+                $"unused: {string.Join(", ", vocabulary.Except(used).Order(StringComparer.Ordinal))}");
+        }
+        var unused = SchemaValidator.Everything.Except(IosBuilds.Vocabulary).Except(TitleSchema.Vocabulary);
+        tally.Expect(
+            SchemaValidator.Everything.SetEquals(IosBuilds.Vocabulary.Union(TitleSchema.Vocabulary)),
+            "vocabulary, the validator implements only what the schemas use",
+            $"used by no schema: {string.Join(", ", unused.Order(StringComparer.Ordinal))}");
+    }
+
+    // Loads a schema through one of the check's loaders, and returns why it was refused, or null.
+    private static string? Refusal(Func<SchemaValidator> load)
     {
         try
         {
-            _ = IosBuilds.LoadSchema(schema);
+            _ = load();
             return null;
         }
         catch (InvalidDataException exception)
@@ -648,4 +1796,210 @@ internal static class SelfTest
             return $"a crash: {exception.Message}";
         }
     }
+
+    // The json rule: what the app's reader rejects before it looks at any field.
+    private static void CheckReading(Tally tally)
+    {
+        var valid = """{ "a": "b" }"""u8.ToArray();
+        var cases = new (string Name, byte[] Bytes, bool Valid)[]
+        {
+            ("a plain object", valid, true),
+            ("a byte-order mark", [.. Encoding.UTF8.Preamble, .. valid], true),
+            ("more than 1 MiB", Encoding.UTF8.GetBytes($$"""{ "a": "{{new string('x', JsonText.MaxBytes)}}" }"""),
+                false),
+            ("bytes that are not UTF-8", [(byte)'"', 0xC3, (byte)'"'], false),
+            ("a member twice", """{ "a": 1, "a": 2 }"""u8.ToArray(), false),
+            ("a member twice, deeper", """{ "a": [{ "b": 1, "b": 1 }] }"""u8.ToArray(), false),
+            ("half a surrogate pair in a name", Encoding.UTF8.GetBytes("{ \"\\ud800\": 1 }"), false),
+            ("half a surrogate pair in a text", Encoding.UTF8.GetBytes("{ \"a\": \"x\\udc00\" }"), false),
+            ("a comment", "{ /* a */ }"u8.ToArray(), false),
+            ("a trailing comma", """{ "a": 1, }"""u8.ToArray(), false),
+            ("two values", "{} {}"u8.ToArray(), false),
+            ("nothing", [], false),
+        };
+        foreach (var (name, bytes, isValid) in cases)
+        {
+            var problems = new List<Problem>();
+            using var document = JsonText.Read(bytes, "case", problems);
+            tally.Expect(
+                isValid ? document is not null && problems.Count == 0 : document is null && OnlyRule(problems, "json"),
+                $"reading, {name}", string.Join(", ", problems));
+        }
+    }
+
+    private static void CheckReleases(Tally tally)
+    {
+        var releases = new List<ReleaseVersion>();
+        foreach (var text in s_releaseOrder)
+        {
+            var isTag = ReleaseVersion.TryParse(text, out var release);
+            tally.Expect(
+                isTag && release!.CompareTo(release) == 0, $"release, {text} is a release tag", "not read as one");
+            if (isTag)
+            {
+                releases.Add(release!);
+            }
+        }
+        for (var index = 0; index < releases.Count; index++)
+        {
+            for (var later = index + 1; later < releases.Count; later++)
+            {
+                tally.Expect(
+                    releases[index].CompareTo(releases[later]) < 0 && releases[later].CompareTo(releases[index]) > 0,
+                    $"release, {s_releaseOrder[index]} before {s_releaseOrder[later]}", "in the wrong order");
+            }
+        }
+        foreach (var text in s_notReleaseTags)
+        {
+            tally.Expect(!ReleaseVersion.TryParse(text, out _), $"release, {text} is no release tag", "read as one");
+        }
+        var targets = new HashSet<string>(["iPhone18,1", "iPhone19,2"], StringComparer.Ordinal);
+        tally.Expect(Rating.Compute([], targets) == Rating.Untested, "rating, no report", "not untested");
+        tally.Expect(
+            Rating.Compute(
+                [
+                    new TestReport(0, "2026-12-01", "iPhone18,1", "v0.3.0", "perfect"),
+                    new TestReport(1, "2026-12-01", "iPhone19,2", "v0.3.0", "boots"),
+                ],
+                targets) == "boots",
+            "rating, two target devices that disagree", "not the lower rating");
+    }
+
+    // The fixtures of tests/compat: the valid folder passes as a whole, and each invalid folder fails for its one
+    // rule. Every folder there is listed above, and every listed folder is there.
+    private static void CheckTitleFixtures(string root, TitleSchema schema, Tally tally)
+    {
+        var (valid, files) = Titles.CheckFolder(
+            Path.Combine(root, Fixtures, "valid"), $"{Fixtures}/valid", schema, s_fixtureRecords.Contains);
+        tally.Expect(valid.Count == 0 && files > 0, $"{Fixtures}/valid", string.Join(", ", valid));
+        Console.WriteLine($"{Fixtures}/valid: {files} title files, {valid.Count} problems.");
+
+        var invalid = Path.Combine(root, Fixtures, "invalid");
+        var present = Directory.EnumerateDirectories(invalid)
+            .Select(directory => Path.GetFileName(directory))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        var listed = s_invalidTitles.Select(fixture => fixture.Case).Order(StringComparer.Ordinal).ToList();
+        tally.Expect(
+            present.SequenceEqual(listed), $"{Fixtures}/invalid lists every fixture",
+            $"not listed: {string.Join(", ", present.Except(listed))}; "
+            + $"missing: {string.Join(", ", listed.Except(present))}");
+        foreach (var (name, rule) in s_invalidTitles.Where(fixture => present.Contains(fixture.Case)))
+        {
+            var (problems, count) = Titles.CheckFolder(
+                Path.Combine(invalid, name), $"{Fixtures}/invalid/{name}", schema, s_fixtureRecords.Contains);
+            var passed = count == 1 && OnlyRule(problems, rule);
+            tally.Expect(passed, $"{Fixtures}/invalid/{name}", Found(rule, problems));
+            if (passed)
+            {
+                Console.WriteLine($"{Fixtures}/invalid/{name}: fails {rule}, as it should.");
+            }
+        }
+    }
+
+    // What the folder of the title files may hold, in a temporary folder: its README.md, which is skipped, and
+    // title files; a file of another kind, a title file whose extension is not in lower case, and a folder fail.
+    private static void CheckFolderLayout(TitleSchema schema, Tally tally)
+    {
+        var folder = Directory.CreateTempSubdirectory("check-compat-");
+        try
+        {
+            File.WriteAllText(Path.Combine(folder.FullName, "README.md"), "# Titles\n");
+            var (empty, none) = Titles.CheckFolder(folder.FullName, "case", schema, _ => false);
+            tally.Expect(empty.Count == 0 && none == 0, "folder, a README.md only", string.Join(", ", empty));
+            var cases = new (string Name, Action<string> Make)[]
+            {
+                ("a file of another kind", path => File.WriteAllText(Path.Combine(path, "notes.txt"), "x\n")),
+                ("an extension in upper case", path => File.WriteAllText(
+                    Path.Combine(path, "steam-4100000701.JSON"),
+                    """
+                    { "schemaVersion": 1, "id": { "steamAppId": 4100000701, "slug": "upper-case" },
+                      "name": "Upper Case" }
+                    """)),
+                ("a folder", path => Directory.CreateDirectory(Path.Combine(path, "drafts"))),
+            };
+            foreach (var (name, make) in cases)
+            {
+                var sub = folder.CreateSubdirectory(name.Replace(' ', '-'));
+                make(sub.FullName);
+                var (problems, _) = Titles.CheckFolder(sub.FullName, "case", schema, _ => false);
+                tally.Expect(
+                    problems.Count == 1 && OnlyRule(problems, "file-name"),
+                    $"folder, {name}",
+                    Found("file-name", problems));
+            }
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    // The fixtures that M6.4 wrote for the app's loader agree with the schema check: each valid reviewed file
+    // matches the schema, and each invalid one is rejected, by the json rule or by the schema.
+    private static void CheckLoaderFixtures(string root, TitleSchema schema, Tally tally)
+    {
+        const string Loader = "tests/Paneport.Core.Tests/Compat/Fixtures";
+        var counts = new Dictionary<bool, int> { [true] = 0, [false] = 0 };
+        foreach (var valid in new[] { true, false })
+        {
+            var folder = Path.Combine(root, Loader, valid ? "valid" : "invalid", "bundled");
+            foreach (var path in Directory.EnumerateFiles(folder, "*.json").Order(StringComparer.Ordinal))
+            {
+                var file = $"{Loader}/{(valid ? "valid" : "invalid")}/bundled/{Path.GetFileName(path)}";
+                var problems = new List<Problem>();
+                using var document = JsonText.Read(File.ReadAllBytes(path), file, problems);
+                if (document is not null)
+                {
+                    schema.Validator.Validate(document.RootElement, file, problems);
+                }
+                tally.Expect(
+                    valid == (problems.Count == 0), file, valid ? string.Join(", ", problems) : "no problem found");
+                counts[valid]++;
+            }
+        }
+        Console.WriteLine(
+            $"{Loader}: {counts[true]} valid reviewed files match the schema, {counts[false]} invalid ones fail it.");
+    }
+
+    // The rules in code hold where a change of the schema drops them: without the schema's launch conditions,
+    // each launch fixture still fails its rule, and with a Steam variable in the environment allow-list, the
+    // check fails the schema and the fixture that sets it.
+    private static void CheckDrift(string root, string schemaText, Tally tally)
+    {
+        var withoutLaunch = JsonNode.Parse(schemaText)!.AsObject();
+        withoutLaunch.Remove("allOf");
+        var unconditioned = new TitleSchema(withoutLaunch.ToJsonString());
+        foreach (var (name, _) in s_invalidTitles.Where(fixture => fixture.Rule == "launch"))
+        {
+            var (problems, _) = Titles.CheckFolder(
+                Path.Combine(root, Fixtures, "invalid", name), name, unconditioned, s_fixtureRecords.Contains);
+            tally.Expect(
+                OnlyRule(problems, "launch"),
+                $"drift, {name} without the schema's conditions",
+                Found("launch", problems));
+        }
+
+        var withSteamVariable = JsonNode.Parse(schemaText)!.AsObject();
+        var allowList = withSteamVariable["properties"]!["environment"]!["properties"]!;
+        allowList["SteamAppId"] = new JsonObject { ["type"] = "string" };
+        var steamAllowed = new TitleSchema(withSteamVariable.ToJsonString());
+        var steamProblems = steamAllowed.CheckAllowList();
+        tally.Expect(
+            steamProblems is [{ Rule: "allow-list", Pointer: "/properties/environment/properties/SteamAppId" }],
+            "drift, a Steam variable in the environment allow-list", string.Join(", ", steamProblems));
+        const string Case = "allow-list-environment-steam-app-id";
+        var (steamFixture, _) = Titles.CheckFolder(
+            Path.Combine(root, Fixtures, "invalid", Case), Case, steamAllowed, s_fixtureRecords.Contains);
+        tally.Expect(
+            OnlyRule(steamFixture, "allow-list"),
+            $"drift, {Case} with the variable allowed",
+            Found("allow-list", steamFixture));
+    }
+
+    private static bool OnlyRule(List<Problem> problems, string? rule) =>
+        rule is null ? problems.Count == 0 : problems.Count > 0 && problems.All(problem => problem.Rule == rule);
+
+    private static string Found(string? rule, List<Problem> problems) =>
+        $"expected {rule ?? "no problem"}, found {(problems.Count == 0 ? "none" : string.Join(", ", problems))}";
 }

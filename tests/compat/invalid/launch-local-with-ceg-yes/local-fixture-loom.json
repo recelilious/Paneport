@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [
+      "a462c526e7d6f76cd1096b8a1bbfa2a54c62fba293cfefc81a854aaa2c54c5c8"
+    ],
+    "slug": "fixture-loom"
+  },
+  "name": "Fixture Loom",
+  "executable": {
+    "path": "Loom.exe"
+  },
+  "drm": {
+    "ceg": "yes"
+  }
+}

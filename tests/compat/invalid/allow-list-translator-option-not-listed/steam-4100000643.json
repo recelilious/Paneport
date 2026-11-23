@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000643,
+    "slug": "fixture-translator-option"
+  },
+  "name": "Fixture Translator Option",
+  "translator": {
+    "memoryModel": "tso"
+  }
+}

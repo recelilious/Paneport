@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000632,
+    "slug": "fixture-direct-without-ceg"
+  },
+  "name": "Fixture Direct Without Ceg",
+  "executable": {
+    "path": "DirectWithoutCeg.exe"
+  },
+  "drm": {
+    "steamApi": false,
+    "steamStub": false
+  },
+  "launch": "direct"
+}

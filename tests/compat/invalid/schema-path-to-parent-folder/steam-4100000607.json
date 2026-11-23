@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000607,
+    "slug": "fixture-parent-folder"
+  },
+  "name": "Fixture Parent Folder",
+  "executable": {
+    "path": "../ParentFolder.exe"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000642,
+    "slug": "fixture-environment-name"
+  },
+  "name": "Fixture Environment Name",
+  "environment": {
+    "WINEDEBUG": "-all"
+  }
+}

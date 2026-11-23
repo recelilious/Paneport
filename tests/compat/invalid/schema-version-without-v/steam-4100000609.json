@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000609,
+    "slug": "fixture-version-without-v"
+  },
+  "name": "Fixture Version Without V",
+  "rating": "boots",
+  "reports": [
+    {
+      "date": "2026-12-08",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "0.3.0",
+      "gameBuild": "20261201",
+      "rating": "boots",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md"
+    }
+  ]
+}

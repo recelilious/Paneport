@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000602,
+    "slug": "fixture-render-scale"
+  },
+  "name": "Fixture Render Scale",
+  "graphics": {
+    "renderScale": 1.25
+  }
+}

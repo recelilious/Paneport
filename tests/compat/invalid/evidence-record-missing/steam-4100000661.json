@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000661,
+    "slug": "fixture-missing-record"
+  },
+  "name": "Fixture Missing Record",
+  "rating": "boots",
+  "reports": [
+    {
+      "date": "2026-12-08",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "boots",
+      "evidence": "docs/evidence/2026-12-31-fixture-missing-record.md"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000601,
+    "slug": "fixture-arm64"
+  },
+  "name": "Fixture Arm64",
+  "architecture": "arm64"
+}

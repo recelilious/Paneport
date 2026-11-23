@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [
+      "d0e1a86448e16f86c1ecd33bc9537319b4b1b4f5453c3f0ed68fb81778a8ec07"
+    ],
+    "slug": "fixture-lamp"
+  },
+  "name": "Fixture Lamp",
+  "executable": {
+    "path": "Lamp.exe"
+  },
+  "drm": {
+    "steamApi": true,
+    "steamStub": false,
+    "ceg": "no"
+  }
+}

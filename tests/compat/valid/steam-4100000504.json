@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000504,
+    "slug": "fixture-uncounted-reports"
+  },
+  "name": "Fixture Uncounted Reports",
+  "rating": "untested",
+  "reports": [
+    {
+      "date": "2026-12-01",
+      "device": "iPhone17,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "perfect",
+      "evidence": "docs/evidence/2026-12-01-fixture-first-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    },
+    {
+      "date": "2026-12-08",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "febc47682d1e3f7d1cf6db929d60ff9bc107a399",
+      "gameBuild": "20261201",
+      "rating": "playable",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    }
+  ]
+}

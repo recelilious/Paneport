@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000612,
+    "slug": "fixture-comment"
+  },
+  "name": "Fixture Comment",
+  // A comment, which JSON does not allow.
+  "prefix": "shared"
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000606,
+    "exeSha256": [
+      "745545945356d28aa435a47f03d75f1035c06fd1c0a81f2c4c6f80a588e6c67f"
+    ],
+    "slug": "fixture-both-ids"
+  },
+  "name": "Fixture Both Ids",
+  "executable": {
+    "path": "BothIds.exe"
+  }
+}

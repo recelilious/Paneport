@@ -395,6 +395,13 @@ jobs:
           PATH="$LLVM_MINGW/bin:$PATH" dotnet run tools/CheckToolchain.cs -- --llvm
           PATH="$LLVM_MINGW/bin:$PATH" eng/mac/check-native-style.sh tidy build/win32/x86_64
 
+      # The Wine fork's entry header include/wine/paneport.h, the only header of Wine that the
+      # host includes (C-0005 section 3), at the commit that this repository records for the fork,
+      # for the builds of the host below that do not check out the fork.
+      - name: Fetch the Wine fork's entry header (eng/fetch-wine-header.sh)
+        if: ${{ !cancelled() }}
+        run: eng/fetch-wine-header.sh
+
       - name: Build the harness (CMake preset macos-harness)
         id: harness
         if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
@@ -506,6 +513,13 @@ jobs:
           cmake --version | head -n 1
           clang-format --version
           clang-tidy --version
+
+      # The Wine fork's entry header include/wine/paneport.h, the only header of Wine that the
+      # host includes (C-0005 section 3), at the commit that this repository records for the fork,
+      # for the builds of the host below that do not check out the fork.
+      - name: Fetch the Wine fork's entry header (eng/fetch-wine-header.sh)
+        if: ${{ !cancelled() }}
+        run: eng/fetch-wine-header.sh
 
       - name: Check the format of the native code (clang-format)
         if: ${{ !cancelled() }}
@@ -720,6 +734,13 @@ jobs:
             exit 1
           fi
           echo "--fork-tools exited with $status and named both, as expected."
+
+      # The Wine fork's entry header include/wine/paneport.h, the only header of Wine that the
+      # host includes (C-0005 section 3), at the commit that this repository records for the fork,
+      # for the builds of the host below that do not check out the fork.
+      - name: Fetch the Wine fork's entry header (eng/fetch-wine-header.sh)
+        if: ${{ !cancelled() }}
+        run: eng/fetch-wine-header.sh
 
       # S1.2.10: paneport_host.framework from both iOS presets, the one that the main app embeds
       # and the one with the test exports that the device test flavor embeds (M1.3).

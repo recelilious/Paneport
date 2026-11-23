@@ -2909,11 +2909,13 @@ internal static class TinyAssembly
                 methods);
         }
 
+        // The nested type carries its outer type's namespace, which metadata allows, so that only the
+        // nesting tells it apart from a top-level type of that namespace and name.
         if (nested is { } pair)
         {
             var inner = metadata.AddTypeDefinition(
                 System.Reflection.TypeAttributes.NestedPublic | System.Reflection.TypeAttributes.Class,
-                default,
+                metadata.GetOrAddString(pair.Outer[..pair.Outer.LastIndexOf('.')]),
                 metadata.GetOrAddString(pair.Inner),
                 default,
                 fields,

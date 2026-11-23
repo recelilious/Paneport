@@ -11,17 +11,17 @@ Back to the [development plan](../development-plan.md).
 | Stage | Title | Level | Status | Branch or PR | Last session |
 |---|---|---|---|---|---|
 | L3 | JIT on the iPhone | Large | Planned | | |
-| M3.1 | JIT provider and broker script | Medium | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
+| M3.1 | JIT provider and broker script | Medium | In progress: S3.1.6 follows the contract changes of [#41](https://github.com/recelilious/Paneport/pull/41) | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
 | S3.0.1 | JIT setup screen | Small | Planned | | |
 | S3.0.2 | JIT self-test | Small | Planned | | |
 | S3.0.3 | First verified iOS build entry | Small | Planned | | |
-| S3.1.1 | Debugger state detection | Small | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
-| S3.1.2 | State machine and events | Small | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
-| S3.1.3 | Region request and mapping | Small | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
-| S3.1.4 | Verification probe | Small | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
-| S3.1.5 | macOS MAP_JIT provider | Small | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
-| S3.1.6 | Broker script | Small | Blocked: waits for recelilious's decision on the script interface ([jit-broker.md](../jit-broker.md) section 4) | | 2026-11-23 |
-| S3.1.7 | iOS build list and schema | Small | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
+| S3.1.1 | Debugger state detection | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
+| S3.1.2 | State machine and events | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
+| S3.1.3 | Region request and mapping | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
+| S3.1.4 | Verification probe | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
+| S3.1.5 | macOS MAP_JIT provider | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
+| S3.1.6 | Broker script | Small | Blocked: waits for the contract changes of [#41](https://github.com/recelilious/Paneport/pull/41), which name StikDebug's built-in script ([jit-broker.md](../jit-broker.md) section 4) | | 2026-11-23 |
+| S3.1.7 | iOS build list and schema | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
 
 ## L3 JIT on the iPhone
 
@@ -75,7 +75,7 @@ The record and its attachments must never contain personal data or secrets: no U
 **Notes from earlier stages.**
 
 - M3.1 (session log of 2026-11-23): the JIT group is `paneport/jit.h`, bound in Paneport.Interop as `NativeHost.GetJitStatus`, `SetJitEnablerOpened`, `NoteJitForeground` and `RequestJitPool`. The screen reads `GetJitStatus` [any] and the events of kind `HostJit.StateChangedEvent`, whose code is the new state; `ForeignDebugger` shows the foreign-debugger message, and `Failure` the failure's reason. The app calls `SetJitEnablerOpened(true)` on the main thread right before it opens the URL, and `SetJitEnablerOpened(false)` when iOS refuses it; the head calls `NoteJitForeground` on every return to the foreground; on the `debugger_attached` event the app calls `RequestJitPool(HostJit.DefaultPoolMiB)` on the main thread ([jit.md](../jit.md) sections 5 and 8).
-- M3.1 (session log of 2026-11-23): the URL carries `bundle-id` and `pid` beside the script, as StikJIT's `INTEGRATION.md` says. The broker script waits for recelilious's decision; with option A the URL names `script-name=universal.js` instead of `script-data` ([jit-broker.md](../jit-broker.md) sections 2 and 4).
+- M3.1 (session log of 2026-11-23): the URL names StikDebug's built-in script, `script-name=universal.js`, with `bundle-id` and `pid`, as StikJIT's `INTEGRATION.md` describes. recelilious chose that on 2026-11-23, and C-0006 1.1 records it once [#41](https://github.com/recelilious/Paneport/pull/41) merges; the pull request of S3.1.6 builds the URL ([jit-broker.md](../jit-broker.md) sections 2 and 4).
 - M3.1 (session log of 2026-11-23): the record's metrics come from the status: `RequestedMiB`, `PoolMiB`, `AuthorizationMilliseconds` and the time in each state; the host also logs each change of the state with its time. The self-test of S3.0.2 can take the pool from `pp_jit_pool_copy` in `jit_provider.h` and run a routine with `pp_jit_probe_page`; after `ready` the probe mode is off, so a fault there ends the app with a crash record ([jit.md](../jit.md) sections 7 and 11). The CTest binaries on the runner need no entitlement and no signing of their own (jit.md section 12).
 
 **Session log.**
@@ -204,12 +204,13 @@ _No sessions yet._
     - `native`: `asan-ubsan` and `tsan` passed 159 of 159, the 45 JIT cases and the two `nm` checks of the probe handler among them, with the same two cases skipped under `tsan` as before. `tests/Paneport.Interop.Tests` passed, including the JIT binding test. clang-tidy 23 found five things, which the next commit fixes: signed bitwise operands, a parameter name, two trailing commas, and a planted `MAP_JIT` mapping that the analyzer refuses, now replaced by plain writable memory.
     - `checks` failed only on the links to jit.md, which a later commit added.
     - `ios` and `runtime` run on the pull request.
+    - On `9f4d3e4`, the head before the statuses, push run 45135622981 and pull_request run 45135626354 passed every job: `dotnet` on both systems, `checks`, `native`, `ios` and `runtime`. That head also declares every register that a C call may change around the two commands, because `INTEGRATION.md` presents them as C functions.
   - **Decisions.**
     - The broker script: `INTEGRATION.md` does not document the interface that a script uses, so the coordinator put the options of jit-broker.md section 4 to recelilious, recommending A. Until the answer, D: S3.1.6 is Blocked and `src/jit-broker/` holds only its README.
     - The coordinator accepted three choices: the numbers of the JIT group, a validator of our own in `tools/CheckCompat.cs` (D8 stays open for M8.3), and regions of 128 MiB.
     - M4.3's #39 also uses -10 to -12, event kinds 1 to 3 and minor version 3, so whichever of the two merges second renumbers its own.
   - **Left.**
-    - S3.1.6, after recelilious's decision; with A, contract drafts on a local `contract/` branch, reviewed before they are pushed.
+    - S3.1.6. recelilious chose option A on 2026-11-23 ("Yes, option A"), and approved the contract changes as drafted ("Approve as drafted"): C-0003 1.9, C-0004 1.2, C-0006 1.1, C-0009 1.3 and C-0010 1.2, in [#41](https://github.com/recelilious/Paneport/pull/41). The pull request of S3.1.6 follows [#41](https://github.com/recelilious/Paneport/pull/41): the request names `script-name=universal.js` with `bundle-id` and `pid`, `src/jit-broker/` goes, and jit-broker.md, this brief and the plan follow.
     - Everything on the device is not yet verified; that is L3.
-    - M3.1 cannot be Done while S3.1.6 is blocked. Whether #40 merges first, with the other Small stages Done, is the coordinator's call.
+    - M3.1 cannot be Done before S3.1.6. The coordinator decided that [#40](https://github.com/recelilious/Paneport/pull/40) merges first, after its independent review, with S3.1.1 to S3.1.5 and S3.1.7 Done; M3.1 stays In progress and S3.1.6 Blocked until [#41](https://github.com/recelilious/Paneport/pull/41) merges. M4.4, which depends on M3.1, waits for the script's pull request. If [#40](https://github.com/recelilious/Paneport/pull/40) merges before M4.3's #39, #39 renumbers its status codes, event kinds and version.
   - **For later sessions.** Notes left in the sections of L3, M4.3, M4.4 and L5. jit.md section 11 lists the same points.

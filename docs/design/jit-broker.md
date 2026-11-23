@@ -6,7 +6,7 @@
 
 Back to the [design index](README.md).
 
-This document describes the broker side of the JIT request protocol of C-0006: the script that StikDebug runs to serve the app's two commands. Stage M3.1 found that StikJIT's `INTEGRATION.md`, the only source that C-0006 section 2 allows for the script, does not document the interface that a script uses, so the script is **not written**: the brief of M3.1 leaves that case to a decision by recelilious, which is open. [jit.md](jit.md) describes the app side, which M3.1 built and which does not depend on the decision. Where this document and a contract differ, the [contracts](../contracts/README.md) win.
+This document describes the broker side of the JIT request protocol of C-0006: the script that StikDebug runs to serve the app's two commands. Stage M3.1 found that StikJIT's `INTEGRATION.md`, the only source that C-0006 section 2 allows for the script, does not document the interface that a script uses, so the script is **not written**: the brief of M3.1 left that case to a decision by recelilious, who chose on 2026-11-23 that Paneport names StikDebug's built-in script instead (section 4). [jit.md](jit.md) describes the app side, which M3.1 built and which does not depend on the decision. Where this document and a contract differ, the [contracts](../contracts/README.md) win.
 
 ## 1. What the contracts ask
 
@@ -38,7 +38,7 @@ The coordinating session put these options to recelilious on 2026-11-23, recomme
 | C | Read the interface's definition in StikDebug's source. | C-0003 section 9 and the AGPL boundary. Not proposed. |
 | D | Keep the script out of M3.1, and let L3 wait for the decision. | Nothing |
 
-Until recelilious decides, M3.1 follows D: `src/jit-broker/` holds only its README. If recelilious chooses A, the contract changes are drafted on a `contract/` branch of their own, reviewed before they are pushed, and this document then records the URL that the app builds; L3's JIT setup screen builds it either way, from `paneport/jit.h`'s flow (jit.md section 8).
+recelilious chose A on 2026-11-23, with the words "Yes, option A", and approved the contract changes as drafted: C-0003 1.9, C-0004 1.2, C-0006 1.1, C-0009 1.3 and C-0010 1.2, in pull request #41. Until those changes merge, `src/jit-broker/` holds only its README. The pull request of S3.1.6 follows them: the app's request names `script-name=universal.js` with `bundle-id` and `pid`, `src/jit-broker/` goes, and this document records the URL that the app builds, which L3's JIT setup screen opens (jit.md section 8).
 
 ## 5. Sources
 

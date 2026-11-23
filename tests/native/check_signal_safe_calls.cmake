@@ -41,6 +41,9 @@ elseif(first_source STREQUAL "signal_handler.c")
 elseif(first_source STREQUAL "signal_harness_handler.c")
     # The guest fault handler of the signal gate's harness (M2.2), which uses atomics only.
     set(allowed ${common_allowed})
+elseif(first_source STREQUAL "jit_probe_handler.c")
+    # The JIT probe handler (M3.1), which uses atomics and the fault's context only.
+    set(allowed ${common_allowed})
 else()
     message(FATAL_ERROR "No list of allowed calls for ${SOURCES}.")
 endif()

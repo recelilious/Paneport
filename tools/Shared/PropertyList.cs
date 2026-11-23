@@ -6,6 +6,7 @@
 // (docs/design/repository-checks.md section 2).
 
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
@@ -183,6 +184,27 @@ internal static class Plist
                 {
                     case 0x0:
                         return info == 0x9 ? true : info == 0x8 ? false : string.Empty;
+                    case 0x1:
+                        // An integer, as decimal text, as the XML form gives it, so that a labeled
+                        // number such as a chip identifier is seen too: of 1, 2 or 4 bytes unsigned,
+                        // of 8 bytes signed, and of 16 bytes as CFBinaryPList writes a value above
+                        // the signed range.
+                        {
+                            var size = 1 << info;
+                            var value = Span(offset + 1, size);
+                            var invariant = CultureInfo.InvariantCulture;
+                            return size switch
+                            {
+                                1 or 2 or 4 => Number(value).ToString(invariant),
+                                8 => BinaryPrimitives.ReadInt64BigEndian(value).ToString(invariant),
+                                16 => new UInt128(
+                                    BinaryPrimitives.ReadUInt64BigEndian(value),
+                                    BinaryPrimitives.ReadUInt64BigEndian(value[8..])).ToString(invariant),
+                                _ => throw new InvalidDataException(
+                                    "the binary property list has an integer of another size"),
+                            };
+                        }
+
                     case 0x5:
                         {
                             var (length, start) = Length(offset, info);
@@ -221,7 +243,8 @@ internal static class Plist
                         }
 
                     default:
-                        // Numbers, dates, data and the rest hold no account identifier as text.
+                        // Reals, dates, data and the rest hold no identifier as text; the strings
+                        // pass of the package scan reads the bytes of data.
                         return string.Empty;
                 }
             }

@@ -158,6 +158,16 @@ All paths are inside the app container.
 
 **Open item for recelilious.** Save files inside the prefixes are not backed up. Until cloud saves work (C-0007 section 7), the app tells the user so and offers to export a prefix's user folder to `Documents/`. Whether that is enough is recelilious's decision.
 
+## Proposed changes for 1.3
+
+**Not yet accepted.** Version 1.2 above stays binding until recelilious approves these changes, which are accepted together with C-0003 1.10 and C-0011 1.5. They come from stage M8.3, which adds `tests/compat/`: the title files on which the compatibility check of C-0011 section 1 tests itself, a set of valid files and, for each rule, files that break it. Version 1.1 made the tree show every folder of `tests/`, so the new folder joins it. A folder below the top level needs no change of this contract (section 3), so without these changes the folder may still exist, and the tree would miss it.
+
+1. **Section 3, the tree.** Add `│   ├── compat/` to the folders under `tests/`, after `Shared/`.
+
+2. **Section 3, the row of `tests/`.** Replace "Automated tests, the runtime harness in `runtime/` with the Win32 test programs of our own in `win32/` that it runs, and the on-device test app (C-0011)." with "Automated tests, the runtime harness in `runtime/` with the Win32 test programs of our own in `win32/` that it runs, the title files on which the compatibility check tests itself in `compat/`, and the on-device test app (C-0011)."
+
+3. **Change log.** On acceptance, add a row for 1.3, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0003 1.10 and C-0011 1.5. Comes from stage M8.3, which adds the title files on which the compatibility check tests itself in `tests/compat/`. Section 3 lists the folder in the tree, which shows every folder of `tests/`, and the row of `tests/` says what it holds. Section 2 does not change: the files are test data, not a component."
+
 ## Change log
 
 | Version | Date | Notes |

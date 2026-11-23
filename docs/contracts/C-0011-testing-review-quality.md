@@ -96,6 +96,14 @@ Registered as under review, and not used until recelilious decides:
 
 Not allowed: FluentAssertions 8 and later. They are under Xceed's proprietary Community License, which is free only for non-commercial use (it counts open-source development as non-commercial) and needs a paid license for any commercial use. That makes it a non-commercial-only license, which C-0003 section 5 forbids.
 
+## Proposed changes for 1.5
+
+**Not yet accepted.** Version 1.4 above stays binding until recelilious approves these changes, which are accepted together with C-0003 1.10 and C-0004 1.3. They come from stage M8.3 and from recelilious's decision D8 of 2026-11-23: asked "For D8, use our own small JSON Schema validator instead of JsonSchema.Net?", recelilious answered "Use our own".
+
+1. **Section 5, after the table.** Replace the paragraph "Registered as under review, and not used until recelilious decides:" and its item on JsonSchema.Net with: "The compatibility check of section 1 uses no schema library. Its validator is our own, in `tools/CheckCompat.cs`: it implements the JSON Schema keywords (draft 2020-12) that the schemas in `compat/schema/` use, and it refuses a schema with any other keyword (decision D8 of 2026-11-23). JsonSchema.Net, whose NuGet packages ship under the json-everything Open Source Maintenance Fee agreement, is not used."
+
+2. **Change log.** On acceptance, add a row for 1.5, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0003 1.10 and C-0004 1.3. Comes from stage M8.3 and from recelilious's decision D8 of 2026-11-23 that the compatibility check validates with a small JSON Schema validator of our own instead of JsonSchema.Net. Section 5 says so in place of the paragraph that registered JsonSchema.Net as under review."
+
 ## Change log
 
 | Version | Date | Notes |

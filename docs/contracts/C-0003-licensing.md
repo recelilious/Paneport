@@ -257,6 +257,14 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - LGPL-2.1, whose section 0 defines a library's complete source: <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html>
 - SteamKit2's NetHook2 headers at 4.0.0-Beta.2: <https://github.com/SteamRE/SteamKit/tree/4.0.0-Beta.2/Resources/NetHook2/NetHook2/steam>
 
+## Proposed changes for 1.10
+
+**Not yet accepted.** Version 1.9 above stays binding until recelilious approves these changes, which are accepted together with C-0004 1.3 and C-0011 1.5. They come from stage M8.3 and from recelilious's decision D8 of 2026-11-23, in the words "Use our own", that the compatibility check validates with a small JSON Schema validator of our own instead of JsonSchema.Net (C-0011 1.5, section 5).
+
+1. **Section 6, the register.** Remove the row "| JsonSchema.Net | Schema validation, CI only | MIT source; NuGet packages under the json-everything Open Source Maintenance Fee agreement | Under review; not used until recelilious decides |". Paneport does not use the package. The validator is Paneport's own code in `tools/CheckCompat.cs`, under MIT (section 1), so it needs no row.
+
+2. **Change log.** On acceptance, add a row for 1.10, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0004 1.3 and C-0011 1.5. Comes from stage M8.3 and from recelilious's decision D8 of 2026-11-23 that the compatibility check validates with a small JSON Schema validator of our own. Section 6 drops the row of JsonSchema.Net, which was under review for the check and is not used."
+
 ## Change log
 
 | Version | Date | Notes |

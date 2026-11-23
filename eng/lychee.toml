@@ -8,8 +8,8 @@
 #   lychee --offline --no-progress --extensions md docs/research
 #
 # After a run of the first in which links failed, the job runs it again, up to twice, and each
-# such run checks only the failed links. docs/design/repository-checks.md explains these
-# settings.
+# such run requests again only the web links that failed. docs/design/repository-checks.md
+# explains these settings.
 
 # Links in Markdown files only. Files that git ignores are skipped. Hidden folders are read,
 # so that .github/workflows/README.md is checked, but not the .git folder itself.

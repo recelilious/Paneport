@@ -58,7 +58,9 @@ mkdir -p "$out/objects"
 cflags=(-std=c17 -O2 -Wall -Wextra -Wpedantic -Werror -Wvla
     -D__USE_MINGW_ANSI_STDIO=0 "-ffile-prefix-map=$repo=." "-ffile-prefix-map=$LLVM_MINGW=llvm-mingw"
     -I "$repo/tests/win32/checks")
-ldflags=(-Wl,--section-alignment,16384 -Wl,--strip-debug)
+# ntdll's import library is linked because shared_data.exe calls three of ntdll's syscall
+# exports through its imports, as programs that skip kernel32 do.
+ldflags=(-Wl,--section-alignment,16384 -Wl,--strip-debug -lntdll)
 # lld warns on every link that /align without /driver may give an image that does not run. The
 # 16 KiB alignment is intended, for the reason above; any other link warning fails the build.
 expected_link_warning="ld.lld: warning: /align specified without /driver; image may not run"

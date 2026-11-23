@@ -1,0 +1,7 @@
+= shared_data: an x86-64 build
+= shared_data: imported syscall exports: NtQueryPerformanceCounter, NtQuerySystemTime and NtDelayExecution: pass
+= shared_data: syscall exports from GetProcAddress: NtQueryPerformanceCounter, NtQuerySystemTime and NtDelayExecution: pass
+= shared_data: version fields through 23 instruction forms agree with RtlGetVersion: pass
+= shared_data: clocks: the interrupt time, system time and tick count agree with their APIs: pass
+= shared_data: writes through 6 instruction forms raise write access violations: pass
+= result: pass

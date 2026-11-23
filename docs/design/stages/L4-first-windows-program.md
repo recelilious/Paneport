@@ -15,6 +15,7 @@ Back to the [development plan](../development-plan.md).
 | M4.2 | ARM64EC Wine with FEX on macOS | Medium | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
 | M4.3 | Single-process Wine on macOS | Medium | Planned | | |
 | M4.4 | Runtime on iOS | Medium | Planned | | |
+| M4.5 | Shared user data for x86-64 guests | Medium | Ready | | |
 | S4.0.1 | In-app console and the Run sample program action | Small | Planned | | |
 | S4.1.1 | Fork repositories and integration branches | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | S4.1.2 | Submodules | Small | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
@@ -44,6 +45,9 @@ Back to the [development plan](../development-plan.md).
 | S4.4.6 | Template prefix generation and install | Small | Planned | | |
 | S4.4.7 | Guest console capture on iOS | Small | Planned | | |
 | S4.4.8 | Bundle layout check and size report | Small | Planned | | |
+| S4.5.1 | FEX's redirection of guest reads of the shared user data | Small | Planned | | |
+| S4.5.2 | x86-64 check of the shared user data and ntdll's syscall exports | Small | Planned | | |
+| S4.5.3 | Record in the design document, and notes for M4.4 and M7.3 | Small | Planned | | |
 
 ## L4 First Windows program on the iPhone
 
@@ -85,7 +89,7 @@ Back to the [development plan](../development-plan.md).
 
 The record and its attachments never contain personal data or secrets: no UDID, ECID, serial number, device name, Apple ID, team identifier, application-identifier prefix, re-signed bundle identifier, Steam account name, Steam ID, IP address, access or refresh token, depot key, manifest request code, real name or local path (C-0012 section 4). The device model identifier is allowed. Screenshots are cropped to the console text. No Steam and no Valve binary is involved.
 
-**Integration session.** The L4 session starts once M4.1 to M4.4 are Done. It builds the in-app console (S4.0.1) and wires it to the runtime: the console reads guest output and the process and session events through Paneport.Interop (C-0005 sections 1 and 2). The Run action reads `pp_jit_get_state`, offers the JIT setup screen when the state is not `ready`, then calls `pp_session_start` with the shared prefix and `pp_process_launch` for `console.exe` with output capture on. The session checks by SHA-256 that the test programs the device test flavor bundles are the files the `runtime` job ran. It runs the `dotnet`, `native`, `ios`, `runtime` and `checks` jobs, and `tools/CheckBundle.cs` confirms that the main app holds no test program. It prepares the acceptance steps and the evidence record template (C-0012 section 2), and after recelilious's run it completes the record, which recelilious merges.
+**Integration session.** The L4 session starts once M4.1 to M4.4 are Done; L4 does not wait for M4.5. It builds the in-app console (S4.0.1) and wires it to the runtime: the console reads guest output and the process and session events through Paneport.Interop (C-0005 sections 1 and 2). The Run action reads `pp_jit_get_state`, offers the JIT setup screen when the state is not `ready`, then calls `pp_session_start` with the shared prefix and `pp_process_launch` for `console.exe` with output capture on. The session checks by SHA-256 that the test programs the device test flavor bundles are the files the `runtime` job ran. It runs the `dotnet`, `native`, `ios`, `runtime` and `checks` jobs, and `tools/CheckBundle.cs` confirms that the main app holds no test program. It prepares the acceptance steps and the evidence record template (C-0012 section 2), and after recelilious's run it completes the record, which recelilious merges.
 
 **Small stages directly under this stage.**
 
@@ -618,9 +622,85 @@ Out: display, input and audio (M5.1, M6.1, M6.2); DXMT (M5.2); 32-bit pieces (M7
 - S9.1.1 ([L9 brief](L9-first-release.md), M9.1 session log of 2026-11-19): every file that this stage adds to the bundle needs a rule in `eng/release/bundle-components.json`, or the `ios` job warns, and a rule for a new component needs its texts there, such as the fork's license files as `{ "repository": "external/..." }`, or the job fails; a new NuGet package of the app needs a row of `eng/license-map.json` and texts too. `licenses/` at the root of the bundle belongs to the notices generator (`docs/design/release-engineering.md` sections 1 and 5).
 - M1.3 ([L1 brief](L1-app-on-iphone.md), session log of 2026-11-15): the head embeds frameworks with a `NativeReference` of kind `Framework` in `src/Paneport.iOS/AppHead.props`, and `eng/mac/sign-adhoc.sh` signs every framework and library in the app's `Frameworks/` before the app. `eng/mac/check-app.sh` expects exactly `increased-memory-limit` as the app's entitlements and checks the host framework by name; new bundle locations need their checks there (`docs/design/ios-app-head.md` section 11).
 - M4.2 (session log of 2026-11-16): the register rows for the code of other projects that Wine's PE modules and FEX's module compile come to this stage, the first that ships them; `docs/design/runtime-macos-harness.md` section 10 lists that code with its licenses. Before the modules ship, show from link maps that no module holds FFmpeg's GPL file `libavutil/aarch64/crc.S`, or leave it out of the build; register FEX's Cephes, whose author's e-mailed permission of BSD terms recelilious accepted as its license on 2026-11-21 (decision A of the review of #22), before a module that carries it ships (C-0003 section 4); and propose the licenses and notices that C-0003 section 5 does not list yet.
-- M4.2 (fix round of 2026-11-22): Wine places the shared user data at an address that macOS chooses and gives the PE side its address (runtime-macos-harness.md section 2.1), but x86-64 code that reads `KUSER_SHARED_DATA` at its fixed address, `0x7ffe0000`, as Go's Windows runtime does for its clocks, reads inside the loader's page zero, and FEX passes the fault to the guest, which usually ends the program. Wine's own x64 syscall thunks read it too: the ARM64X `ntdll.dll` exports each syscall to x86-64 callers through an `EXP+#Nt...` thunk of `include/wine/asm.h` (lines 271 to 282), which tests the byte at `0x7ffe0308` before its `syscall` instruction, so every x86-64 program that calls an ntdll syscall export directly, through its imports or `GetProcAddress`, faults; the thunk keeps its Windows form, which Chromium and other programs that inspect the stubs depend on. The plan is a redirection in the emulator of guest reads of that page to the real one, written from FEX's and Wine's own code, which fixes both cases (runtime-macos-harness.md section 11). The first stage that runs x86-64 programs other than those of `tests/win32` needs it, not only a game that reads the page itself, and an x86-64 check that calls an ntdll syscall export lands with it. Who builds it is a question that the coordinating session takes to recelilious.
+- M4.2 (fix round of 2026-11-22): Wine places the shared user data at an address that macOS chooses and gives the PE side its address (runtime-macos-harness.md section 2.1), but x86-64 code that reads `KUSER_SHARED_DATA` at its fixed address, `0x7ffe0000`, as Go's Windows runtime does for its clocks, reads inside the loader's page zero, and FEX passes the fault to the guest, which usually ends the program. Wine's own x64 syscall thunks read it too: the ARM64X `ntdll.dll` exports each syscall to x86-64 callers through an `EXP+#Nt...` thunk of `include/wine/asm.h` (lines 271 to 282), which tests the byte at `0x7ffe0308` before its `syscall` instruction, so every x86-64 program that calls an ntdll syscall export directly, through its imports or `GetProcAddress`, faults; the thunk keeps its Windows form, which Chromium and other programs that inspect the stubs depend on. The plan is a redirection in the emulator of guest reads of that page to the real one, written from FEX's and Wine's own code, which fixes both cases (runtime-macos-harness.md section 11). The first stage that runs x86-64 programs other than those of `tests/win32` needs it, not only a game that reads the page itself, and an x86-64 check that calls an ntdll syscall export lands with it. M4.5 builds it, a stage of its own that recelilious decided on 2026-11-23. iOS apps keep a page zero too, so the redirection is needed on the device as well, and this stage's iOS build carries it once M4.5 is done.
 - M4.2 (session log of 2026-11-16): the Wine fork's `map_jit_view` and `__wine_jit_write_protect` (`dlls/ntdll/unix/virtual.c`, `53cf7fa`) are compiled for every Apple aarch64 target, iOS included, and map FEX's code with `MAP_JIT` and switch it with `pthread_jit_write_protect_np`. On iOS that memory comes from the JIT pool of M3.1 instead, so this stage replaces the `mmap` there and checks how the pool switches between writing and running; FEX's write scopes call the same export (runtime-macos-harness.md sections 2.1 and 3.1).
 - M4.2 (fix round of 2026-11-22): the runner keeps `MAP_JIT` memory writable and executable for every thread, so CI cannot catch a missing write scope in FEX through the hardware; only the handler for misaligned accesses checks a depth of its scope instead (FEX `379b052`, `bddc603` and `aa8f7a6`). This stage verifies on the same runner, so the first run that enforces the protection is the device check of L4's acceptance, or a run on a Mac with Apple silicon: read a fault on a write to FEX's code buffer there as a missing scope first, and keep the depth check whatever way the pool switches (runtime-macos-harness.md section 3.1).
+
+**Session log.**
+
+_No sessions yet._
+
+## M4.5 Shared user data for x86-64 guests
+
+| Field | Value |
+|---|---|
+| Level | Medium |
+| Parent | L4 |
+| Depends on | M4.2 |
+| Decisions needed | None from plan section 4.2. recelilious decided on 2026-11-23 that the redirection is a stage of its own (item K2 of the review of #22). This stage chooses how FEX finds the guest's reads of the page: when it translates them, when they fault, or both. It records the choice in the design document, and the pull request reviews it. |
+| Size | M |
+| Branch | `feat/m4-5-shared-user-data` |
+| Design documents | Updates `docs/design/runtime-macos-harness.md` |
+
+**Goal.** Let x86-64 guest code read the shared user data at its fixed address, `0x7ffe0000`, as it can on Windows.
+- **Why the reads fault now.** The loader's page zero covers the low 4 GB on Apple silicon. So Wine places the data where macOS chooses and gives the PE side its address (M4.2, `runtime-macos-harness.md` section 2.1). Code that reads the page at its fixed address faults:
+  - Wine's own x64 syscall thunks of the ARM64X `ntdll.dll`, the `EXP+#Nt...` thunks of `include/wine/asm.h`, test the byte at `0x7ffe0308` before their `syscall` instruction. So every x86-64 program that calls an ntdll syscall export directly faults.
+  - Guest code that reads the page for its clocks faults too, as Go's Windows runtime does.
+- **The fix.** FEX redirects those reads to the data where Wine placed it.
+- **Who waits for it.** L4's acceptance does not need it. M6.6, which plays the first imported game, waits for it.
+
+**Scope.**
+
+In:
+
+- **The redirection in the FEX fork (S4.5.1), on `paneport/M4.5`.**
+  - A read of the page from `0x7ffe0000` to `0x7ffe0fff` by any x86-64 instruction that reads memory gets the shared user data at the address that Wine gives the PE side. That includes the thunks' `testb $1, 0x7ffe0308`.
+  - A write to the page raises an access violation in the guest, as on Windows, where the page is read-only for user mode.
+  - Ordinary loads and stores get no extra check.
+  - The code is written from FEX's and Wine's own code and Apple's documentation (C-0001 section 6). It takes no code from FEX-darwin, Hadron or Arknights-MacOS-Runtime (C-0003 section 7).
+- **The thunks keep their Windows form,** because Chromium and other programs that inspect the stubs depend on it (`runtime-macos-harness.md` section 11).
+- **The check (S4.5.2).** An x86-64 test program in `tests/win32/`, as a program of its own or a check in an existing one, comes with its expected output and a case in `tests/runtime/`, and also passes natively on Windows 11. It:
+  - calls ntdll syscall exports directly, through its imports and through `GetProcAddress`, for example `NtQueryPerformanceCounter`, `NtQuerySystemTime` and `NtDelayExecution`;
+  - reads fields of the page at `0x7ffe0000` itself, such as `InterruptTime`, `SystemTime`, `TickCount` and `NtMajorVersion`, and compares them with what the matching APIs return;
+  - checks that a write to the page raises an access violation.
+- **The record (S4.5.3).** `runtime-macos-harness.md` says how FEX finds the reads and where it takes the address from, and closes the item of section 11. This brief's M4.4 notes and the L7 brief's M7.3 notes record what follows for iOS and for i386 guests.
+
+Out:
+- i386 guests, whose PE build reads the fixed address (M7.3);
+- iOS builds (M4.4);
+- any change to the bytes of the thunks.
+
+**Read first.**
+- C-0001 section 6; C-0003 sections 4 and 7; C-0010 section 4; C-0011 sections 1 and 4; C-0012 section 1.
+- `docs/design/runtime-macos-harness.md` sections 2.1, 3.1, 4 and 11, and `docs/design/forks.md` sections 4 and 9.
+- The M4.2 section of this brief, with its session logs.
+
+**Deliverables.**
+
+- `external/Paneport-FEX` on `paneport/M4.5`, with C-0010 section 4's notice wherever a changed file needs one. The pointer moves. `external/Paneport-wine` changes only if Wine must hand FEX the address in a new way.
+- `tests/win32/`: the check and its program. `tests/runtime/`: the case and its expected output.
+- `docs/design/runtime-macos-harness.md`: the record.
+
+**Small stages.**
+
+| ID | Module | Location | Independent check |
+|---|---|---|---|
+| S4.5.1 | FEX's redirection of guest reads of the shared user data | `external/Paneport-FEX` | Harness: the S4.5.2 case passes with the new FEX, and fails with FEX `aa8f7a6` in a temporary diagnosis step |
+| S4.5.2 | x86-64 check of the shared user data and ntdll's syscall exports | `tests/win32/`, `tests/runtime/` | Natively on Windows 11, the program prints its expected lines and exits with 0 |
+| S4.5.3 | Record in the design document, and notes for M4.4 and M7.3 | `docs/design/runtime-macos-harness.md`, this brief, the L7 brief | Review: section 11's item is closed, and the method and its sources are named |
+
+**Verification.** All without recelilious's iPhone.
+
+- **`runtime` job.** Every case passes, the new one included, and the planted cases fail with their names. A temporary diagnosis step shows the new case failing with FEX `aa8f7a6`, and is dropped before the final push.
+- **Natively on Windows 11.** The new program passes (S4.5.2).
+- **The other jobs.** `native`, `ios`, both `dotnet` jobs and `checks` pass.
+
+**Done when.** The deliverables exist, the verification passes in CI on the last commit, the definition of done in C-0012 section 1 holds, and recelilious has merged the branch.
+
+**Notes from earlier stages.**
+
+- M4.2 (fix round 2 of 2026-11-22): `runtime-macos-harness.md` section 11, "Guest reads of the shared user data at its fixed address", gives what faults, the fix, when it is needed and its check.
+- M4.2 (fix round 2 of 2026-11-22): FEX's misaligned-access handler already emulates a guest access when it faults, and its scope rules are in `runtime-macos-harness.md` section 3.1.
 
 **Session log.**
 

@@ -156,6 +156,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/ScanPackage.cs -- --self-test
 
+      # Its fixtures break one rule each, and each must fail naming that rule (M3.1).
+      - name: Self-test the compatibility check
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/CheckCompat.cs -- --self-test
+
       - name: Check license headers and texts (REUSE)
         if: ${{ !cancelled() }}
         run: reuse lint
@@ -214,6 +219,12 @@ jobs:
       - name: Check the relative links of the research notes (lychee, offline)
         if: ${{ !cancelled() }}
         run: lychee --offline --no-progress --extensions md docs/research
+
+      # compat/ios-builds.json against its schema (C-0006 section 6); the title files join with
+      # M8.3.
+      - name: Check the compatibility data
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/CheckCompat.cs
 
       - name: Check dependency licenses
         if: ${{ !cancelled() }}

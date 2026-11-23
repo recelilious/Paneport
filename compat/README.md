@@ -11,10 +11,11 @@ Paneport's compatibility database: the reviewed settings and test results of eac
 |---|---|
 | [schema/](schema/README.md) | The JSON Schemas, starting with the title schema |
 | [titles/](titles/README.md) | One JSON file per title |
+| `ios-builds.json` | The iOS builds on which the JIT request protocol has been verified, with the device model and the evidence records of each (C-0006 section 6). Empty until L3's device acceptance passes |
 
 - **In the app.** The app bundles a snapshot of this folder at build time (C-0009 section 4). On the device it keeps a layer of its own, with the computed classification and the user's overrides, which never leaves the device (C-0008 section 1).
 - **Our own data only.** Every setting and report comes from Paneport's own tests. Nothing is copied from another project's compatibility list, and nothing here is game material or personal data (C-0008 section 5).
 - **Changes** come through a reviewed branch, and every report names its evidence record (C-0008 section 5).
 - **License.** The data is MIT (C-0008 section 6). JSON files cannot carry a license header, so `REUSE.toml` declares it.
-- **Later.** The list of verified iOS builds, `ios-builds.json`, and its schema come with M3.1 (C-0006 section 6).
+- **Verified iOS builds.** `ios-builds.json` follows `schema/ios-builds.schema.json`. On an iOS build that the list does not hold, the app warns but still runs (C-0006 section 6). An entry is added only after a device acceptance has passed on that build and model, and names its evidence record; the phase 1 gate adds its record to the entry of the same build and model ([jit.md](../docs/design/jit.md) section 9).
 - **Design:** [compat-db.md](../docs/design/compat-db.md).

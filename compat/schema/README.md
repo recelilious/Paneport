@@ -9,6 +9,7 @@ The JSON Schemas of the compatibility database (C-0004 section 3).
 
 | File | What it is |
 |---|---|
+| `ios-builds.schema.json` | The schema of the list of verified iOS builds, `../ios-builds.json`, in JSON Schema draft 2020-12 (C-0006 section 6): for each entry the iOS version and build, the device model identifier and one or more evidence records. `tools/CheckCompat.cs` validates the list against it in the `checks` job, with a validator that implements exactly the keywords it uses |
 | `title.schema.json` | The title schema, in JSON Schema draft 2020-12. Every `*.json` file in [titles/](../titles/README.md) follows it (C-0008 section 1). |
 
 - **Contents.** It implements C-0008 section 2 and never contradicts it. [compat-db.md](../../docs/design/compat-db.md) section 2 maps every field of the contract to its clause here. `$defs/targetDevices` lists the model identifiers of the target devices, whose reports count for the rating (C-0008 section 3).

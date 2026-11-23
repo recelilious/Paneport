@@ -11,7 +11,7 @@ Back to the [development plan](../development-plan.md).
 | Stage | Title | Level | Status | Branch or PR | Last session |
 |---|---|---|---|---|---|
 | L3 | JIT on the iPhone | Large | Planned | | |
-| M3.1 | JIT provider and broker script | Medium | Planned | | |
+| M3.1 | JIT provider and broker script | Medium | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
 | S3.0.1 | JIT setup screen | Small | Planned | | |
 | S3.0.2 | JIT self-test | Small | Planned | | |
 | S3.0.3 | First verified iOS build entry | Small | Planned | | |

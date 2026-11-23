@@ -173,8 +173,9 @@ typedef struct pp_wine_bridge_t {
     void (*log)(int32_t level, const char *text);
 
     /**
-     * Creates a thread that the host owns and joins when the session ends, and runs body on it.
-     * The fork runs the wineserver's event loop on such a thread (C-0004 section 1).
+     * Creates a thread that the host owns and joins when the session ends, with a stack of
+     * 8 MiB, as a main thread has, and runs body on it. The fork runs the wineserver's event
+     * loop on such a thread (C-0004 section 1).
      *
      * Memory: the host copies the name. The fork keeps ownership of argument.
      *

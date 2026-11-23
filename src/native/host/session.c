@@ -52,8 +52,10 @@ enum {
     PP_SESSION_ENDED = 4,
 };
 
-// How many threads the fork may have the host create for a session.
+// How many threads the fork may have the host create for a session, and their stack size, that
+// of a main thread (paneport/wine_bridge.h).
 #define PP_SESSION_THREADS 4U
+#define PP_SESSION_THREAD_STACK ((size_t)8U * 1024U * 1024U)
 
 // The limits of the blocks of environment variables and arguments.
 #define PP_ENVIRONMENT_MAX ((size_t)64U * 1024U)
@@ -225,7 +227,17 @@ static int32_t bridge_start_thread(const char *name, pp_wine_thread_body_t body,
         slot->joined = false;
         (void)snprintf(slot->name, sizeof slot->name, "%s", name);
         s_session.threads_running++;
-        if (pthread_create(&slot->thread, NULL, run_session_thread, slot) != 0) {
+        // The wineserver runs on such a thread, which upstream runs on a process's main thread.
+        pthread_attr_t attributes;
+        int created = pthread_attr_init(&attributes);
+        if (created == 0) {
+            created = pthread_attr_setstacksize(&attributes, PP_SESSION_THREAD_STACK);
+            if (created == 0) {
+                created = pthread_create(&slot->thread, &attributes, run_session_thread, slot);
+            }
+            (void)pthread_attr_destroy(&attributes);
+        }
+        if (created != 0) {
             s_session.threads_running--;
             status = PP_E_SYSTEM;
         } else {

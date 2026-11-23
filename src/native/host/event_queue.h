@@ -47,6 +47,11 @@ void pp_queue_destroy(pp_queue_t *queue);
 // when the queue is full.
 bool pp_queue_push(pp_queue_t *queue, const void *entry);
 
+// Copies entry_size bytes into the queue, as pp_queue_push does, but returns false without
+// counting the refusal when the queue is full, for a producer that waits for room and tries
+// again. Any thread.
+bool pp_queue_try_push(pp_queue_t *queue, const void *entry);
+
 // Copies the oldest entry out of the queue. The consumer thread only. Returns false when the
 // queue holds no published entry.
 bool pp_queue_pop(pp_queue_t *queue, void *entry);

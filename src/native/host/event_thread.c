@@ -8,6 +8,7 @@
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "event_queue.h"
 #include "platform.h"
@@ -106,13 +107,17 @@ static void deliver_line(const pp_log_entry_t *entry) {
         .level = entry->level,
         .thread_id = entry->thread_id,
         .text = entry->text,
+        .source = entry->source,
+        .process = entry->process,
     };
     s_thread.log_callback(&line, s_thread.log_user_data);
 }
 
 static void make_notice(pp_log_entry_t *entry, const char *text) {
     entry->level = PP_LOG_WARNING;
+    entry->source = PP_LOG_SOURCE_HOST;
     entry->thread_id = pp_platform_thread_id();
+    entry->process = 0U;
     (void)snprintf(entry->text, sizeof entry->text, "%s", text);
 }
 
@@ -130,7 +135,9 @@ static void flush_pending(void) {
     if (s_thread.pending_dropped > 0U) {
         pp_log_entry_t notice;
         notice.level = PP_LOG_WARNING;
+        notice.source = PP_LOG_SOURCE_HOST;
         notice.thread_id = pp_platform_thread_id();
+        notice.process = 0U;
         (void)snprintf(notice.text, sizeof notice.text,
                        "%llu host log lines that came before a log callback was set were "
                        "dropped, because the buffer for them holds %u.",
@@ -201,6 +208,9 @@ static void report_overflow(void) {
                        "counted, not logged.");
 }
 
+// Before it delivers an event, the thread delivers every log line that the queue holds by then,
+// so that a line whose post happened before the event's post arrives before the event: the
+// lines of a Windows program come before its process-exited event (paneport/session.h).
 static void drain(void) {
     pp_event_t event;
     pp_log_entry_t entry;
@@ -208,6 +218,9 @@ static void drain(void) {
     while (delivered) {
         delivered = false;
         if (pp_queue_pop(&s_thread.events, &event)) {
+            while (pp_queue_pop(&s_thread.logs, &entry)) {
+                receive_line(&entry);
+            }
             receive_event(&event);
             delivered = true;
         }
@@ -345,6 +358,28 @@ pp_status_t pp_event_thread_post_event(const pp_event_t *event) {
 
 pp_status_t pp_event_thread_post_log(const pp_log_entry_t *entry) {
     return post(&s_thread.logs, entry);
+}
+
+pp_status_t pp_event_thread_post_log_waiting(const pp_log_entry_t *entry) {
+    const struct timespec pause = {.tv_sec = 0, .tv_nsec = 1000000L};
+    for (;;) {
+        (void)atomic_fetch_add(&s_thread.posting, 1U);
+        pp_status_t status = PP_OK;
+        bool posted = false;
+        if (!atomic_load(&s_thread.accepting)) {
+            status = PP_E_NOT_INITIALIZED;
+        } else {
+            run_post_hook();
+            posted = pp_queue_try_push(&s_thread.logs, entry);
+            // Wake the thread either way: a full queue needs draining too.
+            wake_if_sleeping();
+        }
+        (void)atomic_fetch_sub(&s_thread.posting, 1U);
+        if (posted || status != PP_OK) {
+            return status;
+        }
+        (void)nanosleep(&pause, NULL);
+    }
 }
 
 void pp_event_thread_set_event_callback(pp_event_callback_t callback, void *user_data) {

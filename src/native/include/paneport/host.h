@@ -63,6 +63,21 @@ enum {
     PP_LOG_ERROR = 3,
 };
 
+/**
+ * Where a log line comes from. Version 1.3 of the interface added the source to
+ * pp_log_line_t; a line of an older host comes from the host itself.
+ */
+enum {
+    /** The native host's own line. It names no path. */
+    PP_LOG_SOURCE_HOST = 0,
+    /** A line of the runtime's diagnostics: the Wine fork, its wineserver and the translator. */
+    PP_LOG_SOURCE_RUNTIME = 1,
+    /** A line that a Windows program wrote to its standard output (paneport/session.h). */
+    PP_LOG_SOURCE_GUEST_OUTPUT = 2,
+    /** A line that a Windows program wrote to its standard error (paneport/session.h). */
+    PP_LOG_SOURCE_GUEST_ERRORS = 3,
+};
+
 /** A log line of the host. */
 typedef struct pp_log_line_t {
     /** sizeof(pp_log_line_t) in the host that sent it. */
@@ -72,10 +87,18 @@ typedef struct pp_log_line_t {
     /** The system's identifier of the thread that logged the line. */
     uint64_t thread_id;
     /**
-     * The text, UTF-8 and NUL-terminated, without a line break at the end. It holds no
-     * password, token or other secret (C-0010 section 2). Valid until the callback returns.
+     * The text, UTF-8 and NUL-terminated, without a line break at the end. A line of the host
+     * holds no password, token or other secret (C-0010 section 2); a line of the runtime or of
+     * a Windows program holds whatever they wrote. Valid until the callback returns.
      */
     const char *text;
+    /** One of the PP_LOG_SOURCE_ values. Version 1.3 appended it. */
+    uint32_t source;
+    /**
+     * The handle of the Windows process that wrote the line, for the guest sources, or 0.
+     * Version 1.3 appended it.
+     */
+    uint64_t process;
 } pp_log_line_t;
 
 /**

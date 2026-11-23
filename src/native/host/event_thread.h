@@ -23,10 +23,13 @@
 // The size of a log line's text, including its NUL. A longer line is cut (log.c).
 #define PP_LOG_TEXT_SIZE 512U
 
-// A log line as it waits in the queue.
+// A log line as it waits in the queue: its PP_LOG_ level, its PP_LOG_SOURCE_ source, the thread
+// that logged it, and the handle of the Windows process that wrote it, or 0 (paneport/host.h).
 typedef struct pp_log_entry_t {
     int32_t level;
+    uint32_t source;
     uint64_t thread_id;
+    uint64_t process;
     char text[PP_LOG_TEXT_SIZE];
 } pp_log_entry_t;
 
@@ -45,6 +48,12 @@ pp_status_t pp_event_thread_post_event(const pp_event_t *event);
 
 // Queues a log line. Any thread. The same results and rule as pp_event_thread_post_event.
 pp_status_t pp_event_thread_post_log(const pp_log_entry_t *entry);
+
+// Queues a log line as pp_event_thread_post_log does, but waits for room while the queue is
+// full instead of refusing the line, so that a reader of a Windows program's output slows the
+// program down instead of losing lines (guest_output.h). Any thread except the event thread
+// itself. Returns PP_OK or PP_E_NOT_INITIALIZED when the thread does not run or stops.
+pp_status_t pp_event_thread_post_log_waiting(const pp_log_entry_t *entry);
 
 // Replace a callback. Once they return, the previous callback is not running and is never
 // called again. The main thread.

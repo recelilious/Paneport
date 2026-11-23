@@ -60,7 +60,7 @@ void pp_queue_destroy(pp_queue_t *queue) {
     queue->entry_size = 0U;
 }
 
-bool pp_queue_push(pp_queue_t *queue, const void *entry) {
+static bool push(pp_queue_t *queue, const void *entry, bool count_refusal) {
     uint64_t position = atomic_load_explicit(&queue->tail, memory_order_relaxed);
     for (;;) {
         const uint64_t sequence =
@@ -75,7 +75,9 @@ bool pp_queue_push(pp_queue_t *queue, const void *entry) {
                 break;
             }
         } else if (difference < 0) {
-            (void)atomic_fetch_add_explicit(&queue->overflow, 1U, memory_order_relaxed);
+            if (count_refusal) {
+                (void)atomic_fetch_add_explicit(&queue->overflow, 1U, memory_order_relaxed);
+            }
             return false;
         } else {
             position = atomic_load_explicit(&queue->tail, memory_order_relaxed);
@@ -86,6 +88,10 @@ bool pp_queue_push(pp_queue_t *queue, const void *entry) {
     atomic_store_explicit(sequence_at(queue, position), position + 1U, memory_order_release);
     return true;
 }
+
+bool pp_queue_push(pp_queue_t *queue, const void *entry) { return push(queue, entry, true); }
+
+bool pp_queue_try_push(pp_queue_t *queue, const void *entry) { return push(queue, entry, false); }
 
 bool pp_queue_pop(pp_queue_t *queue, void *entry) {
     const uint64_t position = queue->head;

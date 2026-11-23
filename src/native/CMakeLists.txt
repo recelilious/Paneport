@@ -58,6 +58,7 @@ set(PANEPORT_HOST_SOURCES
     host/error.c
     host/event_queue.c
     host/event_thread.c
+    host/guest_output.c
     host/host.c
     host/jit/jit_flags.c
     host/jit/jit_machine.c
@@ -65,9 +66,11 @@ set(PANEPORT_HOST_SOURCES
     host/jit/jit_probe.c
     host/jit/jit_probe_handler.c
     host/jit/jit_provider.c
+    host/jit_state.c
     host/log.c
     host/memory_budget.c
     host/platform_darwin.c
+    host/session.c
     host/signals/signal_handler.c
     host/signals/signal_install.c
     host/signals/signal_registry.c
@@ -86,6 +89,31 @@ set(PANEPORT_HOST_TEST_SOURCES
 
 find_package(Threads REQUIRED)
 
+# The Wine fork's entry header, include/wine/paneport.h: declarations only, under the fork's
+# license, and the only header of Wine that the host includes (C-0005 section 3). It is copied
+# alone into the build tree, so that no other header of Wine reaches the host's include path.
+# Builds without a checkout of the fork take it from build/wine-header, where
+# eng/fetch-wine-header.sh puts it at the commit that this repository records for the fork.
+set(PANEPORT_WINE_ENTRY_HEADER "" CACHE FILEPATH
+    "The Wine fork's include/wine/paneport.h; empty to look in external/ and build/wine-header.")
+if(NOT PANEPORT_WINE_ENTRY_HEADER)
+    foreach(candidate IN ITEMS
+            "${PANEPORT_REPOSITORY_ROOT}/external/Paneport-wine/include/wine/paneport.h"
+            "${PANEPORT_REPOSITORY_ROOT}/build/wine-header/include/wine/paneport.h")
+        if(EXISTS "${candidate}")
+            set(PANEPORT_WINE_ENTRY_HEADER "${candidate}")
+            break()
+        endif()
+    endforeach()
+endif()
+if(NOT PANEPORT_WINE_ENTRY_HEADER OR NOT EXISTS "${PANEPORT_WINE_ENTRY_HEADER}")
+    message(FATAL_ERROR "The Wine fork's entry header include/wine/paneport.h is missing: check "
+        "out external/Paneport-wine, or run eng/fetch-wine-header.sh.")
+endif()
+configure_file("${PANEPORT_WINE_ENTRY_HEADER}" "${CMAKE_BINARY_DIR}/wine-entry/wine/paneport.h"
+    COPYONLY)
+set(PANEPORT_WINE_ENTRY_INCLUDE "${CMAKE_BINARY_DIR}/wine-entry")
+
 # The host's code, compiled once for the library and for the tests. Test builds add the
 # exports of paneport/testing.h.
 if(PANEPORT_TEST_BUILD)
@@ -95,7 +123,7 @@ else()
 endif()
 target_include_directories(paneport_host_objects
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/host")
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/host" "${PANEPORT_WINE_ENTRY_INCLUDE}")
 if(PANEPORT_TEST_BUILD)
     target_compile_definitions(paneport_host_objects PUBLIC PANEPORT_TEST_BUILD=1)
 endif()
@@ -145,7 +173,7 @@ if(PANEPORT_TESTS)
     add_library(paneport_host_shipped STATIC ${PANEPORT_HOST_SOURCES})
     target_include_directories(paneport_host_shipped
         PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
-        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/host")
+        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/host" "${PANEPORT_WINE_ENTRY_INCLUDE}")
     target_link_libraries(paneport_host_shipped PUBLIC Threads::Threads)
 
     enable_testing()

@@ -170,6 +170,6 @@ Public material consulted (C-0001 section 6):
 - Apple's open-source XNU, for the prototype of `csops` and the values of `CS_OPS_STATUS` and `CS_DEBUGGED`: `bsd/sys/codesign.h` and `osfmk/kern/cs_blobs.h` at <https://github.com/apple-oss-distributions/xnu>
 - Apple, the Mach virtual memory interface of the iOS and macOS SDKs: `vm_remap`, `vm_protect`, `vm_region_64` and `vm_deallocate` in `mach/vm_map.h`
 - Apple, "Porting just-in-time compilers to Apple silicon", on `MAP_JIT`, the hardened runtime and its entitlements: <https://developer.apple.com/documentation/apple-silicon/porting-just-in-time-compilers-to-apple-silicon>
-- Arm, Arm Architecture Reference Manual for A-profile architecture, section B2.4.4, "Concurrent modification and execution of instructions", and the descriptions of `DC CVAU`, `IC IVAU`, `DSB` and `ISB`: <https://developer.arm.com/documentation/ddi0487/latest>
-- Arm, A64 instruction set: `MOVZ`, `RET`, `BLR` and `BRK`, and the range of `B` and `BL`: <https://developer.arm.com/documentation/ddi0602/latest>
+- Arm, Arm Architecture Reference Manual for A-profile architecture (document DDI 0487), section B2.4.4, "Concurrent modification and execution of instructions", and the descriptions of `DC CVAU`, `IC IVAU`, `DSB` and `ISB`. Arm's site refuses link checkers, so the manual is named by its number.
+- Arm, A64 Instruction Set Architecture (document DDI 0602): `MOVZ`, `RET`, `BLR` and `BRK`, and the range of `B` and `BL`.
 - JSON Schema, draft 2020-12, core and validation: <https://json-schema.org/draft/2020-12>

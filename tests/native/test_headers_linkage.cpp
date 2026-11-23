@@ -17,6 +17,7 @@ extern "C" int paneport_header_linkage(void) {
     uint32_t count = 0U;
     const bool linked = pp_abi_version() != 0U &&
                         pp_memory_get_budget(nullptr) == PP_E_INVALID_ARGUMENT &&
+                        pp_process_get_state(0U, nullptr) == PP_E_INVALID_ARGUMENT &&
                         pp_test_get_layout_table(&table, &count) == PP_OK && count > 0U;
     return linked ? 0 : 1;
 }

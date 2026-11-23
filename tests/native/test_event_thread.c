@@ -382,8 +382,58 @@ static void replaced_callback_finished(void) {
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
 }
 
+// What the callbacks of lines_before_an_event_arrive_first saw.
+typedef struct ordered_t {
+    _Atomic(uint64_t) lines;
+    _Atomic(uint64_t) lines_at_event;
+    _Atomic(uint64_t) events;
+} ordered_t;
+
+static void count_ordered_line(const pp_log_line_t *line, void *user_data) {
+    ordered_t *ordered = user_data;
+    if (strncmp(line->text, "ordered ", 8U) == 0) {
+        (void)atomic_fetch_add(&ordered->lines, 1U);
+    }
+}
+
+static void count_ordered_event(const pp_event_t *event, void *user_data) {
+    ordered_t *ordered = user_data;
+    if (event->kind == 9U) {
+        atomic_store(&ordered->lines_at_event, atomic_load(&ordered->lines));
+        (void)atomic_fetch_add(&ordered->events, 1U);
+    }
+}
+
+// Lines posted before an event arrive before it, also while the event thread is busy: a Windows
+// program's output comes before its process-exited event (paneport/session.h). Each round
+// posts its lines and its event from one thread, and the event must find them all delivered.
+static void lines_before_an_event_arrive_first(void) {
+    ordered_t ordered;
+    atomic_init(&ordered.lines, 0U);
+    atomic_init(&ordered.lines_at_event, 0U);
+    atomic_init(&ordered.events, 0U);
+    pp_start_host(NULL);
+    PP_CHECK_EQUAL(pp_set_log_callback(count_ordered_line, &ordered), PP_OK);
+    PP_CHECK_EQUAL(pp_set_event_callback(count_ordered_event, &ordered), PP_OK);
+    for (uint64_t round = 1U; round <= 200U; round++) {
+        for (uint32_t line = 0U; line < 10U; line++) {
+            pp_status_t status = pp_test_log(PP_LOG_INFO, "ordered line");
+            while (status == PP_E_BUSY) {
+                (void)sched_yield();
+                status = pp_test_log(PP_LOG_INFO, "ordered line");
+            }
+            PP_CHECK_EQUAL(status, PP_OK);
+        }
+        post_event(9U, (int64_t)round);
+        pp_wait_for_count(&ordered.events, round);
+        PP_CHECK_EQUAL(atomic_load(&ordered.lines_at_event), round * 10U);
+    }
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
 int main(int argc, char **argv) {
     static const pp_test_case_t cases[] = {
+        {"lines_before_an_event_arrive_first", lines_before_an_event_arrive_first},
         {"events_reach_event_thread", events_reach_event_thread},
         {"none_after_shutdown", none_after_shutdown},
         {"post_in_progress_is_delivered", post_in_progress_is_delivered},

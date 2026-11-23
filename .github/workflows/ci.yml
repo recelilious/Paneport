@@ -1112,6 +1112,18 @@ jobs:
           done
           exit "$status"
 
+      # Beside the apps, and kept as long as they are, since neither sets its own retention
+      # (C-0009 section 6). Each app's THIRD_PARTY_NOTICES.md says that the archive comes with the CI
+      # run that built it. It goes first: an app is uploaded only once its source archive is, so a
+      # run that is cancelled or fails between the uploads never offers an app without it.
+      - name: Upload the source archives of the LGPL components
+        if: ${{ success() && (steps.packages.outputs.main != '' || steps.packages.outputs.test != '') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Paneport-lgpl-sources-${{ steps.apps.outputs.commit }}
+          path: build/sources/
+          if-no-files-found: error
+
       # Only when every earlier step passed. The .ipa keeps the bundle's name and the
       # executable's file mode, which an artifact of the bare folder would lose.
       - name: Upload the main app
@@ -1128,15 +1140,4 @@ jobs:
         with:
           name: Paneport-test-${{ steps.apps.outputs.commit }}
           path: ${{ steps.packages.outputs.test }}
-          if-no-files-found: error
-
-      # Beside the apps, and kept as long as they are, since neither sets its own retention
-      # (C-0009 section 6). Each app's THIRD_PARTY_NOTICES.md says that the archive comes with the CI
-      # run that built it.
-      - name: Upload the source archives of the LGPL components
-        if: ${{ success() && (steps.packages.outputs.main != '' || steps.packages.outputs.test != '') }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: Paneport-lgpl-sources-${{ steps.apps.outputs.commit }}
-          path: build/sources/
           if-no-files-found: error

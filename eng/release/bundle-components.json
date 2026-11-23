@@ -81,7 +81,7 @@
       "note": "The assembly of ZstdSharp.Port and its ahead-of-time data."
     },
     {
-      "path": "Net.Codecrete.QrCodeGenerator.*",
+      "path": "QrCodeGenerator.*",
       "components": ["QR code generator (Net.Codecrete.QrCodeGenerator)"],
       "note": "Its assembly and its ahead-of-time data."
     },
@@ -274,6 +274,7 @@
           "Directory.Build.props",
           "LICENSE",
           "Resources/Misc/package_readme.md",
+          "Resources/Misc/steamkit.ico",
           "Resources/Misc/steamkit_logo_128.png",
           "Resources/ProtobufGen",
           "Resources/SteamLanguage",
@@ -283,7 +284,7 @@
           "global.json"
         ],
         "submodules": ["Resources/Protobufs"],
-        "note": "C-0003 section 3 and C-0009 section 6: the library's complete source at the commit of the release tag 4.0.0-Beta.2, which the package's nuspec names too. It holds the library, the definitions in the submodule Resources/Protobufs and in Resources/SteamLanguage that its generated code comes from, the generators ProtobufGen and SteamLanguageParser, the files that build and pack it (the root's build files, its strong-name key, the two files of Resources/Misc that the package takes) and the upstream's workflows that build, pack and regenerate it. NetHook2, whose headers come from the Steamworks SDK that C-0003 section 5 forbids, NetHookAnalyzer2, ProtobufDumper, Resources/Structs, the other files of Resources/Misc, the samples, the tests and the solution files stay out. Moving the pin is a reviewed change of its own."
+        "note": "C-0003 section 3 and C-0009 section 6: the library's complete source at the commit of the release tag 4.0.0-Beta.2, which the package's nuspec names too. It holds the library, the definitions in the submodule Resources/Protobufs and in Resources/SteamLanguage that its generated code comes from, the generators ProtobufGen and SteamLanguageParser, the files that build and pack it (the root's build files, its strong-name key, the three files of Resources/Misc that the package and the generators take) and the upstream's workflows that build, pack and regenerate it. NetHook2, whose headers come from the Steamworks SDK that C-0003 section 5 forbids, NetHookAnalyzer2, ProtobufDumper, Resources/Structs, the other files of Resources/Misc, the samples, the tests and the solution files of the root and the samples stay out. Moving the pin is a reviewed change of its own."
       },
       "note": "The package's license.txt is a short LGPL notice and not the LGPL-2.1 text, so the full text follows from external/Paneport-wine/COPYING.LIB, at the commit that this repository records, which the ios job checks out before the notices step. Its 3rd party.txt names protobuf-net, whose texts are in that component's entry. The part of the LZMA SDK that its register row names is in the public domain and needs no text. SteamKit2 is the one LGPL component that full ahead-of-time compilation puts into the executable (C-0003 section 3)."
     },

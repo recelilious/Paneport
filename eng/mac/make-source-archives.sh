@@ -48,6 +48,18 @@ plain_url() {
     printf '%s' "${url%.git}"
 }
 
+# Makes an empty repository whose archives hold each file as the commit stores it. The archived
+# tree's attributes must not leave a file out (export-ignore), rewrite one (export-subst, ident,
+# filters) or convert its line endings (text, eol), and neither may core.autocrlf, which Git for
+# Windows turns on, so .git/info/attributes unsets them all; archive also runs with
+# core.autocrlf off.
+init_repository() {
+    git -c init.defaultBranch=main init -q "$1"
+    mkdir -p "$1/.git/info"
+    printf '* -text -ident -filter -export-ignore -export-subst
+' > "$1/.git/info/attributes"
+}
+
 # git with only the scheme of this run allowed, and no prompt.
 git_fetch() {
     git -c protocol.allow=never -c "protocol.$scheme.allow=always" "$@"
@@ -111,7 +123,7 @@ make_archive() {
         return 1
     fi
 
-    git -c init.defaultBranch=main init -q "$repo"
+    init_repository "$repo"
     if ! git_fetch -C "$repo" fetch -q --depth 1 --no-tags "$repository" "+refs/tags/$tag:refs/tags/$tag"; then
         error "$component: the tag $tag cannot be fetched from $repository."
         return 1
@@ -125,7 +137,7 @@ make_archive() {
 
     prefix=${archive%.tar.gz}/
     read -r -a list <<< "$paths"
-    if ! git -C "$repo" archive --format=tar --prefix="$prefix" -o "$work/0.tar" "$commit" -- "${list[@]}"; then
+    if ! git -c core.autocrlf=false -C "$repo" archive --format=tar --prefix="$prefix" -o "$work/0.tar" "$commit" -- "${list[@]}"; then
         error "$component: git archive of $commit failed; each of its paths must exist there: $paths"
         return 1
     fi
@@ -158,14 +170,14 @@ make_archive() {
         esac
 
         subdir=$work/submodule-$n
-        git -c init.defaultBranch=main init -q "$subdir"
+        init_repository "$subdir"
         if ! git_fetch -C "$subdir" fetch -q --depth 1 --no-tags "$url" "$subcommit" \
             || [ "$(git -C "$subdir" rev-parse -q --verify "$subcommit^{commit}" || true)" != "$subcommit" ]; then
             error "$component: the commit $subcommit of $sub cannot be fetched from $url."
             return 1
         fi
 
-        if ! git -C "$subdir" archive --format=tar --prefix="$prefix$sub/" -o "$work/$n.tar" "$subcommit"; then
+        if ! git -c core.autocrlf=false -C "$subdir" archive --format=tar --prefix="$prefix$sub/" -o "$work/$n.tar" "$subcommit"; then
             error "$component: git archive of $sub at $subcommit failed."
             return 1
         fi
@@ -249,7 +261,8 @@ file_url() {
 # archive holds the listed paths and the submodule's files and nothing else, and that a pin which
 # the nuspec or the tag does not name, a missing path and two versions in the lock files fail.
 self_test() {
-    local tmp=$scratch/self-test failures=0 defs up defs_commit up_commit other up_url line entries log
+    local tmp=$scratch/self-test failures=0 defs up defs_commit up_commit other up_url line entries log archived
+    local placeholder='$Format:%H$'
     defs=$tmp/defs
     up=$tmp/upstream
     packages=$tmp/packages
@@ -301,6 +314,25 @@ self_test() {
 
     holds() {
         printf '%s\n' "$entries" | grep -F -x -q "$1"
+    }
+
+    # Passes when the archive's file holds exactly the given line, with no carriage return.
+    stores() {
+        [ "$("$tar_tool" -x -O -f "$archived" "$1" | od -An -c | tr -s ' \n' ' ')" = \
+            "$(printf '%s\n' "$2" | od -An -c | tr -s ' \n' ' ')" ]
+    }
+
+    # The fetches allow the run's scheme alone: one over git:// is refused before it connects.
+    refuses_other_protocols() {
+        local message
+        if message=$(git_fetch -C "$up" fetch -q "git://localhost:9/none" 2>&1); then
+            return 1
+        fi
+
+        case "$message" in
+            *"transport 'git' not allowed"*) return 0 ;;
+            *) return 1 ;;
+        esac
     }
 
     mkdir -p "$defs" "$up/lib" "$up/tools/hook" "$up/samples"
@@ -362,6 +394,44 @@ self_test() {
     locks=("$tmp/packages.lock.json" "$tmp/second.lock.json")
     check "fails when the lock files resolve two versions" \
         fails_naming "$tmp/out-versions" "$line" "not to one version"
+    locks=("$tmp/packages.lock.json")
+
+    check "fails on a file outside the listed paths" \
+        fails_naming "$tmp/out-outside" "${line//lib build.props/li* build.props}" "holds files outside its paths"
+    check "fetches over the run's scheme alone" refuses_other_protocols
+
+    # A commit whose submodule has a URL over another scheme.
+    quiet -C "$up" checkout -q "$up_commit"
+    printf '[submodule "defs"]\n\tpath = defs\n\turl = git://localhost:9/defs\n' > "$up/.gitmodules"
+    quiet -C "$up" add .gitmodules
+    quiet -C "$up" commit -q -m "another scheme"
+    quiet -C "$up" tag -a 1.0.0-scheme -m scheme
+    other=$(git -C "$up" rev-parse HEAD)
+    nuspec "$up_url" "$other"
+    check "fails on a submodule URL over another scheme" \
+        fails_naming "$tmp/out-scheme" "${line//|1.0.0|$up_commit|/|1.0.0-scheme|$other|}" "not one over file"
+
+    # A commit whose attributes would leave out a file, rewrite one and convert line endings, made
+    # into an archive with core.autocrlf on, as Git for Windows has it.
+    quiet -C "$up" checkout -q "$up_commit"
+    printf 'build.props export-ignore\nlib/version.txt export-subst\n' > "$up/.gitattributes"
+    printf '%s\n' "$placeholder" > "$up/lib/version.txt"
+    quiet -C "$up" add .gitattributes lib/version.txt
+    quiet -C "$up" commit -q -m attributes
+    quiet -C "$up" tag -a 1.0.0-attributes -m attributes
+    other=$(git -C "$up" rev-parse HEAD)
+    nuspec "$up_url" "$other"
+    archived=$tmp/out-attributes/Sample-1.0.0-source.tar.gz
+    if GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=true \
+        make_all "$tmp/out-attributes" "${line//|1.0.0|$up_commit|/|1.0.0-attributes|$other|}" \
+        && entries=$("$tar_tool" -t -f "$archived"); then
+        check "keeps a file that the tree's attributes would leave out" holds Sample-1.0.0-source/build.props
+        check "keeps a file as the commit stores it, unsubstituted" stores Sample-1.0.0-source/lib/version.txt "$placeholder"
+        check "keeps the line endings that the commit stores, with core.autocrlf on" \
+            stores Sample-1.0.0-source/lib/library.cs 'class Library {}'
+    else
+        check "makes the archive of a commit with export attributes" false
+    fi
 
     if [ "$failures" -ne 0 ]; then
         echo "$me: self-test: $failures checks were not as expected." >&2

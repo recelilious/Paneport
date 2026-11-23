@@ -524,8 +524,9 @@ internal sealed record TextSource(
     LineRange? Lines = null,
     string? Terms = null);
 
-// A text that a component needs and that no source provides yet, with the reason.
-internal sealed record MissingText(string Text, string Note);
+// A text that a component needs and that no source provides yet, with the reason. A guarded one
+// counts only while its assembly in the bundle defines its type (AssemblyTypes).
+internal sealed record MissingText(string Text, string Note, TypeGuard? Guard = null);
 
 internal sealed record ComponentTexts(
     IReadOnlyList<TextSource> Texts,
@@ -736,10 +737,11 @@ internal sealed record Mapping(
         [
             .. element.EnumerateArray().Select(gap =>
             {
-                var fields = Object(gap, $"a missing text of {component}", ["note", "text"], []);
+                var fields = Object(gap, $"a missing text of {component}", ["note", "text"], ["whileDefined"]);
                 return new MissingText(
                     Text(fields["text"], $"a missing text of {component}"),
-                    Text(fields["note"], $"a missing text of {component}: \"note\""));
+                    Text(fields["note"], $"a missing text of {component}: \"note\""),
+                    fields.TryGetValue("whileDefined", out var guard) ? TypeGuard.Parse(guard, component) : null);
             }),
         ];
     }
@@ -1473,7 +1475,11 @@ internal sealed record Context(
     BuildInputs Build,
     Configuration Configuration,
     List<string> Failures,
-    List<string> Warnings);
+    List<string> Warnings)
+{
+    // The bundle's folder, where a guarded missing text reads its assembly.
+    public string BundleFolder { get; init; } = string.Empty;
+}
 
 internal sealed record TextBlock(string Title, string Text);
 
@@ -1600,7 +1606,10 @@ internal static partial class Notices
 
             var count = coverage.Count(attribution => attribution.Components.Contains(name));
             var licenses = Licenses(row, declared, name);
-            var context = new Context(app, mode, build, configuration, failures, warnings);
+            var context = new Context(app, mode, build, configuration, failures, warnings)
+            {
+                BundleFolder = bundle.Folder,
+            };
             if (Notice(context, name, row, licenses, count) is { } notice)
             {
                 components.Add(notice);
@@ -1743,11 +1752,18 @@ internal static partial class Notices
                     + $"section 5). Give it a credit in {Mapping.FilePath}.");
         }
 
-        // A text that the component needs and that no source provides yet shows in every run.
+        // A text that the component needs and that no source provides yet shows in every run. A guarded
+        // one is needed only while its assembly in this bundle defines its type, and also when the
+        // assembly is missing or cannot be read, so that the check fails safe.
         foreach (var gap in entry.Missing)
         {
-            (mode == Mode.Release ? failures : warnings).Add(
-                $"{app}: {name} needs {gap.Text}, which no source provides yet ({Mapping.FilePath}: {gap.Note})");
+            var why = gap.Guard is null ? string.Empty : AssemblyTypes.Needed(context.BundleFolder, gap.Guard);
+            if (why is not null)
+            {
+                (mode == Mode.Release ? failures : warnings).Add(
+                    $"{app}: {name} needs {gap.Text}, which no source provides yet ({Mapping.FilePath}: {gap.Note})"
+                        + why);
+            }
         }
 
         return failures.Count == before
@@ -2512,6 +2528,122 @@ internal static partial class Output
     private static partial Regex DriveRoot();
 }
 
+// A guard of a missing text, "whileDefined" in eng/release/bundle-components.json: the text counts
+// only while the assembly of that name at the root of the bundle defines the type, by its exact
+// namespace and name, as a top-level type.
+internal sealed record TypeGuard(string Assembly, string Namespace, string Name)
+{
+    public string FullName => $"{Namespace}.{Name}";
+
+    public static TypeGuard Parse(JsonElement element, string component) =>
+        AssemblyTypes.ParseGuard(element, component);
+}
+
+// Reads the type definitions of an assembly of the bundle with System.Reflection.Metadata, for the
+// guards of missing texts (S9.1.1's mapping, M9.1).
+internal static partial class AssemblyTypes
+{
+    // Null when the guarded text is not needed, because the bundle's assembly defines no such type;
+    // otherwise why it is needed, as the end of the finding. A missing or unreadable assembly counts.
+    public static string? Needed(string bundle, TypeGuard guard)
+    {
+        var path = Path.Combine(bundle, guard.Assembly);
+        if (!File.Exists(path))
+        {
+            return $" It counts, because the bundle has no {guard.Assembly} to show whether {guard.FullName} ships.";
+        }
+
+        return Defines(path, guard) switch
+        {
+            true => $" It counts, because {guard.Assembly} defines {guard.FullName}.",
+            false => null,
+            null => $" It counts, because {guard.Assembly} cannot be read as an assembly.",
+        };
+    }
+
+    // Whether the assembly defines the type as a top-level type; null when it cannot be read.
+    public static bool? Defines(string path, TypeGuard guard)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            using var image = new System.Reflection.PortableExecutable.PEReader(stream);
+            if (!image.HasMetadata)
+            {
+                return null;
+            }
+
+            var reader = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(image);
+            foreach (var handle in reader.TypeDefinitions)
+            {
+                var type = reader.GetTypeDefinition(handle);
+                if (type.GetDeclaringType().IsNil
+                    && reader.StringComparer.Equals(type.Namespace, guard.Namespace)
+                    && reader.StringComparer.Equals(type.Name, guard.Name))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (Exception exception) when (
+            exception is BadImageFormatException or IOException or UnauthorizedAccessException
+                or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    public static TypeGuard ParseGuard(JsonElement element, string component)
+    {
+        var where = $"a missing text of {component}: \"whileDefined\"";
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException($"{where} must be an object.");
+        }
+
+        string? assembly = null;
+        string? type = null;
+        foreach (var property in element.EnumerateObject())
+        {
+            var value = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString() : null;
+            if (property.Name == "assembly" && assembly is null)
+            {
+                assembly = value ?? string.Empty;
+            }
+            else if (property.Name == "type" && type is null)
+            {
+                type = value ?? string.Empty;
+            }
+            else
+            {
+                throw new InvalidDataException(
+                    $"{where} has a key \"{property.Name}\" that the tool does not know, or gives it twice.");
+            }
+        }
+
+        if (assembly is null || !DllName().IsMatch(assembly))
+        {
+            throw new InvalidDataException($"{where} must name in \"assembly\" a .dll at the root of the bundle.");
+        }
+
+        if (type is null || !TypeName().IsMatch(type))
+        {
+            throw new InvalidDataException($"{where} must name in \"type\" a type by its namespace and name.");
+        }
+
+        var dot = type.LastIndexOf('.');
+        return new TypeGuard(assembly, type[..dot], type[(dot + 1)..]);
+    }
+
+    [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9_.-]*\.dll\z")]
+    private static partial Regex DllName();
+
+    [GeneratedRegex(@"\A[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+\z")]
+    private static partial Regex TypeName();
+}
+
 // The report of a run. Every line goes through Plain, and every annotation's data through Data, so
 // that a file name with a line break cannot start a line of its own. Under GitHub Actions the plain
 // lines, which name files of the bundle and of packages, are printed while workflow commands are
@@ -2738,6 +2870,64 @@ internal static class BinaryPropertyListWriter
         }
 
         return [.. head, .. bytes];
+    }
+}
+
+// Writes the smallest assembly that a metadata reader takes, with the given top-level types and,
+// optionally, one type nested in one of them, for the guards of missing texts.
+internal static class TinyAssembly
+{
+    public static byte[] Build(string name, IReadOnlyList<string> types, (string Outer, string Inner)? nested = null)
+    {
+        var metadata = new System.Reflection.Metadata.Ecma335.MetadataBuilder();
+        metadata.AddModule(
+            0,
+            metadata.GetOrAddString($"{name}.dll"),
+            metadata.GetOrAddGuid(Guid.Empty),
+            default,
+            default);
+        metadata.AddAssembly(
+            metadata.GetOrAddString(name),
+            new Version(1, 0, 0, 0),
+            default,
+            default,
+            0,
+            System.Reflection.AssemblyHashAlgorithm.None);
+        var fields = System.Reflection.Metadata.Ecma335.MetadataTokens.FieldDefinitionHandle(1);
+        var methods = System.Reflection.Metadata.Ecma335.MetadataTokens.MethodDefinitionHandle(1);
+        metadata.AddTypeDefinition(default, default, metadata.GetOrAddString("<Module>"), default, fields, methods);
+        var defined = new Dictionary<string, System.Reflection.Metadata.TypeDefinitionHandle>(StringComparer.Ordinal);
+        foreach (var type in types)
+        {
+            var dot = type.LastIndexOf('.');
+            defined[type] = metadata.AddTypeDefinition(
+                System.Reflection.TypeAttributes.Public | System.Reflection.TypeAttributes.Class,
+                metadata.GetOrAddString(dot < 0 ? string.Empty : type[..dot]),
+                metadata.GetOrAddString(type[(dot + 1)..]),
+                default,
+                fields,
+                methods);
+        }
+
+        if (nested is { } pair)
+        {
+            var inner = metadata.AddTypeDefinition(
+                System.Reflection.TypeAttributes.NestedPublic | System.Reflection.TypeAttributes.Class,
+                default,
+                metadata.GetOrAddString(pair.Inner),
+                default,
+                fields,
+                methods);
+            metadata.AddNestedType(inner, defined[pair.Outer]);
+        }
+
+        var image = new System.Reflection.PortableExecutable.ManagedPEBuilder(
+            System.Reflection.PortableExecutable.PEHeaderBuilder.CreateLibraryHeader(),
+            new System.Reflection.Metadata.Ecma335.MetadataRootBuilder(metadata),
+            new System.Reflection.Metadata.BlobBuilder());
+        var blob = new System.Reflection.Metadata.BlobBuilder();
+        image.Serialize(blob);
+        return blob.ToArray();
     }
 }
 
@@ -4534,6 +4724,80 @@ internal static partial class SelfTest
                 && gapRelease.Outputs is null
                 && gapRelease.Failures.Any(failure => failure.Contains(GapWords, StringComparison.Ordinal)),
             "a text that has no source yet is a warning in ios mode and a failure in release mode, named");
+
+        // A guarded missing text counts only while the bundle's assembly defines its type, by its exact
+        // namespace and name as a top-level type, and when the assembly is missing or cannot be read.
+        const string GuardedGap =
+            "\"Sample.Graphics\": {\n      \"missing\": [{ \"text\": \"the notices of a sample gesture\", \"note\": "
+                + "\"No source carries them.\", \"whileDefined\": { \"assembly\": \"Graphics.dll\", \"type\": "
+                + "\"Sample.Graphics.Pinch\" } }],\n      \"texts\": [";
+        const string GuardWords = "Sample.Graphics needs the notices of a sample gesture";
+        Result guarded(string name, byte[]? assembly, Mode mode)
+        {
+            var fixture = Fixture.Create(root, name);
+            fixture.MappingText = EditMapping("\"Sample.Graphics\": {\n      \"texts\": [", GuardedGap);
+            var dll = Path.Combine(fixture.App, "Graphics.dll");
+            if (assembly is null)
+            {
+                File.Delete(dll);
+            }
+            else
+            {
+                File.WriteAllBytes(dll, assembly);
+            }
+
+            return fixture.Generate(mode);
+        }
+
+        static bool names(IReadOnlyList<string> lines, params string[] words) =>
+            lines.Any(line => words.All(word => line.Contains(word, StringComparison.Ordinal)));
+        var keeps = TinyAssembly.Build("Graphics", ["Sample.Graphics.Other", "Sample.Graphics.Pinch"]);
+        var trimmed = TinyAssembly.Build(
+            "Graphics",
+            [
+                "Sample.Graphics.Other",
+                "Other.Pinch",
+                "Sample.Graphics.PinchGesture",
+                "sample.graphics.Pinch",
+                "Sample.Graphics.Outer",
+            ],
+            ("Sample.Graphics.Outer", "Pinch"));
+        var keptRelease = guarded("guard-keeps-release", keeps, Mode.Release);
+        var keptIos = guarded("guard-keeps-ios", keeps, Mode.Ios);
+        tally.Expect(
+            keptRelease.Outputs is null
+                && names(keptRelease.Failures, GuardWords, "Graphics.dll defines Sample.Graphics.Pinch")
+                && keptIos.Outputs is not null && names(keptIos.Warnings, GuardWords),
+            "a guarded text counts while its assembly defines the type: a failure in release mode, a warning in ios "
+                + "mode");
+        var trimmedRelease = guarded("guard-trimmed", trimmed, Mode.Release);
+        tally.Expect(
+            trimmedRelease.Outputs is not null && !names(trimmedRelease.Failures, GuardWords)
+                && !names(trimmedRelease.Warnings, GuardWords),
+            "a guarded text is not needed once the type is gone, even beside a type of the same name in another "
+                + "namespace, of another case, or nested");
+        tally.Expect(
+            names(
+                guarded("guard-unreadable", "not an assembly"u8.ToArray(), Mode.Release).Failures,
+                GuardWords,
+                "cannot be read")
+                && names(guarded("guard-absent", null, Mode.Release).Failures, GuardWords, "has no Graphics.dll"),
+            "a guarded text counts when its assembly cannot be read or is not in the bundle");
+        string withGuard(string guard) => EditMapping(
+            "\"Sample.Graphics\": {\n      \"texts\": [",
+            "\"Sample.Graphics\": {\n      \"missing\": [{ \"text\": \"t\", \"note\": \"n\", \"whileDefined\": "
+                + guard + " }],\n      \"texts\": [");
+        tally.Expect(
+            Mapping.Parse(withGuard("{ \"assembly\": \"A.dll\", \"type\": \"N.T\" }")).Components["Sample.Graphics"]
+                .Missing[0].Guard == new TypeGuard("A.dll", "N", "T")
+                && Rejects(() => Mapping.Parse(withGuard("{ \"assembly\": \"A.dll\", \"type\": \"N.T\", \"x\": 1 }")))
+                && Rejects(() => Mapping.Parse(withGuard("{ \"assembly\": \"A.dll\" }")))
+                && Rejects(() => Mapping.Parse(withGuard("{ \"assembly\": \"lib/A.dll\", \"type\": \"N.T\" }")))
+                && Rejects(() => Mapping.Parse(withGuard("{ \"assembly\": \"A.dll\", \"type\": \"T\" }")))
+                && Rejects(() => Mapping.Parse(withGuard("{ \"assembly\": \"A.dll\", \"type\": \"N. T\" }")))
+                && Rejects(() => Mapping.Parse(withGuard("[]"))),
+            "reads a guard, and rejects an unknown key, a missing type, a path, a type without a namespace or with a "
+                + "space, and a guard that is not an object");
 
         foreach (var (component, word, description) in new[]
         {

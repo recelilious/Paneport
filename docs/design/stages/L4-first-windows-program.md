@@ -536,7 +536,41 @@ Out: a second Windows process, `CreateProcess` from a guest and helper programs 
 
 **Session log.**
 
-_No sessions yet._
+- **2026-11-23 (UTC), first session.** Branch `feat/m4-3-single-process-wine`, draft pull request [#39](https://github.com/recelilious/Paneport/pull/39). M4.2 and M2.2, the stage's dependencies, are Done.
+  - **Decisions.** recelilious allowed, on 2026-11-23, checkouts of the Wine fork at `51a6336` (depth 1) and of the FEX fork at `aa8f7a6`, both without submodules, as source only, deleted when the stage's fork work ends. They are in the session's scratchpad.
+  - **Done.**
+    - S4.3.8, host side.
+      - `paneport/wine_bridge.h` holds the bridge table: logging, a host thread for the wineserver, thread marks, reservations, the guest fault handler, and process reports. The guest fault types moved there from `signals.h`.
+      - `paneport/session.h` holds the session and process groups, three status codes and three event kinds. `pp_log_line_t` gains its source and process. These make interface version 1.3.
+      - `session.c`, the guest output reader and the JIT stand-in of the test builds.
+      - Ordering: a program's lines reach the log callback before its exit event, and the session's end comes after that.
+      - The Interop bindings and conformance entries.
+      - CTest runs the session against a fake fork (`fake_wine_fork.c`, 15 cases) and the output splitter alone (4 cases).
+    - The Wine fork's `paneport/M4.3` adds the entry header `include/wine/paneport.h` (`96ef4b8`). `eng/fetch-wine-header.sh` fetches it for the `native`, `ios` and `runtime` jobs.
+  - **Found.** Wine's source, read for the design:
+    - The server's process-wide side effects and exits, and the fixes for each.
+    - `__wine_main`'s steps, and the hook for an already-connected socket (`WINESERVERSOCKET`).
+    - A console program started with pipes gets no conhost.
+    - `GetLogicalDrives` lists `\??\X:` symlinks that only mountmgr creates.
+    - `run_wineboot` starts `wineboot.exe` for every parentless process.
+    - The likely cause of the race in the M4.2 notes: FEX's `ExitFunctionEC` keeps a value in x23 while neither `InSimulation` nor `InSyscallCallback` is set. A suspension there takes the plain signal path, and the x86-64 context round trip zeroes x23. That makes the callee run natively and return natively to its x86-64 return address.
+    - The session's notes folder keeps the facts with their file and line references for the next sessions.
+  - **Verification.** On the workstation:
+    - The personal-data and license checks pass.
+    - Paneport.Interop and its tests build with no warning, and `dotnet format` passes.
+    - clang-format 22 is applied.
+    - WSL's clang 22 compiles every new C file with `-fsyntax-only` and the project's warnings as errors.
+    - CI on #39 was still running when this entry was written; the pull request records its result.
+  - **Left.**
+    - S4.3.1: the design document. The decisions so far are the template prefix with an in-process boot step for the drive letters, the shared user data and the volatile keys; the wineserver as a library on a host thread; Mach thread control by in-process delivery of Wine's handlers; and the FEX fix of the x23 race.
+    - The fork's single-process changes, S4.3.2 to S4.3.7.
+    - S4.3.9: the trap.
+    - The harness's single mode, as a child per run.
+    - The brief's verification.
+  - **For later sessions.**
+    - The fork's build will need `src/native/include` on its include path. `eng/mac/build-wine.sh` then records the bridge header's hash, so that the cache key of the `runtime` job follows the header.
+    - The `macos-harness` preset needs `PANEPORT_TEST_BUILD` for single mode.
+    - Each move of the Wine pointer builds Wine cold in the `runtime` job, so fork changes are best batched.
 
 ## M4.4 Runtime on iOS
 

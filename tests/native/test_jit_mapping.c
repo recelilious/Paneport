@@ -4,8 +4,9 @@
 // S3.1.3: region request and mapping, on the regions of the macOS backend. Alias coherence: a
 // byte written through the alias reads back through the executable view, and code written
 // through it runs from the view. No mapping is ever writable and executable at once, and
-// neither view can be made so later. The check finds a mapping that is (planted: a MAP_JIT
-// region). Command 1 goes out once per region, with its size, and command 0 once.
+// neither view can be made so later. The check finds memory that may become so (planted:
+// writable memory, whose maximum protection allows both). Command 1 goes out once per region,
+// with its size, and command 0 once.
 
 #include <mach/mach.h>
 #include <mach/vm_map.h>
@@ -85,22 +86,11 @@ static void no_view_is_writable_and_executable(void) {
 }
 
 static void writable_executable_is_found(void) {
-    // Planted: MAP_JIT memory is writable and executable at once, which the pool never is.
+    // Planted: writable memory whose maximum protection, like that of any anonymous memory,
+    // still allows writing and executing at once, which lowering the maxima takes away from the
+    // pool. It is not a region either, because it is not executable.
     const size_t size = (size_t)(16U * MIB);
-    void *jit = mmap(NULL, size, PROT_READ | PROT_WRITE | PROT_EXEC,
-                     MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
-    PP_CHECK(jit != MAP_FAILED);
-    const uint64_t jit_address = (uint64_t)(uintptr_t)jit;
-    PP_CHECK(pp_jit_map_has_writable_executable(jit_address, size));
-    PP_CHECK(!pp_jit_map_has_protection(jit_address, size, PP_JIT_EXEC_PROTECTION, false));
     pp_jit_map_result_t mapped;
-    PP_CHECK_EQUAL(pp_jit_map_alias(jit_address, size, &mapped), PP_JIT_FAILURE_REGION_REFUSED);
-    PP_CHECK_EQUAL(mapped.write_address, 0U);
-    PP_CHECK_EQUAL(munmap(jit, size), 0);
-
-    // Writable memory that is not executable is not a region either. Its maximum protection,
-    // like that of any anonymous memory, still allows both permissions, which is what lowering
-    // the maxima takes away from the pool.
     void *data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
     PP_CHECK(data != MAP_FAILED);
     const uint64_t data_address = (uint64_t)(uintptr_t)data;

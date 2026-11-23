@@ -32,9 +32,9 @@ bool pp_jit_is_ready(void);
 void pp_jit_pool_copy(pp_jit_pool_region_t *regions, uint32_t capacity, uint32_t *count);
 
 #ifdef PANEPORT_TEST_BUILD
-// Test builds only: makes the provider use platform, which must outlive the process, instead
+// Test builds only: makes the provider use replacement, which must outlive the process, instead
 // of the backend of the build. Call it before the first call of the JIT group.
-void pp_jit_provider_use_platform(const pp_jit_platform_t *platform);
+void pp_jit_provider_use_platform(const pp_jit_platform_t *replacement);
 
 // Test builds only: wakes the supervisor at once, as a test that moved its clock needs.
 void pp_jit_provider_wake(void);

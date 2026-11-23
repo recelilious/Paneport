@@ -190,4 +190,26 @@ _No sessions yet._
 
 **Session log.**
 
-_No sessions yet._
+- **2026-11-23 (session 1).** Draft pull request [#40](https://github.com/recelilious/Paneport/pull/40).
+  - **Done.**
+    - The JIT group of `paneport/jit.h`, interface version 1.3: `pp_jit_get_state`, `pp_jit_set_enabler_opened`, `pp_jit_note_foreground`, `pp_jit_request_pool`, `pp_jit_status_t`, `PP_E_JIT_STATE` (-10) and `PP_EVENT_JIT_STATE_CHANGED` (1).
+    - The provider in `src/native/host/jit/`. It holds the state machine without threads (S3.1.2), the flags and the broker-recognition rule (S3.1.1), the commands, the alias and the dispatcher's ranges (S3.1.3), and the probe through the probe route (S3.1.4).
+    - The iOS backend, and a macOS backend with a simulated broker (S3.1.5). Its regions are not `MAP_JIT` memory, which is writable and executable by design ([jit.md](../jit.md) section 2).
+    - The bindings in Paneport.Interop.
+    - `compat/ios-builds.json`, its schema and `tools/CheckCompat.cs` in the `checks` job (S3.1.7).
+    - [jit.md](../jit.md) and [jit-broker.md](../jit-broker.md).
+    - A throwaway probe on the runner (run 45101893218) answered S3.1.5's open point: the CTest binaries need no entitlement and no signing of their own (jit.md section 12).
+  - **Verification.**
+    - First CI run 45109808452. `dotnet` passed on both systems.
+    - `native`: `asan-ubsan` and `tsan` passed 159 of 159, the 45 JIT cases and the two `nm` checks of the probe handler among them, with the same two cases skipped under `tsan` as before. `tests/Paneport.Interop.Tests` passed, including the JIT binding test. clang-tidy 23 found five things, which the next commit fixes: signed bitwise operands, a parameter name, two trailing commas, and a planted `MAP_JIT` mapping that the analyzer refuses, now replaced by plain writable memory.
+    - `checks` failed only on the links to jit.md, which a later commit added.
+    - `ios` and `runtime` run on the pull request.
+  - **Decisions.**
+    - The broker script: `INTEGRATION.md` does not document the interface that a script uses, so the coordinator put the options of jit-broker.md section 4 to recelilious, recommending A. Until the answer, D: S3.1.6 is Blocked and `src/jit-broker/` holds only its README.
+    - The coordinator accepted three choices: the numbers of the JIT group, a validator of our own in `tools/CheckCompat.cs` (D8 stays open for M8.3), and regions of 128 MiB.
+    - M4.3's #39 also uses -10 to -12, event kinds 1 to 3 and minor version 3, so whichever of the two merges second renumbers its own.
+  - **Left.**
+    - S3.1.6, after recelilious's decision; with A, contract drafts on a local `contract/` branch, reviewed before they are pushed.
+    - Everything on the device is not yet verified; that is L3.
+    - M3.1 cannot be Done while S3.1.6 is blocked. Whether #40 merges first, with the other Small stages Done, is the coordinator's call.
+  - **For later sessions.** Notes left in the sections of L3, M4.3, M4.4 and L5. jit.md section 11 lists the same points.

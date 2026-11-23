@@ -117,8 +117,11 @@ static void pool_timeout_fails(void) {
     PP_CHECK_EQUAL(atomic_load(&fake->detaches), 0U);
     PP_CHECK_EQUAL(pp_jit_read_status().regions_mapped, 0U);
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
-    const pp_jit_state_t expected[] = {PP_JIT_STATE_DEBUGGER_ATTACHED, PP_JIT_STATE_REQUESTING,
-                                       PP_JIT_STATE_FAILED};
+    const pp_jit_state_t expected[] = {
+        PP_JIT_STATE_DEBUGGER_ATTACHED,
+        PP_JIT_STATE_REQUESTING,
+        PP_JIT_STATE_FAILED,
+    };
     pp_jit_check_events(&events, expected, 3U);
 }
 
@@ -138,8 +141,12 @@ static void detach_timeout_fails(void) {
     const pp_jit_status_t status = pp_jit_wait_for_state(PP_JIT_STATE_FAILED);
     PP_CHECK_EQUAL(status.failure, PP_JIT_FAILURE_DETACH_TIMEOUT);
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
-    const pp_jit_state_t expected[] = {PP_JIT_STATE_DEBUGGER_ATTACHED, PP_JIT_STATE_REQUESTING,
-                                       PP_JIT_STATE_WAITING_DETACH, PP_JIT_STATE_FAILED};
+    const pp_jit_state_t expected[] = {
+        PP_JIT_STATE_DEBUGGER_ATTACHED,
+        PP_JIT_STATE_REQUESTING,
+        PP_JIT_STATE_WAITING_DETACH,
+        PP_JIT_STATE_FAILED,
+    };
     pp_jit_check_events(&events, expected, 4U);
 }
 

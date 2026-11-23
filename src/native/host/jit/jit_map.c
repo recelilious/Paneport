@@ -10,10 +10,11 @@
 #include <unistd.h>
 
 static bool writable_executable(vm_prot_t protection) {
-    if ((protection & VM_PROT_WRITE) == 0) {
+    const uint32_t bits = (uint32_t)protection;
+    if ((bits & (uint32_t)VM_PROT_WRITE) == 0U) {
         return false;
     }
-    return (protection & VM_PROT_EXECUTE) != 0;
+    return (bits & (uint32_t)VM_PROT_EXECUTE) != 0U;
 }
 
 // Calls visit for each mapping that covers [address, address + size), in order. Returns false

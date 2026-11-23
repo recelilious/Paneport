@@ -185,4 +185,12 @@ public static unsafe class HostTestExports
             counters.UnexpectedFaults,
             counters.RuntimeFaults);
     }
+
+    /// <summary>
+    /// Sets whether the JIT state counts as ready for a session to start, which the macOS
+    /// harness needs until the JIT provider exists (<c>pp_test_jit_set_ready</c>, version 1.3).
+    /// Any thread.
+    /// </summary>
+    /// <param name="ready">True for ready.</param>
+    public static void SetJitReady(bool ready) => HostCalls.Check(NativeMethods.TestJitSetReady(ready ? (byte)1 : (byte)0));
 }

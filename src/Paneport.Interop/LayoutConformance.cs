@@ -30,6 +30,8 @@ public static class LayoutConformance
             .Member("level", (ref NativeLogLine value) => ref value.Level)
             .Member("thread_id", (ref NativeLogLine value) => ref value.ThreadId)
             .Member("text", (ref NativeLogLine value) => ref value.Text)
+            .Member("source", (ref NativeLogLine value) => ref value.Source)
+            .Member("process", (ref NativeLogLine value) => ref value.Process)
             .Build(),
         new StructLayoutBuilder<NativeMemoryBudget>("pp_memory_budget_t")
             .Member("struct_size", (ref NativeMemoryBudget value) => ref value.StructSize)
@@ -56,6 +58,25 @@ public static class LayoutConformance
             .Member("waiting_detach_ms", (ref NativeJitStatus value) => ref value.WaitingDetachMilliseconds)
             .Member("verifying_ms", (ref NativeJitStatus value) => ref value.VerifyingMilliseconds)
             .Member("authorization_ms", (ref NativeJitStatus value) => ref value.AuthorizationMilliseconds)
+            .Build(),
+        new StructLayoutBuilder<NativeSessionConfig>("pp_session_config_t")
+            .Member("struct_size", (ref NativeSessionConfig value) => ref value.StructSize)
+            .Member("architecture", (ref NativeSessionConfig value) => ref value.Architecture)
+            .Member("prefix_folder", (ref NativeSessionConfig value) => ref value.PrefixFolder)
+            .Member("runtime_folder", (ref NativeSessionConfig value) => ref value.RuntimeFolder)
+            .Member("environment", (ref NativeSessionConfig value) => ref value.Environment)
+            .Build(),
+        new StructLayoutBuilder<NativeProcessConfig>("pp_process_config_t")
+            .Member("struct_size", (ref NativeProcessConfig value) => ref value.StructSize)
+            .Member("capture_output", (ref NativeProcessConfig value) => ref value.CaptureOutput)
+            .Member("program_folder", (ref NativeProcessConfig value) => ref value.ProgramFolder)
+            .Member("program", (ref NativeProcessConfig value) => ref value.Program)
+            .Member("arguments", (ref NativeProcessConfig value) => ref value.Arguments)
+            .Build(),
+        new StructLayoutBuilder<NativeProcessState>("pp_process_state_t")
+            .Member("struct_size", (ref NativeProcessState value) => ref value.StructSize)
+            .Member("state", (ref NativeProcessState value) => ref value.State)
+            .Member("exit_code", (ref NativeProcessState value) => ref value.ExitCode)
             .Build(),
         new StructLayoutBuilder<NativeLayoutMember>("pp_test_layout_member_t")
             .Member("struct_size", (ref NativeLayoutMember value) => ref value.StructSize)

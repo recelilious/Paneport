@@ -17,9 +17,9 @@
 #define PP_THREADS_WAIT_MS 30000U
 #define PP_THREADS_REDIRECT_EXIT_CODE 42U
 
-// The thread that loops on a syscall: how often it is suspended, has its context read and is
-// resumed, how many calls it makes first, so that FEX has translated its loop, the code it ends
-// with, and how long the check spins for its next call before it sleeps.
+// The thread that loops on a syscall: how often it is suspended, has its context read and set
+// back and is resumed, how many calls it makes first, so that FEX has translated its loop, the
+// code it ends with, and how long the check spins for its next call before it sleeps.
 #define PP_THREADS_SYSCALL_ROUNDS 1000U
 #define PP_THREADS_SYSCALL_WARM_UP 1000
 #define PP_THREADS_SYSCALL_EXIT_CODE 43U
@@ -474,11 +474,13 @@ static bool wait_for_call(const struct syscall_loop_state *state, LONG at_least)
     return wait_for(&state->calls, at_least);
 }
 
-// One round: suspends the looping thread, reads its context and resumes it. Returns whether every
-// step succeeded. Under Wine the suspension itself has the thread build its syscall frame from
-// the signal context when it is inside a dispatcher, and the thread applies its context again on
-// resume, so a frame built wrongly breaks it although the check sets nothing. Setting the context
-// too met a separate race, an open item in section 11 of docs/design/runtime-macos-harness.md.
+// One round: suspends the looping thread, reads its context, sets the same context back and
+// resumes it. Returns whether every step succeeded. Under Wine the suspension itself has the
+// thread build its syscall frame from the signal context when it is inside a dispatcher, and the
+// thread applies its context again on resume, so a frame built wrongly breaks it. Setting the
+// context back also round-trips it through the x86-64 layout, which keeps no place for some
+// registers of ARM64EC code; a thread stopped in FEX's code around a call must not depend on
+// them (FEX fork cb6781e, docs/design/runtime-macos-harness.md section 11).
 static bool suspend_in_syscall_loop(HANDLE thread) {
     if (SuspendThread(thread) != 0U) {
         return false;
@@ -487,6 +489,9 @@ static bool suspend_in_syscall_loop(HANDLE thread) {
     memset(&context, 0, sizeof context);
     context.ContextFlags = CONTEXT_FULL;
     bool passed = GetThreadContext(thread, &context) != FALSE;
+    if (passed) {
+        passed = SetThreadContext(thread, &context) != FALSE;
+    }
     if (ResumeThread(thread) != 1U) {
         passed = false;
     }
@@ -517,9 +522,10 @@ static bool check_syscall_loop(struct pp_test_run *run, const char *area, bool d
                 steps_ok = suspend_in_syscall_loop(thread);
             }
         }
-        pp_test_check(run, steps_ok,
-                      "SuspendThread, GetThreadContext and ResumeThread succeed on the thread in "
-                      "its syscall loop");
+        pp_test_check(
+            run, steps_ok,
+            "SuspendThread, GetThreadContext, SetThreadContext and ResumeThread succeed on "
+            "the thread in its syscall loop");
         pp_test_check(run, calls_go_on, "the thread goes on calling after each resume");
     }
     InterlockedExchange(&state.stop, 1);
@@ -539,8 +545,8 @@ static bool check_syscall_loop(struct pp_test_run *run, const char *area, bool d
                   "each QueryPerformanceCounter call of the thread is right");
     bool passed = run->failures == failures;
     if (detailed) {
-        pp_test_line(run, "%s: syscall loop: %u suspensions with the context read: %s", area,
-                     PP_THREADS_SYSCALL_ROUNDS, pp_test_verdict(passed));
+        pp_test_line(run, "%s: syscall loop: %u suspensions with the context read and set back: %s",
+                     area, PP_THREADS_SYSCALL_ROUNDS, pp_test_verdict(passed));
     }
     return passed;
 }

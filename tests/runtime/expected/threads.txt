@@ -5,5 +5,5 @@
 = threads: clocks: GetTickCount, GetTickCount64 and QueryUnbiasedInterruptTime advance across a sleep: pass
 = threads: unaligned access: 1000 stores and loads across 16 bytes: pass
 = threads: suspend, context change and resume: pass
-= threads: syscall loop: 1000 suspensions with the context read: pass
+= threads: syscall loop: 1000 suspensions with the context read and set back: pass
 = result: pass

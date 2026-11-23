@@ -103,23 +103,30 @@ static void close_stream(stream_t *stream) {
     stream->fd = -1;
 }
 
+// Fills waits and streams with the streams that are still open, and returns their number.
+static nfds_t open_streams(pp_guest_output_t *reader, struct pollfd waits[PP_GUEST_STREAMS],
+                           stream_t *streams[PP_GUEST_STREAMS]) {
+    nfds_t count = 0U;
+    for (size_t index = 0U; index < PP_GUEST_STREAMS; index++) {
+        if (reader->streams[index].fd >= 0) {
+            waits[count].fd = reader->streams[index].fd;
+            waits[count].events = POLLIN;
+            waits[count].revents = 0;
+            streams[count] = &reader->streams[index];
+            count++;
+        }
+    }
+    return count;
+}
+
 static void *read_output(void *argument) {
     pp_guest_output_t *reader = argument;
     pp_platform_name_thread("paneport.guest-output");
     char buffer[16384];
     for (;;) {
         struct pollfd waits[PP_GUEST_STREAMS];
-        nfds_t count = 0U;
         stream_t *streams[PP_GUEST_STREAMS];
-        for (size_t index = 0U; index < PP_GUEST_STREAMS; index++) {
-            if (reader->streams[index].fd >= 0) {
-                waits[count].fd = reader->streams[index].fd;
-                waits[count].events = POLLIN;
-                waits[count].revents = 0;
-                streams[count] = &reader->streams[index];
-                count++;
-            }
-        }
+        const nfds_t count = open_streams(reader, waits, streams);
         if (count == 0U) {
             reader->on_end(reader->process);
             return NULL;
@@ -165,8 +172,10 @@ pp_status_t pp_guest_output_start(int output_fd, int errors_fd, uint64_t process
     created->on_end = on_end;
     created->process = process;
     const int fds[PP_GUEST_STREAMS] = {output_fd, errors_fd};
-    const uint32_t sources[PP_GUEST_STREAMS] = {PP_LOG_SOURCE_GUEST_OUTPUT,
-                                                PP_LOG_SOURCE_GUEST_ERRORS};
+    const uint32_t sources[PP_GUEST_STREAMS] = {
+        PP_LOG_SOURCE_GUEST_OUTPUT,
+        PP_LOG_SOURCE_GUEST_ERRORS,
+    };
     for (size_t index = 0U; index < PP_GUEST_STREAMS; index++) {
         created->streams[index].fd = fds[index];
         created->streams[index].source = sources[index];

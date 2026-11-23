@@ -214,7 +214,7 @@ static void fork_receives_the_bridge(void) {
     void *symbol = dlsym(module, "fake_fork_bridge_ok");
     PP_CHECK(symbol != NULL);
     int (*bridge_ok)(void) = NULL;
-    memcpy(&bridge_ok, &symbol, sizeof bridge_ok);
+    memcpy((void *)&bridge_ok, (const void *)&symbol, sizeof bridge_ok);
     PP_CHECK_EQUAL(bridge_ok(), 1);
     PP_CHECK_EQUAL(dlclose(module), 0);
     stop_host();
@@ -257,8 +257,9 @@ static void output_lines_arrive_before_the_exit(void) {
     const uint64_t process = launch(1U, PP_OK);
     (void)wait_for_event(PP_EVENT_SESSION_ENDED);
 
-    static const char *const k_output[] = {"first line", "second line",        NULL,
-                                           NULL,         FAKE_FORK_BYTES_LINE, "last line"};
+    static const char *const k_output[] = {
+        "first line", "second line", NULL, NULL, FAKE_FORK_BYTES_LINE, "last line",
+    };
     (void)pthread_mutex_lock(&s_seen.mutex);
     uint32_t output = 0U;
     uint32_t errors = 0U;
@@ -505,8 +506,12 @@ static void configuration_checks(void) {
     config = session_config(&fixture, NULL);
     config.runtime_folder = fixture.prefix;
     PP_CHECK_EQUAL(pp_session_start(&config), PP_E_INVALID_ARGUMENT);
-    static const char *const k_bad_environments[] = {"lower=1\0", "=value\0", "NO_EQUALS\0",
-                                                     "9NAME=1\0"};
+    static const char *const k_bad_environments[] = {
+        "lower=1\0",
+        "=value\0",
+        "NO_EQUALS\0",
+        "9NAME=1\0",
+    };
     for (size_t index = 0U; index < sizeof k_bad_environments / sizeof k_bad_environments[0];
          index++) {
         config = session_config(&fixture, k_bad_environments[index]);

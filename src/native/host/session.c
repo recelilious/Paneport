@@ -40,8 +40,8 @@ _Static_assert(PP_WINE_E_IO == PP_E_IO, "A status code differs.");
 _Static_assert(PP_WINE_E_UNSUPPORTED == PP_E_UNSUPPORTED, "A status code differs.");
 _Static_assert(PP_WINE_E_BUSY == PP_E_BUSY, "A status code differs.");
 _Static_assert(PP_WINE_E_SYSTEM == PP_E_SYSTEM, "A status code differs.");
-_Static_assert(PP_WINE_LOG_DEBUG == PP_LOG_DEBUG && PP_WINE_LOG_ERROR == PP_LOG_ERROR,
-               "The bridge's log levels differ from PP_LOG_.");
+_Static_assert(PP_WINE_LOG_DEBUG == PP_LOG_DEBUG, "The bridge's log levels differ from PP_LOG_.");
+_Static_assert(PP_WINE_LOG_ERROR == PP_LOG_ERROR, "The bridge's log levels differ from PP_LOG_.");
 
 // The life of the launch's one session.
 enum {
@@ -56,8 +56,8 @@ enum {
 #define PP_SESSION_THREADS 4U
 
 // The limits of the blocks of environment variables and arguments.
-#define PP_ENVIRONMENT_MAX (64U * 1024U)
-#define PP_ARGUMENTS_MAX (32U * 1024U)
+#define PP_ENVIRONMENT_MAX ((size_t)64U * 1024U)
+#define PP_ARGUMENTS_MAX ((size_t)32U * 1024U)
 
 // How long pp_process_launch waits for the process to finish its start, and pp_session_stop for
 // the runtime to report the end of the process that it terminated.
@@ -73,14 +73,16 @@ typedef struct session_thread_t {
     bool joined;
 } session_thread_t;
 
-// The session's process. Its handle is 0 until pp_process_launch starts one. Its exit event
-// waits until the reader of its output queued the last line (output_done), so that the lines
-// arrive before it (paneport/session.h).
+// The session's process. Its handle is 0 until pp_process_launch starts one. started says that
+// the runtime reported its start, which a quick program may follow with its end before the
+// launch looks. Its exit event waits until the reader of its output queued the last line
+// (output_done), so that the lines arrive before it (paneport/session.h).
 typedef struct session_process_t {
     uint64_t handle;
     uint32_t state;
     uint32_t exit_code;
     pp_guest_output_t *output;
+    bool started;
     bool output_done;
     bool exit_posted;
 } session_process_t;
@@ -250,11 +252,19 @@ static int32_t bridge_set_guest_fault_handler(pp_guest_fault_handler_t handler, 
     return pp_signals_set_guest_handler(handler, user_data);
 }
 
+// Whether a handle names the session's process. The caller holds the mutex.
+static bool names_the_process(uint64_t process) {
+    if (process == 0U) {
+        return false;
+    }
+    return process == s_session.process.handle;
+}
+
 static void bridge_process_started(uint64_t process) {
     (void)pthread_mutex_lock(&s_session.mutex);
-    if (process != 0U && process == s_session.process.handle &&
-        s_session.process.state == PP_PROCESS_STARTING) {
+    if (names_the_process(process) && s_session.process.state == PP_PROCESS_STARTING) {
         s_session.process.state = PP_PROCESS_RUNNING;
+        s_session.process.started = true;
         post_event(PP_EVENT_PROCESS_STARTED, process, 0);
         (void)pthread_cond_broadcast(&s_session.changed);
     }
@@ -263,8 +273,7 @@ static void bridge_process_started(uint64_t process) {
 
 static void bridge_process_exited(uint64_t process, uint32_t exit_code) {
     (void)pthread_mutex_lock(&s_session.mutex);
-    if (process != 0U && process == s_session.process.handle &&
-        s_session.process.state != PP_PROCESS_EXITED) {
+    if (names_the_process(process) && s_session.process.state != PP_PROCESS_EXITED) {
         s_session.process.state = PP_PROCESS_EXITED;
         s_session.process.exit_code = exit_code;
         report_exit_when_ready();
@@ -320,13 +329,13 @@ static pp_status_t check_folder(const char *function, const char *member, const 
 }
 
 static bool is_name_character(char character, bool first) {
-    if (character >= 'A' && character <= 'Z') {
+    if ((character >= 'A' && character <= 'Z') || character == '_') {
         return true;
     }
-    if (character == '_') {
-        return true;
+    if (first || character < '0' || character > '9') {
+        return false;
     }
-    return !first && character >= '0' && character <= '9';
+    return true;
 }
 
 // Checks a block of strings, each NUL-terminated, that ends with an empty string within limit
@@ -372,9 +381,10 @@ static pp_status_t check_block(const char *function, const char *member, const c
 static void join_session_threads(void) {
     for (uint32_t index = 0U; index < PP_SESSION_THREADS; index++) {
         (void)pthread_mutex_lock(&s_session.mutex);
-        const bool joinable = index < s_session.thread_count && !s_session.threads[index].joined;
+        bool joinable = false;
         const pthread_t thread = s_session.threads[index].thread;
-        if (joinable) {
+        if (index < s_session.thread_count && !s_session.threads[index].joined) {
+            joinable = true;
             s_session.threads[index].joined = true;
         }
         (void)pthread_mutex_unlock(&s_session.mutex);
@@ -401,18 +411,17 @@ static pp_status_t fail_started_session(pp_status_t status) {
 _Static_assert(sizeof(void *) == sizeof(wine_paneport_session_start_t),
                "A function pointer does not fit a data pointer.");
 
-// Finds an entry point of the runtime and copies it into *entry, a function pointer of size
-// bytes: ISO C has no cast between a data pointer and a function pointer.
-static void find_entry(void *library, const char *name, void *entry, size_t size,
-                       pp_status_t *status) {
+// Copies an entry point of the runtime into *entry, a function pointer of size bytes, and
+// returns whether the runtime has it: ISO C has no cast between a data pointer and a function
+// pointer.
+static bool find_entry(void *library, const char *name, void *entry, size_t size) {
     void *symbol = dlsym(library, name);
     if (symbol == NULL) {
-        if (*status == PP_OK) {
-            *status = pp_error_set(PP_E_IO, "The Wine runtime has no entry point %s.", name);
-        }
-        return;
+        (void)pp_error_set(PP_E_IO, "The Wine runtime has no entry point %s.", name);
+        return false;
     }
-    memcpy(entry, &symbol, size);
+    memcpy(entry, (const void *)&symbol, size);
+    return true;
 }
 
 PP_EXPORT pp_status_t pp_session_start(const pp_session_config_t *config) {
@@ -485,17 +494,17 @@ PP_EXPORT pp_status_t pp_session_start(const pp_session_config_t *config) {
         // dlerror names the path, which the host never logs.
         return fail_started_session(pp_error_set(PP_E_IO, "The Wine runtime could not be loaded."));
     }
-    status = PP_OK;
     wine_paneport_session_start_t start = NULL;
     wine_paneport_session_stop_t stop = NULL;
     wine_paneport_process_launch_t launch = NULL;
     wine_paneport_process_terminate_t terminate = NULL;
-    find_entry(library, WINE_PANEPORT_SESSION_START, &start, sizeof start, &status);
-    find_entry(library, WINE_PANEPORT_SESSION_STOP, &stop, sizeof stop, &status);
-    find_entry(library, WINE_PANEPORT_PROCESS_LAUNCH, &launch, sizeof launch, &status);
-    find_entry(library, WINE_PANEPORT_PROCESS_TERMINATE, &terminate, sizeof terminate, &status);
-    if (status != PP_OK) {
-        return fail_started_session(status);
+    if (!find_entry(library, WINE_PANEPORT_SESSION_START, (void *)&start, sizeof start) ||
+        !find_entry(library, WINE_PANEPORT_SESSION_STOP, (void *)&stop, sizeof stop) ||
+        !find_entry(library, WINE_PANEPORT_PROCESS_LAUNCH, (void *)&launch, sizeof launch) ||
+        !find_entry(library, WINE_PANEPORT_PROCESS_TERMINATE, (void *)&terminate,
+                    sizeof terminate) ||
+        start == NULL) {
+        return fail_started_session(PP_E_IO);
     }
     (void)pthread_mutex_lock(&s_session.mutex);
     s_session.library = library;
@@ -695,6 +704,7 @@ PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint6
     s_session.process.handle = handle;
     s_session.process.state = PP_PROCESS_STARTING;
     s_session.process.exit_code = 0U;
+    s_session.process.started = false;
     // Without a reader there is no output to wait for before the exit event.
     s_session.process.output_done = config->capture_output == 0U;
     s_session.process.exit_posted = false;
@@ -755,13 +765,15 @@ PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint6
     (void)pthread_mutex_lock(&s_session.mutex);
     wait_for_start();
     const uint32_t state = s_session.process.state;
+    const bool started = s_session.process.started;
     const uint32_t exit_code = s_session.process.exit_code;
     (void)pthread_mutex_unlock(&s_session.mutex);
     if (state == PP_PROCESS_STARTING) {
         return pp_error_set(PP_E_SYSTEM, "The program did not finish its start within %d s.",
                             PP_LAUNCH_WAIT_SECONDS);
     }
-    if (state == PP_PROCESS_EXITED) {
+    // A program that started may have ended already; only one that never started failed.
+    if (!started) {
         return pp_error_set(PP_E_SYSTEM,
                             "The program ended before it finished its start, with exit code "
                             "0x%x.",
@@ -789,7 +801,7 @@ PP_EXPORT pp_status_t pp_process_get_state(uint64_t process, pp_process_state_t 
                             "pp_process_get_state needs a state with a struct_size of at least 8.");
     }
     (void)pthread_mutex_lock(&s_session.mutex);
-    const bool known = process != 0U && process == s_session.process.handle;
+    const bool known = names_the_process(process);
     const uint32_t current = s_session.process.state;
     const uint32_t exit_code = current == PP_PROCESS_EXITED ? s_session.process.exit_code : 0U;
     (void)pthread_mutex_unlock(&s_session.mutex);
@@ -806,7 +818,7 @@ PP_EXPORT pp_status_t pp_process_get_state(uint64_t process, pp_process_state_t 
 PP_EXPORT pp_status_t pp_process_terminate(uint64_t process, uint32_t exit_code) {
     pp_error_clear();
     (void)pthread_mutex_lock(&s_session.mutex);
-    const bool known = process != 0U && process == s_session.process.handle;
+    const bool known = names_the_process(process);
     const bool exited = s_session.process.state == PP_PROCESS_EXITED;
     const wine_paneport_process_terminate_t terminate = s_session.terminate;
     (void)pthread_mutex_unlock(&s_session.mutex);

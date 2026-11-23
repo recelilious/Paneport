@@ -21,10 +21,12 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "fake_wine_fork.h"
+#include "fake_wine_fork_exports.h"
 #include "paneport/wine_bridge.h"
 #include "wine/paneport.h"
 
@@ -51,7 +53,7 @@ static struct {
 };
 
 static void read_mode(const char *environment) {
-    (void)strcpy(s_fake.mode, "normal");
+    (void)snprintf(s_fake.mode, sizeof s_fake.mode, "%s", "normal");
     if (environment == NULL) {
         return;
     }
@@ -60,7 +62,7 @@ static void read_mode(const char *environment) {
         if (strncmp(entry, k_name, sizeof k_name - 1U) == 0) {
             const char *value = entry + sizeof k_name - 1U;
             if (strlen(value) < sizeof s_fake.mode) {
-                (void)strcpy(s_fake.mode, value);
+                (void)snprintf(s_fake.mode, sizeof s_fake.mode, "%s", value);
             }
         }
     }
@@ -115,7 +117,10 @@ static void *run_process(void *argument) {
             while (!s_fake.terminate && !s_fake.stop_server) {
                 (void)pthread_cond_wait(&s_fake.changed, &s_fake.mutex);
             }
-            exit_code = s_fake.terminate ? s_fake.exit_code : FAKE_FORK_STOPPED_EXIT_CODE;
+            exit_code = FAKE_FORK_STOPPED_EXIT_CODE;
+            if (s_fake.terminate) {
+                exit_code = s_fake.exit_code;
+            }
             (void)pthread_mutex_unlock(&s_fake.mutex);
         } else {
             if (s_fake.output_fd >= 0) {

@@ -25,8 +25,11 @@
 # - readability-magic-numbers: the tests check documented values, such as the byte offsets
 #   of the crash record, and the host names its own limits in macros.
 #
-# Two options narrow a check, each for the same kind of reason:
+# Three options narrow a check, each for the same kind of reason:
 #
+# - bugprone-reserved-identifier.AllowedIdentifiers, set for its aliases cert-dcl37-c and
+#   cert-dcl51-cpp too: the fake of the Wine fork in tests/native defines the fork's four entry
+#   points, whose names follow Wine's __wine_ prefix for its exports.
 # - bugprone-sizeof-expression.WarnOnSizeOfPointerToAggregate: the layout table of the test
 #   builds records the size of every member, pointers to structs among them.
 # - readability-function-cognitive-complexity.IgnoreMacros: every check of the native tests
@@ -57,6 +60,9 @@ Checks: >
   -readability-identifier-length,
   -readability-magic-numbers
 CheckOptions:
+  bugprone-reserved-identifier.AllowedIdentifiers: '__wine_paneport_session_start;__wine_paneport_session_stop;__wine_paneport_process_launch;__wine_paneport_process_terminate'
+  cert-dcl37-c.AllowedIdentifiers: '__wine_paneport_session_start;__wine_paneport_session_stop;__wine_paneport_process_launch;__wine_paneport_process_terminate'
+  cert-dcl51-cpp.AllowedIdentifiers: '__wine_paneport_session_start;__wine_paneport_session_stop;__wine_paneport_process_launch;__wine_paneport_process_terminate'
   bugprone-sizeof-expression.WarnOnSizeOfPointerToAggregate: false
   readability-function-cognitive-complexity.IgnoreMacros: true
 WarningsAsErrors: '*'

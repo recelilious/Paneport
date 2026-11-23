@@ -100,7 +100,7 @@ static void every_chunking_gives_the_same_lines(void) {
     size_t random_sizes[257];
     uint32_t state = 12345U;
     for (size_t index = 0U; index < sizeof random_sizes / sizeof random_sizes[0]; index++) {
-        state = state * 1103515245U + 12345U;
+        state = (state * 1103515245U) + 12345U;
         random_sizes[index] = 1U + (size_t)((state >> 16U) % 40U);
     }
     lines_t *lines = split(k_text, sizeof k_text - 1U, random_sizes,
@@ -127,7 +127,9 @@ static void piece_ends_at_a_character(void) {
     free(lines);
 
     memset(text, 'a', 509U);
-    memcpy(text + 509U, "\xf0\x9f\x98\x80\n", 5U);
+    // The terminator lands past the 514 bytes that the split reads.
+    static const char k_four_bytes[] = "\xf0\x9f\x98\x80\n";
+    memcpy(text + 509U, k_four_bytes, sizeof k_four_bytes);
     lines = split(text, 514U, (const size_t[]){3U}, 1U);
     PP_CHECK_EQUAL(lines->count, 2U);
     PP_CHECK_EQUAL(lines->length[0], 509U);
@@ -153,7 +155,8 @@ static void carriage_returns(void) {
     // A line that fills a piece exactly and ends with CR LF is one line, with no empty one after.
     char full[PP_GUEST_LINE_MAX + 2U];
     memset(full, 'f', PP_GUEST_LINE_MAX);
-    memcpy(full + PP_GUEST_LINE_MAX, "\r\n", 2U);
+    full[PP_GUEST_LINE_MAX] = '\r';
+    full[PP_GUEST_LINE_MAX + 1U] = '\n';
     lines_t *lines = split(full, sizeof full, (const size_t[]){7U}, 1U);
     PP_CHECK_EQUAL(lines->count, 1U);
     PP_CHECK_EQUAL(lines->length[0], PP_GUEST_LINE_MAX);

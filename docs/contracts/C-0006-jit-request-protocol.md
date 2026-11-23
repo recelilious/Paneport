@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.0 |
-| Date | 2026-10-28 |
+| Version | 1.1 |
+| Date | 2026-11-23 |
 | Owner | recelilious |
 
 This contract defines how Paneport obtains executable memory for the x86 translator on iPhone 17 and 18 class devices running iOS 26 or 27. The facts behind it are collected in [ios_platform_constraints.md](../research/ios_platform_constraints.md) and [process_and_memory_model.md](../research/process_and_memory_model.md).
@@ -16,7 +16,7 @@ This contract defines how Paneport obtains executable memory for the x86 transla
 - The convention is documented in `INTEGRATION.md` of StikDebug/StikJIT, an MPL-2.0 repository (<https://github.com/StikDebug/StikJIT/blob/main/INTEGRATION.md>, checked 2026-10-28). The app executes `brk #0xf00d` with a command in register `x16` and arguments in `x0` and `x1`:
   - command 1, `JIT26PrepareRegion` (`x0` = address, `x1` = length), returns the prepared region in `x0`;
   - command 0, `JIT26Detach`, makes the debugger detach.
-- StikDebug runs the script chosen for an app, either the shared `universal.js` or the app's own script. An app can pass its own script, base64-encoded, in the `script-data` parameter of the `stikdebug://enable-jit` URL.
+- StikDebug runs the script that the app's request names. Its built-in script, `universal.js`, handles the convention above, and `INTEGRATION.md` recommends it for an app that implements the convention. An app names it in the `script-name` parameter of the `stikdebug://enable-jit` URL, or passes a script of its own, base64-encoded, in the `script-data` parameter. The URL also carries the app's bundle identifier (`bundle-id`), with which StikDebug returns to the app, and its process identifier (`pid`), with which StikDebug finds the process.
 - One project found that a region the app had mapped itself never became executable, so Paneport always requests regions with a NULL address hint and lets the debugger allocate them. The region comes back executable and not writable, and the app builds a writable alias of it with `vm_remap` and `vm_protect`.
 - Executing `brk #0xf00d` when the broker script is not attached crashes the process. A debugger without the script, such as Xcode's, does not handle it.
 - Authorization is reported to last for the life of the process after the debugger detaches; one project reports the opposite, and nobody has tested what happens when the app goes to the background. The phase 1 gate checks both on a device (C-0012). After every full relaunch, authorization starts again.
@@ -27,12 +27,12 @@ This contract defines how Paneport obtains executable memory for the x86 transla
 | Role | Who | Notes |
 |---|---|---|
 | Enabler | StikDebug, a separate app under AGPL-3.0 | Paneport uses only the convention and the URL scheme described in StikJIT's `INTEGRATION.md`, and never links, embeds or copies StikDebug code. C-0003 section 9 allows this. |
-| Broker script | Our own script, MIT, in `src/jit-broker/` | Written from `INTEGRATION.md` only. Bundled in the app and handed to StikDebug through the URL scheme. It handles only the two commands above. |
+| Broker script | `universal.js`, the script built into StikDebug | Named in the request (section 3 step 2). Paneport does not write, bundle, copy or read it, and relies only on the behavior that `INTEGRATION.md` documents for it: it serves commands 0 and 1 as section 1 describes. |
 | App side | The native host, in `src/native/host/jit/` | Requests, maps and verifies the code pool, hands it to the translator, and reports its state through C-0005. |
 
-If the broker script needs parts of StikDebug's script interface that `INTEGRATION.md` does not document, recelilious decides before the script is written, because those parts may be documented only in StikDebug's source. The published research summarizes StikDebug's scripts; that summary may be used only for observable behavior, never as a code outline.
+`INTEGRATION.md` documents the app's side of the convention and the URL, but not the interface that a script uses, which may be documented only in StikDebug's source, so recelilious decided on 2026-11-23 that Paneport names StikDebug's built-in script instead of writing one. The published research summarizes StikDebug's scripts; that summary may be used only for observable behavior, never as a code outline.
 
-No code from StikDebug, its bundled or community scripts (such as `universal.js`), or any other product's JIT script or helper (for example Madeira's, iCube's, Play!'s, LiveContainer's or UTM's) is copied, translated or rewritten into the broker script or the host (C-0001 section 6). An in-app enabler built on idevice (MIT) would replace StikDebug later; that needs a change to this contract and to C-0004 section 1.
+No code from StikDebug, its bundled or community scripts (such as `universal.js`), or any other product's JIT script or helper (for example Madeira's, iCube's, Play!'s, LiveContainer's or UTM's) is copied, translated or rewritten into the host or any other part of Paneport (C-0001 section 6). An in-app enabler built on idevice (MIT) would replace StikDebug later; that needs a change to this contract and to C-0004 section 1.
 
 ## 3. Sequence
 
@@ -41,7 +41,7 @@ The pool is requested after the user has chosen a game, because each process run
 1. **Know the debugger state.** The host reads two things and reads them again whenever the app returns to the foreground:
    - "debugged since launch", from the code-signing status flag `CS_DEBUGGED`, which XNU never clears once set;
    - "debugger attached now", from the process's traced flag `P_TRACED`, read with `sysctl`.
-2. **Ask for JIT.** When the user starts a game, the app opens StikDebug with `stikdebug://enable-jit`, passing Paneport's broker script. The host treats an attached debugger as the broker only if this launch opened that URL and `P_TRACED` became set afterwards. Any other debugger, such as Xcode's, is foreign: the state stays `not_debugged` and the host never executes `brk #0xf00d`. No Wine session can start before the state is `ready`.
+2. **Ask for JIT.** When the user starts a game, the app opens StikDebug with `stikdebug://enable-jit`, naming StikDebug's built-in script `universal.js` and passing the app's bundle identifier and process identifier (section 1). The Trusted Execution Monitor is active on every target device, so the request always names the script. The host treats an attached debugger as the broker only if this launch opened that URL and `P_TRACED` became set afterwards. Any other debugger, such as Xcode's, is foreign: the state stays `not_debugged` and the host never executes `brk #0xf00d`. No Wine session can start before the state is `ready`.
 3. **Request the pool.** When the broker attaches, the state becomes `debugger_attached` and .NET receives a state-change event. .NET then calls `pp_jit_request_pool` with the size from section 4, and the state becomes `requesting`. The host executes `brk #0xf00d`, for commands 1 and 0, only in the `requesting` state and only while a debugger is attached now. It sends command 1 with a NULL address for each region until the pool is complete.
 4. **Map it.** For every region the host keeps the executable view and creates a writable alias. The translator writes code only through the alias and runs it only through the executable view, so no mapping is ever both writable and executable.
 5. **Detach.** The host sends command 0, and the broker script detaches the debugger. When command 0 returns, the state becomes `waiting_detach`, and the host waits until `P_TRACED` is clear.
@@ -88,26 +88,8 @@ Leaving `failed` always needs a relaunch.
 
 ## 7. Safety
 
-- The broker script handles only commands 0 and 1, only for Paneport's own process, and performs no other operation.
+- The app sends only commands 0 and 1, only in the `requesting` state and only while a debugger is attached now (section 3). The script that serves them is StikDebug's: Paneport does not write, review or ship it, so it cannot guarantee that the script performs no other operation or that it acts only on Paneport's process. It relies on the behavior that `INTEGRATION.md` documents for the script, and the device acceptance checks the result (C-0012). A StikDebug update can change the script, so every evidence record names StikDebug's version (C-0012 section 4).
 - Pairing files are never committed (C-0002 section 6).
-
-## Proposed changes for 1.1
-
-**Not yet accepted.** Version 1.0 above stays binding until recelilious approves these changes, which are accepted together with C-0003 1.9, C-0004 1.2, C-0009 1.3 and C-0010 1.2. They come from stage M3.1. StikJIT's `INTEGRATION.md`, the only source that section 2 allows for the broker script, documents the app's side of the convention and the URL, but not the interface that a script uses, which may be documented only in StikDebug's source. recelilious decided on 2026-11-23 that Paneport names StikDebug's built-in script `universal.js` in its request and writes no script of its own.
-
-1. **Section 1, the fourth item.** Replace "StikDebug runs the script chosen for an app, either the shared `universal.js` or the app's own script. An app can pass its own script, base64-encoded, in the `script-data` parameter of the `stikdebug://enable-jit` URL." with "StikDebug runs the script that the app's request names. Its built-in script, `universal.js`, handles the convention above, and `INTEGRATION.md` recommends it for an app that implements the convention. An app names it in the `script-name` parameter of the `stikdebug://enable-jit` URL, or passes a script of its own, base64-encoded, in the `script-data` parameter. The URL also carries the app's bundle identifier (`bundle-id`), with which StikDebug returns to the app, and its process identifier (`pid`), with which StikDebug finds the process."
-
-2. **Section 2, the row of the broker script.** Replace "| Broker script | Our own script, MIT, in `src/jit-broker/` | Written from `INTEGRATION.md` only. Bundled in the app and handed to StikDebug through the URL scheme. It handles only the two commands above. |" with "| Broker script | `universal.js`, the script built into StikDebug | Named in the request (section 3 step 2). Paneport does not write, bundle, copy or read it, and relies only on the behavior that `INTEGRATION.md` documents for it: it serves commands 0 and 1 as section 1 describes. |"
-
-3. **Section 2, the paragraph after the table.** Replace "If the broker script needs parts of StikDebug's script interface that `INTEGRATION.md` does not document, recelilious decides before the script is written, because those parts may be documented only in StikDebug's source." with "`INTEGRATION.md` documents the app's side of the convention and the URL, but not the interface that a script uses, which may be documented only in StikDebug's source, so recelilious decided on 2026-11-23 that Paneport names StikDebug's built-in script instead of writing one." The sentences about the published research stay.
-
-4. **Section 2, the last paragraph.** Replace "is copied, translated or rewritten into the broker script or the host (C-0001 section 6)" with "is copied, translated or rewritten into the host or any other part of Paneport (C-0001 section 6)".
-
-5. **Section 3, step 2.** Replace "the app opens StikDebug with `stikdebug://enable-jit`, passing Paneport's broker script." with "the app opens StikDebug with `stikdebug://enable-jit`, naming StikDebug's built-in script `universal.js` and passing the app's bundle identifier and process identifier (section 1). The Trusted Execution Monitor is active on every target device, so the request always names the script."
-
-6. **Section 7, the first item.** Replace "The broker script handles only commands 0 and 1, only for Paneport's own process, and performs no other operation." with "The app sends only commands 0 and 1, only in the `requesting` state and only while a debugger is attached now (section 3). The script that serves them is StikDebug's: Paneport does not write, review or ship it, so it cannot guarantee that the script performs no other operation or that it acts only on Paneport's process. It relies on the behavior that `INTEGRATION.md` documents for the script, and the device acceptance checks the result (C-0012). A StikDebug update can change the script, so every evidence record names StikDebug's version (C-0012 section 4)."
-
-7. **Change log.** On acceptance, add a row for 1.1, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0003 1.9, C-0004 1.2, C-0009 1.3 and C-0010 1.2. Comes from stage M3.1: StikJIT's `INTEGRATION.md` documents the app's side of the convention and the URL, but not the interface that a broker script uses, and recelilious decided on 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its request and writes no script of its own. Sections 1, 2 and 3 say so, and section 7 states what Paneport no longer guarantees about the script."
 
 ## Change log
 
@@ -115,3 +97,4 @@ Leaving `failed` always needs a relaunch.
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious |
+| 1.1 | 2026-11-23 | Accepted by recelilious, together with C-0003 1.9, C-0004 1.2, C-0009 1.3 and C-0010 1.2. Comes from stage M3.1: StikJIT's `INTEGRATION.md` documents the app's side of the convention and the URL, but not the interface that a broker script uses, and recelilious decided on 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its request and writes no script of its own. Sections 1, 2 and 3 say so, and section 7 states what Paneport no longer guarantees about the script. |

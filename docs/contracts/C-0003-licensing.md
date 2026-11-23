@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.8 |
+| Version | 1.9 |
 | Date | 2026-11-23 |
 | Owner | recelilious |
 
@@ -170,7 +170,7 @@ FEX-darwin's macOS support rests on five patches imported from Hadron, a Mac app
 
 ## 9. Boundary with AGPL programs
 
-StikDebug is a separate app under AGPL-3.0. Paneport cooperates with it only through the JIT request convention and the URL scheme documented in `INTEGRATION.md` of StikDebug/StikJIT (MPL-2.0), using a broker script that Paneport writes itself (C-0006). Paneport never links, embeds or copies StikDebug's code or scripts, and nobody writing Paneport's side reads their source.
+StikDebug is a separate app under AGPL-3.0. Paneport cooperates with it only through the JIT request convention and the URL scheme documented in `INTEGRATION.md` of StikDebug/StikJIT (MPL-2.0), naming StikDebug's own built-in script, `universal.js`, in that URL (C-0006). Naming the script links, embeds and copies nothing: StikDebug runs its own script in its own app. Paneport never links, embeds or copies StikDebug's code or scripts, and nobody writing Paneport's side reads their source.
 
 If the app ever enables JIT by itself, that code will be our own, built on the MIT-licensed idevice.
 
@@ -257,14 +257,6 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - LGPL-2.1, whose section 0 defines a library's complete source: <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html>
 - SteamKit2's NetHook2 headers at 4.0.0-Beta.2: <https://github.com/SteamRE/SteamKit/tree/4.0.0-Beta.2/Resources/NetHook2/NetHook2/steam>
 
-## Proposed changes for 1.9
-
-**Not yet accepted.** Version 1.8 above stays binding until recelilious approves these changes, which are accepted together with C-0004 1.2, C-0006 1.1, C-0009 1.3 and C-0010 1.2. They come from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in script `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1, section 2).
-
-1. **Section 9, the first paragraph.** Replace "using a broker script that Paneport writes itself (C-0006). Paneport never links, embeds or copies StikDebug's code or scripts, and nobody writing Paneport's side reads their source." with "naming StikDebug's own built-in script, `universal.js`, in that URL (C-0006). Naming the script links, embeds and copies nothing: StikDebug runs its own script in its own app. Paneport never links, embeds or copies StikDebug's code or scripts, and nobody writing Paneport's side reads their source."
-
-2. **Change log.** On acceptance, add a row for 1.9, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0004 1.2, C-0006 1.1, C-0009 1.3 and C-0010 1.2. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 9 says that Paneport names StikDebug's script in the URL, which links, embeds and copies nothing."
-
 ## Change log
 
 | Version | Date | Notes |
@@ -279,3 +271,4 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 | 1.6 | 2026-11-17 | Accepted by recelilious, together with C-0010 1.1. Comes from stage M4.2, which caches the builds of the forks in its `runtime` CI job and makes the first changes to files of the Wine fork, and from recelilious's decisions of 2026-11-15, confirmed on 2026-11-17, on FEX-darwin, Hadron and Arknights-MacOS-Runtime. Section 6 registers actions/cache. Section 4 asks for the notice in a file under the LGPL that we change in any fork as well, with the date of each change, and points to C-0010 section 4 for how it is marked. FEX-darwin's row moves from section 6 to the reference-only list of section 7, which now also covers projects whose code comes from an existing product, gains rows for Hadron and Arknights-MacOS-Runtime, and records that Paneport takes no code from the three. |
 | 1.7 | 2026-11-21 | Accepted by recelilious. Comes from stage M2.3, which builds the Steam service on SteamKit2, and from recelilious's decision D13 of 2026-11-21 on how the sign-in QR code is drawn. Section 6 registers ZstdSharp (ZstdSharp.Port), whose ported Zstandard code is used under BSD-3-Clause with Zstandard's notice kept, and the QR code generator Net.Codecrete.QrCodeGenerator, which keeps Project Nayuki's notice beside its own; the row of protobuf-net names protobuf-net.Core and the build-time code generator and analyzers of its package, and the row of SteamKit2 records the part of the LZMA SDK that it carries, which is in the public domain. Section 12 adds the sources of these licenses. |
 | 1.8 | 2026-11-23 | Accepted by recelilious, together with C-0009 1.2. Comes from stage M2.3 and from recelilious's decision of 2026-11-22 on how the app offers the source of SteamKit2. Section 3 has each release and the public artifacts of the `ios` CI job carry the exact corresponding source of every LGPL component that is neither this repository nor a fork, today SteamKit2: the library's complete source as LGPL-2.1 section 0 defines it, without the upstream's other programs, samples and tests. Section 12 adds two sources: the text of LGPL-2.1 and the headers of SteamKit2's NetHook2 tool. |
+| 1.9 | 2026-11-23 | Accepted by recelilious, together with C-0004 1.2, C-0006 1.1, C-0009 1.3 and C-0010 1.2. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 9 says that Paneport names StikDebug's script in the URL, which links, embeds and copies nothing. |

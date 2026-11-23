@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.2 |
+| Version | 1.3 |
 | Date | 2026-11-23 |
 | Owner | recelilious |
 
@@ -59,7 +59,6 @@ Development builds may come from a local Mac. Release builds always come from th
 | `Frameworks/` | The native host and the Mach-O sides of the Wine and DXMT forks, as dynamic frameworks that a user can replace (C-0003 section 3). |
 | `wine/aarch64-windows/`, `wine/arm64ec-windows/`, `wine/i386-windows/` | The PE modules of Wine, FEX and DXMT, as plain files that Wine's loader maps. A user can replace them in the same way. |
 | `dockhost/` | The Dock host. |
-| `jit-broker/` | The JIT broker script (C-0006). |
 | `compat/` | The snapshot of the compatibility database (C-0008). |
 
 - Every embedded framework is signed with the same identity as the app.
@@ -110,14 +109,6 @@ The bundle identifier is chosen by recelilious.
 - The `ios` CI job uploads the same archives as artifacts of the run that builds the apps, kept as long as the apps, so that every build of the app that CI makes public offers the source of these components from the same place.
 - Release acceptance follows C-0012 section 5.
 
-## Proposed changes for 1.3
-
-**Not yet accepted.** Version 1.2 above stays binding until recelilious approves these changes, which are accepted together with C-0003 1.9, C-0004 1.2, C-0006 1.1 and C-0010 1.2. They come from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in script `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1, section 2).
-
-1. **Section 4, the table of the app bundle.** Remove the row "| `jit-broker/` | The JIT broker script (C-0006). |". The app bundles no script: its request names the one that StikDebug carries (C-0006 1.1, section 3 step 2).
-
-2. **Change log.** On acceptance, add a row for 1.3, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0003 1.9, C-0004 1.2, C-0006 1.1 and C-0010 1.2. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 4 drops `jit-broker/` from the app bundle."
-
 ## Change log
 
 | Version | Date | Notes |
@@ -126,3 +117,4 @@ The bundle identifier is chosen by recelilious.
 | 1.0 | 2026-10-28 | Accepted by recelilious |
 | 1.1 | 2026-10-31 | Accepted by recelilious. Section 2 pins the iOS workload set in `eng/toolchain.json` instead of `global.json`, because `sdk.workloadVersion` in `global.json` makes every build fail on a machine without that workload set, even for projects that use no workload, as stage M1.1 found. |
 | 1.2 | 2026-11-23 | Accepted by recelilious, together with C-0003 1.8. Comes from stage M2.3 and from recelilious's decision of 2026-11-22 on how the app offers the source of SteamKit2. Section 6 adds to each release an archive of the exact corresponding source of every LGPL component that is neither this repository nor a fork, which CI makes itself with `git archive` at the commit that the build used, for a package the commit of the upstream's release tag, pinned in the repository and checked against the commit that the package names. The `ios` CI job uploads the same archives beside its apps. |
+| 1.3 | 2026-11-23 | Accepted by recelilious, together with C-0003 1.9, C-0004 1.2, C-0006 1.1 and C-0010 1.2. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 4 drops `jit-broker/` from the app bundle. |

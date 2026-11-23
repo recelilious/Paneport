@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.1 |
-| Date | 2026-11-17 |
+| Version | 1.2 |
+| Date | 2026-11-23 |
 | Owner | recelilious |
 
 This contract fixes how Paneport is split into components, who owns what at run time, and where every kind of file lives, both in the repository and on the device. Later contracts refine the individual interfaces. The reasoning behind these choices is in [the roadmap](../research/roadmap-2026-10.md).
@@ -41,7 +41,6 @@ This contract fixes how Paneport is split into components, who owns what at run 
 | Paneport.Desktop | C# | MIT | `src/Paneport.Desktop` | An Avalonia desktop head with a fake host, for working on the UI from Windows. Never shipped. It never writes a Steam sign-in token to disk. |
 | Native host | C17, Objective-C | MIT | `src/native/host` | Process-wide setup, the single signal dispatcher, the JIT code pool (C-0006), the memory and thermal governor, Wine session and pseudo-process control, display and input bridging, logging. |
 | Host interface headers | C17 | MIT | `src/native/include/paneport` | The public C headers of the host interface and the Wine bridge (C-0005). |
-| JIT broker script | JavaScript | MIT | `src/jit-broker` | The script StikDebug runs to authorize Paneport's code pool (C-0006). Bundled in the app. |
 | Dock host | C17 | MIT | `src/guest/dockhost` | The headless host for Valve's Steam client library inside the Wine session (C-0007). A Windows x86-64 program built with llvm-mingw. |
 | Wine fork | C, Objective-C | LGPL-2.1-or-later | `external/Paneport-wine` | Single-process wineserver, pseudo-processes, the iOS display and input driver, RemoteIO audio, Darwin and iOS fixes. |
 | FEX fork | C++ | MIT | `external/Paneport-FEX` | The ARM64EC and WoW64 emulation modules, with iOS host hooks. |
@@ -84,7 +83,6 @@ Paneport/
 │   ├── native/
 │   │   ├── include/paneport/
 │   │   └── host/
-│   ├── jit-broker/
 │   └── guest/
 │       └── dockhost/
 ├── tests/
@@ -160,16 +158,6 @@ All paths are inside the app container.
 
 **Open item for recelilious.** Save files inside the prefixes are not backed up. Until cloud saves work (C-0007 section 7), the app tells the user so and offers to export a prefix's user folder to `Documents/`. Whether that is enough is recelilious's decision.
 
-## Proposed changes for 1.2
-
-**Not yet accepted.** Version 1.1 above stays binding until recelilious approves these changes, which are accepted together with C-0003 1.9, C-0006 1.1, C-0009 1.3 and C-0010 1.2. They come from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in script `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1, section 2).
-
-1. **Section 2, the components table.** Remove the row "| JIT broker script | JavaScript | MIT | `src/jit-broker` | The script StikDebug runs to authorize Paneport's code pool (C-0006). Bundled in the app. |".
-
-2. **Section 3, the tree.** Remove the line `│   ├── jit-broker/` under `src/`.
-
-3. **Change log.** On acceptance, add a row for 1.2, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0003 1.9, C-0006 1.1, C-0009 1.3 and C-0010 1.2. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 2 drops the JIT broker script component, and section 3 drops `src/jit-broker/` from the tree."
-
 ## Change log
 
 | Version | Date | Notes |
@@ -177,3 +165,4 @@ All paths are inside the app container.
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious |
 | 1.1 | 2026-11-17 | Accepted by recelilious. Comes from stage M4.2, which adds the runtime harness in `tests/runtime/` and the Win32 test programs of our own in `tests/win32/` that it runs. Section 3 lists both in the tree, together with `Paneport.TrimTest/` and `Shared/`, which existed already, so that the tree shows every folder of `tests/`, and the row of `tests/` says what the new folders hold. Section 2 does not change: the harness and the test programs are tests, not components of the main app. |
+| 1.2 | 2026-11-23 | Accepted by recelilious, together with C-0003 1.9, C-0006 1.1, C-0009 1.3 and C-0010 1.2. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 2 drops the JIT broker script component, and section 3 drops `src/jit-broker/` from the tree. |

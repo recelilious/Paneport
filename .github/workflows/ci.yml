@@ -186,11 +186,29 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/ScanPersonalData.cs
 
+      # lychee 0.24.2 retries a timeout, a lost connection or a 429, but not a server error
+      # (5xx), and github.com answers some of its requests with 503 for a while. Its cache,
+      # .lycheecache, keeps the links that passed and never a failure, so after a run in which
+      # links failed (exit code 2), the step checks the failed links again, after 30 and then
+      # 60 seconds. A link fails the step only if it failed every run. lychee sends the token only
+      # to the GitHub API (docs/design/repository-checks.md section 6).
       - name: Check links in Markdown, outside the research notes (lychee)
         if: ${{ !cancelled() }}
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: lychee --config eng/lychee.toml --no-progress .
+        run: |
+          status=0
+          lychee --config eng/lychee.toml --no-progress --cache . || status=$?
+          for pause in 30 60; do
+            [ "$status" -eq 2 ] || break
+            echo "::notice title=lychee::Links failed. lychee checks them again in $pause seconds."
+            sleep "$pause"
+            status=0
+            lychee --config eng/lychee.toml --no-progress --cache . || status=$?
+          done
+          rm -f .lycheecache
+          exit "$status"
 
       # The research notes' external sources are not checked (eng/lychee.toml says why).
       - name: Check the relative links of the research notes (lychee, offline)

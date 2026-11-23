@@ -89,8 +89,9 @@ public sealed class CompatDatabaseTests
     [Fact]
     public async Task EveryFileInCompatTitlesLoads()
     {
-        // The repository's own entries pass the loader's checks in the dotnet job until M8.3 checks
-        // them against the schema as well. The README proves that the copy of the folder is in place.
+        // The repository's own entries pass the loader's checks in the dotnet job, and the checks job
+        // checks them against the schema as well (tools/CheckCompat.cs). The README proves that the
+        // copy of the folder is in place.
         var folder = CompatTestFiles.Repository("compat", "titles");
         Assert.True(File.Exists(Path.Combine(folder, "README.md")));
 

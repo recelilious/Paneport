@@ -27,12 +27,12 @@ Back to the [development plan](../development-plan.md).
 | S8.2.5 | Cache cleanup | Small | Planned | | |
 | S8.2.6 | Steam service coordination | Small | Planned | | |
 | S8.2.7 | CEG preparation | Small | Planned | | |
-| M8.3 | Compatibility checks and reports | Medium | Planned | | |
-| S8.3.1 | Validator | Small | Planned | | |
-| S8.3.2 | Rule checks | Small | Planned | | |
-| S8.3.3 | Rating computation | Small | Planned | | |
-| S8.3.4 | Failing fixtures | Small | Planned | | |
-| S8.3.5 | First entries | Small | Planned | | |
+| M8.3 | Compatibility checks and reports | Medium | In progress | `feat/m8-3-compatibility-checks` | 2026-11-23 |
+| S8.3.1 | Validator | Small | In progress | `feat/m8-3-compatibility-checks` | 2026-11-23 |
+| S8.3.2 | Rule checks | Small | In progress | `feat/m8-3-compatibility-checks` | 2026-11-23 |
+| S8.3.3 | Rating computation | Small | In progress | `feat/m8-3-compatibility-checks` | 2026-11-23 |
+| S8.3.4 | Failing fixtures | Small | In progress | `feat/m8-3-compatibility-checks` | 2026-11-23 |
+| S8.3.5 | First entries | Small | In progress | `feat/m8-3-compatibility-checks` | 2026-11-23 |
 | M8.4 | AAA performance and launcher-service titles | Medium | Planned | | |
 | S8.4.1 | MetalFX spatial upscaling and render scale | Small | Planned | | |
 | S8.4.2 | Frame rate cap | Small | Planned | | |
@@ -79,6 +79,10 @@ Back to the [development plan](../development-plan.md).
 |---|---|---|---|
 | S8.0.1 | Dock session launch wiring | `src/Paneport.Core`, `src/Paneport.UI`, `src/native/host` | Logic and UI tests: a `dock` title starts a session that launches the Dock host first; a `direct` title still takes the direct path (C-0007 section 5) |
 | S8.0.2 | L8 evidence template and gate update | `docs/evidence/` | Review checklist: the template carries every C-0012 section 4 field and the "never record" list, and the phase 4 row in `docs/evidence/README.md` is updated |
+
+**Notes from earlier stages.**
+
+- M8.3 (session log of 2026-11-23): the first title entries come with M6.6 and S7.0.3 rather than with M8.3, because no title had been tested on the device yet. The entries of the D6 titles that the gate uses pass `tools/CheckCompat.cs` in the `checks` job: a report names the gate's evidence record in the same change, and the rating counts only the reports of a release tag on a target device (`compat-db.md` sections 2.2 and 8.1).
 
 **Session log.**
 

@@ -3,6 +3,8 @@
 
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input.TextInput;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Net.Codecrete.QrCodeGenerator;
@@ -23,6 +25,8 @@ public sealed class SteamGatePageTests
     private const string Password = "pw-typed-into-the-box";
     private const string FirstChallenge = "https://example.invalid/q/first-challenge";
     private const string SecondChallenge = "https://example.invalid/q/second-challenge";
+    private const string Code = "R7K2Q";
+    private const string TokenKept = "in the keychain";
 
     [AvaloniaFact]
     public async Task ShowsEveryStateOfTheGateAndNoSecret()
@@ -31,7 +35,7 @@ public sealed class SteamGatePageTests
         var fakes = new FakeServices();
         var steps = new FakeSteamGateSteps();
         var dispatcher = new FakeUiDispatcher();
-        var page = new SteamGateViewModel(fakes.Steam, steps, fakes.Build, fakes.Memory, dispatcher, fakes.Log);
+        var page = new SteamGateViewModel(fakes.Steam, steps, TokenKept, fakes.Build, fakes.Memory, dispatcher, fakes.Log);
         var (window, view) = await ShowAsync(fakes, page, dispatcher);
 
         // Step 16: the build, signed out, no token stored.
@@ -40,10 +44,13 @@ public sealed class SteamGatePageTests
         Settle(window, dispatcher);
         Assert.Equal("Signed out", Text(view, "Session"));
         Assert.Equal("no", Text(view, "TokenStored"));
+        Assert.Equal(TokenKept, Text(view, "TokenKept"));
 
         // Step 17: sign in by approval; the password box empties at once.
         view.FindControl<TextBox>("AccountName")!.Text = "sample-name";
         view.FindControl<TextBox>("Password")!.Text = Password;
+        Settle(window, dispatcher);
+        AssertShowsNoSecret(view);
         var signIn = page.SignInCommand.ExecuteAsync(null);
         Settle(window, dispatcher);
         Assert.Equal(string.Empty, view.FindControl<TextBox>("Password")!.Text);
@@ -53,6 +60,7 @@ public sealed class SteamGatePageTests
         Assert.Equal("Approve the sign-in in the Steam mobile app, then come back.", Text(view, "SignInStage"));
         Assert.True(view.FindControl<Button>("UseCodeInstead")!.IsEffectivelyVisible);
         Assert.True(view.FindControl<Button>("CancelSignIn")!.IsEffectivelyVisible);
+        AssertShowsNoSecret(view);
         attempt.End(new SignInResult(SignInOutcome.LoggedOn, TimeSpan.FromSeconds(14.2), TimeSpan.FromSeconds(9.8), null));
         await signIn;
         fakes.Steam.Status = new SteamSessionStatus(SteamSessionState.LoggedOn, true, SteamTransport.WebSocket, null);
@@ -77,7 +85,10 @@ public sealed class SteamGatePageTests
         Settle(window, dispatcher);
         Assert.Equal("Enter the Steam Guard code from the Steam mobile app.", Text(view, "SignInStage"));
         Assert.True(view.FindControl<TextBox>("Code")!.IsEffectivelyVisible);
-        view.FindControl<TextBox>("Code")!.Text = "R7K2Q";
+        AssertShowsNoSecret(view);
+        view.FindControl<TextBox>("Code")!.Text = Code;
+        Settle(window, dispatcher);
+        AssertShowsNoSecret(view);
         page.SubmitCodeCommand.Execute(null);
         Settle(window, dispatcher);
         Assert.Equal(string.Empty, view.FindControl<TextBox>("Code")!.Text);
@@ -93,12 +104,13 @@ public sealed class SteamGatePageTests
         Settle(window, dispatcher);
         var qr = view.FindControl<QrCodeView>("QrCode")!;
         Assert.True(qr.IsEffectivelyVisible);
-        Assert.True(qr.ModuleCount > 0);
-        var drawings = qr.Encodings;
+        Assert.Equal(DarkModules(FirstChallenge), DrawnModules(qr));
+        AssertShowsNoSecret(view);
         attempt.Show(new SignInProgress(SignInStage.ShowingQrCode, QrChallenge: SecondChallenge, QrRevision: 1));
         Settle(window, dispatcher);
-        Assert.Equal(drawings + 1, qr.Encodings);
         Assert.Equal(SecondChallenge, qr.Text);
+        Assert.Equal(DarkModules(SecondChallenge), DrawnModules(qr));
+        AssertShowsNoSecret(view);
         attempt.End(new SignInResult(SignInOutcome.LoggedOn, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(18), null));
         await signIn;
         Settle(window, dispatcher);
@@ -125,11 +137,16 @@ public sealed class SteamGatePageTests
         // Step 27: the summary, with the permission prompt the tester saw.
         view.FindControl<CheckBox>("PermissionPrompt")!.IsChecked = true;
         Settle(window, dispatcher);
-        var summary = view.FindControl<SelectableTextBlock>("Summary")!.Text!;
-        foreach (var line in new[] { "Sign-in with an approval", "Sign-in with a code", "Sign-in with a QR code", "Licenses: 42", "Manifest: 12 files", "Chunks: 10 verified", "transport: WebSocket", "System permission prompt seen: yes" })
+        var summaryBlock = view.FindControl<SelectableTextBlock>("Summary")!;
+        var summary = summaryBlock.Text!;
+        foreach (var line in new[] { "Sign-in with an approval", "Sign-in with a code", "Sign-in with a QR code", "Licenses: 42", "Manifest: 12 files", "Chunks: 10 verified", $"kept: {TokenKept}", "transport: WebSocket", "System permission prompt seen: yes" })
         {
             Assert.Contains(line, summary, StringComparison.Ordinal);
         }
+
+        // The summary uses the timeline style, monospace, like the Diagnostics timeline.
+        Assert.Equal("monospace", summaryBlock.FontFamily.Name);
+        Assert.Equal(12, summaryBlock.FontSize);
 
         // Step 28: delete the test data, then sign out.
         await page.DeleteTestDataCommand.ExecuteAsync(null);
@@ -138,11 +155,34 @@ public sealed class SteamGatePageTests
         Assert.Equal("The test data was deleted.", Text(view, "ChunksResult"));
         Assert.Equal("no", Text(view, "TokenStored"));
 
-        // No text of the page ever held the password or a challenge.
-        var all = string.Join('\n', Texts(view)) + '\n' + summary;
-        Assert.DoesNotContain(Password, all, StringComparison.Ordinal);
-        Assert.DoesNotContain("example.invalid", all, StringComparison.Ordinal);
+        // At the end, too, no text of the page holds the password, the code or a challenge.
+        AssertShowsNoSecret(view);
         Assert.DoesNotContain(fakes.Log.Lines, line => line.Message.Contains(Password, StringComparison.Ordinal));
+        Assert.Empty(warnings.Entries);
+        window.Close();
+    }
+
+    // The keyboard takes its options from the focused box, and Avalonia.iOS makes a secure text
+    // field only for the Password content type or a sensitive box: PasswordChar masks only what the
+    // box draws. A secure field neither suggests, learns nor changes what is typed, and iOS allows
+    // no third-party keyboard in it. Suggestions stay off in the other two boxes too.
+    [AvaloniaFact]
+    public async Task TheSignInBoxesAskForASecureKeyboardWithoutSuggestions()
+    {
+        using var warnings = AvaloniaWarnings.Record();
+        var fakes = new FakeServices();
+        var dispatcher = new FakeUiDispatcher();
+        var page = new SteamGateViewModel(fakes.Steam, new FakeSteamGateSteps(), TokenKept, fakes.Build, fakes.Memory, dispatcher, fakes.Log);
+        var (window, view) = await ShowAsync(fakes, page, dispatcher);
+
+        var password = view.FindControl<TextBox>("Password")!;
+        Assert.Equal(TextInputContentType.Password, TextInputOptions.GetContentType(password));
+        Assert.True(TextInputOptions.GetIsSensitive(password));
+        foreach (var name in new[] { "AccountName", "Password", "Code" })
+        {
+            Assert.False(TextInputOptions.GetShowSuggestions(view.FindControl<TextBox>(name)!));
+        }
+
         Assert.Empty(warnings.Entries);
         window.Close();
     }
@@ -168,12 +208,81 @@ public sealed class SteamGatePageTests
             }
         }
 
-        Assert.Equal(1, view.Encodings);
+        // What the control draws is the code of its latest text. That a frame is drawn again when
+        // the text changes (AffectsRender) would need a frame rendered with Skia; headless drawing
+        // renders none.
+        Assert.Equal(DarkModules(FirstChallenge), DrawnModules(view));
+        view.Text = SecondChallenge;
+        window.UpdateLayout();
+        Assert.Equal(DarkModules(SecondChallenge), DrawnModules(view));
         view.Text = null;
         Assert.Equal(0, view.ModuleCount);
-        Assert.Equal(2, view.Encodings);
+        Assert.Empty(DrawnModules(view));
         Assert.Empty(warnings.Entries);
         window.Close();
+    }
+
+    // The dark modules of a text's QR code, by column and row.
+    private static HashSet<(int X, int Y)> DarkModules(string text)
+    {
+        var code = QrCode.EncodeText(text, QrCode.Ecc.Medium);
+        var modules = new HashSet<(int X, int Y)>();
+        for (var y = 0; y < code.Size; y++)
+        {
+            for (var x = 0; x < code.Size; x++)
+            {
+                if (code.GetModule(x, y))
+                {
+                    modules.Add((x, y));
+                }
+            }
+        }
+
+        return modules;
+    }
+
+    // Draws the control into a drawing group, as a frame would, and returns the modules that it
+    // filled black, by column and row inside the quiet zone. The first drawing is the white square
+    // of the code with its quiet zone.
+    private static HashSet<(int X, int Y)> DrawnModules(QrCodeView view)
+    {
+        var group = new DrawingGroup();
+        using (var context = group.Open())
+        {
+            view.Render(context);
+        }
+
+        var drawings = group.Children.OfType<GeometryDrawing>().ToList();
+        var modules = new HashSet<(int X, int Y)>();
+        if (drawings.Count == 0)
+        {
+            return modules;
+        }
+
+        Assert.Equal(Colors.White, Assert.IsAssignableFrom<ISolidColorBrush>(drawings[0].Brush).Color);
+        var square = drawings[0].Geometry!.Bounds;
+        var size = square.Width / (view.ModuleCount + (2 * QrCodeView.QuietZone));
+        foreach (var drawing in drawings.Skip(1))
+        {
+            Assert.Equal(Colors.Black, Assert.IsAssignableFrom<ISolidColorBrush>(drawing.Brush).Color);
+            var module = drawing.Geometry!.Bounds;
+            Assert.Equal(size, module.Width);
+            Assert.True(modules.Add((
+                (int)Math.Round((module.X - square.X) / size) - QrCodeView.QuietZone,
+                (int)Math.Round((module.Y - square.Y) / size) - QrCodeView.QuietZone)));
+        }
+
+        return modules;
+    }
+
+    // No text that the page shows holds the password, the code or a QR challenge. The page test
+    // checks this at every stage where one of them exists, not only at the end.
+    private static void AssertShowsNoSecret(SteamGatePage view)
+    {
+        var all = string.Join('\n', Texts(view));
+        Assert.DoesNotContain(Password, all, StringComparison.Ordinal);
+        Assert.DoesNotContain(Code, all, StringComparison.Ordinal);
+        Assert.DoesNotContain("example.invalid", all, StringComparison.Ordinal);
     }
 
     // Opens the page on top of the shell, as the developer menu does, which loads it and tells it

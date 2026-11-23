@@ -30,6 +30,10 @@ SPDX-License-Identifier: MIT
           <TextBlock x:Name="TokenStored" Grid.Column="1" Text="{Binding TokenStoredText}" />
         </Grid>
         <Grid Classes="row" ColumnDefinitions="Auto,*">
+          <TextBlock Classes="label" Text="Token kept" />
+          <TextBlock x:Name="TokenKept" Grid.Column="1" Text="{Binding TokenKeptText}" TextWrapping="Wrap" />
+        </Grid>
+        <Grid Classes="row" ColumnDefinitions="Auto,*">
           <TextBlock Classes="label" Text="Transport" />
           <TextBlock x:Name="Transport" Grid.Column="1" Text="{Binding TransportText}" />
         </Grid>
@@ -43,8 +47,23 @@ SPDX-License-Identifier: MIT
 
       <StackPanel Spacing="8">
         <TextBlock Classes="section" Text="Sign in" />
-        <TextBox x:Name="AccountName" PlaceholderText="Account name" Text="{Binding AccountName}" />
-        <TextBox x:Name="Password" PlaceholderText="Password" PasswordChar="*" Text="{Binding Password}" />
+        <!--
+        The keyboard takes its options from the focused box. PasswordChar only masks what the box
+        draws: the Password content type and IsSensitive make iOS use a secure text field, which
+        neither suggests, learns nor changes what is typed and allows no third-party keyboard.
+        Suggestions stay off in the other two boxes as well.
+        -->
+        <TextBox x:Name="AccountName"
+                 PlaceholderText="Account name"
+                 TextInputOptions.ShowSuggestions="False"
+                 Text="{Binding AccountName}" />
+        <TextBox x:Name="Password"
+                 PlaceholderText="Password"
+                 PasswordChar="*"
+                 TextInputOptions.ContentType="Password"
+                 TextInputOptions.IsSensitive="True"
+                 TextInputOptions.ShowSuggestions="False"
+                 Text="{Binding Password}" />
         <CheckBox x:Name="EnterCodeInstead"
                   Content="Enter a code instead of approving in the Steam mobile app"
                   IsChecked="{Binding EnterCodeInstead}" />
@@ -59,7 +78,11 @@ SPDX-License-Identifier: MIT
         <Button x:Name="UseCodeInstead" Content="Enter a code instead" Command="{Binding UseCodeInsteadCommand}"
                 IsVisible="{Binding IsWaitingForApproval}" />
         <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding IsWaitingForCode}">
-          <TextBox x:Name="Code" PlaceholderText="Code" MinWidth="160" Text="{Binding Code}" />
+          <TextBox x:Name="Code"
+                   PlaceholderText="Code"
+                   MinWidth="160"
+                   TextInputOptions.ShowSuggestions="False"
+                   Text="{Binding Code}" />
           <Button x:Name="SubmitCode" Content="Send the code" Command="{Binding SubmitCodeCommand}" />
         </StackPanel>
         <controls:QrCodeView x:Name="QrCode"

@@ -21,6 +21,9 @@ internal static class CompositionRoot
     // The name under which Steam lists the desktop run's sign-ins: fixed text, never the computer's name.
     private const string SteamDeviceName = "Paneport (desktop head)";
 
+    // Where the gate page says the saved sign-in is kept (C-0007 section 3).
+    private const string SteamTokenKept = "in memory only, for this run";
+
     public static Window CreateMainWindow()
     {
         var log = new ConsoleLog();
@@ -61,7 +64,7 @@ internal static class CompositionRoot
         SteamGateViewModel? steamGate = null;
         var shell = new ShellViewModel(
             services,
-            _ => steamGate ??= new SteamGateViewModel(steam.Service, steam.Gate, DesktopBuild, memory, new AvaloniaUiDispatcher(), log));
+            _ => steamGate ??= new SteamGateViewModel(steam.Service, steam.Gate, SteamTokenKept, DesktopBuild, memory, new AvaloniaUiDispatcher(), log));
 
         var window = new Window
         {

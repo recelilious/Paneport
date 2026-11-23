@@ -14,6 +14,7 @@ public sealed class SteamGateViewModelTests
 {
     private const string Password = "pw-not-a-real-password";
     private const string Challenge = "https://example.invalid/q/challenge-one";
+    private const string TokenKept = "in memory only, for this run";
 
     private readonly FakeServices _services = new();
     private readonly FakeSteamGateSteps _steps = new();
@@ -48,6 +49,54 @@ public sealed class SteamGateViewModelTests
 
         Assert.Equal("Logged on with the saved sign-in: total 2.5 s, waiting for you 0.0 s.", page.SignInTimesText);
         Assert.Contains("Sign-in with the saved sign-in: LoggedOn, total 2.5 s", page.Summary, StringComparison.Ordinal);
+    }
+
+    // The shell loads a page each time it shows it, and the heads keep one page per run. A second
+    // load while logged on must not record the logon that is already there as a resume of 0.0 s.
+    [Fact]
+    public async Task OpeningThePageAgainWhileLoggedOnRecordsNoNewResume()
+    {
+        _services.Steam.ResumeResult = new SignInResult(SignInOutcome.LoggedOn, TimeSpan.FromSeconds(3.2), TimeSpan.Zero, null);
+        var page = CreatePage();
+        await page.LoadAsync(Token);
+        _services.Steam.Status = new SteamSessionStatus(SteamSessionState.LoggedOn, true, SteamTransport.WebSocket, null);
+
+        // The real service answers a resume while logged on with zero times.
+        _services.Steam.ResumeResult = new SignInResult(SignInOutcome.LoggedOn, TimeSpan.Zero, TimeSpan.Zero, null);
+        await page.LoadAsync(Token);
+
+        Assert.Equal(1, _services.Steam.ResumeCalls);
+        Assert.Equal("Logged on with the saved sign-in: total 3.2 s, waiting for you 0.0 s.", page.SignInTimesText);
+        Assert.Contains("Sign-in with the saved sign-in: LoggedOn, total 3.2 s", page.Summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("total 0.0 s", page.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OpeningThePageAgainDuringASignInDoesNotResume()
+    {
+        var page = await LoadedPageAsync();
+        page.AccountName = "sample-name";
+        page.Password = Password;
+        var signIn = page.SignInCommand.ExecuteAsync(null);
+        _services.Steam.ResumeResult = new SignInResult(SignInOutcome.LoggedOn, TimeSpan.Zero, TimeSpan.Zero, null);
+
+        await page.LoadAsync(Token);
+
+        Assert.Equal(1, _services.Steam.ResumeCalls);
+        _services.Steam.LastAttempt!.End(new SignInResult(SignInOutcome.Cancelled, TimeSpan.FromSeconds(1), TimeSpan.Zero, null));
+        await signIn;
+        Assert.DoesNotContain("saved sign-in", page.Summary, StringComparison.Ordinal);
+    }
+
+    // The desktop run checks that the page reports the token as held in memory only
+    // (C-0007 section 3); each head says where it keeps the sign-in.
+    [Fact]
+    public async Task ShowsWhereTheHeadKeepsTheSignIn()
+    {
+        var page = await LoadedPageAsync();
+
+        Assert.Equal(TokenKept, page.TokenKeptText);
+        Assert.Contains($"sign-in saved: not checked yet; kept: {TokenKept};", page.Summary, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -267,7 +316,7 @@ public sealed class SteamGateViewModelTests
         Assert.Equal("Logged on", page.SessionText);
         Assert.Equal("yes", page.TokenStoredText);
         Assert.Equal("WebSocket", page.TransportText);
-        Assert.Contains("Session: Logged on; sign-in saved: yes; transport: WebSocket", page.Summary, StringComparison.Ordinal);
+        Assert.Contains($"Session: Logged on; sign-in saved: yes; kept: {TokenKept}; transport: WebSocket", page.Summary, StringComparison.Ordinal);
 
         page.NotifyHidden();
         _services.Steam.Status = new SteamSessionStatus(SteamSessionState.Reconnecting, true, SteamTransport.Tcp, "Steam refused the logon: Busy (10).");
@@ -288,7 +337,7 @@ public sealed class SteamGateViewModelTests
     }
 
     private SteamGateViewModel CreatePage() =>
-        new(_services.Steam, _steps, _services.Build, _services.Memory, _dispatcher, _services.Log);
+        new(_services.Steam, _steps, TokenKept, _services.Build, _services.Memory, _dispatcher, _services.Log);
 
     private async Task<SteamGateViewModel> LoadedPageAsync()
     {

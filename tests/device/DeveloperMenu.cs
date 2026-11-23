@@ -16,6 +16,9 @@ internal static partial class CompositionRoot
     // The name under which Steam lists the gate's sign-ins: fixed text, never the device's name.
     private const string SteamDeviceName = "Paneport (iPhone)";
 
+    // Where the gate page says the saved sign-in is kept: M1.3's keychain token store.
+    private const string SteamTokenKept = "in the keychain";
+
     static partial void AddDeveloperMenu(DeveloperContext context, ref Func<INavigator, PageViewModel>? developerPage)
     {
         if (Application.Current is { } application)
@@ -51,6 +54,7 @@ internal static partial class CompositionRoot
         var steamGate = new Lazy<SteamGateViewModel>(() => new SteamGateViewModel(
             steam.Value.Service,
             steam.Value.Gate,
+            SteamTokenKept,
             services.Diagnostics.Build,
             services.Diagnostics.Memory,
             new AvaloniaUiDispatcher(),

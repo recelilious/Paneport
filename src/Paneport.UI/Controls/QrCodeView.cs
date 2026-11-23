@@ -46,9 +46,6 @@ public sealed class QrCodeView : Control
     /// <summary>Gets the number of modules along one side of the code, or 0 when there is none.</summary>
     public int ModuleCount => _code?.Size ?? 0;
 
-    /// <summary>Gets how many times the control encoded a text, which the tests read to see a redraw.</summary>
-    public int Encodings { get; private set; }
-
     /// <summary>Gets whether the module at a column and a row is dark.</summary>
     /// <param name="x">The column, from 0.</param>
     /// <param name="y">The row, from 0.</param>
@@ -92,7 +89,6 @@ public sealed class QrCodeView : Control
         {
             var text = change.GetNewValue<string?>();
             _code = string.IsNullOrEmpty(text) ? null : QrCode.EncodeText(text, QrCode.Ecc.Medium);
-            Encodings++;
         }
     }
 

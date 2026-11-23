@@ -53,6 +53,10 @@ public sealed partial class SteamGateViewModel : PageViewModel
     /// <summary>Creates the page.</summary>
     /// <param name="steam">The Steam service.</param>
     /// <param name="steps">The steps of the gate after sign-in.</param>
+    /// <param name="tokenKept">
+    /// Where the head keeps a saved sign-in, as the page shows it: the keychain on the device, and
+    /// memory only on the desktop head (C-0007 section 3).
+    /// </param>
     /// <param name="build">The build stamp, for the build line and the summary.</param>
     /// <param name="memory">The memory timeline of the run, for the summary; null where there is none.</param>
     /// <param name="dispatcher">Runs the services' updates on the UI thread.</param>
@@ -60,6 +64,7 @@ public sealed partial class SteamGateViewModel : PageViewModel
     public SteamGateViewModel(
         ISteamService steam,
         ISteamGateSteps steps,
+        string tokenKept,
         BuildStamp build,
         MemoryMonitor? memory,
         IUiDispatcher dispatcher,
@@ -68,12 +73,14 @@ public sealed partial class SteamGateViewModel : PageViewModel
     {
         ArgumentNullException.ThrowIfNull(steam);
         ArgumentNullException.ThrowIfNull(steps);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tokenKept);
         ArgumentNullException.ThrowIfNull(build);
         ArgumentNullException.ThrowIfNull(dispatcher);
         _steam = steam;
         _steps = steps;
         _memory = memory;
         _dispatcher = dispatcher;
+        TokenKeptText = tokenKept;
         BuildText = $"{build.Configuration}, {build.Runtime}, {build.CompilationMode}, interpreter: {build.Interpreter}";
         ApplyStatus();
         UpdateSummary();
@@ -84,6 +91,9 @@ public sealed partial class SteamGateViewModel : PageViewModel
 
     /// <summary>Gets the build line: configuration, runtime, compilation and interpreter (L2 step 16).</summary>
     public string BuildText { get; }
+
+    /// <summary>Gets where the head keeps a saved sign-in, such as the keychain or memory only.</summary>
+    public string TokenKeptText { get; }
 
     /// <summary>Gets the session's state as text.</summary>
     [ObservableProperty]
@@ -194,9 +204,21 @@ public sealed partial class SteamGateViewModel : PageViewModel
     public partial string Summary { get; private set; } = string.Empty;
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The shell loads a page each time it shows it, and the heads keep one page per run. The page
+    /// resumes only while the session is signed out or offline and no sign-in runs: otherwise a
+    /// resume would only report a logon that is already there, with no time of its own, or race
+    /// the running sign-in.
+    /// </remarks>
     protected override async Task OnLoadAsync(CancellationToken cancellationToken)
     {
         ApplyStatus();
+        if (_attempt is not null || _steam.Status.State is not (SteamSessionState.SignedOut or SteamSessionState.Offline))
+        {
+            UpdateSummary();
+            return;
+        }
+
         var result = await _steam.ResumeAsync(cancellationToken);
         if (result.Outcome != SignInOutcome.NothingSaved)
         {
@@ -448,7 +470,7 @@ public sealed partial class SteamGateViewModel : PageViewModel
     {
         var text = new StringBuilder();
         text.AppendLine(CultureInfo.InvariantCulture, $"Build: {BuildText}");
-        text.AppendLine(CultureInfo.InvariantCulture, $"Session: {SessionText}; sign-in saved: {TokenStoredText}; transport: {TransportText}");
+        text.AppendLine(CultureInfo.InvariantCulture, $"Session: {SessionText}; sign-in saved: {TokenStoredText}; kept: {TokenKeptText}; transport: {TransportText}");
         foreach (var (how, result) in _signIns)
         {
             text.AppendLine(CultureInfo.InvariantCulture, $"Sign-in with {how}: {result.Outcome}, {SteamGateTexts.Times(result)}");

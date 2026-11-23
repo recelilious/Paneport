@@ -13,7 +13,7 @@ Back to the [development plan](../development-plan.md).
 | L4 | First Windows program on the iPhone | Large | Planned | | |
 | M4.1 | Forks, submodules and toolchains | Medium | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | M4.2 | ARM64EC Wine with FEX on macOS | Medium | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
-| M4.3 | Single-process Wine on macOS | Medium | Planned | | |
+| M4.3 | Single-process Wine on macOS | Medium | In progress | `feat/m4-3-single-process-wine` | 2026-11-23 |
 | M4.4 | Runtime on iOS | Medium | Planned | | |
 | M4.5 | Shared user data for x86-64 guests | Medium | Done | [#38](https://github.com/recelilious/Paneport/pull/38) | 2026-11-24 |
 | S4.0.1 | In-app console and the Run sample program action | Small | Planned | | |

@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # eng/trimming
 
-The trimming warnings from inside dependencies that our builds excuse. This is the approved list under `eng/` that [repository-checks.md](../../docs/design/repository-checks.md) section 7 names, and recelilious approved it on 2026-11-21.
+The trimming warnings from inside dependencies that our builds excuse. This is the approved list under `eng/` that [repository-checks.md](../../docs/design/repository-checks.md) section 7 names. Its 127 entries rest on two approvals by recelilious: "Excuse exactly these" on 2026-11-21, for the 125 entries that the trimmed test app's partial-mode publish lists, and "Excuse both" on 2026-11-23, for the two IL2045 entries that only the iOS build reports.
 
 | File | What it excuses |
 |---|---|

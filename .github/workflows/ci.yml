@@ -959,6 +959,24 @@ jobs:
           fi
           exit "$status"
 
+      # M9.1: release device builds are stripped of symbols (C-0009 section 6). dotnet build leaves the
+      # linker's debug map in the executable and the frameworks, so the debugging and local symbols of
+      # every Mach-O file go before signing; the full scan below fails on any that are left.
+      - name: Strip both apps (eng/release/strip-binaries.sh)
+        if: ${{ !cancelled() && (steps.apps.outputs.main != '' || steps.apps.outputs.test != '') }}
+        env:
+          MAIN_APP: ${{ steps.apps.outputs.main }}
+          TEST_APP: ${{ steps.apps.outputs.test }}
+        run: |
+          status=0
+          if [ -n "$MAIN_APP" ]; then
+            eng/release/strip-binaries.sh "$MAIN_APP" || status=1
+          fi
+          if [ -n "$TEST_APP" ]; then
+            eng/release/strip-binaries.sh "$TEST_APP" || status=1
+          fi
+          exit "$status"
+
       # S1.3.9: each embedded framework, then each app, ad hoc, with the app's Entitlements.plist;
       # no Apple identity is used (C-0009 section 5). Then the checks of eng/mac/check-app.sh, the
       # .ipa of each flavor, named by flavor and short commit hash, and the package scan. Each

@@ -217,6 +217,13 @@ jobs:
           dotnet run tools/GenerateNotices.cs -- --mode release --project src/Paneport.iOS/Paneport.iOS.csproj \
             --app "$APP" --out build/release/notices | tee build/release/coverage.txt
 
+      # Release device builds are stripped of symbols (C-0009 section 6), as in the ios job.
+      - name: Strip the app (eng/release/strip-binaries.sh)
+        if: ${{ !cancelled() && steps.app.outputs.path != '' }}
+        env:
+          APP: ${{ steps.app.outputs.path }}
+        run: eng/release/strip-binaries.sh "$APP"
+
       - name: Sign the app ad hoc (eng/mac/sign-adhoc.sh)
         if: ${{ !cancelled() && steps.app.outputs.path != '' }}
         env:

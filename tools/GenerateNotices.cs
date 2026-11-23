@@ -14,11 +14,16 @@
 // are read by the files in tools/Shared/, which tools/CheckLicenses.cs includes too. A text that no
 // package ships comes from raw.githubusercontent.com at a full commit: the ios job fetches it into
 // build/upstream/ and checks its SHA-256, and the tool, which never uses the network, checks the
-// hash again when it reads the file.
+// hash again when it reads the file. An LGPL component that is neither this repository nor a fork
+// names the archive of its exact corresponding source (C-0003 section 3, C-0009 section 6): the
+// upstream's repository, the release tag, its commit, and the paths and submodules that the archive
+// holds. eng/mac/make-source-archives.sh makes each archive from the lines of --list-sources, and
+// the notices name the commit and say where the archive is.
 //
 //   dotnet run tools/GenerateNotices.cs -- --mode ios|release --project <app.csproj> --app <bundle.app>
 //       [--out <folder>]                                    generate the notices of a built app
 //   dotnet run tools/GenerateNotices.cs -- --list-upstream  print "<sha256> <url>" for each text to fetch
+//   dotnet run tools/GenerateNotices.cs -- --list-sources   print each source archive to make, one line each
 //   dotnet run tools/GenerateNotices.cs -- --self-test      check every rule on generated fixtures
 //
 // Both modes fail on a component that the register lacks or marks Under review, Forbidden or Tool;
@@ -60,6 +65,11 @@ try
     if (args is ["--list-upstream"])
     {
         return Cli.ListUpstream(root, Console.Out);
+    }
+
+    if (args is ["--list-sources"])
+    {
+        return Cli.ListSources(root, Console.Out);
     }
 
     return Options.Parse(args) is { } options
@@ -145,7 +155,7 @@ internal static class Cli
     {
         Console.Error.WriteLine(
             "usage: dotnet run tools/GenerateNotices.cs -- --mode ios|release --project <app.csproj> "
-                + "--app <bundle.app> [--out <folder>] | --list-upstream | --self-test");
+                + "--app <bundle.app> [--out <folder>] | --list-upstream | --list-sources | --self-test");
         return 2;
     }
 
@@ -210,6 +220,38 @@ internal static class Cli
         foreach (var (url, sha256) in Mapping.Parse(File.ReadAllText(path)).Upstream())
         {
             output.WriteLine($"{sha256} {url}");
+        }
+
+        return 0;
+    }
+
+    // The source archives that eng/mac/make-source-archives.sh makes, one line each:
+    // "<component>|<package>|<repository>|<tag>|<commit>|<archive>|<paths>|<submodules>", with the
+    // paths and the submodules separated by spaces.
+    public static int ListSources(string root, TextWriter output)
+    {
+        var path = Path.Combine(root, Mapping.FilePath);
+        if (!File.Exists(path))
+        {
+            throw new InvalidDataException($"run the tool from the repository root, where {Mapping.FilePath} is.");
+        }
+
+        foreach (var (name, entry) in Mapping.Parse(File.ReadAllText(path)).Components
+            .OrderBy(component => component.Key, StringComparer.Ordinal))
+        {
+            if (entry.Source is { } source)
+            {
+                output.WriteLine(string.Join(
+                    '|',
+                    name,
+                    source.Package,
+                    source.Repository,
+                    source.Tag,
+                    source.Commit,
+                    source.Archive,
+                    string.Join(' ', source.Paths),
+                    string.Join(' ', source.Submodules)));
+            }
         }
 
         return 0;
@@ -530,7 +572,21 @@ internal sealed record MissingText(string Text, string Note);
 internal sealed record ComponentTexts(
     IReadOnlyList<TextSource> Texts,
     string? Credit,
-    IReadOnlyList<MissingText> Missing);
+    IReadOnlyList<MissingText> Missing,
+    SourceArchive? Source = null);
+
+// The archive of the exact corresponding source of an LGPL component that is neither this
+// repository nor a fork (C-0003 section 3, C-0009 section 6): the paths of the upstream's repository
+// at the commit of its release tag, which the package names too, and the files of each submodule at
+// the commit that the upstream's tree records for it.
+internal sealed record SourceArchive(
+    string Repository,
+    string Tag,
+    string Commit,
+    string Package,
+    string Archive,
+    IReadOnlyList<string> Paths,
+    IReadOnlyList<string> Submodules);
 
 internal sealed record FileRule(string Pattern, IReadOnlyList<string> Components, Regex Matcher);
 
@@ -600,7 +656,7 @@ internal sealed record Mapping(
                     throw new InvalidDataException($"\"components\" cannot hold \"{property.Name}\".");
                 }
 
-                var entry = Object(property.Value, property.Name, ["texts"], ["credit", "missing", "note"]);
+                var entry = Object(property.Value, property.Name, ["texts"], ["credit", "missing", "note", "source"]);
                 if (entry["texts"].ValueKind != JsonValueKind.Array || entry["texts"].GetArrayLength() == 0)
                 {
                     throw new InvalidDataException($"{property.Name}: \"texts\" must list at least one text.");
@@ -616,7 +672,8 @@ internal sealed record Mapping(
                 }
 
                 var missing = entry.TryGetValue("missing", out var gaps) ? Missing(gaps, property.Name) : [];
-                if (!components.TryAdd(property.Name, new ComponentTexts(texts, credit, missing)))
+                var source = entry.TryGetValue("source", out var archive) ? Archive(archive, property.Name) : null;
+                if (!components.TryAdd(property.Name, new ComponentTexts(texts, credit, missing, source)))
                 {
                     throw new InvalidDataException($"\"components\" lists {property.Name} twice.");
                 }
@@ -790,6 +847,87 @@ internal sealed record Mapping(
             ? text
             : throw new InvalidDataException($"{where} must be a text that is not empty.");
 
+    // A component's source archive: a repository over https, the release tag and its full commit, the
+    // package that names that commit, the archive's file name, and the literal paths of the upstream's
+    // tree and of its submodules that the archive holds, each a relative path without white space.
+    private static SourceArchive Archive(JsonElement element, string component)
+    {
+        var where = $"{component}: \"source\"";
+        if (component.Contains('|', StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"{where}: a component with a source archive cannot have \"|\" in its name.");
+        }
+
+        var source = Object(
+            element,
+            where,
+            ["archive", "commit", "package", "paths", "repository", "tag"],
+            ["note", "submodules"]);
+        var repository = Text(source["repository"], $"{where}: \"repository\"");
+        var tag = Text(source["tag"], $"{where}: \"tag\"");
+        var commit = Text(source["commit"], $"{where}: \"commit\"");
+        var package = Text(source["package"], $"{where}: \"package\"");
+        var archive = Text(source["archive"], $"{where}: \"archive\"");
+        if (!SourcePins.IsRepository(repository))
+        {
+            throw new InvalidDataException(
+                $"{where}: {repository} must be an https URL with a host, an owner and a name, "
+                    + "and no \".\" or \"..\" part.");
+        }
+
+        if (!SourcePins.IsName(tag) || !SourcePins.IsName(package))
+        {
+            throw new InvalidDataException(
+                $"{where}: the tag and the package are names of letters, digits, \".\", \"_\" and \"-\".");
+        }
+
+        if (!UpstreamUrl.IsCommit(commit))
+        {
+            throw new InvalidDataException(
+                $"{where}: \"commit\" must be a full commit of 40 lowercase hexadecimal digits.");
+        }
+
+        if (!SourcePins.IsArchive(archive))
+        {
+            throw new InvalidDataException($"{where}: {archive} must be the file name of a .tar.gz archive.");
+        }
+
+        if (source.TryGetValue("note", out var note))
+        {
+            Note(note, where);
+        }
+
+        var paths = SourcePaths(source["paths"], $"{where}: \"paths\"");
+        var submodules = source.TryGetValue("submodules", out var listed)
+            ? SourcePaths(listed, $"{where}: \"submodules\"")
+            : [];
+        if (paths.Count == 0)
+        {
+            throw new InvalidDataException($"{where}: \"paths\" must list at least one path.");
+        }
+
+        return new SourceArchive(repository, tag, commit, package, archive, paths, submodules);
+    }
+
+    private static List<string> SourcePaths(JsonElement element, string where)
+    {
+        if (element.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidDataException($"{where} must be an array of paths.");
+        }
+
+        var paths = element.EnumerateArray().Select(path => RelativePath(path, where)).ToList();
+        if (paths.Any(path => path.Any(character => char.IsWhiteSpace(character) || "|*?[".Contains(character))))
+        {
+            throw new InvalidDataException($"{where}: a path is literal, without white space, \"|\" or a wildcard.");
+        }
+
+        return paths.Distinct(StringComparer.Ordinal).Count() == paths.Count
+            ? paths
+            : throw new InvalidDataException($"{where} lists a path twice.");
+    }
+
     // A path below a package, a runtime pack or the repository: relative, with forward slashes, and
     // never leaving its folder.
     private static string RelativePath(JsonElement element, string where)
@@ -845,6 +983,8 @@ internal static partial class UpstreamUrl
     }
 
     public static bool IsSha256(string text) => Sha256().IsMatch(text);
+
+    public static bool IsCommit(string text) => FullCommit().IsMatch(text);
 
     // Lines First to Last of a text, which lie in the file's leading comment header: each line from
     // line 1 to Last is a comment or blank, so that no code ships as a notice. A range may start inside
@@ -1483,7 +1623,48 @@ internal sealed record ComponentNotice(
     IReadOnlyList<string> Sources,
     string? Credit,
     IReadOnlyList<TextBlock> Texts,
-    int Files);
+    int Files,
+    SourceArchive? Source = null);
+
+// The forms of a source archive's fields in the mapping: a repository over https with a host, an
+// owner and a name, a tag and a package of plain characters, and an archive's file name.
+internal static partial class SourcePins
+{
+    private const string Https = "https://";
+
+    public static bool IsRepository(string url) =>
+        Repository().IsMatch(url) && !url[Https.Length..].Split('/').Any(part => part is "." or "..");
+
+    public static bool IsName(string text) => Name().IsMatch(text) && !text.Contains("..", StringComparison.Ordinal);
+
+    public static bool IsArchive(string name) =>
+        Archive().IsMatch(name) && !name.Contains("..", StringComparison.Ordinal);
+
+    // The sentence of the notices that names the archive, the commit and where the archive comes.
+    public static string Sentence(SourceArchive source)
+    {
+        var submodules = source.Submodules.Count switch
+        {
+            0 => string.Empty,
+            1 => $", with the files of its submodule {source.Submodules[0]} at the commit that this commit records",
+            _ => $", with the files of its submodules {string.Join(", ", source.Submodules)} at the commits that this "
+                + "commit records",
+        };
+        return $"{source.Archive} holds the component's complete source from {source.Repository} at commit "
+            + $"{source.Commit} (tag {source.Tag}){submodules}. The archive comes beside this build: as an "
+            + "artifact of the CI run that built it, or as an asset of the release that it belongs to.";
+    }
+
+    // \z, not $, which would also match before a final line break.
+    [GeneratedRegex(@"\Ahttps://[A-Za-z0-9.-]+(/[A-Za-z0-9._-]+){2,}\z")]
+    private static partial Regex Repository();
+
+    [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9._-]*\z")]
+    private static partial Regex Name();
+
+    [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9._-]*\.tar\.gz\z")]
+    private static partial Regex Archive();
+}
 
 internal sealed record NoticeOutputs(string Notices, string Index, IReadOnlyList<(string Path, string Content)> Texts);
 
@@ -1751,7 +1932,7 @@ internal static partial class Notices
         }
 
         return failures.Count == before
-            ? new ComponentNotice(name, row, [.. sources], entry.Credit, texts, files)
+            ? new ComponentNotice(name, row, [.. sources], entry.Credit, texts, files, entry.Source)
             : null;
     }
 
@@ -2111,6 +2292,11 @@ internal static partial class Notices
             builder.Append("Credit: ").Append(credit).Append('\n');
         }
 
+        if (component.Source is { } source)
+        {
+            builder.Append("Source: ").Append(SourcePins.Sentence(source)).Append('\n');
+        }
+
         foreach (var text in component.Texts)
         {
             builder.Append("\n===== ").Append(text.Title).Append(" =====\n\n").Append(text.Text);
@@ -2149,6 +2335,11 @@ internal static partial class Notices
             if (component.Credit is { } credit)
             {
                 builder.Append("- Credit: ").Append(Inline(credit)).Append('\n');
+            }
+
+            if (component.Source is { } source)
+            {
+                builder.Append("- Source: ").Append(Inline(SourcePins.Sentence(source))).Append('\n');
             }
 
             builder.Append(CultureInfo.InvariantCulture, $"- Text: [{paths[index]}]({paths[index]})\n");
@@ -3304,6 +3495,7 @@ internal static partial class SelfTest
         {
             Readers(tally, root);
             UpstreamTexts(tally);
+            SourceArchives(tally, root);
             FullyRegistered(tally, root);
             CaseOrder(tally, root);
             Outputs(tally, root);
@@ -3688,6 +3880,89 @@ internal static partial class SelfTest
                 && UpstreamUrl.Lines("// a  \n\n", new LineRange(1, 2), "f") == "// a  \n",
             "a range leaves out the lines of white space at its end, and keeps the white space at the end of its last "
                 + "notice line");
+    }
+
+    private static void SourceArchives(Tally tally, string root)
+    {
+        Console.WriteLine("Source archives of LGPL components:");
+        const string Commit = "89abcdef0123456789abcdef0123456789abcdef";
+        const string Key = "\"SteamKit2\": {";
+        const string Archive = "SteamKit2-1.0.0-source.tar.gz";
+        const string Sample = "{ \"repository\": \"https://github.com/example/steamkit\", \"tag\": \"1.0.0\", "
+            + "\"commit\": \"" + Commit + "\", \"package\": \"SteamKit2\", \"archive\": \"" + Archive + "\", "
+            + "\"paths\": [\"lib\", \"build.props\"], \"submodules\": [\"defs\"], \"note\": \"A sample.\" }";
+        static string withSource(string source) => EditMapping(Key, $"{Key}\n      \"source\": {source},");
+        static SourceArchive? read(string source) => Mapping.Parse(withSource(source)).Components["SteamKit2"].Source;
+        static bool refused(string from, string to) =>
+            Rejects(() => Mapping.Parse(withSource(Sample.Replace(from, to, StringComparison.Ordinal))));
+
+        tally.Expect(
+            read(Sample) is
+            {
+                Repository: "https://github.com/example/steamkit",
+                Tag: "1.0.0",
+                Commit: Commit,
+                Package: "SteamKit2",
+                Archive: Archive,
+                Paths: ["lib", "build.props"],
+                Submodules: ["defs"],
+            }
+                && read(Sample.Replace(", \"submodules\": [\"defs\"]", string.Empty, StringComparison.Ordinal))
+                    is { Submodules.Count: 0 },
+            "reads a component's source archive, with or without submodules");
+        tally.Expect(
+            refused(Commit, Commit.ToUpperInvariant()) && refused(Commit, Commit[..12])
+                && refused($"\"{Commit}\"", "\"main\""),
+            "a source archive names a full commit, never a branch or a short hash");
+        tally.Expect(
+            refused("https://", "http://") && refused("example/steamkit", "example/../steamkit")
+                && refused("example/steamkit", "steamkit") && refused("steamkit\"", "steamkit?x=1\"")
+                && refused("steamkit\"", "steamkit/.\""),
+            "its repository is an https URL with an owner and a name, without a query or a \".\" or \"..\" part");
+        tally.Expect(
+            refused("source.tar.gz", "source.zip") && refused("\"SteamKit2-1.0.0", "\"../SteamKit2-1.0.0")
+                && refused("\"tag\": \"1.0.0\"", "\"tag\": \"1.0 0\"")
+                && refused("\"package\": \"SteamKit2\"", "\"package\": \"\""),
+            "its archive is a .tar.gz file name, and its tag and package are plain names");
+        tally.Expect(
+            refused("[\"lib\", \"build.props\"]", "[]") && refused("\"lib\"", "\"../lib\"")
+                && refused("\"lib\"", "\"/lib\"") && refused("\"lib\"", "\"li*\"") && refused("\"lib\"", "\"l b\"")
+                && refused("\"lib\"", "\"build.props\"") && refused("[\"defs\"]", "[\"../defs\"]"),
+            "its paths and submodules are literal relative paths, at least one path and none twice");
+        tally.Expect(
+            refused("\"tag\"", "\"tags\"") && refused("\"tag\": \"1.0.0\", ", string.Empty),
+            "it rejects a key that the tool does not know and a missing key");
+
+        var fixture = Fixture.Create(root, "sources");
+        fixture.MappingText = withSource(Sample);
+        if (fixture.Generate(Mode.Ios).Outputs is not { } outputs)
+        {
+            tally.Expect(false, "the fixture with a source archive generates its notices");
+            return;
+        }
+
+        var steam = outputs.Texts.Select(text => text.Content)
+            .Single(text => text.StartsWith("SteamKit2\n", StringComparison.Ordinal));
+        string[] sentence =
+        [
+            $"{Archive} holds the component's complete source from https://github.com/example/steamkit",
+            $"at commit {Commit} (tag 1.0.0), with the files of its submodule defs at the commit that this "
+                + "commit records",
+            "as an artifact of the CI run that built it, or as an asset of the release that it belongs to",
+        ];
+        tally.Expect(
+            Holds(outputs.Notices, [.. sentence.Prepend("- Source: ")])
+                && Holds(steam, [.. sentence.Prepend("Source: ")])
+                && outputs.Notices.Split("- Source: ").Length == 2,
+            "the notices and the component's text name its archive, the commit and where the archive comes, once");
+
+        fixture.WriteRepository();
+        using var listing = new StringWriter { NewLine = "\n" };
+        tally.Expect(
+            Cli.ListSources(fixture.Repository, listing) == 0
+                && listing.ToString() == $"SteamKit2|SteamKit2|https://github.com/example/steamkit|1.0.0|{Commit}|"
+                    + $"{Archive}|lib build.props|defs\n",
+            "--list-sources prints one line for each component with a source archive");
     }
 
     private static void FullyRegistered(Tally tally, string root)

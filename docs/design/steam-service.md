@@ -191,7 +191,7 @@ The session never blocks a caller: a connection request picks its server on the 
 - **The operating system type** that SteamKit2 reports on iOS is `Unknown`; the device run shows whether Steam accepts it.
 - **App information over HTTP.** Steam can answer a product information request with an address to fetch it from instead; the steps do not fetch it yet and report the app's information as missing.
 - **The app information keys** of section 6 follow the layout that `avalonia_ui_layer.md` section 2.3 describes and that SteamKit2's PICS types carry; the desktop run confirms the detailed keys on a real app.
-- **SteamKit2's source offer** for releases and the `ios` job's public artifacts waits for recelilious's decision; M2.3 does not merge before it.
+- **SteamKit2's source offer: decided.** recelilious decided on 2026-11-22 that releases and the `ios` job's public artifacts carry SteamKit2's exact corresponding source, made in CI from a pinned upstream commit, and accepted C-0003 1.8 and C-0009 1.2 on 2026-11-23. The `ios` job makes the archive with `eng/mac/make-source-archives.sh` from the pin in `eng/release/bundle-components.json`: the release tag 4.0.0-Beta.2, whose commit the package's nuspec also names, with the submodule `Resources/Protobufs`. It uploads the archive beside the apps, and the notices say where it is ([release-engineering.md](release-engineering.md) sections 1, 5 and 6). The `release` workflow of M9.1 attaches it to each release.
 - **Repeated sign-ins** may bring Steam Guard checks or new-device notices (E14), so the tests use fakes and only recelilious signs in.
 
 ## 16. Sources

@@ -955,6 +955,21 @@ jobs:
           done <<< "$list"
           exit "$status"
 
+      # C-0003 section 3, C-0009 section 6: the archive of the exact corresponding source of each LGPL
+      # component that is neither this repository nor a fork, today SteamKit2, which the build compiles
+      # into the app. The self-test runs on repositories of its own. The script then checks each pin of
+      # eng/release/bundle-components.json against the nuspec of the restored package and against the
+      # upstream's release tag, fetches the commit over https and makes the archive with git archive,
+      # with the files of the listed submodules, into build/sources/ (docs/design/release-engineering.md
+      # section 6).
+      - name: Self-test the source archives (eng/mac/make-source-archives.sh)
+        if: ${{ !cancelled() }}
+        run: eng/mac/make-source-archives.sh --self-test
+
+      - name: Make the source archives of the LGPL components (eng/mac/make-source-archives.sh)
+        if: ${{ !cancelled() }}
+        run: eng/mac/make-source-archives.sh build/sources
+
       # S9.1.1: THIRD_PARTY_NOTICES.md, the license texts and their index in licenses/ at the root
       # of each bundle, before it is signed, so that the signature seals them (C-0003 section 3,
       # C-0009 section 6), and a copy in build/notices/, never in git. The generator attributes
@@ -1113,4 +1128,15 @@ jobs:
         with:
           name: Paneport-test-${{ steps.apps.outputs.commit }}
           path: ${{ steps.packages.outputs.test }}
+          if-no-files-found: error
+
+      # Beside the apps, and kept as long as they are, since neither sets its own retention
+      # (C-0009 section 6). Each app's THIRD_PARTY_NOTICES.md says that the archive comes with the CI
+      # run that built it.
+      - name: Upload the source archives of the LGPL components
+        if: ${{ success() && (steps.packages.outputs.main != '' || steps.packages.outputs.test != '') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Paneport-lgpl-sources-${{ steps.apps.outputs.commit }}
+          path: build/sources/
           if-no-files-found: error

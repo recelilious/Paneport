@@ -730,7 +730,7 @@ _No sessions yet._
 |---|---|
 | Level | Medium |
 | Parent | L6 |
-| Depends on | M6.1, M6.2, M6.3, M6.5 |
+| Depends on | M6.1, M6.2, M6.3, M6.5, M4.5 |
 | Decisions needed | D6: the L6 test title. The L6 brief above lists what the title must fit. |
 | Size | L |
 | Branch | `perf/m6-6-test-game-performance` |

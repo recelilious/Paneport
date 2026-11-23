@@ -191,6 +191,7 @@ The last column holds recelilious's answer and the date it was given. A stage se
 | M4.2 | ARM64EC Wine with FEX on macOS | L4 | M4.1; D14 | XL | Win32 test programs pass on the macOS harness |
 | M4.3 | Single-process Wine on macOS | L4 | M4.2, M2.2 | XL | The same tests in single-process mode, with fork and exec trapped |
 | M4.4 | Runtime on iOS | L4 | M4.3, M3.1, M1.3 | XL | iOS builds and bundle checks in CI; device acceptance |
+| M4.5 | Shared user data for x86-64 guests | L4 | M4.2 | M | An x86-64 test program that reads the page and calls ntdll's syscall exports passes on the macOS harness |
 | M5.1 | iOS display driver | L5 | M4.4 | L | The harness renders into a layer it provides |
 | M5.2 | DXMT on the runtime | L5 | M5.1 | L | Triangle pixels checked on the macOS harness |
 | M6.1 | Input stack | L6 | M5.1, M2.1 | L | Synthetic input read back by a Win32 test program |
@@ -198,7 +199,7 @@ The last column holds recelilious's answer and the date it was given. A stage se
 | M6.3 | Memory governor and file-backed tier | L6 | M4.4 | L | Policy tests on macOS; device measurements |
 | M6.4 | Compatibility database core | L6 | M0.3 | M | Schema and loader tests |
 | M6.5 | Game import and session flow | L6 | M6.4, M5.2, M2.1; D9 | L | Classifier tests with synthetic PE files; UI tests |
-| M6.6 | Performance pass for the test game | L6 | M6.1, M6.2, M6.3, M6.5; D6 | L | Frame-time and memory measurements |
+| M6.6 | Performance pass for the test game | L6 | M6.1, M6.2, M6.3, M6.5, M4.5; D6 | L | Frame-time and memory measurements |
 | M7.1 | Sign-in, library and downloads | L7 | M2.3, M6.4 | L | Tests with fake services; a desktop download |
 | M7.2 | Classification and direct launch of Steam titles | L7 | M7.1, M6.5 | M | Classifier and launch-decision tests |
 | M7.3 | 32-bit and fixed-base programs | L7 | M4.4; D11 | L | i686 and fixed-base test programs on the harness |
@@ -246,6 +247,7 @@ flowchart TD
     M1_1 --> M4_1["M4.1"] --> M4_2["M4.2"] --> M4_3["M4.3"]
     M2_2 --> M4_3
     M4_3 --> M4_4["M4.4"]
+    M4_2 --> M4_5["M4.5"]
     M3_1 --> M4_4
     M4_4 --> M5_1["M5.1"] --> M5_2["M5.2"]
     M5_1 --> M6_1["M6.1"]
@@ -274,6 +276,7 @@ flowchart TD
   M6_2 --> M6_6
   M6_3 --> M6_6
   M6_5 --> M6_6
+  M4_5 --> M6_6
   M2_1 --> M6_1
   M2_1 --> M6_5
   M6_3 --> M8_4
@@ -295,7 +298,7 @@ Stages in the same wave do not depend on each other and can run in parallel. A l
 | 5 | M1.2, M4.1 |
 | 6 | M1.3, M4.2 |
 | 7 | L1, M2.2, M2.3, S9.1.1 |
-| 8 | M2.1, M3.1, M4.3, M7.1, M8.3, M9.1 |
+| 8 | M2.1, M3.1, M4.3, M4.5, M7.1, M8.3, M9.1 |
 | 9 | L2, L3, M4.4, M8.1 |
 | 10 | L4, M5.1, M6.2, M6.3, M7.3 |
 | 11 | M5.2, M6.1 |
@@ -308,6 +311,8 @@ Stages in the same wave do not depend on each other and can run in parallel. A l
 | Before 2027-05-11 | M10.1, M10.2, L10 |
 
 S9.1.1, the notices generator of M9.1, runs ahead of its stage as a session of its own. recelilious decided this on 2026-11-17, after the post-merge review of M1.3 found that the public artifacts of the `ios` job carry third-party binaries without their notices. S9.1.1 places the notices in every app bundle that the `ios` job builds, and M2.3 merges only after it ([L9 brief](stages/L9-first-release.md)).
+
+M4.5 was added on 2026-11-23. The review of #22 found that x86-64 guest code that reads the shared user data at its fixed address faults on Apple silicon, Wine's own x64 syscall thunks included, so every x86-64 program that calls an ntdll syscall export directly. recelilious decided that FEX's redirection of those reads is a stage of its own. It needs only M4.2, so it can run beside M4.3. L4's acceptance does not wait for it; M6.6, which plays the first imported game, does ([L4 brief](stages/L4-first-windows-program.md)).
 
 The critical path runs through the native runtime: M0.1, M1.1, M4.1, M4.2, M4.3, M4.4, M5.1, M5.2, M6.5, M6.6, L6, M7.2, L7, M8.2, M8.4, L8. M4.1 should start as soon as M1.1 is done, in parallel with the work on L1 to L3.
 

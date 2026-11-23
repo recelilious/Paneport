@@ -465,9 +465,15 @@ internal sealed class SchemaValidator
         }
         if (schema.TryGetProperty("uniqueItems", out var unique) && unique.ValueKind == JsonValueKind.True)
         {
-            for (var index = 1; index < items.Count; index++)
+            // Texts, which every list of unique items in the schemas holds, are compared through a set, so that a
+            // long list takes no quadratic time.
+            var texts = new HashSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < items.Count; index++)
             {
-                if (items.Take(index).Any(earlier => JsonElement.DeepEquals(earlier, items[index])))
+                var repeats = items[index].ValueKind == JsonValueKind.String
+                    ? !texts.Add(items[index].GetString()!)
+                    : items.Take(index).Any(earlier => JsonElement.DeepEquals(earlier, items[index]));
+                if (repeats)
                 {
                     problems.Add(new Problem(
                         file, $"{pointer}/{index}", "uniqueItems", "the item repeats an earlier one")
@@ -589,11 +595,9 @@ internal sealed class SchemaValidator
             ? value.GetRawText() == expected.GetRawText()
             : JsonElement.DeepEquals(value, expected);
 
-    // Numbers compare exactly where both fit a decimal, as JSON Schema compares them, and as doubles otherwise.
+    // Numbers compare exactly, from their text, as JSON Schema compares them.
     private static int Compare(JsonElement value, JsonElement limit) =>
-        value.TryGetDecimal(out var exact) && limit.TryGetDecimal(out var exactLimit)
-            ? exact.CompareTo(exactLimit)
-            : value.GetDouble().CompareTo(limit.GetDouble());
+        ExactNumber.Compare(ExactNumber.Parse(value.GetRawText()), ExactNumber.Parse(limit.GetRawText()));
 
     // RFC 3339's full-date, which format date names: four digits of year, two of month and two of day, for a
     // day that the calendar has.
@@ -605,12 +609,55 @@ internal sealed class SchemaValidator
         && DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
 }
 
+// A JSON number as its text gives it, for an exact comparison: its sign, its significant digits without leading
+// and trailing zeros, and the place of the decimal point before the first of them, so that the number is the
+// sign times 0.<digits> times ten to the power of the place. An exponent beyond a long stands for a number
+// beyond every limit, or next to zero.
+internal readonly record struct ExactNumber(int Sign, string Digits, long Point)
+{
+    public static ExactNumber Parse(string text)
+    {
+        var negative = text.StartsWith('-');
+        var body = negative ? text[1..] : text;
+        var mark = body.IndexOfAny(['e', 'E']);
+        var mantissa = mark < 0 ? body : body[..mark];
+        long exponent = 0;
+        if (mark >= 0
+            && !long.TryParse(
+                body[(mark + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exponent))
+        {
+            exponent = body[mark + 1] == '-' ? -(1L << 60) : 1L << 60;
+        }
+        var dot = mantissa.IndexOf('.');
+        var whole = dot < 0 ? mantissa : mantissa[..dot];
+        var all = dot < 0 ? whole : whole + mantissa[(dot + 1)..];
+        var significant = all.TrimStart('0');
+        var digits = significant.TrimEnd('0');
+        return digits.Length == 0
+            ? new ExactNumber(0, "", 0)
+            : new ExactNumber(negative ? -1 : 1, digits, whole.Length - (all.Length - significant.Length) + exponent);
+    }
+
+    public static int Compare(ExactNumber left, ExactNumber right)
+    {
+        if (left.Sign != right.Sign || left.Sign == 0)
+        {
+            return left.Sign.CompareTo(right.Sign);
+        }
+        var magnitude = left.Point != right.Point
+            ? left.Point.CompareTo(right.Point)
+            : Math.Sign(string.CompareOrdinal(left.Digits, right.Digits));
+        return left.Sign * magnitude;
+    }
+}
+
 // JSON Schema's patterns are ECMA-262 regular expressions, which .NET reads differently in places: its $ also
 // matches before a final line break, its . also matches a carriage return and the line and paragraph
 // separators, and its \s, \d and \w take in other characters than ECMA-262's. The translation gives each
 // construct its ECMA-262 meaning, and refuses a construct whose meaning differs and that the schemas do not
 // use: a word boundary, an escape other than those below, a group other than (?:, (?= and (?!, an empty class,
-// a [ inside a class, which .NET reads as a subtraction, and \S, \D or \W inside a class.
+// a [ inside a class, which .NET reads as a subtraction, \S, \D or \W inside a class, and a range in a class
+// with \s, \d or \w at one end, which .NET reads as a range from or to the shorthand's last character.
 internal static class EcmaPattern
 {
     // ECMA-262's white space and line terminators, the characters of \s, as escapes for .NET.
@@ -628,6 +675,9 @@ internal static class EcmaPattern
         var text = new StringBuilder(pattern.Length + 16);
         var inClass = false;
         var classStart = false;
+        // In a class: whether the last part was \s, \d or \w, and whether the last part was a - that makes a range.
+        var shorthand = false;
+        var range = false;
         for (var index = 0; index < pattern.Length; index++)
         {
             var current = pattern[index];
@@ -637,8 +687,15 @@ internal static class EcmaPattern
                 {
                     throw new ArgumentException("the pattern ends in a backslash");
                 }
+                var isShorthand = inClass && pattern[index] is 's' or 'd' or 'w';
+                if (isShorthand && range)
+                {
+                    throw new ArgumentException("a range in a class that ends in \\s, \\d or \\w");
+                }
                 text.Append(TranslateEscape(pattern, ref index, inClass));
                 classStart = false;
+                shorthand = isShorthand;
+                range = false;
                 continue;
             }
             if (inClass)
@@ -651,8 +708,15 @@ internal static class EcmaPattern
                 {
                     throw new ArgumentException("a [ inside a class, which .NET reads as a subtraction");
                 }
+                var isRange = current == '-' && !classStart && index + 1 < pattern.Length && pattern[index + 1] != ']';
+                if (isRange && shorthand)
+                {
+                    throw new ArgumentException("a range in a class that starts at \\s, \\d or \\w");
+                }
                 inClass = current != ']';
                 classStart = false;
+                shorthand = false;
+                range = isRange;
                 text.Append(current);
                 continue;
             }
@@ -905,7 +969,8 @@ internal static class IosBuilds
 }
 
 // The title schema, and what the rules read from it: the model identifiers of the target devices, whose reports
-// count for the rating (C-0008 section 3), and the names of the environment allow-list (C-0008 section 5).
+// count for the rating (C-0008 section 3), and the allow-lists of the translator options and the environment
+// (C-0008 sections 2 and 5).
 internal sealed class TitleSchema
 {
     public const string SchemaPath = "compat/schema/title.schema.json";
@@ -931,17 +996,29 @@ internal sealed class TitleSchema
         {
             throw new InvalidDataException($"{SchemaPath}: /$defs/targetDevices/enum lists no device.");
         }
-        EnvironmentNames =
-        [
-            .. Find(root, "properties", "environment", "properties").EnumerateObject().Select(member => member.Name),
-        ];
+        EnvironmentAllowList = Find(root, "properties", "environment");
+        TranslatorAllowList = Find(root, "properties", "translator");
+        EnvironmentNames = Names(EnvironmentAllowList);
+        TranslatorNames = Names(TranslatorAllowList);
     }
 
     public SchemaValidator Validator { get; }
 
     public HashSet<string> TargetDevices { get; }
 
-    public List<string> EnvironmentNames { get; }
+    // The names that the allow-lists of the environment and the translator options hold (C-0008 section 2).
+    public HashSet<string> EnvironmentNames { get; }
+
+    public HashSet<string> TranslatorNames { get; }
+
+    private JsonElement EnvironmentAllowList { get; }
+
+    private JsonElement TranslatorAllowList { get; }
+
+    private static HashSet<string> Names(JsonElement allowList) =>
+        allowList.TryGetProperty("properties", out var names) && names.ValueKind == JsonValueKind.Object
+            ? names.EnumerateObject().Select(member => member.Name).ToHashSet(StringComparer.Ordinal)
+            : [];
 
     private static JsonElement Find(JsonElement root, params string[] path)
     {
@@ -956,16 +1033,34 @@ internal sealed class TitleSchema
         return element;
     }
 
-    // C-0008 section 5: the environment allow-list never holds SteamAppId, SteamGameId, SteamAppPath or another
-    // variable that steam_api or a DRM wrapper reads. Windows reads environment names in any letter case, so a
-    // name that starts with Steam in any case is refused, as the app's schema test does (compat-db.md section 2).
-    public List<Problem> CheckAllowList() =>
-    [
-        .. EnvironmentNames.Where(IsSteamVariable).Select(name => new Problem(
+    // C-0008 section 2: the keys of translator and environment come from allow-lists in the schema, so both are
+    // closed: the schema lists their names under properties and allows no other. C-0008 section 5: the
+    // environment allow-list never holds SteamAppId, SteamGameId, SteamAppPath or another variable that
+    // steam_api or a DRM wrapper reads. Windows reads environment names in any letter case, so a name that
+    // starts with Steam in any case is refused, as the app's schema test does (compat-db.md section 2).
+    public List<Problem> CheckAllowList()
+    {
+        var problems = new List<Problem>();
+        var allowLists = new[] { ("environment", EnvironmentAllowList), ("translator", TranslatorAllowList) };
+        foreach (var (name, allowList) in allowLists)
+        {
+            if (allowList.ValueKind != JsonValueKind.Object
+                || !allowList.TryGetProperty("additionalProperties", out var others)
+                || others.ValueKind != JsonValueKind.False)
+            {
+                problems.Add(new Problem(
+                    SchemaPath, $"/properties/{name}", "allow-list",
+                    $"{name} is an allow-list: the schema names its keys under properties and sets "
+                    + "additionalProperties to false (C-0008 section 2)"));
+            }
+        }
+        var steamVariables = EnvironmentNames.Where(IsSteamVariable).Order(StringComparer.Ordinal);
+        problems.AddRange(steamVariables.Select(name => new Problem(
             SchemaPath, $"/properties/environment/properties/{JsonPointer.Segment(name)}", "allow-list",
             "the environment allow-list never holds a variable that steam_api or a DRM wrapper reads "
-            + "(C-0008 section 5)")),
-    ];
+            + "(C-0008 section 5)")));
+        return problems;
+    }
 
     public static bool IsSteamVariable(string name) => name.StartsWith("Steam", StringComparison.OrdinalIgnoreCase);
 }
@@ -1048,7 +1143,7 @@ internal static class Titles
         if (found.Count == 0)
         {
             CheckLaunch(file, root, problems);
-            CheckEnvironment(file, root, problems);
+            CheckAllowLists(file, root, schema, problems);
             CheckRating(file, root, schema.TargetDevices, problems);
             CheckEvidence(file, root, evidenceExists, problems);
         }
@@ -1148,20 +1243,34 @@ internal static class Titles
         }
     }
 
-    // C-0008 section 5, stated again in code for the same reason: the environment never holds a variable that
-    // steam_api or a DRM wrapper reads.
-    private static void CheckEnvironment(string file, JsonElement root, List<Problem> problems)
+    // C-0008 sections 2 and 5, stated again in code for the same reason: the keys of translator and environment
+    // are on the schema's allow-lists, and the environment never holds a variable that steam_api or a DRM
+    // wrapper reads.
+    private static void CheckAllowLists(string file, JsonElement root, TitleSchema schema, List<Problem> problems)
     {
-        if (!root.TryGetProperty("environment", out var environment))
+        var allowLists = new[] { ("translator", schema.TranslatorNames), ("environment", schema.EnvironmentNames) };
+        foreach (var (member, allowed) in allowLists)
         {
-            return;
-        }
-        var names = environment.EnumerateObject().Select(member => member.Name);
-        foreach (var name in names.Where(TitleSchema.IsSteamVariable))
-        {
-            problems.Add(new Problem(
-                file, $"/environment/{JsonPointer.Segment(name)}", "allow-list",
-                "the environment never holds a variable that steam_api or a DRM wrapper reads (C-0008 section 5)"));
+            if (!root.TryGetProperty(member, out var map))
+            {
+                continue;
+            }
+            foreach (var name in map.EnumerateObject().Select(key => key.Name))
+            {
+                if (!allowed.Contains(name))
+                {
+                    problems.Add(new Problem(
+                        file, $"/{member}/{JsonPointer.Segment(name)}", "allow-list",
+                        $"the name is not on the schema's allow-list of {member} (C-0008 section 2)"));
+                }
+                else if (member == "environment" && TitleSchema.IsSteamVariable(name))
+                {
+                    problems.Add(new Problem(
+                        file, $"/environment/{JsonPointer.Segment(name)}", "allow-list",
+                        "the environment never holds a variable that steam_api or a DRM wrapper reads "
+                        + "(C-0008 section 5)"));
+                }
+            }
         }
     }
 
@@ -1229,7 +1338,9 @@ internal static class Rating
     // What a device says on the release is its latest report for it: the one with the latest date, and of two
     // on one date the later in the list, since a new report is added at its end. The devices disagree when what
     // they say differs. The rating is then the lowest of what they say, which is also the latest report's
-    // rating when they agree (docs/design/compat-db.md section 2.2).
+    // rating when they agree. A device is a report's model identifier, as the schema lists target devices, so the
+    // two identifiers of the iPhone 18 Pro Max count as two, and the lower rating is the safe side where they
+    // disagree (docs/design/compat-db.md section 2.2).
     public static string Compute(IEnumerable<TestReport> reports, HashSet<string> targetDevices)
     {
         var counting = reports
@@ -1275,13 +1386,15 @@ internal sealed class ReleaseVersion : IComparable<ReleaseVersion>
         _preRelease = preRelease;
     }
 
+    // A numeric identifier of a pre-release has no leading zero (Semantic Versioning 2.0.0, item 9), so a tag such
+    // as v1.0.0-01, which the schema's pattern lets through, is no release tag, and its report does not count.
     public static bool TryParse(string text, [NotNullWhen(true)] out ReleaseVersion? version)
     {
         var match = s_tag.Match(text);
-        version = match.Success
-            ? new ReleaseVersion(
-                [match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value],
-                match.Groups[4].Success ? match.Groups[4].Value[1..].Split('.') : [])
+        string[] preRelease = match.Groups[4].Success ? match.Groups[4].Value[1..].Split('.') : [];
+        var leadingZero = preRelease.Any(part => part.Length > 1 && part[0] == '0' && part.All(char.IsAsciiDigit));
+        version = match.Success && !leadingZero
+            ? new ReleaseVersion([match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value], preRelease)
             : null;
         return version is not null;
     }
@@ -1606,6 +1719,18 @@ internal static class SelfTest
         ("a number just over maximum, compared exactly", """{ "maximum": 1 }""", "1.0000000000000001", "maximum"),
         ("a number at an exclusive minimum", """{ "exclusiveMinimum": 0 }""", "0", "exclusiveMinimum"),
         ("a number over an exclusive minimum", """{ "exclusiveMinimum": 0 }""", "0.5", null),
+        ("a number next to zero, over an exclusive minimum", """{ "exclusiveMinimum": 0 }""", "1e-29", null),
+        ("a number past the 28th decimal, over maximum", """{ "maximum": 1 }""", "1.00000000000000000000000000001",
+            "maximum"),
+        ("a number past the 28th decimal, under minimum", """{ "minimum": 1 }""", "0.99999999999999999999999999999",
+            "minimum"),
+        ("a number with an exponent, at maximum", """{ "maximum": 500 }""", "5e2", null),
+        ("leading zeros and an exponent, under maximum", """{ "maximum": 8 }""", "0.0007e4", null),
+        ("leading zeros and an exponent, over minimum", """{ "minimum": 8 }""", "0.0009e4", null),
+        ("a negative number under minimum", """{ "minimum": -1 }""", "-1.5", "minimum"),
+        ("an exponent too long for a long", """{ "maximum": 1 }""", "1e99999999999999999999", "maximum"),
+        ("an exponent too long for a long, next to zero", """{ "exclusiveMinimum": 0 }""", "1e-99999999999999999999",
+            null),
         ("two characters outside the BMP, at maxLength 2", """{ "maxLength": 2 }""",
             "\"\\ud83d\\ude00\\ud83d\\ude00\"", null),
         ("three characters, over maxLength 2", """{ "maxLength": 2 }""", "\"abc\"", "maxLength"),
@@ -1638,6 +1763,8 @@ internal static class SelfTest
         ("an Arabic-Indic digit, against \\d", """{ "pattern": "^\\d$" }""", "\"\\u0660\"", "pattern"),
         ("a letter with an accent, against \\w", """{ "pattern": "^\\w$" }""", "\"\\u00e9\"", "pattern"),
         ("an item twice", """{ "uniqueItems": true }""", "[\"a\", \"a\"]", "uniqueItems"),
+        ("a number twice, a text between", """{ "uniqueItems": true }""", "[1, \"1\", 1]", "uniqueItems"),
+        ("a - after \\w at the end of a class", """{ "pattern": "^[\\w-]$" }""", "\"-\"", null),
         ("a missing member", """{ "required": ["a"] }""", "{}", "required"),
     ];
 
@@ -1656,6 +1783,10 @@ internal static class SelfTest
         ("inline options in a pattern", """{ "pattern": "(?i)a" }""", "/pattern"),
         ("a class subtraction in a pattern", """{ "pattern": "[a-z-[aeiou]]" }""", "/pattern"),
         ("\\S inside a class", """{ "pattern": "[\\S]" }""", "/pattern"),
+        ("a range that starts at \\w", """{ "pattern": "[\\w-z]" }""", "/pattern"),
+        ("a range that ends in \\d", """{ "pattern": "[!-\\d]" }""", "/pattern"),
+        ("an $id inside the schema", """{ "properties": { "a": { "$id": "https://example.com/a" } } }""",
+            "/properties/a/$id"),
         ("a $comment that is not text", """{ "not": { "$comment": 5 } }""", "/not/$comment"),
     ];
 
@@ -1668,7 +1799,10 @@ internal static class SelfTest
     ];
 
     private static readonly string[] s_notReleaseTags =
-        ["0.1.0", "v0.1", "v01.0.0", "v1.0.0+build.5", "v1.0.0-", "3a44fa2c92a67a2d0c3223bf247361c77937be76"];
+        [
+            "0.1.0", "v0.1", "v01.0.0", "v1.0.0+build.5", "v1.0.0-", "v1.0.0-01", "v1.0.0-rc.01",
+            "3a44fa2c92a67a2d0c3223bf247361c77937be76",
+        ];
 
     public static int Run()
     {
@@ -1963,10 +2097,36 @@ internal static class SelfTest
     }
 
     // The rules in code hold where a change of the schema drops them: without the schema's launch conditions,
-    // each launch fixture still fails its rule, and with a Steam variable in the environment allow-list, the
-    // check fails the schema and the fixture that sets it.
+    // each launch fixture still fails its rule; with translator and environment open to any key, the check fails
+    // the schema and the fixtures of keys that the allow-lists lack; and with a Steam variable in the environment
+    // allow-list, the check fails the schema and the fixture that sets it.
     private static void CheckDrift(string root, string schemaText, Tally tally)
     {
+        var open = JsonNode.Parse(schemaText)!.AsObject();
+        open["properties"]!["environment"]!.AsObject().Remove("additionalProperties");
+        open["properties"]!["translator"]!.AsObject().Remove("additionalProperties");
+        var opened = new TitleSchema(open.ToJsonString());
+        var openProblems = opened.CheckAllowList();
+        var pointers = openProblems.Where(problem => problem.Rule == "allow-list").Select(problem => problem.Pointer);
+        tally.Expect(
+            openProblems.Count == 2 && pointers.SequenceEqual(["/properties/environment", "/properties/translator"]),
+            "drift, allow-lists open to any key",
+            string.Join(", ", openProblems));
+        var typed = new TitleSchema(OpenWithType(schemaText));
+        tally.Expect(
+            typed.CheckAllowList() is [{ Rule: "allow-list", Pointer: "/properties/environment" }],
+            "drift, an environment that allows any key of one type",
+            string.Join(", ", typed.CheckAllowList()));
+        foreach (var name in new[] { "allow-list-environment-name-not-listed", "allow-list-translator-option-not-listed" })
+        {
+            var (fixture, _) = Titles.CheckFolder(
+                Path.Combine(root, Fixtures, "invalid", name), name, opened, s_fixtureRecords.Contains);
+            tally.Expect(
+                OnlyRule(fixture, "allow-list"),
+                $"drift, {name} with any key allowed",
+                Found("allow-list", fixture));
+        }
+
         var withoutLaunch = JsonNode.Parse(schemaText)!.AsObject();
         withoutLaunch.Remove("allOf");
         var unconditioned = new TitleSchema(withoutLaunch.ToJsonString());
@@ -1995,6 +2155,14 @@ internal static class SelfTest
             OnlyRule(steamFixture, "allow-list"),
             $"drift, {Case} with the variable allowed",
             Found("allow-list", steamFixture));
+    }
+
+    // The title schema with an environment that takes any key whose value is a text.
+    private static string OpenWithType(string schemaText)
+    {
+        var schema = JsonNode.Parse(schemaText)!.AsObject();
+        schema["properties"]!["environment"]!["additionalProperties"] = new JsonObject { ["type"] = "string" };
+        return schema.ToJsonString();
     }
 
     private static bool OnlyRule(List<Problem> problems, string? rule) =>

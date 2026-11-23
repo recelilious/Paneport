@@ -87,7 +87,7 @@ public sealed class SteamService : ISteamService, IDisposable
         var elapsed = _time.GetElapsedTime(started);
         return result == SteamResult.OK
             ? new SignInResult(SignInOutcome.LoggedOn, elapsed, TimeSpan.Zero, Problem: null)
-            : new SignInResult(SignInOutcome.Failed, elapsed, TimeSpan.Zero, $"Steam refused the logon: {SteamResults.Describe(result)}.");
+            : new SignInResult(SignInOutcome.Failed, elapsed, TimeSpan.Zero, SteamResults.DescribeLogOnFailure(result));
     }
 
     /// <inheritdoc />
@@ -113,7 +113,13 @@ public sealed class SteamService : ISteamService, IDisposable
     /// <inheritdoc />
     public async Task SignOutAsync(CancellationToken cancellationToken)
     {
-        Replace(null);
+        // The replaced flow ends first: one whose logon has just succeeded saves its sign-in, or
+        // gives up its save, before the delete below, which then finds whatever it wrote.
+        if (Replace(null) is { } previous)
+        {
+            await previous.Completion.ConfigureAwait(false);
+        }
+
         await _tokens.DeleteAsync(CancellationToken.None).ConfigureAwait(false);
         _session.SetSignInSaved(false);
         await _session.SignOffAsync(cancellationToken).ConfigureAwait(false);
@@ -132,9 +138,10 @@ public sealed class SteamService : ISteamService, IDisposable
         _tokens.Dispose();
     }
 
-    // Makes the flow the current one and cancels the one before. The old flow ends on its own and
-    // drops its password then; it is disposed once it has ended.
-    private void Replace(SignInFlow? flow)
+    // Makes the flow the current one and cancels the one before, which it returns. The old flow ends
+    // on its own and drops its password then; it is disposed once it has ended, and its Cancel is a
+    // no-op from then on.
+    private SignInFlow? Replace(SignInFlow? flow)
     {
         SignInFlow? previous;
         lock (_lock)
@@ -153,5 +160,7 @@ public sealed class SteamService : ISteamService, IDisposable
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
         }
+
+        return previous;
     }
 }

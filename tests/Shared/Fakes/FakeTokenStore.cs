@@ -56,12 +56,24 @@ internal sealed class FakeTokenStore : ITokenStore
         }
     }
 
-    public Task<SavedSignIn?> ReadAsync(CancellationToken cancellationToken)
+    // Holds each read until a test completes it, so that a test can keep the store busy.
+    public TaskCompletionSource? ReadGate { get; set; }
+
+    public async Task<SavedSignIn?> ReadAsync(CancellationToken cancellationToken)
     {
         lock (_lock)
         {
             _calls.Add("read");
-            return Task.FromResult(_signIn);
+        }
+
+        if (ReadGate is { } gate)
+        {
+            await gate.Task.WaitAsync(cancellationToken);
+        }
+
+        lock (_lock)
+        {
+            return _signIn;
         }
     }
 

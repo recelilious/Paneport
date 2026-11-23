@@ -126,8 +126,13 @@ internal sealed class GateSteps : ISteamGateSteps
         _log.Protect(key);
         lock (_lock)
         {
-            if (_depotKey is { } old)
+            if (_depotKey is { } old && !ReferenceEquals(old, key))
             {
+                if (!old.AsSpan().SequenceEqual(key))
+                {
+                    _log.Unprotect(old);
+                }
+
                 CryptographicOperations.ZeroMemory(old);
             }
 
@@ -172,14 +177,19 @@ internal sealed class GateSteps : ISteamGateSteps
         uint appId;
         lock (_lock)
         {
-            key = _depotKey is not null && _keyDepot == depotId
-                ? _depotKey
-                : throw new SteamStepException("Get the depot key of this depot first.");
+            if (_depotKey is null || _keyDepot != depotId)
+            {
+                throw new SteamStepException("Get the depot key of this depot first.");
+            }
+
             code = _manifestCode != 0 && _codeDepot == depotId
                 ? _manifestCode
                 : throw new SteamStepException("Get the manifest request code of this depot first.");
             appId = _appId;
+            key = CopyOfKey(_depotKey);
         }
+
+        using var wipe = new Wiping(key);
 
         var started = _time.GetTimestamp();
         var servers = await ServersAsync(cancellationToken).ConfigureAwait(false);
@@ -226,11 +236,16 @@ internal sealed class GateSteps : ISteamGateSteps
         lock (_lock)
         {
             manifest = _manifest ?? throw new SteamStepException("Download the manifest first.");
-            key = _depotKey is not null && _keyDepot == manifest.DepotId
-                ? _depotKey
-                : throw new SteamStepException("Get the depot key of this depot first.");
+            if (_depotKey is null || _keyDepot != manifest.DepotId)
+            {
+                throw new SteamStepException("Get the depot key of this depot first.");
+            }
+
             appId = _appId;
+            key = CopyOfKey(_depotKey);
         }
+
+        using var wipe = new Wiping(key);
 
         var chunks = ManifestSummaries.DistinctChunks(manifest).Take(count).ToList();
         var servers = await ServersAsync(cancellationToken).ConfigureAwait(false);
@@ -430,12 +445,30 @@ internal sealed class GateSteps : ISteamGateSteps
         }
     }
 
-    // Forgets the key, the code and the manifest, and wipes the key's bytes. Called under the lock.
+    // A step's own copy of the depot key: a key fetched again, or forgotten, while the step runs is
+    // wiped without changing the key that the step decrypts with. The step wipes its copy when it
+    // ends.
+    private static byte[] CopyOfKey(byte[] key) => (byte[])key.Clone();
+
+    // Forgets the key, the code, the server tokens and the manifest, wipes the key's bytes and takes
+    // their text out of the log filter, which would otherwise keep it for the service's life.
+    // Called under the lock.
     private void Forget()
     {
         if (_depotKey is { } key)
         {
+            _log.Unprotect(key);
             CryptographicOperations.ZeroMemory(key);
+        }
+
+        if (_manifestCode != 0)
+        {
+            _log.Unprotect(_manifestCode.ToString(CultureInfo.InvariantCulture));
+        }
+
+        foreach (var token in _serverTokens.Values)
+        {
+            _log.Unprotect(token);
         }
 
         _depotKey = null;
@@ -444,5 +477,11 @@ internal sealed class GateSteps : ISteamGateSteps
         _codeDepot = 0;
         _manifest = null;
         _serverTokens.Clear();
+    }
+
+    // Wipes a step's copy of the depot key when the step ends.
+    private readonly struct Wiping(byte[] bytes) : IDisposable
+    {
+        public void Dispose() => CryptographicOperations.ZeroMemory(bytes);
     }
 }

@@ -68,6 +68,43 @@ internal sealed partial class RedactingLog : ILog
         Protect(Convert.ToBase64String(key));
     }
 
+    // Takes a value out again once the service has dropped it, such as a password when its attempt
+    // ends, so that the filter does not keep it in memory for the service's life. The shape rules
+    // stay.
+    public void Unprotect(string? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        lock (_lock)
+        {
+            _values = [.. _values.Where(v => !string.Equals(v, value, StringComparison.OrdinalIgnoreCase))];
+        }
+    }
+
+    // Takes out both forms of a key that the service has wiped.
+    public void Unprotect(ReadOnlySpan<byte> key)
+    {
+        if (key.IsEmpty)
+        {
+            return;
+        }
+
+        Unprotect(Convert.ToHexString(key));
+        Unprotect(Convert.ToBase64String(key));
+    }
+
+    // Whether the filter holds a value; for the tests.
+    public bool Holds(string value)
+    {
+        lock (_lock)
+        {
+            return _values.Contains(value, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
     public void Write(LogLevel level, string source, string message) => _inner.Write(level, source, Scrub(message));
 
     public string Scrub(string text)

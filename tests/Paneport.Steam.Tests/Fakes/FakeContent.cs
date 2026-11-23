@@ -43,6 +43,13 @@ internal sealed class FakeContent : ISteamContent
 
     public int ManifestDownloads { get; private set; }
 
+    // Runs before each chunk is returned, with the depot key that the download was given; a test can
+    // hold a download there.
+    public Func<byte[], Task>? BeforeChunk { get; set; }
+
+    // A copy of the depot key that each chunk download held when it returned.
+    public List<byte[]> KeysAtReturn { get; } = [];
+
     public Task<ulong> GetManifestRequestCodeAsync(uint depotId, uint appId, ulong manifestId, CancellationToken cancellationToken) =>
         Task.FromResult(ManifestCode);
 
@@ -66,7 +73,7 @@ internal sealed class FakeContent : ISteamContent
         return Task.FromResult(Manifest ?? throw new ContentDownloadException(HttpStatusCode.NotFound, null));
     }
 
-    public Task<int> DownloadChunkAsync(
+    public async Task<int> DownloadChunkAsync(
         uint depotId,
         ManifestChunk chunk,
         ContentServer server,
@@ -86,9 +93,19 @@ internal sealed class FakeContent : ISteamContent
             throw new ContentDownloadException(HttpStatusCode.NotFound, null);
         }
 
+        if (BeforeChunk is { } before)
+        {
+            await before(depotKey);
+        }
+
+        lock (_lock)
+        {
+            KeysAtReturn.Add([.. depotKey]);
+        }
+
         var length = Math.Min(content.Length, destination.Length);
         content.AsSpan(0, length).CopyTo(destination);
-        return Task.FromResult(length);
+        return length;
     }
 
     private void Use(string? serverToken)

@@ -146,19 +146,41 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
             round = _round;
         }
 
-        round?.Cancel();
+        try
+        {
+            round?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The round ended after it was read above.
+        }
     }
 
+    // A no-op once the attempt has ended: the service disposes an attempt that another sign-in or a
+    // sign-out replaced once it has ended, and a page may still hold it.
     public void Cancel()
     {
         TaskCompletionSource<string>? request;
         lock (_lock)
         {
+            if (_progress.HasEnded)
+            {
+                return;
+            }
+
             request = _codeRequest;
             _codeRequest = null;
         }
 
-        _cancel.Cancel();
+        try
+        {
+            _cancel.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The attempt ended and was disposed after the check above.
+        }
+
         request?.TrySetCanceled();
     }
 
@@ -213,6 +235,7 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
     {
         var started = _time.GetTimestamp();
         var token = _cancel.Token;
+        SavedSignIn? loggingOnWith = null;
         try
         {
             SetProgress(new SignInProgress(SignInStage.Connecting));
@@ -228,18 +251,28 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
 
             SetProgress(new SignInProgress(SignInStage.LoggingOn));
             var signIn = new SavedSignIn(tokens.AccountName, tokens.RefreshToken);
+            loggingOnWith = signIn;
             var result = await _session.LogOnAsync(signIn, token).ConfigureAwait(false);
             if (result != SteamResult.OK)
             {
-                return End(started, SignInStage.Failed, $"Steam refused the logon: {SteamResults.Describe(result)}.");
+                return End(started, SignInStage.Failed, SteamResults.DescribeLogOnFailure(result));
             }
 
-            await _tokens.SaveAsync(signIn, CancellationToken.None).ConfigureAwait(false);
+            // A cancellation, such as a sign-out, can land just after the logon. The save waits for
+            // the store with the attempt's token, so a cancelled attempt never writes its token
+            // after the sign-out deleted the saved sign-in.
+            await _tokens.SaveAsync(signIn, token).ConfigureAwait(false);
             _session.SetSignInSaved(true);
             return End(started, SignInStage.LoggedOn, problem: null);
         }
         catch (OperationCanceledException) when (_cancel.IsCancellationRequested)
         {
+            if (loggingOnWith is not null)
+            {
+                // The logon may be on its way or already there: the session gives it up.
+                _session.AbandonLogOn(loggingOnWith);
+            }
+
             return End(started, SignInStage.Cancelled, problem: null);
         }
         catch (SteamAuthException exception)
@@ -268,8 +301,17 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
     private async Task<AuthTokens> SignInWithPasswordAsync(CancellationToken cancellationToken)
     {
         var acceptApproval = _confirmation == SignInConfirmation.ApproveInSteamApp;
+        var first = true;
         while (true)
         {
+            if (!first)
+            {
+                // The round before may have ended with the connection, as when iOS closes the
+                // socket while the user approves in the Steam mobile app; a code round needs one.
+                await _session.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            first = false;
             using var round = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             lock (_lock)
             {
@@ -364,9 +406,15 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
         return result;
     }
 
+    // Drops the password, and takes it out of the log filter, which would otherwise keep it for the
+    // service's life.
     private void DropPassword()
     {
-        Volatile.Write(ref _password, null);
+        if (Interlocked.Exchange(ref _password, null) is { } password)
+        {
+            _log.Unprotect(password);
+        }
+
         Volatile.Write(ref _accountName, null);
     }
 
@@ -418,6 +466,8 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
             "The sign-in took too long and expired. Start it again.",
         SteamResult.TwoFactorCodeMismatch or SteamResult.InvalidLoginAuthCode =>
             "Steam refused the code.",
+        SteamResult.NoConnection =>
+            "The connection to Steam ended during the sign-in. Start it again.",
         _ => $"Steam refused the sign-in: {SteamResults.Describe(result)}.",
     };
 }

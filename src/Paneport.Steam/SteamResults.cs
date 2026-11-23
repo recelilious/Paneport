@@ -24,6 +24,15 @@ internal static class SteamResults
         is SteamResult.TryAnotherCM
         or SteamResult.ServiceUnavailable;
 
+    // What a sign-in or a resume says when its logon did not succeed. The policy's giving up and a
+    // cancelled logon are not refusals by Steam, so they get words of their own.
+    public static string DescribeLogOnFailure(SteamResult result) => result switch
+    {
+        SteamResult.NoConnection => "Paneport could not reach Steam to log on.",
+        SteamResult.Cancelled => "The logon was cancelled.",
+        _ => $"Steam refused the logon: {Describe(result)}.",
+    };
+
     // The result's name, or its number for one that SteamResult does not name. Neither holds a
     // secret, so it may be shown and logged.
     public static string Describe(SteamResult result) =>

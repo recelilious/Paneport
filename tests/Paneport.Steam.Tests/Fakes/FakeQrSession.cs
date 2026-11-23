@@ -30,5 +30,8 @@ internal sealed class FakeQrSession : IQrAuthSession
 
     public void Scan() => _scan.TrySetResult(_tokens);
 
+    // Ends the wait as the adapter does when Steam refuses it or the connection ends.
+    public void Fail(SteamResult result) => _scan.TrySetException(new SteamAuthException(result));
+
     public Task<AuthTokens> WaitForTokensAsync(CancellationToken cancellationToken) => _scan.Task.WaitAsync(cancellationToken);
 }

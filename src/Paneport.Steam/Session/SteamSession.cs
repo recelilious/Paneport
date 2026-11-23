@@ -44,8 +44,10 @@ internal sealed class SteamSession : IConnectionListener
     private bool _offline;
     private bool _signingOut;
     private bool _reconnectOnDisconnect;
+    private TimeSpan? _restartDelay;
     private bool _disconnectWhenLoggedOff;
     private int _failedAttempts;
+    private int _logOffs;
     private int _serverSwitches;
     private bool? _signInSaved;
     private string? _problem;
@@ -118,26 +120,34 @@ internal sealed class SteamSession : IConnectionListener
     }
 
     // Logs on with a sign-in and keeps the logon up. Completes with Steam's result: OK, the result
-    // that ended the logon, or NoConnection when the policy gave up. A logon with another sign-in
-    // than the current one connects again first.
+    // that ended the logon, NoConnection when the policy gave up, or Cancelled when another sign-in
+    // or a sign-off replaced it. A logon with another sign-in than the current one, logged on or
+    // still on its way, connects again first, so that the other one's result cannot answer it.
     public Task<SteamResult> LogOnAsync(SavedSignIn signIn, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(signIn);
         var waiter = new TaskCompletionSource<SteamResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         _queue.Post(() =>
         {
-            if (_loggedOn && ReferenceEquals(_signIn, signIn))
+            var same = TokenKeeper.Same(_signIn, signIn);
+            if (_loggedOn && same)
             {
                 waiter.TrySetResult(SteamResult.OK);
                 return;
             }
 
-            var switching = _loggedOn;
+            var switching = _loggedOn || (_loggingOn && !same);
+            if (switching)
+            {
+                CompleteLogOns(SteamResult.Cancelled);
+            }
+
             _goal = Goal.LoggedOn;
             _signIn = signIn;
             _offline = false;
             _problem = null;
             _failedAttempts = 0;
+            _logOffs = 0;
             _serverSwitches = 0;
             _logOnWaiters.Add(waiter);
             if (switching)
@@ -172,6 +182,8 @@ internal sealed class SteamSession : IConnectionListener
             _signIn = null;
             _reconnecting = false;
             _offline = false;
+            _restartDelay = null;
+            _logOffs = 0;
             CancelWait();
             EndWaiters(SteamResult.Cancelled, new OperationCanceledException("The session signed off."));
             if (!_connected && !_connecting)
@@ -212,6 +224,7 @@ internal sealed class SteamSession : IConnectionListener
 
         _log.Write(LogLevel.Information, LogSource, "The app returned to the foreground, so the session connects and logs on again.");
         _failedAttempts = 0;
+        _logOffs = 0;
         _serverSwitches = 0;
         _offline = false;
         _reconnecting = true;
@@ -251,6 +264,35 @@ internal sealed class SteamSession : IConnectionListener
         Publish();
     });
 
+    // A sign-in that was cancelled after it asked for its logon: the session stops working towards
+    // that logon, and logs off when the logon is there or comes later, so that no logon outlives
+    // its cancelled attempt without a saved sign-in.
+    public void AbandonLogOn(SavedSignIn signIn)
+    {
+        ArgumentNullException.ThrowIfNull(signIn);
+        _queue.Post(() =>
+        {
+            if (!ReferenceEquals(_signIn, signIn))
+            {
+                return;
+            }
+
+            _signIn = null;
+            _goal = _signIns > 0 ? Goal.Connected : Goal.None;
+            _reconnecting = false;
+            _offline = false;
+            CancelWait();
+            CompleteLogOns(SteamResult.Cancelled);
+            if (_loggedOn && !_signingOut)
+            {
+                _log.Write(LogLevel.Information, LogSource, "The sign-in was cancelled after its logon, so the session logs off.");
+                _connection.LogOff();
+            }
+
+            Publish();
+        });
+    }
+
     // The package IDs of the account's licenses, which Steam sends after each logon.
     public Task<IReadOnlyList<uint>> GetLicensesAsync(CancellationToken cancellationToken) =>
         Volatile.Read(ref _licenses).Task.WaitAsync(cancellationToken);
@@ -259,8 +301,27 @@ internal sealed class SteamSession : IConnectionListener
     {
         _connecting = false;
         _connected = true;
-        _failedAttempts = 0;
         _offline = false;
+        if (_signingOut)
+        {
+            // The sign-off came while the adapter was still choosing a server, when a disconnect
+            // could not reach a connection yet; the new connection ends at once.
+            _connection.Disconnect();
+            Publish();
+            return;
+        }
+
+        // A restart that was asked for while connecting has this connection as its result.
+        _reconnectOnDisconnect = false;
+        _restartDelay = null;
+        if (_goal != Goal.LoggedOn)
+        {
+            // A connection is what a sign-in needs. A logon counts as reached only when Steam
+            // accepts it, so that a server that drops each connection before the logon's result
+            // still ends at the policy's limit.
+            _failedAttempts = 0;
+        }
+
         foreach (var waiter in _connectWaiters)
         {
             waiter.TrySetResult();
@@ -303,19 +364,30 @@ internal sealed class SteamSession : IConnectionListener
 
         if (_reconnectOnDisconnect)
         {
-            // An end that the session asked for itself, to move to another server or to log on again.
+            // An end that the session asked for itself, to move to another server or to log on
+            // again, at once or after the wait that a logoff by Steam asks for.
             _reconnectOnDisconnect = false;
+            var restartDelay = _restartDelay;
+            _restartDelay = null;
             if (_goal != Goal.None)
             {
-                ConnectIfIdle();
+                if (restartDelay is { } wait)
+                {
+                    WaitThenConnect(wait);
+                }
+                else
+                {
+                    ConnectIfIdle();
+                }
             }
 
             Publish();
             return;
         }
 
-        if (_goal == Goal.None)
+        if (_goal == Goal.None || _offline)
         {
+            // Nothing to keep up, or the policy has already given up.
             Publish();
             return;
         }
@@ -342,12 +414,34 @@ internal sealed class SteamSession : IConnectionListener
     void IConnectionListener.OnLoggedOn(SteamResult result) => _queue.Post(() =>
     {
         _loggingOn = false;
+        if (_reconnectOnDisconnect)
+        {
+            // The result of a logon on a connection that the session is ending, such as one that
+            // another sign-in replaced; it must not answer the logon that follows.
+            _log.Write(LogLevel.Information, LogSource, $"A logon result came on a connection that is ending ({SteamResults.Describe(result)}); it is ignored.");
+            return;
+        }
+
         if (result == SteamResult.OK)
         {
+            if (_goal != Goal.LoggedOn || _signIn is null)
+            {
+                // The sign-in that this logon was for was abandoned or signed off on its way.
+                if (!_signingOut)
+                {
+                    _log.Write(LogLevel.Information, LogSource, "A logon came for a sign-in that is no longer wanted, so the session logs off.");
+                    _connection.LogOff();
+                }
+
+                Publish();
+                return;
+            }
+
             _loggedOn = true;
             _reconnecting = false;
             _offline = false;
             _problem = null;
+            _failedAttempts = 0;
             _serverSwitches = 0;
             CompleteLogOns(SteamResult.OK);
             _log.Write(LogLevel.Information, LogSource, "Logged on.");
@@ -365,12 +459,13 @@ internal sealed class SteamSession : IConnectionListener
             return;
         }
 
-        _problem = $"Steam refused the logon: {SteamResults.Describe(result)}.";
+        _problem = SteamResults.DescribeLogOnFailure(result);
         _log.Write(LogLevel.Warning, LogSource, _problem);
-        if (SteamResults.MeansTokenInvalid(result))
+        if (SteamResults.MeansTokenInvalid(result) && _signIn is { } refused)
         {
-            _signInSaved = false;
-            _ = _tokens.DropAsync();
+            // Only the saved sign-in's own token is dropped: a fresh token that Steam refuses leaves
+            // another sign-in in the store alone.
+            _ = DropRefusedAsync(refused);
         }
 
         _goal = _signIns > 0 ? Goal.Connected : Goal.None;
@@ -397,11 +492,15 @@ internal sealed class SteamSession : IConnectionListener
             return;
         }
 
-        if (result == SteamResult.LoggedInElsewhere)
+        if (result is SteamResult.LoggedInElsewhere or SteamResult.LogonSessionReplaced)
         {
-            // Another client, such as Valve's client in a Dock session, took the account's session.
-            // The session does not take it back (C-0007 section 4); the saved sign-in stays.
-            _problem = "Steam logged this session off because the account logged on elsewhere.";
+            // Another client took the account's session: Valve's client in a Dock session, or
+            // another session with the same login ID. The session does not take it back
+            // (C-0007 section 4), which would only replace the other one in turn, again and again.
+            // The saved sign-in stays.
+            _problem = result == SteamResult.LoggedInElsewhere
+                ? "Steam logged this session off because the account logged on elsewhere."
+                : "Steam logged this session off because another session of the account replaced it.";
             _log.Write(LogLevel.Warning, LogSource, _problem);
             _goal = Goal.None;
             _signIn = null;
@@ -413,9 +512,24 @@ internal sealed class SteamSession : IConnectionListener
 
         if (_goal == Goal.LoggedOn)
         {
-            _log.Write(LogLevel.Warning, LogSource, $"Steam logged the session off ({SteamResults.Describe(result)}); logging on again.");
+            // Each logoff counts, with the policy's wait before the next logon, so that a session
+            // that Steam logs off after every logon ends at the limit. Only a new sign-in, a resume
+            // or a return to the foreground starts the count again.
             _reconnecting = true;
-            Restart();
+            _logOffs++;
+            if (_logOffs > _policy.MaxAttempts)
+            {
+                GiveUp($"Steam kept logging the session off ({SteamResults.Describe(result)}), so Paneport stopped logging on again.");
+                _connection.Disconnect();
+                return;
+            }
+
+            var delay = _policy.DelayBefore(_logOffs);
+            _log.Write(
+                LogLevel.Warning,
+                LogSource,
+                string.Create(CultureInfo.InvariantCulture, $"Steam logged the session off ({SteamResults.Describe(result)}); logon {_logOffs} of {_policy.MaxAttempts} follows in {delay.TotalSeconds:0.#} s."));
+            Restart(delay);
         }
 
         Publish();
@@ -459,18 +573,33 @@ internal sealed class SteamSession : IConnectionListener
         _connection.LogOn(signIn.AccountName, signIn.RefreshToken);
     }
 
-    // Ends the current connection to connect again at once, or connects when there is none.
-    private void Restart()
+    // Ends the current connection to connect again, at once or after a wait, or connects when there
+    // is none.
+    private void Restart(TimeSpan? delay = null)
     {
         CancelWait();
         if (_connected || _connecting)
         {
             _reconnectOnDisconnect = true;
+            _restartDelay = delay;
             _connection.Disconnect();
+        }
+        else if (delay is { } wait)
+        {
+            WaitThenConnect(wait);
         }
         else
         {
             ConnectIfIdle();
+        }
+    }
+
+    // Drops the saved sign-in when it is the one that Steam refused, and says so in the status.
+    private async Task DropRefusedAsync(SavedSignIn refused)
+    {
+        if (await _tokens.DropAsync(refused).ConfigureAwait(false))
+        {
+            SetSignInSaved(false);
         }
     }
 
@@ -537,13 +666,15 @@ internal sealed class SteamSession : IConnectionListener
         }
     }
 
-    private void GiveUp()
+    private void GiveUp(string? problem = null)
     {
-        _problem = string.Create(
+        _problem = problem ?? string.Create(
             CultureInfo.InvariantCulture,
             $"Paneport could not reach Steam after {_policy.MaxAttempts} attempts.");
         _log.Write(LogLevel.Warning, LogSource, _problem);
         _failedAttempts = 0;
+        _logOffs = 0;
+        _restartDelay = null;
         if (_goal == Goal.LoggedOn)
         {
             // The goal stays, so that a return to the foreground or a resume tries again.

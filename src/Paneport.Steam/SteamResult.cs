@@ -28,6 +28,7 @@ internal enum SteamResult
     LimitExceeded = 25,
     Revoked = 26,
     Expired = 27,
+    LogonSessionReplaced = 34,
     ConnectFailed = 35,
     RemoteDisconnect = 38,
     AccountDisabled = 43,

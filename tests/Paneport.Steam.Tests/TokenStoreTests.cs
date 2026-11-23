@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using Paneport.Core.Security;
 using Paneport.Core.Steam;
 using Paneport.Steam.Tests.Fakes;
 using Xunit;
@@ -98,8 +99,8 @@ public sealed class TokenStoreTests : IDisposable
         var outcome = await resume.WaitAsync(SteamTestKit.Patience, TestContext.Current.CancellationToken);
 
         Assert.Equal(SignInOutcome.Failed, outcome.Outcome);
-        await SteamTestKit.Until(() => _kit.Store.SignIn is null, "the saved sign-in to be dropped");
-        Assert.Equal(["read", "delete"], _kit.Store.Calls);
+        await SteamTestKit.Until(() => _kit.Store.SignIn is null && _kit.Service.Status.SignInSaved == false, "the saved sign-in to be dropped");
+        Assert.Equal(["read", "read", "delete"], _kit.Store.Calls);
         Assert.Equal(false, _kit.Service.Status.SignInSaved);
         Assert.Equal(SteamSessionState.SignedOut, _kit.Service.Status.State);
     }
@@ -155,5 +156,59 @@ public sealed class TokenStoreTests : IDisposable
         Assert.Equal(false, _kit.Service.Status.SignInSaved);
         Assert.Equal(SteamSessionState.SignedOut, _kit.Service.Status.State);
         Assert.Equal(SteamSignInState.SignedOut, _kit.Service.SignInState);
+    }
+    // A fresh token that Steam refuses is not the saved one: the store keeps the saved sign-in,
+    // which may be another account's.
+    [Fact]
+    public async Task AFreshTokenThatSteamRefusesLeavesTheSavedSignInAlone()
+    {
+        var saved = new SavedSignIn(_kit.Samples.AccountName + "-saved", new Secret(_kit.Samples.RefreshToken + "saved"));
+        _kit.Store.SignIn = saved;
+        _kit.Authenticator.Guard = AccountGuard.None;
+        var attempt = _kit.Service.StartQrSignIn();
+        await _kit.UntilRequested(FakeConnection.Connect, 1);
+        _kit.Connection.Listener.OnConnected();
+        await SteamTestKit.UntilStage(attempt, SignInStage.ShowingQrCode);
+        _kit.Authenticator.Qr.Scan();
+        await _kit.UntilRequested(FakeConnection.LogOn, 1);
+        _kit.Connection.Listener.OnLoggedOn(SteamResult.AccessDenied);
+
+        var result = await attempt.Completion.WaitAsync(SteamTestKit.Patience, TestContext.Current.CancellationToken);
+
+        Assert.Equal(SignInOutcome.Failed, result.Outcome);
+        await SteamTestKit.Until(() => _kit.Store.Calls.Contains("read"), "the drop to compare the saved sign-in");
+        Assert.Same(saved, _kit.Store.SignIn);
+        Assert.DoesNotContain("delete", _kit.Store.Calls);
+    }
+
+    // A sign-out that lands between the logon's success and the save: the cancelled sign-in never
+    // writes its token, so nothing is left for the next resume (C-0007 section 3).
+    [Fact]
+    public async Task ASignOutJustAfterTheLogonLeavesNoTokenBehind()
+    {
+        var token = TestContext.Current.CancellationToken;
+        _kit.Authenticator.Guard = AccountGuard.None;
+        var attempt = _kit.Service.StartPasswordSignIn(_kit.Samples.AccountName, _kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        await _kit.UntilRequested(FakeConnection.Connect, 1);
+        _kit.Connection.Listener.OnConnected();
+        await _kit.UntilRequested(FakeConnection.LogOn, 1);
+
+        // A resume holds the store, so that the sign-in's save has to wait for its turn.
+        _kit.Store.ReadGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = _kit.Service.ResumeAsync(token);
+        await SteamTestKit.Until(() => _kit.Store.Calls.Count == 1, "the resume to read the store");
+        _kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
+        var signOut = _kit.Service.SignOutAsync(token);
+        _kit.Store.ReadGate.SetResult();
+        await resume.WaitAsync(SteamTestKit.Patience, token);
+        await SteamTestKit.Until(() => _kit.Service.Status.State == SteamSessionState.SigningOut, "the sign-off");
+        _kit.Connection.Listener.OnLoggedOff(SteamResult.OK);
+        _kit.Connection.Listener.OnDisconnected(userInitiated: true);
+        await signOut.WaitAsync(SteamTestKit.Patience, token);
+
+        Assert.Equal(SignInOutcome.Cancelled, (await attempt.Completion.WaitAsync(SteamTestKit.Patience, token)).Outcome);
+        Assert.DoesNotContain("write", _kit.Store.Calls);
+        Assert.Null(_kit.Store.SignIn);
+        Assert.Equal(false, _kit.Service.Status.SignInSaved);
     }
 }

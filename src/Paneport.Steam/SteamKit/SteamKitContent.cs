@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
-using System.Security.Cryptography;
+using System.Buffers;
+using Paneport.Core.Steam;
 using Paneport.Steam.Content;
 using Paneport.Steam.Ports;
 using SteamKit2;
@@ -83,35 +84,54 @@ internal sealed class SteamKitContent : ISteamContent, IDisposable
         ArgumentNullException.ThrowIfNull(chunk);
         ArgumentNullException.ThrowIfNull(server);
         var entry = new DepotManifest.ChunkData(chunk.Id, chunk.Checksum, chunk.Offset, chunk.CompressedLength, chunk.UncompressedLength);
+        var raw = ArrayPool<byte>.Shared.Rent(checked((int)Math.Max(1, chunk.CompressedLength)));
         try
         {
-            return await _cdn.DownloadDepotChunkAsync(depotId, entry, (Server)server.Handle, destination, depotKey, null, serverToken)
-                .WaitAsync(cancellationToken)
-                .ConfigureAwait(false);
+            int length;
+            try
+            {
+                // The chunk as the server sent it, still encrypted and compressed. A failure here,
+                // SteamKit2's own length checks included, is the server's or the way's.
+                length = await _cdn.DownloadDepotChunkAsync(depotId, entry, (Server)server.Handle, raw, depotKey: null, proxyServer: null, serverToken)
+                    .WaitAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception) when (DownloadFailure(exception, cancellationToken) is { } failure)
+            {
+                throw failure;
+            }
+
+            return ProcessOrReject(() => DepotChunk.Process(entry, raw.AsSpan(0, length), destination, depotKey));
         }
-        catch (Exception exception) when (IsRejection(exception))
+        finally
         {
-            throw new ChunkRejectedException("SteamKit2 rejected the chunk.", exception);
-        }
-        catch (Exception exception) when (DownloadFailure(exception, cancellationToken) is { } failure)
-        {
-            throw failure;
+            ArrayPool<byte>.Shared.Return(raw);
         }
     }
 
     public void Dispose() => _cdn.Dispose();
 
-    // Whether an exception from SteamKit2's chunk processing means that the chunk arrived but is
-    // not the one its entry names: a failed length or Adler-32 check or bad compressed data, a
-    // padding that does not decrypt, as with a wrong key, or a zip entry that claims more than the
-    // entry's length. None of them is worth asking another server for.
-    internal static bool IsRejection(Exception exception) =>
-        exception is InvalidDataException or CryptographicException
-        || exception is ArgumentException and not ArgumentNullException;
+    // Runs SteamKit2's processing of a downloaded chunk: decryption, decompression, and the length
+    // and Adler-32 checks. It reads only the bytes that the server sent, so any failure of it means
+    // that the chunk arrived but is not the one its entry names: a failed check, bad compressed data
+    // or a stream that ends early, a padding that does not decrypt, as with a wrong key, or a zip
+    // entry that claims more than the entry's length. None is worth asking another server for.
+    internal static int ProcessOrReject(Func<int> process)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        try
+        {
+            return process();
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            throw new ChunkRejectedException("SteamKit2 rejected the chunk.", exception);
+        }
+    }
 
     // A failure at the server or on the way, or null for one that is no download failure, such as
     // the caller's cancellation.
-    private static ContentDownloadException? DownloadFailure(Exception exception, CancellationToken cancellationToken) => exception switch
+    internal static ContentDownloadException? DownloadFailure(Exception exception, CancellationToken cancellationToken) => exception switch
     {
         OperationCanceledException when cancellationToken.IsCancellationRequested => null,
         SteamKitWebRequestException web => new ContentDownloadException(web.StatusCode, web),
@@ -125,13 +145,29 @@ internal sealed class SteamKitContent : ISteamContent, IDisposable
         var files = new List<ManifestFile>();
         foreach (var file in manifest.Files ?? [])
         {
-            var chunks = file.Chunks
-                .Where(chunk => chunk.ChunkID is { Length: ManifestChunk.IdLength })
-                .Select(chunk => new ManifestChunk(chunk.ChunkID!, chunk.Checksum, chunk.Offset, chunk.CompressedLength, chunk.UncompressedLength))
-                .ToList();
-            files.Add(new ManifestFile(file.FileName ?? string.Empty, file.TotalSize, file.Flags.HasFlag(EDepotFileFlag.Directory), chunks));
+            files.Add(new ManifestFile(file.FileName ?? string.Empty, file.TotalSize, file.Flags.HasFlag(EDepotFileFlag.Directory), ChunksOf(file.Chunks)));
         }
 
         return new DepotManifestData(depotId, manifestId, files);
+    }
+
+    // A file's chunk entries. Every one is part of the file, and one without a valid ID could be
+    // neither downloaded nor checked, so such a manifest is refused rather than read with gaps
+    // (C-0007 section 4).
+    internal static List<ManifestChunk> ChunksOf(IEnumerable<DepotManifest.ChunkData> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        var chunks = new List<ManifestChunk>();
+        foreach (var entry in entries)
+        {
+            if (entry.ChunkID is not { Length: ManifestChunk.IdLength } id)
+            {
+                throw new SteamStepException("The manifest names a chunk without a valid ID.");
+            }
+
+            chunks.Add(new ManifestChunk(id, entry.Checksum, entry.Offset, entry.CompressedLength, entry.UncompressedLength));
+        }
+
+        return chunks;
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using SteamKit2;
@@ -31,6 +32,16 @@ internal sealed class InstallIdentityMachineInfo : IMachineInfoProvider
     public byte[]? GetMacAddress() => Derive("network");
 
     public byte[]? GetDiskId() => Derive("disk");
+
+    // The login ID that each logon sends instead of the private IP address that SteamKit2 would
+    // send without one: the same for every logon of this installation, and never 0.
+    public uint LoginId() => LoginIdFrom(Derive("login-id"));
+
+    // A login ID for a run without an install identity, such as the desktop head's: random, and
+    // never 0.
+    public static uint RandomLoginId() => LoginIdFrom(RandomNumberGenerator.GetBytes(sizeof(uint)));
+
+    private static uint LoginIdFrom(ReadOnlySpan<byte> bytes) => Math.Max(1u, BinaryPrimitives.ReadUInt32LittleEndian(bytes));
 
     private byte[] Derive(string purpose) => HMACSHA256.HashData(_identity, Encoding.ASCII.GetBytes(purpose));
 }

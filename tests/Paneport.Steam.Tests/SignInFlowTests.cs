@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 using Paneport.Core.Steam;
+using Paneport.Steam.Session;
 using Paneport.Steam.SignIn;
 using Paneport.Steam.Tests.Fakes;
 using Xunit;
@@ -234,5 +235,129 @@ public sealed class SignInFlowTests : IDisposable
         await _kit.UntilRequested(FakeConnection.LogOn, logOns == 0 ? 1 : logOns);
         _kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
         return await attempt.Completion.WaitAsync(SteamTestKit.Patience, TestContext.Current.CancellationToken);
+    }
+    // iOS closes the socket while the user approves in the Steam mobile app on the same phone.
+    // SteamKit2 then ends the wait, which the adapter reports as NoConnection, and the flow asks for
+    // a code on a new connection.
+    [Fact]
+    public async Task AnApprovalWaitThatTheConnectionEndedFallsBackToACodeOnANewConnection()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var attempt = _kit.Service.StartPasswordSignIn(_kit.Samples.AccountName, _kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        await _kit.UntilRequested(FakeConnection.Connect, 1);
+        _kit.Connection.Listener.OnConnected();
+        await SteamTestKit.UntilStage(attempt, SignInStage.WaitingForApproval);
+
+        _kit.Connection.Listener.OnDisconnected(userInitiated: false);
+        _kit.Authenticator.DeclineApproval(SteamResult.NoConnection);
+        await SteamTestKit.Until(() => _kit.Delays.Pending.Count == 1, "the wait before connecting again");
+        await Task.Delay(50, token);
+        Assert.Equal(1, _kit.Authenticator.CredentialSessions);
+        Assert.NotEqual(SignInStage.WaitingForCode, attempt.Progress.Stage);
+        _kit.Delays.Release(TimeSpan.FromSeconds(1));
+        await _kit.UntilRequested(FakeConnection.Connect, 2);
+        _kit.Connection.Listener.OnConnected();
+        await SteamTestKit.UntilStage(attempt, SignInStage.WaitingForCode);
+        attempt.SubmitCode(_kit.Authenticator.Code);
+        await _kit.UntilRequested(FakeConnection.LogOn, 1);
+        _kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
+
+        Assert.Equal(SignInOutcome.LoggedOn, (await attempt.Completion.WaitAsync(SteamTestKit.Patience, token)).Outcome);
+        Assert.Equal(2, _kit.Authenticator.CredentialSessions);
+    }
+
+    // A QR sign-in whose connection ended says so in plain words, not with a type name.
+    [Fact]
+    public async Task AQrSignInWhoseConnectionEndedSaysSo()
+    {
+        var attempt = _kit.Service.StartQrSignIn();
+        await _kit.UntilRequested(FakeConnection.Connect, 1);
+        _kit.Connection.Listener.OnConnected();
+        await SteamTestKit.UntilStage(attempt, SignInStage.ShowingQrCode);
+
+        _kit.Authenticator.Qr.Fail(SteamResult.NoConnection);
+
+        var result = await attempt.Completion.WaitAsync(SteamTestKit.Patience, TestContext.Current.CancellationToken);
+        Assert.Equal(SignInOutcome.Failed, result.Outcome);
+        Assert.Equal("The connection to Steam ended during the sign-in. Start it again.", result.Problem);
+    }
+
+    // A logon that the policy gave up on is no refusal by Steam.
+    [Fact]
+    public async Task ALogonThatCouldNotReachSteamSaysSo()
+    {
+        var policy = ReconnectPolicy.Default;
+        _kit.Authenticator.Guard = AccountGuard.None;
+        var attempt = _kit.Service.StartPasswordSignIn(_kit.Samples.AccountName, _kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        await _kit.UntilRequested(FakeConnection.Connect, 1);
+        _kit.Connection.Listener.OnConnected();
+        await _kit.UntilRequested(FakeConnection.LogOn, 1);
+
+        _kit.Connection.Listener.OnDisconnected(userInitiated: false);
+        for (var attemptNumber = 1; attemptNumber <= policy.MaxAttempts; attemptNumber++)
+        {
+            _kit.Delays.Release(policy.DelayBefore(attemptNumber));
+            _kit.Connection.Listener.OnDisconnected(userInitiated: false);
+        }
+
+        var result = await attempt.Completion.WaitAsync(SteamTestKit.Patience, TestContext.Current.CancellationToken);
+        Assert.Equal(SignInOutcome.Failed, result.Outcome);
+        Assert.Equal("Paneport could not reach Steam to log on.", result.Problem);
+    }
+
+    // A sign-in cancelled while it waits for its logon gives the logon up: when Steam accepts it
+    // after all, the session logs off and never logs on with that token again.
+    [Fact]
+    public async Task ASignInCancelledWhileLoggingOnGivesUpItsLogon()
+    {
+        _kit.Authenticator.Guard = AccountGuard.None;
+        var attempt = _kit.Service.StartPasswordSignIn(_kit.Samples.AccountName, _kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        await _kit.UntilRequested(FakeConnection.Connect, 1);
+        _kit.Connection.Listener.OnConnected();
+        await _kit.UntilRequested(FakeConnection.LogOn, 1);
+
+        attempt.Cancel();
+        Assert.Equal(SignInOutcome.Cancelled, (await attempt.Completion.WaitAsync(SteamTestKit.Patience, TestContext.Current.CancellationToken)).Outcome);
+        _kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
+
+        await _kit.UntilRequested(FakeConnection.LogOff, 1);
+        Assert.NotEqual(SteamSessionState.LoggedOn, _kit.Service.Status.State);
+        Assert.Empty(_kit.Store.Writes);
+        _kit.Connection.Listener.OnLoggedOff(SteamResult.OK);
+        _kit.Connection.Listener.OnDisconnected(userInitiated: false);
+        Assert.Empty(_kit.Delays.Pending);
+        Assert.Equal(1, _kit.Connection.Count(FakeConnection.LogOn));
+    }
+
+    // The service disposes an attempt that another sign-in replaced once it has ended; a page that
+    // still holds it may cancel it, which does nothing.
+    [Fact]
+    public async Task CancellingAnAttemptThatHasEndedDoesNothing()
+    {
+        var first = _kit.Service.StartPasswordSignIn(_kit.Samples.AccountName, _kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        _kit.Service.StartQrSignIn();
+        Assert.Equal(SignInOutcome.Cancelled, (await first.Completion.WaitAsync(SteamTestKit.Patience, TestContext.Current.CancellationToken)).Outcome);
+        ((SignInFlow)first).Dispose();
+
+        var exception = Record.Exception(first.Cancel);
+
+        Assert.Null(exception);
+    }
+
+    // The log filter holds the password only while its attempt runs.
+    [Fact]
+    public async Task ThePasswordLeavesTheLogFilterWhenTheAttemptEnds()
+    {
+        _kit.Authenticator.Guard = AccountGuard.None;
+        var attempt = _kit.Service.StartPasswordSignIn(_kit.Samples.AccountName, _kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        Assert.True(_kit.Log.Holds(_kit.Samples.Password));
+        await _kit.UntilRequested(FakeConnection.Connect, 1);
+        _kit.Connection.Listener.OnConnected();
+        await _kit.UntilRequested(FakeConnection.LogOn, 1);
+        _kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
+        await attempt.Completion.WaitAsync(SteamTestKit.Patience, TestContext.Current.CancellationToken);
+
+        Assert.False(_kit.Log.Holds(_kit.Samples.Password));
+        Assert.True(_kit.Log.Holds(_kit.Samples.AccountName));
     }
 }

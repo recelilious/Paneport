@@ -53,6 +53,11 @@ internal sealed class SteamSamples
 
     public string ManifestCodeText => ManifestCode.ToString(CultureInfo.InvariantCulture);
 
+    public string AccountNumberText => AccountNumber.ToString(CultureInfo.InvariantCulture);
+
+    // The account's Steam ID as SteamKit2 gives it with a logon.
+    public SteamKit2.SteamID SteamId => new(AccountNumber, SteamKit2.EUniverse.Public, SteamKit2.EAccountType.Individual);
+
     // Every value that no log line may hold, in the forms a line could hold it.
     public IReadOnlyList<string> Forbidden =>
     [
@@ -67,6 +72,7 @@ internal sealed class SteamSamples
         SteamId64,
         SteamId3,
         SteamId2,
+        AccountNumberText,
     ];
 
     // A token with the shape of Steam's: three base64url parts, the first two of which encode a

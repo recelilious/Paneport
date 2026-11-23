@@ -4,7 +4,9 @@
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using Paneport.Core.Steam;
 using Paneport.Steam.Content;
+using Paneport.Steam.Ports;
 using Paneport.Steam.SteamKit;
 using SteamKit2;
 using SteamKit2.CDN;
@@ -44,10 +46,10 @@ public sealed class SteamKitChunkTests
         var changed = (byte[])data.Clone();
         changed[position < 0 ? changed.Length + position : position] ^= 0x5A;
 
-        var exception = Record.Exception(() => DepotChunk.Process(entry, changed, new byte[content.Length], key));
-
-        Assert.NotNull(exception);
-        Assert.True(SteamKitContent.IsRejection(exception), exception.GetType().Name);
+        // Whatever the random key makes of the changed byte, the chunk is rejected: a garbled
+        // deflate stream may also end early, with EndOfStreamException.
+        Assert.Throws<ChunkRejectedException>(() =>
+            SteamKitContent.ProcessOrReject(() => DepotChunk.Process(entry, changed, new byte[content.Length], key)));
     }
 
     [Fact]
@@ -55,10 +57,18 @@ public sealed class SteamKitChunkTests
     {
         var (_, content, entry, data) = Chunk(length: 3000);
 
-        var exception = Record.Exception(() => DepotChunk.Process(entry, data, new byte[content.Length], RandomNumberGenerator.GetBytes(32)));
+        Assert.Throws<ChunkRejectedException>(() =>
+            SteamKitContent.ProcessOrReject(() => DepotChunk.Process(entry, data, new byte[content.Length], RandomNumberGenerator.GetBytes(32))));
+    }
 
-        Assert.NotNull(exception);
-        Assert.True(SteamKitContent.IsRejection(exception), exception.GetType().Name);
+    // The processing reads only what the server sent, so a stream that ends early is the chunk's
+    // fault, not the server's: no other server is asked for it.
+    [Fact]
+    public void AnEarlyEndOfTheProcessedStreamIsARejection()
+    {
+        var rejection = Assert.Throws<ChunkRejectedException>(() => SteamKitContent.ProcessOrReject(() => throw new EndOfStreamException()));
+
+        Assert.IsType<EndOfStreamException>(rejection.InnerException);
     }
 
     [Fact]
@@ -76,12 +86,30 @@ public sealed class SteamKitChunkTests
     }
 
     [Fact]
-    public void FailuresThatAreNoRejectionStayDownloadFailures()
+    public void FailuresOfTheDownloadAreDownloadFailures()
     {
-        Assert.False(SteamKitContent.IsRejection(new HttpRequestException("refused")));
-        Assert.False(SteamKitContent.IsRejection(new IOException("cut")));
-        Assert.False(SteamKitContent.IsRejection(new ArgumentNullException("server")));
-        Assert.False(SteamKitContent.IsRejection(new OperationCanceledException()));
+        // SteamKit2's own length checks of the response throw InvalidDataException: a server that
+        // sends too much or too little, so the next server is asked.
+        foreach (var failure in new Exception[] { new HttpRequestException("refused"), new IOException("cut"), new InvalidDataException("length"), new OperationCanceledException() })
+        {
+            Assert.IsType<ContentDownloadException>(SteamKitContent.DownloadFailure(failure, CancellationToken.None));
+        }
+
+        Assert.Null(SteamKitContent.DownloadFailure(new OperationCanceledException(), new CancellationToken(canceled: true)));
+        Assert.Null(SteamKitContent.DownloadFailure(new ArgumentNullException("server"), CancellationToken.None));
+    }
+
+    // A chunk entry without a valid ID could be neither downloaded nor checked: the manifest is
+    // refused rather than read with a gap.
+    [Fact]
+    public void AChunkEntryWithoutAValidIdIsRefused()
+    {
+        var valid = new DepotManifest.ChunkData(new byte[ManifestChunk.IdLength], 1, 0, 10, 20);
+        var invalid = new DepotManifest.ChunkData(new byte[ManifestChunk.IdLength - 1], 1, 20, 10, 20);
+
+        Assert.Single(SteamKitContent.ChunksOf([valid]));
+        var refusal = Assert.Throws<SteamStepException>(() => SteamKitContent.ChunksOf([valid, invalid]));
+        Assert.Equal("The manifest names a chunk without a valid ID.", refusal.Message);
     }
 
     private static ManifestChunk Entry(DepotManifest.ChunkData chunk) =>

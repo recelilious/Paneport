@@ -38,13 +38,14 @@ public sealed class SteamServices : IDisposable
     private SteamServices(SteamServiceOptions options)
     {
         var log = new RedactingLog(options.Log);
+        var machine = options.MachineIdentity is { } identity ? new InstallIdentityMachineInfo(identity) : null;
         var configuration = SteamConfiguration.Create(builder =>
         {
             builder.WithHttpClientFactory(CreateHttpClient);
             builder.WithProtocolTypes(options.TcpOnly ? ProtocolTypes.Tcp : ProtocolTypes.Tcp | ProtocolTypes.WebSocket);
-            if (options.MachineIdentity is { } identity)
+            if (machine is not null)
             {
-                builder.WithMachineInfoProvider(new InstallIdentityMachineInfo(identity));
+                builder.WithMachineInfoProvider(machine);
             }
         });
 
@@ -55,7 +56,10 @@ public sealed class SteamServices : IDisposable
             DebugLog.Enabled = true;
         }
 
-        _connection = new SteamKitConnection(configuration, options.DeviceName, log);
+        // From the install identity, so that Steam sees one login ID per installation; random for
+        // each run where there is none.
+        var loginId = machine?.LoginId() ?? InstallIdentityMachineInfo.RandomLoginId();
+        _connection = new SteamKitConnection(configuration, options.DeviceName, loginId, log);
         _content = new SteamKitContent(_connection.Client);
         Service = new SteamService(
             _connection,
@@ -80,6 +84,8 @@ public sealed class SteamServices : IDisposable
 
     /// <summary>Gets the Steam service.</summary>
     public SteamService Service { get; }
+
+    internal SteamKitConnection Connection => _connection;
 
     /// <summary>Gets the steps of the Steam gate's page.</summary>
     public ISteamGateSteps Gate { get; }

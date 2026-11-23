@@ -7,6 +7,7 @@ using Paneport.Core.Security;
 using Paneport.Core.Steam;
 using Paneport.Steam.Logging;
 using Paneport.Steam.Ports;
+using Paneport.Steam.SteamKit;
 using Paneport.Steam.Tests.Fakes;
 using Paneport.Tests.Fakes;
 using Xunit;
@@ -60,12 +61,12 @@ public sealed class RedactingLogTests
         var samples = new SteamSamples();
         var log = new RedactingLog(new RecordingLog());
 
-        foreach (var secret in new[] { samples.RefreshToken, samples.SteamId64, samples.SteamId3, samples.SteamId2, Convert.ToHexString(samples.DepotKey), Convert.ToBase64String(samples.DepotKey) })
+        // Each rule must remove the whole secret: the exact text shows a rule that leaves a part. A
+        // 32-character hexadecimal value is the shortest that the hexadecimal rule removes.
+        var shortHex = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+        foreach (var secret in new[] { samples.RefreshToken, samples.SteamId64, samples.SteamId3, samples.SteamId2, Convert.ToHexString(samples.DepotKey), Convert.ToBase64String(samples.DepotKey), shortHex })
         {
-            var scrubbed = log.Scrub($"before {secret} after");
-            Assert.DoesNotContain(secret, scrubbed, StringComparison.OrdinalIgnoreCase);
-            Assert.StartsWith("before ", scrubbed, StringComparison.Ordinal);
-            Assert.EndsWith(" after", scrubbed, StringComparison.Ordinal);
+            Assert.Equal($"before {Secret.Redacted} after", log.Scrub($"before {secret} after"));
         }
     }
 
@@ -111,28 +112,45 @@ public sealed class RedactingLogTests
             kit.Content.Chunks[entry.IdText] = content;
         }
 
+        // SteamKit2's debug lines may hold whatever it holds at the time: each value is written as
+        // soon as the service has it, while it has it.
+        void leak(params string[] values)
+        {
+            foreach (var value in values)
+            {
+                kit.Log.Write(LogLevel.Debug, "SteamKit2", $"debug line with {value} in it");
+            }
+        }
+
         var attempt = kit.Service.StartPasswordSignIn(samples.AccountName, samples.Password, SignInConfirmation.EnterCode);
+        leak(samples.AccountName, samples.Password);
         await kit.UntilRequested(FakeConnection.Connect, 1);
         kit.Connection.Listener.OnConnected();
         await SteamTestKit.UntilStage(attempt, SignInStage.WaitingForCode);
+        leak(samples.AccountName, samples.Password);
         attempt.SubmitCode("WRONG");
         await SteamTestKit.Until(() => attempt.Progress.CodeWasWrong, "the code to be asked for again");
+        leak(samples.AccountName, samples.Password);
         attempt.SubmitCode(kit.Authenticator.Code);
         await kit.UntilRequested(FakeConnection.LogOn, 1);
+
+        // The adapter registers the Steam ID that Steam's answer to the logon names.
+        SteamKitConnection.ProtectSteamId(kit.Log, samples.SteamId);
         kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
         Assert.Equal(SignInOutcome.LoggedOn, (await attempt.Completion.WaitAsync(SteamTestKit.Patience, Token)).Outcome);
+        leak(samples.AccountName, samples.RefreshToken, samples.SteamId64, samples.SteamId3, samples.SteamId2, samples.AccountNumberText);
         kit.Connection.Listener.OnLicenseList(SteamResult.OK, [1, 2]);
 
         await kit.Gate.CountLicensesAsync(Token);
         await kit.Gate.ReadAppInfoAsync(AppId, Token);
         await kit.Gate.GetDepotKeyAsync(WindowsDepot, Token);
+        leak(Convert.ToHexString(samples.DepotKey), Convert.ToHexStringLower(samples.DepotKey), Convert.ToBase64String(samples.DepotKey));
         await kit.Gate.GetManifestRequestCodeAsync(WindowsDepot, Token);
+        leak(samples.ManifestCodeText);
         await kit.Gate.DownloadManifestAsync(WindowsDepot, Token);
+        leak(samples.ServerToken);
         await kit.Gate.DownloadChunksAsync(10, Token);
-        foreach (var value in samples.Forbidden)
-        {
-            kit.Log.Write(LogLevel.Debug, "SteamKit2", $"debug line with {value} in it");
-        }
+        leak([.. samples.Forbidden.Where(value => value != samples.Password)]);
 
         await kit.Gate.DeleteTestDataAsync(Token);
         var signOut = kit.Service.SignOutAsync(Token);
@@ -151,5 +169,24 @@ public sealed class RedactingLogTests
                 Assert.DoesNotContain(value, line.Source, StringComparison.OrdinalIgnoreCase);
             }
         }
+    }
+
+    // A resume in a new run: the store's read registers the saved sign-in before any line could
+    // hold it.
+    [Fact]
+    public async Task AResumeRegistersTheSavedSignInAtOnce()
+    {
+        using var kit = new SteamTestKit();
+        kit.Store.SignIn = kit.SampleSignIn();
+
+        var resume = kit.Service.ResumeAsync(Token);
+        await kit.UntilRequested(FakeConnection.Connect, 1);
+        kit.Log.Write(LogLevel.Debug, "SteamKit2", $"debug line with {kit.Samples.AccountName} and {kit.Samples.RefreshToken}");
+        kit.Connection.Listener.OnConnected();
+        kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
+        await resume.WaitAsync(SteamTestKit.Patience, Token);
+
+        var line = Assert.Single(kit.AppLog.Lines, line => line.Source == "SteamKit2");
+        Assert.Equal($"debug line with {Secret.Redacted} and {Secret.Redacted}", line.Message);
     }
 }

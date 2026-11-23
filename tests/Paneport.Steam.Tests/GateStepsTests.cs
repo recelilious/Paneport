@@ -249,4 +249,52 @@ public sealed class GateStepsTests : IDisposable
         await _kit.Gate.DownloadManifestAsync(WindowsDepot, Token);
         return [.. ManifestSummaries.DistinctChunks(manifest).Select(entry => chunks.Single(chunk => chunk.Entry.IdText == entry.IdText))];
     }
+    // A step keeps a copy of the depot key: fetching the key again while the chunks download wipes
+    // the old key's bytes, but not the ones that the running step decrypts with.
+    [Fact]
+    public async Task FetchingTheKeyAgainDuringTheChunksKeepsTheirKey()
+    {
+        var key = (byte[])_kit.Samples.DepotKey.Clone();
+        var chunks = await DownloadManifestAsync();
+        foreach (var (entry, content) in chunks)
+        {
+            _kit.Content.Chunks[entry.IdText] = content;
+        }
+
+        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _kit.Content.BeforeChunk = _ =>
+        {
+            _kit.Content.BeforeChunk = null;
+            reached.TrySetResult();
+            return held.Task;
+        };
+
+        var run = _kit.Gate.DownloadChunksAsync(10, Token);
+        await reached.Task.WaitAsync(SteamTestKit.Patience, Token);
+        _kit.Apps.DepotKey = new DepotKeyResult(SteamResult.OK, [.. key]);
+        Assert.Equal(SteamGrant.Obtained, await _kit.Gate.GetDepotKeyAsync(WindowsDepot, Token));
+        held.SetResult();
+        var result = await run.WaitAsync(SteamTestKit.Patience, Token);
+
+        Assert.Equal(3, result.Verified);
+        Assert.All(_kit.Content.KeysAtReturn, seen => Assert.Equal(key, seen));
+    }
+
+    // Forgetting the key takes its text out of the log filter, which would otherwise keep it for
+    // the service's life; the hexadecimal and base64 rules still remove such text.
+    [Fact]
+    public async Task DeletingTheTestDataTakesTheKeyOutOfTheLogFilter()
+    {
+        await GrantAsync();
+        var hex = Convert.ToHexString(_kit.Apps.DepotKey.Key!);
+        var base64 = Convert.ToBase64String(_kit.Apps.DepotKey.Key!);
+        Assert.True(_kit.Log.Holds(hex));
+        Assert.True(_kit.Log.Holds(base64));
+
+        await _kit.Gate.DeleteTestDataAsync(Token);
+
+        Assert.False(_kit.Log.Holds(hex));
+        Assert.False(_kit.Log.Holds(base64));
+    }
 }

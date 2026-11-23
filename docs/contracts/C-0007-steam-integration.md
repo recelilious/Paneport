@@ -100,6 +100,14 @@ recelilious accepted the first two tiers below on 2026-10-28. This section recor
 | 2 | A protocol client (SteamKit2) for sign-in and downloads | Accepted | Steam Subscriber Agreement sections 2.G(ii), 4.B and 4.C on their face. The research found no legal action against such clients up to 2026-10-27. |
 | 3 | steam_api emulation, SteamStub or CEG removal, program patching | Forbidden | Circumvention under DMCA section 1201. |
 
+## Proposed changes for 1.2
+
+**Not yet accepted.** Version 1.1 above stays binding until recelilious approves these changes. They come from stage M2.3 and from recelilious's decision of 2026-11-23 to keep the device test flavor's random identity of the installation in the keychain across sign-outs. Section 3 calls the refresh token the only secret kept, and does not name that item.
+
+1. **Section 3, the item on what is kept.** Replace "The refresh token is the only secret kept, in the keychain (C-0004 section 4). Passwords are never stored." with "The refresh token is the only secret kept, in the keychain (C-0004 section 4). Passwords are never stored. The keychain also keeps a random identity of the installation, from which the machine identity and the login ID that each logon sends to Steam are derived. It is no sign-in value and holds no personal data: it comes from a random number generator, never from the device. Signing out keeps it, so that Steam sees the same device at the next sign-in. Deleting the app does not necessarily remove it, since iOS may keep an app's keychain items after the app is deleted."
+
+2. **Change log.** On acceptance, add a row for 1.2, dated the day of acceptance, with the notes "Accepted by recelilious. Comes from stage M2.3 and from recelilious's decision of 2026-11-23. Section 3: the keychain also keeps a random identity of the installation, which is no sign-in value, holds no personal data and survives sign-out."
+
 ## Change log
 
 | Version | Date | Notes |

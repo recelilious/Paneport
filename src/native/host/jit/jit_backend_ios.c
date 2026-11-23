@@ -8,6 +8,11 @@
 // the prepared region in x0. Without the broker attached the breakpoint ends the process, so
 // the provider sends a command only in the requesting state and only right after reading that
 // a debugger is attached (C-0006 section 3). CMake builds this file for iOS only.
+//
+// INTEGRATION.md presents each command as a C function, so the broker may change any register
+// that a call may change under the arm64 calling convention. Each command therefore declares
+// them all as changed: x0 to x17, the vector registers that a call does not preserve, and the
+// condition flags. x18 is Apple's to keep, and the breakpoint leaves the link register alone.
 
 #include "jit/jit_platform.h"
 
@@ -26,7 +31,10 @@ static uint64_t prepare_region(void *context, uint64_t length) {
                      "mov %0, x0\n"
                      : "=r"(address)
                      : "r"(length)
-                     : "x0", "x1", "x16", "memory");
+                     : "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11",
+                       "x12", "x13", "x14", "x15", "x16", "x17", "v0", "v1", "v2", "v3", "v4", "v5",
+                       "v6", "v7", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24",
+                       "v25", "v26", "v27", "v28", "v29", "v30", "v31", "cc", "memory");
     return address;
 }
 
@@ -37,7 +45,10 @@ static void detach(void *context) {
                      "brk #0xf00d\n"
                      :
                      :
-                     : "x0", "x1", "x16", "memory");
+                     : "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11",
+                       "x12", "x13", "x14", "x15", "x16", "x17", "v0", "v1", "v2", "v3", "v4", "v5",
+                       "v6", "v7", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24",
+                       "v25", "v26", "v27", "v28", "v29", "v30", "v31", "cc", "memory");
 }
 
 static bool read_flags(void *context, pp_jit_flags_t *flags) {

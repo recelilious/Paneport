@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.7 |
-| Date | 2026-11-21 |
+| Version | 1.8 |
+| Date | 2026-11-23 |
 | Owner | recelilious |
 
 These are engineering rules for managing licenses, not legal advice. Before a formal public release, have a professional review them if possible. That review must cover the provenance of the AI-written code in the forks (section 10).
@@ -37,8 +37,9 @@ How we meet them:
 
 - **Dynamic packaging:** the Unix-side code of Wine and similar components ships inside the .app as dynamic libraries or frameworks that the user can replace.
 - **Public source:** SteamKit2 (LGPL-2.1-only) is compiled statically into the executable by .NET AOT. All source code and build scripts in this repository are public, so a user can swap SteamKit2 and rebuild, which satisfies the relinking requirement.
+- **Source of other LGPL components:** CI makes an archive of the exact corresponding source of each LGPL component that is neither this repository nor one of our forks, today SteamKit2, which comes as a package that the build compiles into the app. The archive comes from the upstream's repository at the commit that the shipped binaries were built from, and each release and the public artifacts of the `ios` CI job carry it beside the builds that contain the component (C-0009 section 6). It holds the library's complete source as LGPL-2.1 section 0 defines it: the source of all its modules, the interface definitions that its generated code comes from, with the tools that generate that code, and the scripts that build it, also where the upstream keeps them in a submodule. It leaves out the upstream's other programs, samples and tests, which are not part of the library and may hold what section 5 forbids, such as the headers from the Steamworks SDK in SteamKit2's NetHook2 tool.
 - **User installability:** sideloading already means the user signs the app with their own Apple ID, so the user can install a rebuilt version.
-- **Shipped with every release:** each release includes `THIRD_PARTY_NOTICES.md` and the full text of every license. The app has an open-source licenses screen. Each release attaches source archives of this repository and of every fork at exactly the released revisions, and its notes link to them (C-0009 section 6).
+- **Shipped with every release:** each release includes `THIRD_PARTY_NOTICES.md` and the full text of every license. The app has an open-source licenses screen. Each release attaches source archives of this repository and of every fork at exactly the released revisions, and the archive of each other LGPL component, and its notes link to them (C-0009 section 6).
 
 ## 4. Repository layout
 
@@ -253,6 +254,8 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - FEX-darwin's MPL-2.0 patch: <https://github.com/dbc-hbin/FEX-darwin/tree/main/Darwin/patches/arknights-macos-runtime>
 - Wine's Clean Room Guidelines: <https://gitlab.winehq.org/wine/wine/-/wikis/Clean-Room-Guidelines>
 - DXMT's AI policy: <https://github.com/3Shain/dxmt/blob/HEAD/AGENTS.md> and <https://github.com/3Shain/dxmt/blob/HEAD/CONTRIBUTING.md>
+- LGPL-2.1, whose section 0 defines a library's complete source: <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html>
+- SteamKit2's NetHook2 headers at 4.0.0-Beta.2: <https://github.com/SteamRE/SteamKit/tree/4.0.0-Beta.2/Resources/NetHook2/NetHook2/steam>
 
 ## Change log
 
@@ -267,3 +270,4 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 | 1.5 | 2026-11-11 | Accepted by recelilious, narrowed to the GPL. Comes from a check of stage M4.1's forks, which found upstream files under licenses that section 5 forbids where no build ships them, and from recelilious's decision of 2026-11-11 to allow GPL-2.0 and GPL-3.0 files there. Section 4 lets a fork, and a submodule of a fork that a build needs, keep upstream files under GPL-2.0 or GPL-3.0, with or without an exception such as the Autoconf exception, as long as nothing that ships compiles, links or copies them, their notices stay and no shipped binary contains them, and lets the source archives of a release hold them; a submodule of a fork that no build needs and that holds content that section 5 forbids stays unfetched, and section 4 no longer counts FEX-Emu's submodules. Section 5's Forbidden row points to that rule for GPL-2.0 and GPL-3.0 files and keeps AGPL-3.0, SSPL, non-commercial-only code and code with no license out of the forks and their submodules entirely. |
 | 1.6 | 2026-11-17 | Accepted by recelilious, together with C-0010 1.1. Comes from stage M4.2, which caches the builds of the forks in its `runtime` CI job and makes the first changes to files of the Wine fork, and from recelilious's decisions of 2026-11-15, confirmed on 2026-11-17, on FEX-darwin, Hadron and Arknights-MacOS-Runtime. Section 6 registers actions/cache. Section 4 asks for the notice in a file under the LGPL that we change in any fork as well, with the date of each change, and points to C-0010 section 4 for how it is marked. FEX-darwin's row moves from section 6 to the reference-only list of section 7, which now also covers projects whose code comes from an existing product, gains rows for Hadron and Arknights-MacOS-Runtime, and records that Paneport takes no code from the three. |
 | 1.7 | 2026-11-21 | Accepted by recelilious. Comes from stage M2.3, which builds the Steam service on SteamKit2, and from recelilious's decision D13 of 2026-11-21 on how the sign-in QR code is drawn. Section 6 registers ZstdSharp (ZstdSharp.Port), whose ported Zstandard code is used under BSD-3-Clause with Zstandard's notice kept, and the QR code generator Net.Codecrete.QrCodeGenerator, which keeps Project Nayuki's notice beside its own; the row of protobuf-net names protobuf-net.Core and the build-time code generator and analyzers of its package, and the row of SteamKit2 records the part of the LZMA SDK that it carries, which is in the public domain. Section 12 adds the sources of these licenses. |
+| 1.8 | 2026-11-23 | Accepted by recelilious, together with C-0009 1.2. Comes from stage M2.3 and from recelilious's decision of 2026-11-22 on how the app offers the source of SteamKit2. Section 3 has each release and the public artifacts of the `ios` CI job carry the exact corresponding source of every LGPL component that is neither this repository nor a fork, today SteamKit2: the library's complete source as LGPL-2.1 section 0 defines it, without the upstream's other programs, samples and tests. Section 12 adds two sources: the text of LGPL-2.1 and the headers of SteamKit2's NetHook2 tool. |

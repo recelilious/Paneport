@@ -15,13 +15,13 @@ Back to the [development plan](../development-plan.md).
 | S3.0.1 | JIT setup screen | Small | Planned | | |
 | S3.0.2 | JIT self-test | Small | Planned | | |
 | S3.0.3 | First verified iOS build entry | Small | Planned | | |
-| S3.1.1 | Debugger state detection | Small | Planned | | |
-| S3.1.2 | State machine and events | Small | Planned | | |
-| S3.1.3 | Region request and mapping | Small | Planned | | |
-| S3.1.4 | Verification probe | Small | Planned | | |
-| S3.1.5 | macOS MAP_JIT provider | Small | Planned | | |
-| S3.1.6 | Broker script | Small | Planned | | |
-| S3.1.7 | iOS build list and schema | Small | Planned | | |
+| S3.1.1 | Debugger state detection | Small | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
+| S3.1.2 | State machine and events | Small | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
+| S3.1.3 | Region request and mapping | Small | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
+| S3.1.4 | Verification probe | Small | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
+| S3.1.5 | macOS MAP_JIT provider | Small | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
+| S3.1.6 | Broker script | Small | Blocked: waits for recelilious's decision on the script interface ([jit-broker.md](../jit-broker.md) section 4) | | 2026-11-23 |
+| S3.1.7 | iOS build list and schema | Small | In progress | `feat/m3-1-jit-provider` | 2026-11-23 |
 
 ## L3 JIT on the iPhone
 
@@ -71,6 +71,12 @@ The record and its attachments must never contain personal data or secrets: no U
 | S3.0.1 | JIT setup screen: steps, an Enable JIT button that opens the URL with the base64 broker script, a progress indicator per state, failure reasons, the foreign-debugger message, and the warning for an iOS build not in the verified list | view model in `src/Paneport.Core`, view in `src/Paneport.UI`, URL opener behind a Core interface implemented in `src/Paneport.iOS` | Headless UI tests in `tests/Paneport.UI.Tests` drive the view model through each `pp_jit_state_t` value and assert the shown text, the button state and the unverified-build warning |
 | S3.0.2 | JIT self-test: writes a small ARM64 routine through the writable alias, runs it from the executable view, and checks the result | native routine in `src/native/host/jit/`, surfaced through the device test app in `tests/device` | The same routine runs on the macOS MAP_JIT provider in `tests/native` and returns the expected value |
 | S3.0.3 | First verified iOS build entry, added after the device acceptance passes | `compat/ios-builds.json` | The CI compatibility check validates the entry against `compat/schema/ios-builds.schema.json` (C-0011 section 1) |
+
+**Notes from earlier stages.**
+
+- M3.1 (session log of 2026-11-23): the JIT group is `paneport/jit.h`, bound in Paneport.Interop as `NativeHost.GetJitStatus`, `SetJitEnablerOpened`, `NoteJitForeground` and `RequestJitPool`. The screen reads `GetJitStatus` [any] and the events of kind `HostJit.StateChangedEvent`, whose code is the new state; `ForeignDebugger` shows the foreign-debugger message, and `Failure` the failure's reason. The app calls `SetJitEnablerOpened(true)` on the main thread right before it opens the URL, and `SetJitEnablerOpened(false)` when iOS refuses it; the head calls `NoteJitForeground` on every return to the foreground; on the `debugger_attached` event the app calls `RequestJitPool(HostJit.DefaultPoolMiB)` on the main thread ([jit.md](../jit.md) sections 5 and 8).
+- M3.1 (session log of 2026-11-23): the URL carries `bundle-id` and `pid` beside the script, as StikJIT's `INTEGRATION.md` says. The broker script waits for recelilious's decision; with option A the URL names `script-name=universal.js` instead of `script-data` ([jit-broker.md](../jit-broker.md) sections 2 and 4).
+- M3.1 (session log of 2026-11-23): the record's metrics come from the status: `RequestedMiB`, `PoolMiB`, `AuthorizationMilliseconds` and the time in each state; the host also logs each change of the state with its time. The self-test of S3.0.2 can take the pool from `pp_jit_pool_copy` in `jit_provider.h` and run a routine with `pp_jit_probe_page`; after `ready` the probe mode is off, so a fault there ends the app with a crash record ([jit.md](../jit.md) sections 7 and 11). The CTest binaries on the runner need no entitlement and no signing of their own (jit.md section 12).
 
 **Session log.**
 

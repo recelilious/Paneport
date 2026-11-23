@@ -91,6 +91,24 @@ Leaving `failed` always needs a relaunch.
 - The broker script handles only commands 0 and 1, only for Paneport's own process, and performs no other operation.
 - Pairing files are never committed (C-0002 section 6).
 
+## Proposed changes for 1.1
+
+**Not yet accepted.** Version 1.0 above stays binding until recelilious approves these changes, which are accepted together with C-0003 1.9, C-0004 1.2, C-0009 1.3 and C-0010 1.2. They come from stage M3.1. StikJIT's `INTEGRATION.md`, the only source that section 2 allows for the broker script, documents the app's side of the convention and the URL, but not the interface that a script uses, which may be documented only in StikDebug's source. recelilious decided on 2026-11-23 that Paneport names StikDebug's built-in script `universal.js` in its request and writes no script of its own.
+
+1. **Section 1, the fourth item.** Replace "StikDebug runs the script chosen for an app, either the shared `universal.js` or the app's own script. An app can pass its own script, base64-encoded, in the `script-data` parameter of the `stikdebug://enable-jit` URL." with "StikDebug runs the script that the app's request names. Its built-in script, `universal.js`, handles the convention above, and `INTEGRATION.md` recommends it for an app that implements the convention. An app names it in the `script-name` parameter of the `stikdebug://enable-jit` URL, or passes a script of its own, base64-encoded, in the `script-data` parameter. The URL also carries the app's bundle identifier (`bundle-id`), with which StikDebug returns to the app, and its process identifier (`pid`), with which StikDebug finds the process."
+
+2. **Section 2, the row of the broker script.** Replace "| Broker script | Our own script, MIT, in `src/jit-broker/` | Written from `INTEGRATION.md` only. Bundled in the app and handed to StikDebug through the URL scheme. It handles only the two commands above. |" with "| Broker script | `universal.js`, the script built into StikDebug | Named in the request (section 3 step 2). Paneport does not write, bundle, copy or read it, and relies only on the behavior that `INTEGRATION.md` documents for it: it serves commands 0 and 1 as section 1 describes. |"
+
+3. **Section 2, the paragraph after the table.** Replace "If the broker script needs parts of StikDebug's script interface that `INTEGRATION.md` does not document, recelilious decides before the script is written, because those parts may be documented only in StikDebug's source." with "`INTEGRATION.md` documents the app's side of the convention and the URL, but not the interface that a script uses, which may be documented only in StikDebug's source, so recelilious decided on 2026-11-23 that Paneport names StikDebug's built-in script instead of writing one." The sentences about the published research stay.
+
+4. **Section 2, the last paragraph.** Replace "is copied, translated or rewritten into the broker script or the host (C-0001 section 6)" with "is copied, translated or rewritten into the host or any other part of Paneport (C-0001 section 6)".
+
+5. **Section 3, step 2.** Replace "the app opens StikDebug with `stikdebug://enable-jit`, passing Paneport's broker script." with "the app opens StikDebug with `stikdebug://enable-jit`, naming StikDebug's built-in script `universal.js` and passing the app's bundle identifier and process identifier (section 1). The Trusted Execution Monitor is active on every target device, so the request always names the script."
+
+6. **Section 7, the first item.** Replace "The broker script handles only commands 0 and 1, only for Paneport's own process, and performs no other operation." with "The app sends only commands 0 and 1, only in the `requesting` state and only while a debugger is attached now (section 3). The script that serves them is StikDebug's: Paneport does not write, review or ship it, so it cannot guarantee that the script performs no other operation or that it acts only on Paneport's process. It relies on the behavior that `INTEGRATION.md` documents for the script, and the device acceptance checks the result (C-0012). A StikDebug update can change the script, so every evidence record names StikDebug's version (C-0012 section 4)."
+
+7. **Change log.** On acceptance, add a row for 1.1, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0003 1.9, C-0004 1.2, C-0009 1.3 and C-0010 1.2. Comes from stage M3.1: StikJIT's `INTEGRATION.md` documents the app's side of the convention and the URL, but not the interface that a broker script uses, and recelilious decided on 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its request and writes no script of its own. Sections 1, 2 and 3 say so, and section 7 states what Paneport no longer guarantees about the script."
+
 ## Change log
 
 | Version | Date | Notes |

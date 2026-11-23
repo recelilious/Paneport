@@ -97,6 +97,14 @@ SPDX-License-Identifier: MIT
 - C# files, including file-based tools, use `PascalCase` names. C, C++ and Objective-C files use `snake_case`. Bash scripts and new documentation files use `kebab-case`.
 - Exceptions: conventional files keep their usual names (`README.md`, `CONTRIBUTING.md`, `CLAUDE.md`, `THIRD_PARTY_NOTICES.md`, license files); contracts are named `C-NNNN-<title>.md`; a Chinese copy adds the `_zh_CN` suffix (C-0002 section 7); and the research notes already published in `docs/research/` keep their names.
 
+## Proposed changes for 1.2
+
+**Not yet accepted.** Version 1.1 above stays binding until recelilious approves these changes, which are accepted together with C-0003 1.9, C-0004 1.2, C-0006 1.1 and C-0009 1.3. They come from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in script `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1, section 2).
+
+1. **Section 1, the table of languages.** Remove the row "| JIT broker script | JavaScript | The language level that StikDebug's script interface supports, recorded in the broker's design document |". Paneport writes no JavaScript.
+
+2. **Change log.** On acceptance, add a row for 1.2, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0003 1.9, C-0004 1.2, C-0006 1.1 and C-0009 1.3. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 1 drops the row of the JIT broker script, because Paneport writes no JavaScript."
+
 ## Change log
 
 | Version | Date | Notes |

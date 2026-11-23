@@ -110,6 +110,14 @@ The bundle identifier is chosen by recelilious.
 - The `ios` CI job uploads the same archives as artifacts of the run that builds the apps, kept as long as the apps, so that every build of the app that CI makes public offers the source of these components from the same place.
 - Release acceptance follows C-0012 section 5.
 
+## Proposed changes for 1.3
+
+**Not yet accepted.** Version 1.2 above stays binding until recelilious approves these changes, which are accepted together with C-0003 1.9, C-0004 1.2, C-0006 1.1 and C-0010 1.2. They come from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in script `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1, section 2).
+
+1. **Section 4, the table of the app bundle.** Remove the row "| `jit-broker/` | The JIT broker script (C-0006). |". The app bundles no script: its request names the one that StikDebug carries (C-0006 1.1, section 3 step 2).
+
+2. **Change log.** On acceptance, add a row for 1.3, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0003 1.9, C-0004 1.2, C-0006 1.1 and C-0010 1.2. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 4 drops `jit-broker/` from the app bundle."
+
 ## Change log
 
 | Version | Date | Notes |

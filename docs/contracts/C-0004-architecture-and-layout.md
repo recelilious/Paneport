@@ -160,6 +160,16 @@ All paths are inside the app container.
 
 **Open item for recelilious.** Save files inside the prefixes are not backed up. Until cloud saves work (C-0007 section 7), the app tells the user so and offers to export a prefix's user folder to `Documents/`. Whether that is enough is recelilious's decision.
 
+## Proposed changes for 1.2
+
+**Not yet accepted.** Version 1.1 above stays binding until recelilious approves these changes, which are accepted together with C-0003 1.9, C-0006 1.1, C-0009 1.3 and C-0010 1.2. They come from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in script `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1, section 2).
+
+1. **Section 2, the components table.** Remove the row "| JIT broker script | JavaScript | MIT | `src/jit-broker` | The script StikDebug runs to authorize Paneport's code pool (C-0006). Bundled in the app. |".
+
+2. **Section 3, the tree.** Remove the line `│   ├── jit-broker/` under `src/`.
+
+3. **Change log.** On acceptance, add a row for 1.2, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0003 1.9, C-0006 1.1, C-0009 1.3 and C-0010 1.2. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 2 drops the JIT broker script component, and section 3 drops `src/jit-broker/` from the tree."
+
 ## Change log
 
 | Version | Date | Notes |

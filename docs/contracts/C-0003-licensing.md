@@ -257,6 +257,14 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - LGPL-2.1, whose section 0 defines a library's complete source: <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html>
 - SteamKit2's NetHook2 headers at 4.0.0-Beta.2: <https://github.com/SteamRE/SteamKit/tree/4.0.0-Beta.2/Resources/NetHook2/NetHook2/steam>
 
+## Proposed changes for 1.9
+
+**Not yet accepted.** Version 1.8 above stays binding until recelilious approves these changes, which are accepted together with C-0004 1.2, C-0006 1.1, C-0009 1.3 and C-0010 1.2. They come from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in script `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1, section 2).
+
+1. **Section 9, the first paragraph.** Replace "using a broker script that Paneport writes itself (C-0006). Paneport never links, embeds or copies StikDebug's code or scripts, and nobody writing Paneport's side reads their source." with "naming StikDebug's own built-in script, `universal.js`, in that URL (C-0006). Naming the script links, embeds and copies nothing: StikDebug runs its own script in its own app. Paneport never links, embeds or copies StikDebug's code or scripts, and nobody writing Paneport's side reads their source."
+
+2. **Change log.** On acceptance, add a row for 1.9, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0004 1.2, C-0006 1.1, C-0009 1.3 and C-0010 1.2. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 9 says that Paneport names StikDebug's script in the URL, which links, embeds and copies nothing."
+
 ## Change log
 
 | Version | Date | Notes |

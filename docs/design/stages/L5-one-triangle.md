@@ -90,6 +90,10 @@ The record and its attachments never contain personal data or secrets: no UDID, 
 | S5.0.2 | Diagnostics export for evidence: the console output with timestamps, the JIT state timeline, the scan results, the frame summary, memory and thermal samples, the host's bundle-relative load path and import mode, and the evidence fields the app can read; the diagnostics page shows the load path and import mode if L1 did not add them. Everything C-0012 section 4 forbids is removed, and paths become relative to the app container (C-0004 section 4) | export and scrubber in `src/Paneport.Core`, share sheet in the device test flavor in `tests/device` | xUnit in `tests/Paneport.Core.Tests`: a synthetic export with a planted UDID-shaped value, a device name, an absolute container path, a team identifier and a fake token comes out without any of them, and every other line is unchanged |
 | S5.0.3 | Verified iOS build entry for the phase 1 gate, added after a Pass | `compat/ios-builds.json` | The CI compatibility check validates the entry against `compat/schema/ios-builds.schema.json` (C-0011 section 1). If L3 already listed the same build and model, the entry points to the L5 record in the way the schema allows; how is to be confirmed against the schema |
 
+**Notes from earlier stages.**
+
+- M3.1 (session log of 2026-11-23): `compat/ios-builds.json` keeps one entry for each build and model, with `evidence` as a list of records, oldest first. When L3 listed the same build and model, S5.0.3 adds the L5 record to that entry's `evidence`; otherwise it adds an entry. `tools/CheckCompat.cs` checks the list in the `checks` job ([jit.md](../jit.md) section 9).
+
 **Session log.**
 
 _No sessions yet._

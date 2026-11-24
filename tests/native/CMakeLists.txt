@@ -73,6 +73,33 @@ paneport_native_test(test_signal_harness CASES
     runs_sixty_seconds start_refused_before_init start_checks_its_conditions
     short_structs_follow_struct_size)
 
+# The JIT provider (M3.1, docs/design/jit.md section 10). The provider's cases use the fake
+# platform of jit_test_support.h or the macOS backend's simulated broker, and the regions of
+# the macOS backend.
+paneport_native_test(test_jit_machine CASES
+    transitions_in_order broker_left_before_request foreign_debuggers pool_timeout
+    detach_timeout debugger_lost probe_failure failed_is_terminal request_only_when_attached
+    memory_limit_fails pool_sizes names)
+paneport_native_test(test_jit_flags CASES
+    decodes_both_flags system_reader_without_debugger broker_after_enabler
+    debugger_before_enabler_is_foreign debugger_without_enabler_is_foreign
+    refused_enabler_makes_debugger_foreign waits_for_cs_debugged foreground_reads_again
+    calls_are_checked)
+paneport_native_test(test_jit_mapping CASES
+    alias_is_coherent no_view_is_writable_and_executable writable_executable_is_found
+    commands_per_region pool_of_a_title pool_limited_to_an_eighth below_the_minimum_fails
+    region_refused_fails debugger_lost_fails)
+paneport_native_test(test_jit_probe CASES
+    probed_offsets healthy_pool_passes fault_on_first_page fault_on_last_page
+    fault_on_interval_page fault_off_the_probed_pages routine_of_another_page_fails
+    routine_of_another_region_fails handler_takes_only_its_window fault_on_the_alias
+    provider_fails_on_a_planted_fault)
+paneport_native_test(test_jit_provider CASES
+    simulated_broker_reaches_ready event_on_every_change pool_timeout_fails detach_timeout_fails
+    ready_refuses_another_request failed_refuses_everything enabler_taken_back_is_reported
+    commands_after_shutdown nothing_kept_after_shutdown shutdown_between_commands
+    shutdown_stops_the_supervisor)
+
 # The main-thread rule of the shipped builds, on the host that src/native/CMakeLists.txt builds
 # without the test exports and without PANEPORT_TEST_BUILD.
 paneport_native_test(test_main_thread LIBRARY paneport_host_shipped CASES
@@ -102,8 +129,8 @@ target_include_directories(test_headers PRIVATE "${PANEPORT_REPOSITORY_ROOT}/src
 target_link_libraries(test_headers PRIVATE paneport_host)
 add_test(NAME test_headers.c17_and_cxx20 COMMAND test_headers)
 
-# The crash record writer, the signal dispatcher's handler with the thread role it reads, and
-# the harness's guest fault handler call only async-signal-safe functions
+# The crash record writer, the signal dispatcher's handler with the thread role it reads, the
+# harness's guest fault handler and the JIT probe handler call only async-signal-safe functions
 # (docs/design/native-host.md section 8, docs/design/signals.md section 10). The check reads
 # a group's objects with nm: <name>.async_signal_safe_calls reads them as the test build
 # compiles them, and <name>_shipped.async_signal_safe_calls, for the two groups that ship, as
@@ -131,3 +158,5 @@ paneport_signal_safe_check(signal_handler_shipped paneport_host_shipped
     "signal_handler.c|thread_role.c")
 paneport_signal_safe_check(signal_harness_handler paneport_host_objects
     "signal_harness_handler.c")
+paneport_signal_safe_check(jit_probe_handler paneport_host_objects "jit_probe_handler.c")
+paneport_signal_safe_check(jit_probe_handler_shipped paneport_host_shipped "jit_probe_handler.c")

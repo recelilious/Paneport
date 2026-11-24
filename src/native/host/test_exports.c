@@ -12,9 +12,11 @@
 #include "error.h"
 #include "event_thread.h"
 #include "host_state.h"
+#include "jit/jit_provider.h"
 #include "log.h"
 #include "memory_budget.h"
 #include "paneport/host.h"
+#include "paneport/jit.h"
 #include "paneport/memory.h"
 #include "paneport/testing.h"
 #include "signals/signals.h"
@@ -86,6 +88,26 @@ static const pp_test_layout_member_t k_signal_counters_members[] = {
     PP_MEMBER(pp_test_signal_counters_t, runtime_faults),
 };
 
+static const pp_test_layout_member_t k_jit_status_members[] = {
+    PP_MEMBER(pp_jit_status_t, struct_size),
+    PP_MEMBER(pp_jit_status_t, state),
+    PP_MEMBER(pp_jit_status_t, failure),
+    PP_MEMBER(pp_jit_status_t, debugged_since_launch),
+    PP_MEMBER(pp_jit_status_t, attached_now),
+    PP_MEMBER(pp_jit_status_t, enabler_opened),
+    PP_MEMBER(pp_jit_status_t, foreign_debugger),
+    PP_MEMBER(pp_jit_status_t, requested_mib),
+    PP_MEMBER(pp_jit_status_t, pool_mib),
+    PP_MEMBER(pp_jit_status_t, regions_planned),
+    PP_MEMBER(pp_jit_status_t, regions_mapped),
+    PP_MEMBER(pp_jit_status_t, in_state_ms),
+    PP_MEMBER(pp_jit_status_t, debugger_attached_ms),
+    PP_MEMBER(pp_jit_status_t, requesting_ms),
+    PP_MEMBER(pp_jit_status_t, waiting_detach_ms),
+    PP_MEMBER(pp_jit_status_t, verifying_ms),
+    PP_MEMBER(pp_jit_status_t, authorization_ms),
+};
+
 // Every struct that crosses the interface (C-0005 section 5). A struct added to a header is
 // added here in the same change, and to the C# definitions of Paneport.Interop.
 static const pp_test_layout_struct_t k_layout_table[] = {
@@ -93,6 +115,7 @@ static const pp_test_layout_struct_t k_layout_table[] = {
     PP_STRUCT(pp_event_t, k_event_members),
     PP_STRUCT(pp_log_line_t, k_log_line_members),
     PP_STRUCT(pp_memory_budget_t, k_memory_budget_members),
+    PP_STRUCT(pp_jit_status_t, k_jit_status_members),
     PP_STRUCT(pp_test_layout_member_t, k_layout_member_members),
     PP_STRUCT(pp_test_layout_struct_t, k_layout_struct_members),
     PP_STRUCT(pp_test_signal_harness_config_t, k_harness_config_members),
@@ -145,6 +168,60 @@ PP_EXPORT pp_status_t pp_test_set_memory_stub(uint64_t available_bytes, uint64_t
         return pp_error_set(status, "The memory stub exists only where the host cannot read the "
                                     "system, such as macOS.");
     }
+    return PP_OK;
+}
+
+PP_EXPORT pp_status_t pp_test_jit_plant_status(uint32_t pattern) {
+    pp_error_clear();
+    if (pattern > 3U) {
+        return pp_error_set(PP_E_INVALID_ARGUMENT, "pp_test_jit_plant_status takes 0 to 3, not %u.",
+                            (unsigned)pattern);
+    }
+    if (pattern == 0U) {
+        pp_jit_provider_plant_status(NULL);
+        return PP_OK;
+    }
+    // The patterns of paneport/testing.h.
+    pp_jit_status_t status;
+    memset(&status, 0, sizeof status);
+    status.struct_size = (uint32_t)sizeof status;
+    const uint64_t milliseconds = (uint64_t)pattern * 1000U;
+    if (pattern == 1U) {
+        status.state = PP_JIT_STATE_FAILED;
+        status.failure = PP_JIT_FAILURE_SYSTEM;
+        status.debugged_since_launch = 1U;
+        status.attached_now = 1U;
+        status.requested_mib = 601U;
+        status.pool_mib = 602U;
+        status.regions_planned = 5U;
+        status.regions_mapped = 7U;
+    } else if (pattern == 2U) {
+        status.state = PP_JIT_STATE_VERIFYING;
+        status.failure = PP_JIT_FAILURE_MEMORY_LIMIT;
+        status.debugged_since_launch = 1U;
+        status.enabler_opened = 1U;
+        status.requested_mib = 603U;
+        status.pool_mib = 604U;
+        status.regions_planned = 2U;
+        status.regions_mapped = 3U;
+    } else {
+        // The flags of pattern 1 inverted.
+        status.state = PP_JIT_STATE_WAITING_DETACH;
+        status.failure = PP_JIT_FAILURE_DEBUGGER_LOST;
+        status.enabler_opened = 1U;
+        status.foreign_debugger = 1U;
+        status.requested_mib = 605U;
+        status.pool_mib = 606U;
+        status.regions_planned = 4U;
+        status.regions_mapped = 8U;
+    }
+    status.in_state_ms = milliseconds + 1U;
+    status.debugger_attached_ms = milliseconds + 2U;
+    status.requesting_ms = milliseconds + 3U;
+    status.waiting_detach_ms = milliseconds + 4U;
+    status.verifying_ms = milliseconds + 5U;
+    status.authorization_ms = milliseconds + 6U;
+    pp_jit_provider_plant_status(&status);
     return PP_OK;
 }
 

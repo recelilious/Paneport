@@ -38,4 +38,7 @@ public enum HostStatus
 
     /// <summary>The system refused something the host needs (<c>PP_E_SYSTEM</c>).</summary>
     SystemFailure = -9,
+
+    /// <summary>The JIT state does not allow the call (<c>PP_E_JIT_STATE</c>), which version 1.3 added.</summary>
+    JitState = -10,
 }

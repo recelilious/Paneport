@@ -85,7 +85,7 @@ check_bundle() {
 check_bundle "$release"
 check_bundle "$test_build"
 
-expected_release=$(declared "$headers"/common.h "$headers"/host.h "$headers"/memory.h)
+expected_release=$(declared "$headers"/common.h "$headers"/host.h "$headers"/jit.h "$headers"/memory.h)
 expected_test_only=$(declared "$headers"/testing.h)
 [ -n "$expected_release" ] && [ -n "$expected_test_only" ] \
     || problem "no PP_EXPORT declaration was found in $headers."
@@ -103,7 +103,7 @@ for function in $expected_test_only; do
         *) problem "paneport/testing.h declares $function, which is not a pp_test_ function." ;;
     esac
 done
-other_headers=$(cd "$headers" && ls -- *.h | grep -v -x -e common.h -e host.h -e memory.h -e testing.h -e paneport.h || true)
+other_headers=$(cd "$headers" && ls -- *.h | grep -v -x -e common.h -e host.h -e jit.h -e memory.h -e testing.h -e paneport.h || true)
 [ -z "$other_headers" ] \
     || problem "add the headers $other_headers to eng/mac/check-framework.sh, which lists the headers of each build."
 

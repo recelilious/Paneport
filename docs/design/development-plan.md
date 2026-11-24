@@ -186,7 +186,7 @@ The last column holds recelilious's answer and the date it was given. A stage se
 | M2.1 | Overlay gate | L2 | L1 | M | Hit-test unit tests; the device gate |
 | M2.2 | Signal dispatcher | L2 | M1.2, M1.3 | L | Routing and Mach tests with CTest on macOS; the device gate |
 | M2.3 | SteamKit2 on the device | L2 | M1.3, M0.3; D13; merges after S9.1.1 | L | Unit tests with fakes; a desktop run; the device gate |
-| M3.1 | JIT provider and broker script | L3 | M2.2, M1.3 | L | macOS tests with a MAP_JIT provider; device acceptance |
+| M3.1 | JIT provider and broker script | L3 | M2.2, M1.3 | L | macOS tests with a simulated broker ([jit.md](jit.md) section 2); device acceptance |
 | M4.1 | Forks, submodules and toolchains | L4 | M1.1; D4, D5 | M | A fresh clone builds the first fork targets |
 | M4.2 | ARM64EC Wine with FEX on macOS | L4 | M4.1; D14 | XL | Win32 test programs pass on the macOS harness |
 | M4.3 | Single-process Wine on macOS | L4 | M4.2, M2.2 | XL | The same tests in single-process mode, with fork and exec trapped |

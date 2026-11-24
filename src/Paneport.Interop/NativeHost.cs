@@ -176,6 +176,60 @@ public static unsafe class NativeHost
         return HostCalls.Text(buffer);
     }
 
+    /// <summary>
+    /// Reads the JIT state, which version 1.3 of the interface added (<c>pp_jit_get_state</c>,
+    /// C-0006 section 5). Any thread.
+    /// </summary>
+    /// <returns>The state and what the host knows about the request.</returns>
+    /// <exception cref="HostException">The host is not running.</exception>
+    public static HostJitStatus GetJitStatus()
+    {
+        var status = new NativeJitStatus { StructSize = (uint)sizeof(NativeJitStatus) };
+        HostCalls.Check(NativeMethods.JitGetState(&status));
+        return new HostJitStatus(
+            (HostJitState)status.State,
+            (HostJitFailure)status.Failure,
+            status.DebuggedSinceLaunch != 0,
+            status.AttachedNow != 0,
+            status.EnablerOpened != 0,
+            status.ForeignDebugger != 0,
+            status.RequestedMiB,
+            status.PoolMiB,
+            status.RegionsPlanned,
+            status.RegionsMapped,
+            status.InStateMilliseconds,
+            status.DebuggerAttachedMilliseconds,
+            status.RequestingMilliseconds,
+            status.WaitingDetachMilliseconds,
+            status.VerifyingMilliseconds,
+            status.AuthorizationMilliseconds);
+    }
+
+    /// <summary>
+    /// Tells the host that this launch opens the JIT enabler, right before the app asks iOS to
+    /// open <c>stikdebug://enable-jit</c>, or that iOS refused to open it
+    /// (<c>pp_jit_set_enabler_opened</c>, C-0006 section 3 step 2). Main thread only.
+    /// </summary>
+    /// <param name="opened">True before opening the URL; false when opening it failed.</param>
+    /// <exception cref="HostException">The JIT state does not take it, or the thread is not the main thread.</exception>
+    public static void SetJitEnablerOpened(bool opened) =>
+        HostCalls.Check(NativeMethods.JitSetEnablerOpened(opened ? (byte)1 : (byte)0));
+
+    /// <summary>
+    /// Tells the host that the app came back to the foreground, so that it reads the debugger
+    /// flags again (<c>pp_jit_note_foreground</c>, C-0006 section 3 step 1). Main thread only.
+    /// </summary>
+    /// <exception cref="HostException">The thread is not the main thread, or the host is not running.</exception>
+    public static void NoteJitForeground() => HostCalls.Check(NativeMethods.JitNoteForeground());
+
+    /// <summary>
+    /// Starts the request of the JIT code pool (<c>pp_jit_request_pool</c>, C-0006 sections 3
+    /// and 4). The host limits the size, and the state reports the progress. Main thread only.
+    /// </summary>
+    /// <param name="sizeMiB">The size: the title's <c>jitPoolMiB</c> when it has one, else <see cref="HostJit.DefaultPoolMiB"/>.</param>
+    /// <exception cref="HostException">The state is not debugger_attached, the size is 0, or the thread is not the main thread.</exception>
+    public static void RequestJitPool(uint sizeMiB) => HostCalls.Check(NativeMethods.JitRequestPool(sizeMiB));
+
     // Keeps a new handler's handle once the host took it, and frees the one it replaced, which
     // the host no longer runs. A refused handle is freed instead.
     private static void Replace(ref GCHandle current, GCHandle replacement, int status)

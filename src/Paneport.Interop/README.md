@@ -14,11 +14,12 @@ Source-generated bindings to the native host interface (C-0004 section 2, C-0005
 
 | File | What it holds |
 |---|---|
-| `NativeHost.cs` | The safe API: the interface version, `Initialize` and `Shutdown`, the event and log handlers, the failure handler for exceptions in them, the memory budget, and the device's model identifier (`ReadDeviceModel`, version 1.1) |
+| `NativeHost.cs` | The safe API: the interface version, `Initialize` and `Shutdown`, the event and log handlers, the failure handler for exceptions in them, the memory budget, the device's model identifier (`ReadDeviceModel`, version 1.1), and the JIT group of version 1.3: `GetJitStatus`, `SetJitEnablerOpened`, `NoteJitForeground` and `RequestJitPool` |
 | `HostTestExports.cs` | The exports of the host's test builds: the layout table, a test crash record, the memory stub, helpers for the binding tests, and the signal dispatcher's installed check and stress harness |
 | `MonoRuntime.cs` | The one call into Mono: `mono_set_crash_chaining(FALSE)`, imported from `__Internal` |
 | `LayoutConformance.cs` | The interface conformance test of C-0005 section 5, with `StructLayoutBuilder.cs`, `FieldAccessor.cs`, `StructLayoutRecord.cs` and `MemberLayoutRecord.cs` |
 | `HostAbi.cs`, `HostStatus.cs`, `HostException.cs`, `HostAbiMismatchException.cs` | The interface version these bindings know, the host's status codes, and the two exceptions |
 | `HostEvent.cs`, `HostLogLine.cs`, `HostLogLevel.cs`, `HostMemoryBudget.cs`, `SignalHarnessCounters.cs` | What the host reports, as records |
+| `HostJit.cs`, `HostJitState.cs`, `HostJitFailure.cs`, `HostJitStatus.cs` | The JIT group's constants (the event kind, the pool sizes and the timeouts), its states and failure reasons, and its status as a record (C-0006) |
 | `NativeMethods.cs`, `HostCalls.cs` | The `LibraryImport` declarations, and turning a status into an exception |
 | `Native*.cs` | The blittable structs that cross the interface, member by member as the C headers declare them |

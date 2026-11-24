@@ -156,6 +156,16 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/ScanPackage.cs -- --self-test
 
+      # M9.1: the tools of the release workflow, which runs only for tags, check themselves on every
+      # run; the ios job runs them on macOS too.
+      - name: Self-test the version rules (tools/ReleaseVersion.cs)
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/ReleaseVersion.cs -- --self-test
+
+      - name: Self-test the source archiver (tools/ArchiveSources.cs)
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/ArchiveSources.cs -- --self-test
+
       # Its fixtures break one rule each, and each must fail naming that rule (M3.1).
       - name: Self-test the compatibility check
         if: ${{ !cancelled() }}
@@ -878,6 +888,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/GenerateNotices.cs -- --self-test
 
+      # M9.1: the checks of the package scan that need macOS, such as a real ad-hoc signature made
+      # with codesign, run here and are skipped in the checks job; and the tools of the release
+      # workflow, which runs on this runner image, check themselves on it.
+      - name: Self-test the package scan, the version rules and the source archiver on macOS
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          dotnet run tools/ScanPackage.cs -- --self-test || status=1
+          dotnet run tools/ReleaseVersion.cs -- --self-test || status=1
+          dotnet run tools/ArchiveSources.cs -- --self-test || status=1
+          exit "$status"
+
       # S9.1.1: the texts that no package ships, which eng/release/bundle-components.json names by
       # a raw.githubusercontent.com URL at a full commit and a SHA-256. The generator, which never
       # uses the network, prints the list from the mapping; the step fetches each text over https
@@ -934,6 +956,24 @@ jobs:
           if [ -n "$TEST_APP" ]; then
             dotnet run tools/GenerateNotices.cs -- --mode ios --project tests/device/Paneport.DeviceTest.csproj \
               --app "$TEST_APP" --out build/notices/test || status=1
+          fi
+          exit "$status"
+
+      # M9.1: release device builds are stripped of symbols (C-0009 section 6). dotnet build in Release
+      # strips them already; this step makes sure of it before signing, whatever the SDK or a package
+      # does, and the full scan below fails on any debugging entry but strip's own marker.
+      - name: Strip both apps (eng/release/strip-binaries.sh)
+        if: ${{ !cancelled() && (steps.apps.outputs.main != '' || steps.apps.outputs.test != '') }}
+        env:
+          MAIN_APP: ${{ steps.apps.outputs.main }}
+          TEST_APP: ${{ steps.apps.outputs.test }}
+        run: |
+          status=0
+          if [ -n "$MAIN_APP" ]; then
+            eng/release/strip-binaries.sh "$MAIN_APP" || status=1
+          fi
+          if [ -n "$TEST_APP" ]; then
+            eng/release/strip-binaries.sh "$TEST_APP" || status=1
           fi
           exit "$status"
 
@@ -999,12 +1039,24 @@ jobs:
           fi
           exit "$status"
 
+      # M9.1, S9.1.3: the whole scan of C-0009 section 6 on both flavors, with the allow-list of the
+      # release workflow, which names each allowed hit by file and by the SHA-256 of its text (C-0011
+      # section 4). It also checks that every signature is ad hoc and not the linker's, that the
+      # executable carries exactly the entitlements of Entitlements.plist, that nothing keeps debug
+      # symbols, that nothing is of a kind that C-0009 section 4 excludes, and that no file holds
+      # this job's checkout path. Both flavors are scanned together, so an allow-list entry that
+      # excuses nothing in either fails.
       - name: Scan both packages (tools/ScanPackage.cs)
         if: ${{ !cancelled() && (steps.packages.outputs.main != '' || steps.packages.outputs.test != '') }}
         env:
           MAIN_IPA: ${{ steps.packages.outputs.main }}
           TEST_IPA: ${{ steps.packages.outputs.test }}
         run: |
+          options=(--allow-list eng/release/scan-allowlist.json --strict-allow-list
+            --entitlements src/Paneport.iOS/Entitlements.plist --build-path "$GITHUB_WORKSPACE")
+          if [ "$PANEPORT_EXTENDED_VIRTUAL_ADDRESSING" = true ]; then
+            options+=(--extended-virtual-addressing)
+          fi
           packages=()
           if [ -n "$MAIN_IPA" ]; then
             packages+=("$MAIN_IPA")
@@ -1012,7 +1064,7 @@ jobs:
           if [ -n "$TEST_IPA" ]; then
             packages+=("$TEST_IPA")
           fi
-          dotnet run tools/ScanPackage.cs -- "${packages[@]}"
+          dotnet run tools/ScanPackage.cs -- "${options[@]}" "${packages[@]}"
 
       # S9.1.1: each .ipa holds the notices of its app: THIRD_PARTY_NOTICES.md, the index and every
       # text that the index names, in licenses/ at the root of the app.

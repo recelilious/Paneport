@@ -130,6 +130,20 @@ SPDX-License-Identifier: MIT
     </ItemGroup>
   </Target>
 
+  <!--
+  Every project that an app head references is built with PaneportIosApp set, so that a library can
+  tell that it goes into the bundle; each reference gets the same value, so that MSBuild builds each
+  library once. Paneport.UI then builds without symbols: Avalonia's XAML compiler rewrites it through
+  Mono.Cecil, whose PDB writer puts the absolute path of the new PDB into the assembly, past the path
+  map of ContinuousIntegrationBuild, and the full package scan of C-0009 section 6 fails on that
+  path (docs/design/release-engineering.md).
+  -->
+  <ItemDefinitionGroup>
+    <ProjectReference>
+      <AdditionalProperties>PaneportIosApp=true</AdditionalProperties>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Core/Paneport.Core.csproj" />
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Steam/Paneport.Steam.csproj" />

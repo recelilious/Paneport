@@ -1,0 +1,460 @@
+# SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
+# SPDX-License-Identifier: MIT
+
+# The release job of C-0011 section 4 (M9.1). A v* tag builds the release from the tag and ends in
+# a draft release, which only recelilious publishes (C-0009 section 6); this workflow never
+# publishes or deletes a release. tools/ReleaseVersion.cs picks the mode from the tag: a tag
+# v<MAJOR>.<MINOR>.<PATCH> runs in release mode, and its commit must be on main and hold
+# docs/releases/<tag>.md; a tag with a pre-release part, such as v0.0.0-dryrun.1, runs in dry-run
+# mode with docs/releases/release-notes-template.md as its notes, and ends in a draft titled as a dry
+# run, which is deleted after checking. A manual run re-runs a dry run on an existing test tag.
+# docs/design/release-engineering.md describes every step, and docs/releases/README.md the release
+# process, the dry run and the clean-up.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: An existing test tag, such as v0.0.0-dryrun.1. A manual run takes no release tag.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # No build or test run sends telemetry, as in ci.yml.
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  TESTINGPLATFORM_TELEMETRY_OPTOUT: "1"
+  AVALONIA_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+# The steps that build, sign, package and check the main app are those of the ios job in ci.yml,
+# with the release's version and build number. A change to how the ios job builds the main app is
+# made here too, in the same change (docs/design/release-engineering.md section 9.1).
+jobs:
+  release:
+    # eng/toolchain.json pins this image as macos-runner-image, and tools/CheckToolchain.cs fails
+    # when the two differ (C-0009 sections 2 and 6).
+    runs-on: xcode-27
+    timeout-minutes: 90
+    # The draft release is the only thing this job writes.
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ inputs.tag || github.ref_name }}
+      cancel-in-progress: false
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      # C-0009 section 4: the release does not ask for extended-virtual-addressing, which may need
+      # a paid account; the build, eng/mac/sign-adhoc.sh, eng/mac/check-app.sh and the scan read it.
+      PANEPORT_EXTENDED_VIRTUAL_ADDRESSING: "false"
+    steps:
+      # The whole history, for the build number and the check that the tag is on main; the tag's
+      # own commit, never a branch.
+      - name: Check out the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install the SDK that global.json pins
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      # S9.1.6: the mode, the version and the build number, from the tag. A manual run takes only a
+      # test tag. Every later step uses these outputs.
+      - name: Self-test the version rules (tools/ReleaseVersion.cs)
+        run: dotnet run tools/ReleaseVersion.cs -- --self-test
+
+      - name: Resolve the mode, the version and the build number (tools/ReleaseVersion.cs)
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          options=(--tag "$TAG" --output "$GITHUB_OUTPUT")
+          if [ "$EVENT" = workflow_dispatch ]; then
+            options+=(--require-dry-run)
+          fi
+          dotnet run tools/ReleaseVersion.cs -- "${options[@]}"
+
+      - name: Check that the checkout is the tagged commit
+        env:
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          head=$(git rev-parse HEAD)
+          if [ "$head" != "$COMMIT" ]; then
+            echo "::error title=Release::The checkout is at $head, but $TAG names $COMMIT."
+            exit 1
+          fi
+          echo "commit=${COMMIT:0:12}" >> "$GITHUB_ENV"
+
+      - name: Select the Xcode that eng/toolchain.json pins (eng/mac/select-xcode.sh)
+        run: eng/mac/select-xcode.sh
+
+      - name: Check the toolchain and install the iOS workload and CMake (eng/mac/bootstrap.sh --ios)
+        run: eng/mac/bootstrap.sh --ios
+
+      # The tools check themselves on this runner before the job uses them (M9.1 verification).
+      - name: Self-test the notices generator, the source archiver and the package scan
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          dotnet run tools/GenerateNotices.cs -- --self-test || status=1
+          dotnet run tools/ArchiveSources.cs -- --self-test || status=1
+          dotnet run tools/ScanPackage.cs -- --self-test || status=1
+          exit "$status"
+
+      - name: Build the host frameworks (presets ios-device and ios-device-test)
+        if: ${{ !cancelled() }}
+        working-directory: src/native
+        run: |
+          for preset in ios-device ios-device-test; do
+            cmake --preset "$preset"
+            cmake --build --preset "$preset" --parallel
+          done
+
+      - name: Check the host frameworks (eng/mac/check-framework.sh)
+        if: ${{ !cancelled() }}
+        run: |
+          eng/mac/check-framework.sh build/native/ios-device/paneport_host.framework \
+            build/native/ios-device-test/paneport_host.framework
+
+      - name: Restore Paneport.iOS from its lock file
+        if: ${{ !cancelled() }}
+        run: dotnet restore src/Paneport.iOS/Paneport.iOS.csproj --locked-mode
+
+      - name: Check that no lock file was written
+        if: ${{ !cancelled() }}
+        run: |
+          written=$(git status --porcelain --untracked-files=all -- '*.lock.json')
+          if [ -n "$written" ]; then
+            echo "$written"
+            echo "::error title=Lock files::A lock file was created or changed (C-0009 section 2)."
+            exit 1
+          fi
+
+      # Release with full ahead-of-time compilation and the interpreter off (C-0009 section 3),
+      # stripped (AppHead.props) and without signing, with the version and the build number of the
+      # tag. The build stamp gets the tagged commit.
+      - name: Build the main app for ios-arm64 in Release, without signing
+        if: ${{ !cancelled() }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          dotnet build src/Paneport.iOS/Paneport.iOS.csproj -c Release --no-restore \
+            -p:ApplicationDisplayVersion="$VERSION" -p:PaneportBuildNumber="$BUILD" -p:PaneportCommit="$COMMIT" \
+            -p:PaneportExtendedVirtualAddressing="$PANEPORT_EXTENDED_VIRTUAL_ADDRESSING"
+
+      - name: Find the app
+        id: app
+        if: ${{ !cancelled() }}
+        run: |
+          app=$(find src/Paneport.iOS/bin/Release -maxdepth 4 -type d -name 'Paneport.iOS.app' | head -n 1)
+          if [ -z "$app" ]; then
+            echo "::error title=App bundle::The build made no .app bundle."
+            exit 1
+          fi
+          echo "path=$app" >> "$GITHUB_OUTPUT"
+
+      - name: Check the version and the build number in the app's Info.plist (tools/ReleaseVersion.cs)
+        if: ${{ !cancelled() && steps.app.outputs.path != '' }}
+        env:
+          APP: ${{ steps.app.outputs.path }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+        run: dotnet run tools/ReleaseVersion.cs -- --check-app "$APP" --version "$VERSION" --build "$BUILD"
+
+      # The texts that no package ships, as the ios job fetches them: over https only, with a size
+      # limit, into build/upstream/<sha256>, failing on a hash that differs. The generator checks
+      # each hash again when it reads the file.
+      - name: Fetch the license texts that no package ships
+        if: ${{ !cancelled() && steps.app.outputs.path != '' }}
+        run: |
+          list=$(dotnet run tools/GenerateNotices.cs -- --list-upstream)
+          mkdir -p build/upstream
+          status=0
+          while read -r hash url; do
+            [ -n "$hash" ] || continue
+            file="build/upstream/$hash"
+            if ! curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 --max-filesize 1048576 \
+                -o "$file.part" "$url"; then
+              echo "::error title=Upstream texts::$url could not be fetched."
+              rm -f "$file.part"
+              status=1
+              continue
+            fi
+            actual=$(shasum -a 256 "$file.part" | cut -d ' ' -f 1)
+            if [ "$actual" != "$hash" ]; then
+              echo "::error title=Upstream texts::$url has the SHA-256 $actual, but eng/release/bundle-components.json gives $hash."
+              rm -f "$file.part"
+              status=1
+              continue
+            fi
+            mv "$file.part" "$file"
+            echo "Fetched $url ($hash)."
+          done <<< "$list"
+          exit "$status"
+
+      # In release mode, a file that the mapping does not attribute and a text without a source
+      # fail too (docs/design/release-engineering.md section 3). The report is the coverage report
+      # of the run summary.
+      - name: Place the third-party notices in the app (tools/GenerateNotices.cs --mode release)
+        if: ${{ !cancelled() && steps.app.outputs.path != '' }}
+        env:
+          APP: ${{ steps.app.outputs.path }}
+        run: |
+          mkdir -p build/release
+          set -o pipefail
+          dotnet run tools/GenerateNotices.cs -- --mode release --project src/Paneport.iOS/Paneport.iOS.csproj \
+            --app "$APP" --out build/release/notices | tee build/release/coverage.txt
+
+      # Release device builds are stripped of symbols (C-0009 section 6), as in the ios job.
+      - name: Strip the app (eng/release/strip-binaries.sh)
+        if: ${{ !cancelled() && steps.app.outputs.path != '' }}
+        env:
+          APP: ${{ steps.app.outputs.path }}
+        run: eng/release/strip-binaries.sh "$APP"
+
+      - name: Sign the app ad hoc (eng/mac/sign-adhoc.sh)
+        if: ${{ !cancelled() && steps.app.outputs.path != '' }}
+        env:
+          APP: ${{ steps.app.outputs.path }}
+        run: eng/mac/sign-adhoc.sh "$APP" src/Paneport.iOS/Entitlements.plist
+
+      - name: Check the app (eng/mac/check-app.sh)
+        if: ${{ !cancelled() && steps.app.outputs.path != '' }}
+        env:
+          APP: ${{ steps.app.outputs.path }}
+        run: eng/mac/check-app.sh "$APP" main
+
+      # For the record of the dry run and of the release: each signature is ad hoc with no team
+      # identifier, and the app's entitlements are those of Entitlements.plist (C-0009 section 6).
+      - name: Show the signatures and the entitlements
+        if: ${{ !cancelled() && steps.app.outputs.path != '' }}
+        env:
+          APP: ${{ steps.app.outputs.path }}
+        run: |
+          mkdir -p build/release
+          {
+            for item in "$APP"/Frameworks/*.framework "$APP"/Frameworks/*.dylib "$APP"; do
+              [ -e "$item" ] || continue
+              echo "== ${item#"$APP"/}"
+              codesign -d --verbose=2 "$item" 2>&1 | grep -E '^(Identifier|Format|CodeDirectory|Signature|TeamIdentifier)=' || true
+            done
+            echo "== Entitlements of the app"
+            codesign -d --entitlements - --xml "$APP" 2>/dev/null | plutil -convert xml1 -o - - 2>/dev/null || true
+          } | tee build/release/signatures.txt
+
+      - name: Package the app as an .ipa (eng/mac/package-ipa.sh)
+        id: package
+        if: ${{ !cancelled() && steps.app.outputs.path != '' }}
+        env:
+          APP: ${{ steps.app.outputs.path }}
+        run: |
+          mkdir -p build/release/assets
+          ipa="$GITHUB_WORKSPACE/build/release/assets/Paneport-$TAG.ipa"
+          eng/mac/package-ipa.sh "$APP" "$ipa"
+          echo "path=$ipa" >> "$GITHUB_OUTPUT"
+
+      # The package itself: its Info.plist carries the version and the build number, and it holds
+      # the notices, the index and every text that the index names.
+      - name: Check the package's version and notices
+        if: ${{ !cancelled() && steps.package.outputs.path != '' }}
+        env:
+          IPA: ${{ steps.package.outputs.path }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+        run: |
+          status=0
+          entries=$(zipinfo -1 "$IPA")
+          app=$(grep -E -m 1 '^Payload/[^/]+\.app/Info\.plist$' <<< "$entries" | sed 's|/Info\.plist$||' || true)
+          if [ -z "$app" ]; then
+            echo "::error title=Package::The package holds no app."
+            exit 1
+          fi
+          check="$RUNNER_TEMP/package-check/Check.app"
+          rm -rf "$RUNNER_TEMP/package-check"
+          mkdir -p "$check"
+          unzip -p "$IPA" "$app/Info.plist" > "$check/Info.plist"
+          dotnet run tools/ReleaseVersion.cs -- --check-app "$check" --version "$VERSION" --build "$BUILD" || status=1
+          texts=$(unzip -p "$IPA" "$app/licenses/index.json" 2>/dev/null | jq -r '.components[].text' 2>/dev/null || true)
+          if [ -z "$texts" ]; then
+            echo "::error title=Notices::The package has no index of the notices that names a text."
+            status=1
+          fi
+          for file in THIRD_PARTY_NOTICES.md index.json $texts; do
+            if ! grep -F -x -q "$app/licenses/$file" <<< "$entries"; then
+              echo "::error title=Notices::The package lacks ${app#Payload/}/licenses/$file."
+              status=1
+            fi
+          done
+          exit "$status"
+
+      # S9.1.2: this repository at the tag and every submodule at its recorded revision, each
+      # fetched without credentials in release mode, with the source list for the notes.
+      - name: Make the source archives (tools/ArchiveSources.cs)
+        if: ${{ !cancelled() && steps.package.outputs.path != '' }}
+        env:
+          MODE: ${{ steps.version.outputs.mode }}
+        run: |
+          dotnet run tools/ArchiveSources.cs -- --mode "$MODE" --tag "$TAG" --out build/release/assets \
+            --list build/release/sources.json
+
+      # C-0009 section 6: THIRD_PARTY_NOTICES.md and the full license texts, as the app holds them in
+      # licenses/: the notices file on its own, and the folder with the index and the texts.
+      - name: Add the notices and the license texts to the assets
+        if: ${{ !cancelled() && steps.package.outputs.path != '' }}
+        run: |
+          cp build/release/notices/THIRD_PARTY_NOTICES.md build/release/assets/THIRD_PARTY_NOTICES.md
+          rm -rf "$RUNNER_TEMP/licenses"
+          mkdir -p "$RUNNER_TEMP/licenses"
+          ditto build/release/notices "$RUNNER_TEMP/licenses/licenses"
+          (cd "$RUNNER_TEMP/licenses" && zip -q -r -X "$GITHUB_WORKSPACE/build/release/assets/Paneport-$TAG-licenses.zip" licenses)
+
+      - name: Compute the checksums of the assets
+        if: ${{ !cancelled() && steps.package.outputs.path != '' }}
+        run: |
+          (cd build/release/assets && find . -maxdepth 1 -type f ! -name SHA256SUMS -print | sed 's|^\./||' | LC_ALL=C sort \
+            | while IFS= read -r file; do shasum -a 256 "$file"; done) > build/release/SHA256SUMS
+          cp build/release/SHA256SUMS build/release/assets/SHA256SUMS
+          cat build/release/SHA256SUMS
+
+      # S9.1.4: the body of the draft, from the notes of the tag or, in dry-run mode, the template,
+      # with the generated sections for the build, the sources and the checksums. In release mode the
+      # tool also refuses a gate in scope that has not passed or been waived in
+      # docs/evidence/README.md, an empty list of known issues and a placeholder left in the notes.
+      - name: Compose the release notes (tools/ReleaseVersion.cs --compose)
+        if: ${{ !cancelled() && steps.package.outputs.path != '' }}
+        env:
+          MODE: ${{ steps.version.outputs.mode }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+          NOTES: ${{ steps.version.outputs.notes }}
+        run: |
+          dotnet run tools/ReleaseVersion.cs -- --compose --tag "$TAG" --mode "$MODE" --version "$VERSION" \
+            --build "$BUILD" --commit "$COMMIT" --notes "$NOTES" --sources build/release/sources.json \
+            --checksums build/release/SHA256SUMS --out build/release/body.md
+
+      # S9.1.3: the whole scan of C-0009 section 6 on the package and on the composed notes, with the
+      # allow-list that the ios job uses too; the job's own checkout path is never allowed.
+      - name: Scan the package and the notes (tools/ScanPackage.cs)
+        if: ${{ !cancelled() && steps.package.outputs.path != '' }}
+        env:
+          IPA: ${{ steps.package.outputs.path }}
+        run: |
+          set -o pipefail
+          dotnet run tools/ScanPackage.cs -- --allow-list eng/release/scan-allowlist.json \
+            --entitlements src/Paneport.iOS/Entitlements.plist --build-path "$GITHUB_WORKSPACE" \
+            --text build/release/body.md "$IPA" | tee build/release/scan.txt
+
+      # The planted failures of the scan, on copies of the package in a temporary folder that
+      # leave the runner with nothing (M9.1 verification).
+      - name: Check that planted findings fail the scan (eng/release/plant-scan-failures.sh)
+        if: ${{ !cancelled() && steps.package.outputs.path != '' }}
+        env:
+          IPA: ${{ steps.package.outputs.path }}
+        run: eng/release/plant-scan-failures.sh "$IPA"
+
+      - name: Write the run summary
+        if: ${{ always() }}
+        env:
+          MODE: ${{ steps.version.outputs.mode }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          fence='``````'
+          section() {
+            echo "### $1"
+            echo
+            if [ -f "$2" ]; then
+              echo "$fence""text"
+              grep -v '^::' "$2" || true
+              echo "$fence"
+            else
+              echo "Not made in this run."
+            fi
+            echo
+          }
+          {
+            echo "## Release run for $TAG"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Mode | ${MODE:-not resolved} |"
+            echo "| Version | ${VERSION:-not resolved} |"
+            echo "| Build number | ${BUILD:-not resolved} |"
+            echo "| Commit | ${COMMIT:-not resolved} |"
+            echo
+            section "SHA-256 of the assets" build/release/SHA256SUMS
+            section "Scan" build/release/scan.txt
+            section "Coverage" build/release/coverage.txt
+            section "Signatures" build/release/signatures.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Only after every step passed. An earlier release of the same tag, draft or not, stops the
+      # run: the workflow never replaces or deletes a release, and a dry-run draft is deleted by
+      # hand after checking (docs/releases/README.md).
+      - name: Create the draft release
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ steps.version.outputs.mode }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            | jq -r --arg tag "$TAG" '.[] | select(.tag_name == $tag) | .id')
+          if [ -n "$existing" ]; then
+            echo "::error title=Release::A release of $TAG exists already. Delete the earlier draft first (docs/releases/README.md)."
+            exit 1
+          fi
+          options=(--draft --verify-tag --notes-file build/release/body.md)
+          if [ "$MODE" = dry-run ]; then
+            options+=(--prerelease --title "Dry run $TAG, never published")
+          else
+            options+=(--title "Paneport $VERSION")
+          fi
+          gh release create "$TAG" "${options[@]}" build/release/assets/*
+
+      # Every uploaded asset, read back from the draft, against the checksum file.
+      - name: Check the uploaded assets against the checksums
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            | jq -r --arg tag "$TAG" '.[] | select(.draft and .tag_name == $tag) | .id')
+          if [ -z "$id" ] || [ "$(wc -l <<< "$id" | tr -d ' ')" != 1 ]; then
+            echo "::error title=Release::The draft release of $TAG was not found once."
+            exit 1
+          fi
+          check="$RUNNER_TEMP/uploaded"
+          rm -rf "$check"
+          mkdir -p "$check"
+          gh api "repos/$GITHUB_REPOSITORY/releases/$id/assets" --paginate | jq -r '.[] | "\(.id) \(.name)"' \
+            | while read -r asset name; do
+              gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$asset" > "$check/$name"
+            done
+          status=0
+          expected=$(find build/release/assets -maxdepth 1 -type f | wc -l | tr -d ' ')
+          found=$(find "$check" -maxdepth 1 -type f | wc -l | tr -d ' ')
+          if [ "$expected" != "$found" ]; then
+            echo "::error title=Release::The draft holds $found assets, not $expected."
+            status=1
+          fi
+          (cd "$check" && grep -v ' SHA256SUMS$' "$GITHUB_WORKSPACE/build/release/SHA256SUMS" | shasum -a 256 -c -) || status=1
+          if ! cmp -s "$check/SHA256SUMS" build/release/SHA256SUMS; then
+            echo "::error title=Release::The uploaded checksum file differs from the one the job wrote."
+            status=1
+          fi
+          exit "$status"

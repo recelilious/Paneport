@@ -9,6 +9,19 @@ SPDX-License-Identifier: MIT
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
+  <!--
+  Built for an iOS app head, which sets PaneportIosApp for every project it references (AppHead.props),
+  the library has no symbols. Avalonia's XAML compiler rewrites the assembly through Mono.Cecil after
+  the compiler, and Cecil's PDB writer puts the absolute path of the new PDB into the assembly's
+  CodeView entry, past the path map that ContinuousIntegrationBuild sets; with no PDB to read, the
+  rewrite writes no debug directory at all. The bundle ships no PDB, so the app loses only the DWARF
+  line information that the AOT compiler takes from it for this library. Desktop and test builds keep
+  their symbols (docs/design/release-engineering.md).
+  -->
+  <PropertyGroup Condition="'$(PaneportIosApp)' == 'true'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Themes.Fluent" />

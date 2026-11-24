@@ -205,6 +205,7 @@ _No sessions yet._
 **Notes from earlier stages.**
 
 - S9.1.1 ([L9 brief](L9-first-release.md), M9.1 session log of 2026-11-19): every file that this stage adds to the bundle needs a rule in `eng/release/bundle-components.json`, or the `ios` job warns, and a rule for a new component needs its texts there, such as a fork's license files as `{ "repository": "external/..." }`, or the job fails; a new NuGet package of the app needs a row of `eng/license-map.json` and texts too. `licenses/` at the root of the bundle belongs to the notices generator (`docs/design/release-engineering.md` sections 1 and 5).
+- M9.1 ([L9 brief](L9-first-release.md), session log of 2026-11-23): the `release` job of `.github/workflows/release.yml` builds the main app with the steps of the `ios` job, and none of the `ios` job's steps for the forks, because nothing that a fork builds was in the bundle when it was written. A stage that puts into the bundle files that a build step makes, such as the libraries of a fork or the Dock host, adds that step to both jobs in the same change. Both jobs run the full package scan on what ships: no debug symbols, no path of the job's checkout, no file of a kind that C-0009 section 4 excludes, and a reviewed entry in `eng/release/scan-allowlist.json` for every other hit (`docs/design/release-engineering.md` section 9).
 
 **Session log.**
 

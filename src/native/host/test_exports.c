@@ -173,9 +173,9 @@ PP_EXPORT pp_status_t pp_test_set_memory_stub(uint64_t available_bytes, uint64_t
 
 PP_EXPORT pp_status_t pp_test_jit_plant_status(uint32_t pattern) {
     pp_error_clear();
-    if (pattern > 2U) {
-        return pp_error_set(PP_E_INVALID_ARGUMENT,
-                            "pp_test_jit_plant_status takes 0, 1 or 2, not %u.", (unsigned)pattern);
+    if (pattern > 3U) {
+        return pp_error_set(PP_E_INVALID_ARGUMENT, "pp_test_jit_plant_status takes 0 to 3, not %u.",
+                            (unsigned)pattern);
     }
     if (pattern == 0U) {
         pp_jit_provider_plant_status(NULL);
@@ -185,25 +185,36 @@ PP_EXPORT pp_status_t pp_test_jit_plant_status(uint32_t pattern) {
     pp_jit_status_t status;
     memset(&status, 0, sizeof status);
     status.struct_size = (uint32_t)sizeof status;
-    const uint64_t milliseconds = pattern == 1U ? 1000U : 2000U;
+    const uint64_t milliseconds = (uint64_t)pattern * 1000U;
     if (pattern == 1U) {
         status.state = PP_JIT_STATE_FAILED;
         status.failure = PP_JIT_FAILURE_SYSTEM;
+        status.debugged_since_launch = 1U;
         status.attached_now = 1U;
         status.requested_mib = 601U;
         status.pool_mib = 602U;
         status.regions_planned = 5U;
         status.regions_mapped = 7U;
-    } else {
+    } else if (pattern == 2U) {
         status.state = PP_JIT_STATE_VERIFYING;
         status.failure = PP_JIT_FAILURE_MEMORY_LIMIT;
+        status.debugged_since_launch = 1U;
         status.enabler_opened = 1U;
         status.requested_mib = 603U;
         status.pool_mib = 604U;
         status.regions_planned = 2U;
         status.regions_mapped = 3U;
+    } else {
+        // The flags of pattern 1 inverted.
+        status.state = PP_JIT_STATE_WAITING_DETACH;
+        status.failure = PP_JIT_FAILURE_DEBUGGER_LOST;
+        status.enabler_opened = 1U;
+        status.foreign_debugger = 1U;
+        status.requested_mib = 605U;
+        status.pool_mib = 606U;
+        status.regions_planned = 4U;
+        status.regions_mapped = 8U;
     }
-    status.debugged_since_launch = 1U;
     status.in_state_ms = milliseconds + 1U;
     status.debugger_attached_ms = milliseconds + 2U;
     status.requesting_ms = milliseconds + 3U;

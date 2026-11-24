@@ -92,8 +92,9 @@ PP_EXPORT pp_status_t pp_test_set_memory_stub(uint64_t available_bytes, uint64_t
 /**
  * Version 1.3: makes pp_jit_get_state report a planted status instead of the provider's, so
  * that a binding test can tell every member apart, or the provider's own status again. The
- * state of the provider does not change. In each pattern no two numbers are equal, and any two
- * of the four flags differ in one of the two patterns.
+ * state of the provider does not change. In each pattern no two numbers are equal. Across the
+ * three patterns each of the four flags takes both values, and no two flags take the same
+ * values.
  *
  * Pattern 1: state PP_JIT_STATE_FAILED and failure PP_JIT_FAILURE_SYSTEM; the flags
  * debugged_since_launch 1, attached_now 1, enabler_opened 0 and foreign_debugger 0;
@@ -103,9 +104,13 @@ PP_EXPORT pp_status_t pp_test_set_memory_stub(uint64_t available_bytes, uint64_t
  * Pattern 2: state PP_JIT_STATE_VERIFYING and failure PP_JIT_FAILURE_MEMORY_LIMIT; the flags
  * 1, 0, 1 and 0; the sizes 603, 604, 2 and 3; and the durations 2001 to 2006.
  *
+ * Pattern 3: state PP_JIT_STATE_WAITING_DETACH and failure PP_JIT_FAILURE_DEBUGGER_LOST; the
+ * flags 0, 0, 1 and 1, those of pattern 1 inverted; the sizes 605, 606, 4 and 8; and the
+ * durations 3001 to 3006.
+ *
  * Thread rule: [any]. Memory: none.
  *
- * @param pattern 1 or 2, the pattern to report; 0 for the provider's own status.
+ * @param pattern 1 to 3, the pattern to report; 0 for the provider's own status.
  * @return PP_OK; PP_E_INVALID_ARGUMENT for another pattern.
  */
 PP_EXPORT pp_status_t pp_test_jit_plant_status(uint32_t pattern);

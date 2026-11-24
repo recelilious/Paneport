@@ -77,12 +77,12 @@ public static unsafe class HostTestExports
         HostCalls.Check(NativeMethods.TestSetMemoryStub(availableBytes, footprintBytes));
 
     /// <summary>
-    /// Makes <see cref="NativeHost.GetJitStatus"/> report one of the two planted statuses that
+    /// Makes <see cref="NativeHost.GetJitStatus"/> report one of the three planted statuses that
     /// <c>paneport/testing.h</c> lists, in which the members can be told apart, or the provider's
     /// own status again (<c>pp_test_jit_plant_status</c>, version 1.3). The JIT state does not
     /// change. Any thread.
     /// </summary>
-    /// <param name="pattern">1 or 2, the pattern to report; 0 for the provider's own status.</param>
+    /// <param name="pattern">1 to 3, the pattern to report; 0 for the provider's own status.</param>
     public static void PlantJitStatus(uint pattern) =>
         HostCalls.Check(NativeMethods.TestJitPlantStatus(pattern));
 

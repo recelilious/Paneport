@@ -20,8 +20,8 @@ public sealed class JitBindingTests(HostFixture host)
     {
         try
         {
-            // The patterns of paneport/testing.h: no two numbers are equal, and any two flags
-            // differ in one of the two.
+            // The patterns of paneport/testing.h: no two numbers are equal, each flag takes
+            // both values, and no two flags take the same values.
             HostTestExports.PlantJitStatus(1);
             var first = NativeHost.GetJitStatus();
             Assert.Equal(HostJitState.Failed, first.State);
@@ -60,7 +60,26 @@ public sealed class JitBindingTests(HostFixture host)
             Assert.Equal(2005UL, second.VerifyingMilliseconds);
             Assert.Equal(2006UL, second.AuthorizationMilliseconds);
 
-            var refused = Assert.Throws<HostException>(() => HostTestExports.PlantJitStatus(3));
+            HostTestExports.PlantJitStatus(3);
+            var third = NativeHost.GetJitStatus();
+            Assert.Equal(HostJitState.WaitingDetach, third.State);
+            Assert.Equal(HostJitFailure.DebuggerLost, third.Failure);
+            Assert.False(third.DebuggedSinceLaunch);
+            Assert.False(third.AttachedNow);
+            Assert.True(third.EnablerOpened);
+            Assert.True(third.ForeignDebugger);
+            Assert.Equal(605U, third.RequestedMiB);
+            Assert.Equal(606U, third.PoolMiB);
+            Assert.Equal(4U, third.RegionsPlanned);
+            Assert.Equal(8U, third.RegionsMapped);
+            Assert.Equal(3001UL, third.InStateMilliseconds);
+            Assert.Equal(3002UL, third.DebuggerAttachedMilliseconds);
+            Assert.Equal(3003UL, third.RequestingMilliseconds);
+            Assert.Equal(3004UL, third.WaitingDetachMilliseconds);
+            Assert.Equal(3005UL, third.VerifyingMilliseconds);
+            Assert.Equal(3006UL, third.AuthorizationMilliseconds);
+
+            var refused = Assert.Throws<HostException>(() => HostTestExports.PlantJitStatus(4));
             Assert.Equal(HostStatus.InvalidArgument, refused.Status);
         }
         finally

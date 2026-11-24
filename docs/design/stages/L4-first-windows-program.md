@@ -571,6 +571,15 @@ Out: a second Windows process, `CreateProcess` from a guest and helper programs 
     - The fork's build will need `src/native/include` on its include path. `eng/mac/build-wine.sh` then records the bridge header's hash, so that the cache key of the `runtime` job follows the header.
     - The `macos-harness` preset needs `PANEPORT_TEST_BUILD` for single mode.
     - Each move of the Wine pointer builds Wine cold in the `runtime` job, so fork changes are best batched.
+- **2026-11-23 (UTC), second session.**
+  - **Done.**
+    - The native job's failures on the first session's head: a launch whose process started and ended before `pp_process_launch` looked counted as a failed start, and clang-tidy 23 found 29 points in the new host code and tests (`2e4b99a`). The bridge's `start_thread` gives its threads 8 MiB stacks, because the wineserver runs on one, which upstream runs on a process's main thread (`1cc034d`).
+    - S4.3.2 to S4.3.7 in the Wine fork, on `paneport/M4.3` at `d7044ab`: the server library's entry points (`8fb790b`), ntdll's single-process mode with the process's start, the boot step and thread control (`c34c925`), the wineserver as a thread (`05a1612`), and the umask, read once before the server's thread starts (`d7044ab`). The FEX fork's new branch `paneport/M4.3` at `cb6781e` keeps `ExitFunctionEC`'s entry thunk offset in x5 instead of x23, the likely cause of the race in the notes of M4.2.
+    - Both pointers moved (`cb19efe`). `eng/mac/build-wine.sh` passes the bridge header's folder to Wine's compiler, records the header's SHA-256, refuses a repository path with spaces, and checks that `bin/wineserver.so` exports the server's five entry points.
+    - threads.exe's check of the syscall loop sets the context back again (`acd1dc8`).
+    - The harness's single mode, the fork and exec trap (S4.3.9) and the session cases, by a subagent (`67eb7dc`); the third session reviewed it.
+  - **Verification.** CI on `acd1dc8` built the fork cold on macOS, the first build of its Apple-only code, and multi mode passed every case on it, `threads_multiblock_off` with the context set back (runs 45182938197 and 45183281260).
+  - **Left.** The review of the harness's work, single mode in CI, the design document and the documentation updates, and the rebase.
 
 ## M4.4 Runtime on iOS
 

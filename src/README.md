@@ -16,6 +16,5 @@ Paneport's own source code. Everything here is original and released under the M
 | [Paneport.iOS](Paneport.iOS/README.md) | The iOS app head: the entry point, the scene and its views, the game view, the keychain token store, and later input and background tasks | The app head of M1.3: the shell over an idle game view, the native host, the device's storage and keychain, and Diagnostics |
 | [Paneport.Desktop](Paneport.Desktop/README.md) | The Avalonia desktop head, for working on the UI from Windows. Never shipped. | Shows the shell over a fake host and fictional sample titles (M0.3). |
 | [native](native/README.md) | The native host, in C17: its public headers in `include/paneport/` and its code in `host/` | The life cycle, diagnostics and memory groups, the event thread, the log pipeline and the crash record writer, built as `paneport_host.framework` (M1.2); the signal dispatcher (M2.2); the JIT group and its provider (M3.1). |
-| [jit-broker](jit-broker/README.md) | The JIT broker script that StikDebug runs (C-0006 section 2) | No script yet: it waits for a decision by recelilious (M3.1). |
 
 The other folder of the C-0004 layout, `guest`, is created by the stage that writes its first code.

@@ -11,17 +11,17 @@ Back to the [development plan](../development-plan.md).
 | Stage | Title | Level | Status | Branch or PR | Last session |
 |---|---|---|---|---|---|
 | L3 | JIT on the iPhone | Large | Planned | | |
-| M3.1 | JIT provider and broker script | Medium | In progress: S3.1.6 follows the contract changes of [#41](https://github.com/recelilious/Paneport/pull/41) | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
+| M3.1 | JIT provider and broker script | Medium | In progress: S3.1.6 follows in a pull request of its own | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
 | S3.0.1 | JIT setup screen | Small | Planned | | |
 | S3.0.2 | JIT self-test | Small | Planned | | |
 | S3.0.3 | First verified iOS build entry | Small | Planned | | |
 | S3.1.1 | Debugger state detection | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
-| S3.1.2 | State machine and events | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
-| S3.1.3 | Region request and mapping | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
-| S3.1.4 | Verification probe | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
-| S3.1.5 | macOS MAP_JIT provider | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
-| S3.1.6 | Broker script | Small | Blocked: waits for the contract changes of [#41](https://github.com/recelilious/Paneport/pull/41), which name StikDebug's built-in script ([jit-broker.md](../jit-broker.md) section 4) | | 2026-11-23 |
-| S3.1.7 | iOS build list and schema | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-23 |
+| S3.1.2 | State machine and events | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
+| S3.1.3 | Region request and mapping | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
+| S3.1.4 | Verification probe | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
+| S3.1.5 | macOS backend with a simulated broker | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
+| S3.1.6 | Broker script | Small | Ready: C-0006 1.1 names StikDebug's built-in script ([jit-broker.md](../jit-broker.md) section 4) | | 2026-11-24 |
+| S3.1.7 | iOS build list and schema | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
 
 ## L3 JIT on the iPhone
 
@@ -62,21 +62,22 @@ Back to the [development plan](../development-plan.md).
 
 The record and its attachments must never contain personal data or secrets: no UDID, ECID, serial number, device name, Apple ID, team identifier, application-identifier prefix, re-signed bundle identifier, Steam account name or Steam ID, IP address, access or refresh token, depot key, manifest request code, real name or local path (C-0012 section 4). The device model identifier is allowed. This stage involves no Steam and no Valve binaries.
 
-**Integration session.** The L3 session starts once M3.1 is Done. It wires the JIT provider (M3.1) into the user-facing flow: the JIT setup screen (S3.0.1) reads the state through `pp_jit_get_state` and the event callback over Paneport.Interop (C-0005 section 2), and the Enable JIT action opens `stikdebug://enable-jit` with the bundled broker script through an iOS URL opener in Paneport.iOS. It builds the JIT self-test (S3.0.2) on top of the authorized pool. It confirms the macOS MAP_JIT path still passes CTest after the wiring, prepares the acceptance steps and the evidence record template (C-0012 section 2), and runs the checks that need the whole screen together. After recelilious runs the device acceptance and it passes, the session adds the verified build entry (S3.0.3). The session starts no Wine session; that begins at L4.
+**Integration session.** The L3 session starts once M3.1 is Done. It wires the JIT provider (M3.1) into the user-facing flow: the JIT setup screen (S3.0.1) reads the state through `pp_jit_get_state` and the event callback over Paneport.Interop (C-0005 section 2), and the Enable JIT action opens `stikdebug://enable-jit` with the bundled broker script through an iOS URL opener in Paneport.iOS. It builds the JIT self-test (S3.0.2) on top of the authorized pool. It confirms that the macOS backend with a simulated broker, whose regions are anonymous readable and executable memory rather than `MAP_JIT` memory ([jit.md](../jit.md) section 2), still passes CTest after the wiring, prepares the acceptance steps and the evidence record template (C-0012 section 2), and runs the checks that need the whole screen together. After recelilious runs the device acceptance and it passes, the session adds the verified build entry (S3.0.3). The session starts no Wine session; that begins at L4.
 
 **Small stages directly under this stage.**
 
 | ID | Module | Location | Independent check |
 |---|---|---|---|
 | S3.0.1 | JIT setup screen: steps, an Enable JIT button that opens the URL with the base64 broker script, a progress indicator per state, failure reasons, the foreign-debugger message, and the warning for an iOS build not in the verified list | view model in `src/Paneport.Core`, view in `src/Paneport.UI`, URL opener behind a Core interface implemented in `src/Paneport.iOS` | Headless UI tests in `tests/Paneport.UI.Tests` drive the view model through each `pp_jit_state_t` value and assert the shown text, the button state and the unverified-build warning |
-| S3.0.2 | JIT self-test: writes a small ARM64 routine through the writable alias, runs it from the executable view, and checks the result | native routine in `src/native/host/jit/`, surfaced through the device test app in `tests/device` | The same routine runs on the macOS MAP_JIT provider in `tests/native` and returns the expected value |
+| S3.0.2 | JIT self-test: writes a small ARM64 routine through the writable alias, runs it from the executable view, and checks the result | native routine in `src/native/host/jit/`, surfaced through the device test app in `tests/device` | The same routine runs on the macOS backend with a simulated broker in `tests/native` ([jit.md](../jit.md) section 2) and returns the expected value |
 | S3.0.3 | First verified iOS build entry, added after the device acceptance passes | `compat/ios-builds.json` | The CI compatibility check validates the entry against `compat/schema/ios-builds.schema.json` (C-0011 section 1) |
 
 **Notes from earlier stages.**
 
 - M3.1 (session log of 2026-11-23): the JIT group is `paneport/jit.h`, bound in Paneport.Interop as `NativeHost.GetJitStatus`, `SetJitEnablerOpened`, `NoteJitForeground` and `RequestJitPool`. The screen reads `GetJitStatus` [any] and the events of kind `HostJit.StateChangedEvent`, whose code is the new state; `ForeignDebugger` shows the foreign-debugger message, and `Failure` the failure's reason. The app calls `SetJitEnablerOpened(true)` on the main thread right before it opens the URL, and `SetJitEnablerOpened(false)` when iOS refuses it; the head calls `NoteJitForeground` on every return to the foreground; on the `debugger_attached` event the app calls `RequestJitPool(HostJit.DefaultPoolMiB)` on the main thread ([jit.md](../jit.md) sections 5 and 8).
-- M3.1 (session log of 2026-11-23): the URL names StikDebug's built-in script, `script-name=universal.js`, with `bundle-id` and `pid`, as StikJIT's `INTEGRATION.md` describes. recelilious chose that on 2026-11-23, and C-0006 1.1 records it once [#41](https://github.com/recelilious/Paneport/pull/41) merges; the pull request of S3.1.6 builds the URL ([jit-broker.md](../jit-broker.md) sections 2 and 4).
+- M3.1 (session log of 2026-11-23): the URL names StikDebug's built-in script, `script-name=universal.js`, with `bundle-id` and `pid`, as StikJIT's `INTEGRATION.md` describes. recelilious chose that on 2026-11-23, and C-0006 1.1 records it; the pull request of S3.1.6 builds the URL ([jit-broker.md](../jit-broker.md) sections 2 and 4).
 - M3.1 (session log of 2026-11-23): the record's metrics come from the status: `RequestedMiB`, `PoolMiB`, `AuthorizationMilliseconds` and the time in each state; the host also logs each change of the state with its time. The self-test of S3.0.2 can take the pool from `pp_jit_pool_copy` in `jit_provider.h` and run a routine with `pp_jit_probe_page`; after `ready` the probe mode is off, so a fault there ends the app with a crash record ([jit.md](../jit.md) sections 7 and 11). The CTest binaries on the runner need no entitlement and no signing of their own (jit.md section 12).
+- M3.1 (session logs of 2026-11-23 and 2026-11-24): the macOS backend's simulated broker maps each region as anonymous readable and executable memory, not as `MAP_JIT` memory, which is writable and executable by design; the coordinator accepted this on 2026-11-24. The macOS path of this section and of S3.0.2 is that backend ([jit.md](../jit.md) section 2).
 
 **Session log.**
 
@@ -94,7 +95,7 @@ _No sessions yet._
 | Decisions needed | Whether the broker needs any part of StikDebug's script interface that StikJIT's `INTEGRATION.md` does not document. If so, recelilious decides before the script is written, because those parts may exist only in StikDebug's source, which Paneport must not read (C-0006 section 2). D1 (a local Apple silicon Mac) is helpful for running the CTest suite locally but is not required, because the `native` and `checks` CI jobs cover it (plan section 4.2). |
 | Design documents | `docs/design/jit.md` (the JIT provider, the pool and its states) and `docs/design/jit-broker.md` (the broker script, recording its JavaScript language level per C-0010 section 1 and its sources per C-0001 section 6) |
 
-**Goal.** Implement the app side and the broker side of the JIT request protocol exactly as C-0006 sections 3 to 7 define them, behind one internal provider interface with two backends: the iOS debugger-broker backend and a macOS `MAP_JIT` backend that lets the whole lifecycle be tested in CI without a device.
+**Goal.** Implement the app side and the broker side of the JIT request protocol exactly as C-0006 sections 3 to 7 define them, behind one internal provider interface with two backends: the iOS debugger-broker backend and a macOS backend with a simulated broker that lets the whole lifecycle be tested in CI without a device, whose regions are anonymous readable and executable memory rather than `MAP_JIT` memory ([jit.md](../jit.md) section 2).
 
 **Scope.**
 
@@ -108,7 +109,7 @@ _No sessions yet._
   - The 60-second pool timeout and the 30-second detach timeout, both leading to `failed` (C-0006 section 3).
   - Verification after detach, with no debugger attached, on the first page, the last page and one page in every 16 MiB of each region, run through the dispatcher's JIT probe route while the state is `verifying` (C-0006 section 3 step 6, C-0005 section 4).
   - A pool registry: the authorized regions as a list, each with its execute-only view, writable alias and size, ready for the later hand-off to the translator through the Wine bridge (C-0005 section 3).
-  - A macOS backend using `MAP_JIT` dual mapping behind the same provider interface, for tests.
+  - A macOS backend with a simulated broker behind the same provider interface, for tests, with the same dual mapping: readable and executable regions and their writable aliases ([jit.md](../jit.md) section 2).
   - The broker script in `src/jit-broker/`, written from StikJIT's `INTEGRATION.md` only, bundled as an app resource (C-0009 section 4).
   - `compat/ios-builds.json` and `compat/schema/ios-builds.schema.json` (C-0006 section 6).
 - Out:
@@ -134,11 +135,11 @@ _No sessions yet._
 
 **Deliverables.**
 
-- `src/native/host/jit/`: the provider, with debugger-state detection, the state machine and events, region request and mapping, the verification probe, the pool registry, and the macOS `MAP_JIT` backend.
+- `src/native/host/jit/`: the provider, with debugger-state detection, the state machine and events, region request and mapping, the verification probe, the pool registry, and the macOS backend with a simulated broker.
 - `src/native/include/paneport/`: the JIT entries the provider exposes through the host interface and the Wine bridge (the pool as a list of regions), consistent with C-0005 sections 2 and 3. `pp_jit_get_state` and `pp_jit_request_pool` already belong to the interface group in C-0005 section 2; appending members follows the versioning rule in C-0005 section 1.
 - `src/jit-broker/` and its `README.md`: the broker script.
 - `compat/ios-builds.json` and `compat/schema/ios-builds.schema.json`, plus `compat/schema/README.md` if not already present.
-- `tests/native/`: the CTest suite, the fake debugger-state source and the `MAP_JIT` provider tests.
+- `tests/native/`: the CTest suite, the fake debugger-state source and the tests on the macOS backend.
 - `tools/`: the compatibility checker (the C# tool named in C-0011) extended to validate `compat/ios-builds.json` against its schema.
 - `docs/design/jit.md` and `docs/design/jit-broker.md`.
 - `eng/`: any CMake preset or toolchain addition the JIT tests need, if any.
@@ -149,22 +150,22 @@ _No sessions yet._
 |---|---|---|---|
 | S3.1.1 | Debugger state detection: `CS_DEBUGGED` via `csops`, `P_TRACED` via `sysctl`, re-read on foreground | `src/native/host/jit/` | CTest with the fake state source checks that both flags are read, that the broker-recognition rule holds, and that a foreground return triggers a re-read |
 | S3.1.2 | State machine and events across the seven `pp_jit_state_t` values | `src/native/host/jit/` | CTest drives every transition and both timeouts, and asserts an event fires on each change |
-| S3.1.3 | Region request and mapping: command 1 with a NULL address per region, execute-only view plus `vm_remap` writable alias, command 0 to detach | `src/native/host/jit/` | CTest on the `MAP_JIT` provider checks alias coherence (a byte written through the alias reads back through the execute view) and that no mapping is writable and executable at once |
+| S3.1.3 | Region request and mapping: command 1 with a NULL address per region, execute-only view plus `vm_remap` writable alias, command 0 to detach | `src/native/host/jit/` | CTest on the macOS backend checks alias coherence (a byte written through the alias reads back through the execute view) and that no mapping is writable and executable at once |
 | S3.1.4 | Verification probe on the first page, the last page and one page per 16 MiB, routed through the JIT probe while `verifying` | `src/native/host/jit/` | CTest checks the probe pass path and that an injected fault on a probed page is reported as a verification failure |
-| S3.1.5 | macOS `MAP_JIT` provider behind the shared provider interface | `src/native/host/jit/` | The provider builds on macOS and backs the CTest suite; the exact entitlement and signing the test binary needs on the runner is to be confirmed in this stage |
+| S3.1.5 | macOS backend with a simulated broker behind the shared provider interface ([jit.md](../jit.md) section 2) | `src/native/host/jit/` | The backend builds on macOS and backs the CTest suite; the exact entitlement and signing the test binary needs on the runner is to be confirmed in this stage |
 | S3.1.6 | Broker script implementing only commands 0 and 1 | `src/jit-broker/` | A syntax parse in CI and a review that it performs no other operation and is written from `INTEGRATION.md` only; a protocol unit test against a fake debugger transport is to be confirmed |
 | S3.1.7 | iOS build list and its schema | `compat/ios-builds.json`, `compat/schema/ios-builds.schema.json` | The CI compatibility check validates the file and example fixtures against the schema |
 
 **Verification.** All of the following runs in CI without recelilious's iPhone. The device check is L3's acceptance, not part of M3.1.
 
-- `native` CI job on macOS (C-0011 section 4): configure, build and run the CTest suite twice, with the `asan-ubsan` and `tsan` presets. The suite uses the macOS `MAP_JIT` provider (S3.1.5) and the fake debugger-state source (S3.1.1). Pass criteria:
+- `native` CI job on macOS (C-0011 section 4): configure, build and run the CTest suite twice, with the `asan-ubsan` and `tsan` presets. The suite uses the macOS backend with a simulated broker (S3.1.5, [jit.md](../jit.md) section 2) and the fake debugger-state source (S3.1.1). Pass criteria:
   - alias coherence holds and no mapping is ever both writable and executable;
   - the verification probe passes on a healthy pool and reports a failure when a fault is injected on the first page, the last page or a 16 MiB-interval page;
   - every state transition in C-0006 section 5 occurs in order, an event is delivered on each change, and both the 60-second pool timeout and the 30-second detach timeout drive the state to `failed`;
   - requested sizes are clamped to 256 to 896 MiB and to one eighth of the simulated memory limit, and a below-minimum limit yields `failed` (C-0006 section 4);
   - the headers compile as C17 and C++20 and the interface conformance check passes (C-0005 section 5).
 - `checks` CI job (C-0011 section 4): the compatibility checker validates `compat/ios-builds.json` against `compat/schema/ios-builds.schema.json`, including a failing fixture that the check must reject. REUSE, gitleaks and the personal-data check pass over the new files.
-- Scripts this stage creates: the CTest suite and its fake debugger-state source in `tests/native/`, the `MAP_JIT` provider test backend, and the extension to the C# compatibility checker in `tools/` for `compat/ios-builds.json`.
+- Scripts this stage creates: the CTest suite and its fake debugger-state source in `tests/native/`, the macOS test backend with a simulated broker, and the extension to the C# compatibility checker in `tools/` for `compat/ios-builds.json`.
 
 **Done when.** The deliverables exist, the verification above passes in CI, the design documents are written (C-0012 section 1 item 8), the definition of done in C-0012 section 1 holds, and the branch is merged by recelilious after review. No device behavior is claimed; the pull request marks the device path as "not yet verified on device" (C-0012 section 1 item 9), which L3 then verifies.
 
@@ -174,7 +175,7 @@ _No sessions yet._
 - Backgrounding behavior is untested in the field (C-0006 section 1). The state machine re-reads the debugger state on foreground return (S3.1.1); L3's acceptance records what happens, and the phase 1 gate at L5 confirms the longer run.
 - `INTEGRATION.md` may not document everything the broker needs (C-0006 section 2). The fallback is a decision by recelilious before the script is written; nobody reads StikDebug's source, and no code from StikDebug, `universal.js` or any other product's JIT helper is copied, translated or rewritten (C-0001 section 6, C-0003 section 9).
 - An attached debugger intercepts the exceptions Wine's handlers will later need, so the protocol detaches before any session (C-0006 section 1). Verification runs only with no debugger attached (C-0006 section 3 step 6).
-- The macOS `MAP_JIT` backend models the iOS layout but is not identical: `MAP_JIT` on macOS needs the `com.apple.security.cs.allow-jit` entitlement and allows one region (research note `x86_to_arm_translation.md`). The exact entitlement and signing the CTest binary needs on the GitHub runner is to be confirmed in this stage; the backend's job is to exercise the same provider interface and the same dual-mapping discipline, not to reproduce the device byte for byte.
+- The macOS backend models the iOS layout but is not identical. The brief planned it on `MAP_JIT`, which on macOS needs the `com.apple.security.cs.allow-jit` entitlement and allows one region (research note `x86_to_arm_translation.md`); M3.1 built it with a simulated broker and anonymous readable and executable memory, which needs no entitlement on the runner and never maps a page that is writable and executable ([jit.md](../jit.md) sections 2 and 12). The backend's job is to exercise the same provider interface and the same dual-mapping discipline, not to reproduce the device byte for byte.
 
 **Hands over to.**
 
@@ -201,10 +202,10 @@ _No sessions yet._
     - A throwaway probe on the runner (run 45101893218) answered S3.1.5's open point: the CTest binaries need no entitlement and no signing of their own (jit.md section 12).
   - **Verification.**
     - First CI run 45109808452. `dotnet` passed on both systems.
-    - `native`: `asan-ubsan` and `tsan` passed 159 of 159, the 45 JIT cases and the two `nm` checks of the probe handler among them, with the same two cases skipped under `tsan` as before. `tests/Paneport.Interop.Tests` passed, including the JIT binding test. clang-tidy 23 found five things, which the next commit fixes: signed bitwise operands, a parameter name, two trailing commas, and a planted `MAP_JIT` mapping that the analyzer refuses, now replaced by plain writable memory.
-    - `checks` failed only on the links to jit.md, which a later commit added.
+    - `native`: `asan-ubsan` and `tsan` passed 159 of 159, the 45 JIT cases and the two `nm` checks of the probe handler among them, with the same two cases skipped under `tsan` as before. `tests/Paneport.Interop.Tests` passed, including the JIT binding test. clang-tidy 23 found five things, which a commit three later fixes: signed bitwise operands, a parameter name, two trailing commas, and a planted `MAP_JIT` mapping that the analyzer refuses, now replaced by plain writable memory.
+    - `checks` failed on the links to jit.md, which a later commit added, and on a transient 429 from www.gnu.org. The runs of the next two commits failed `checks` on developer.arm.com, which answers lychee with 403, so a later commit names Arm's manuals by number.
     - `ios` and `runtime` run on the pull request.
-    - On `9f4d3e4`, the head before the statuses, push run 45135622981 and pull_request run 45135626354 passed every job: `dotnet` on both systems, `checks`, `native`, `ios` and `runtime`. That head also declares every register that a C call may change around the two commands, because `INTEGRATION.md` presents them as C functions.
+    - On `9f4d3e4`, the head before the statuses, push run 45135622981 passed `dotnet` on both systems, `checks` and `native`, and skipped `ios` and `runtime`, which a push to a branch skips (D7, D14); pull_request run 45135626354 passed all six jobs. That head also declares x0 to x17, the vector registers that a call does not save, and the flags as changed by the two commands, because `INTEGRATION.md` presents them as C functions; fix round 1 adds v8 to v15, whose upper halves a call may change too.
   - **Decisions.**
     - The broker script: `INTEGRATION.md` does not document the interface that a script uses, so the coordinator put the options of jit-broker.md section 4 to recelilious, recommending A. Until the answer, D: S3.1.6 is Blocked and `src/jit-broker/` holds only its README.
     - The coordinator accepted three choices: the numbers of the JIT group, a validator of our own in `tools/CheckCompat.cs` (D8 stays open for M8.3), and regions of 128 MiB.
@@ -214,3 +215,17 @@ _No sessions yet._
     - Everything on the device is not yet verified; that is L3.
     - M3.1 cannot be Done before S3.1.6. The coordinator decided that [#40](https://github.com/recelilious/Paneport/pull/40) merges first, after its independent review, with S3.1.1 to S3.1.5 and S3.1.7 Done; M3.1 stays In progress and S3.1.6 Blocked until [#41](https://github.com/recelilious/Paneport/pull/41) merges. M4.4, which depends on M3.1, waits for the script's pull request. If [#40](https://github.com/recelilious/Paneport/pull/40) merges before M4.3's #39, #39 renumbers its status codes, event kinds and version.
   - **For later sessions.** Notes left in the sections of L3, M4.3, M4.4 and L5. jit.md section 11 lists the same points.
+- **2026-11-24 (session 2).** Fix round 1 of [#40](https://github.com/recelilious/Paneport/pull/40). The coordinator's independent review of `7d7582a` (three checkers and three skeptics) found 58 claims that hold, 16 that hold in part and 2 that do not, and only low defects. The branch is rebased onto main `078bbfa`, which holds [#41](https://github.com/recelilious/Paneport/pull/41) and [#42](https://github.com/recelilious/Paneport/pull/42).
+  - **Done.**
+    - Once `pp_shutdown` has begun, the request thread sends no command and keeps no region that a command returns.
+    - New cases: `commands_after_shutdown`, `shutdown_between_commands` and `enabler_taken_back_is_reported` in `test_jit_provider`, and `routine_of_another_page_fails` and `handler_takes_only_its_window` in `test_jit_probe`; `failed_refuses_everything` checks its events, and `writable_executable_is_found` a range that only its hole fails. 50 JIT cases in all.
+    - The probe's page capacity follows the region size, and the two commands declare every vector register.
+    - `pp_test_jit_plant_status` and a second JIT binding test, which tells every member of the status apart.
+    - `tools/CheckCompat.cs` implements exactly the keywords that the schema uses, checks their values and refuses a repeated member; its self-test has 48 cases. M8.3 adds the keywords that the title schema needs.
+    - `src/jit-broker/` is gone, S3.1.5 is renamed, and the stale documents are corrected.
+  - **Verification.** In a Linux stand-in of the host, the 50 JIT cases pass under ASan and TSan, and each new case fails under the mutant that it targets. The runs of CI on the final head are in [#40](https://github.com/recelilious/Paneport/pull/40).
+  - **Decisions.**
+    - The coordinator accepted on 2026-11-24 the macOS backend with a simulated broker, whose regions are anonymous readable and executable memory, in place of the `MAP_JIT` backend that this brief planned: the brief's risk text asks only that the test backend exercise the same provider interface and dual-mapping discipline, and the runner then needs no mapping that is writable and executable. S3.1.5 is renamed to match ([jit.md](../jit.md) section 2).
+    - Under C-0006 1.1 Paneport writes no broker script, so the coordinator dropped `src/jit-broker/` from [#40](https://github.com/recelilious/Paneport/pull/40). S3.1.6, now Ready, follows in a pull request of its own right after [#40](https://github.com/recelilious/Paneport/pull/40) merges: it builds the request that names `script-name=universal.js` with `bundle-id` and `pid`. M3.1 stays In progress until then.
+    - A lone surrogate escape in `compat/ios-builds.json` crashes the check. M8.3 takes it: its pull request routes the file through its strict `JsonText.Read`, which refuses it.
+  - **Left.** S3.1.6, after [#40](https://github.com/recelilious/Paneport/pull/40) merges. Everything on the device is L3's.

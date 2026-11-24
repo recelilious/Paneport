@@ -2,17 +2,17 @@
 
 | Author | Timestamp (UTC) |
 |---|---|
-| Claude (Anthropic), for the Paneport project | 2026-11-23T04:10Z |
+| Claude (Anthropic), for the Paneport project | 2026-11-24T13:20Z |
 
 Back to the [design index](README.md).
 
-This document describes the broker side of the JIT request protocol of C-0006: the script that StikDebug runs to serve the app's two commands. Stage M3.1 found that StikJIT's `INTEGRATION.md`, the only source that C-0006 section 2 allows for the script, does not document the interface that a script uses, so the script is **not written**: the brief of M3.1 left that case to a decision by recelilious, who chose on 2026-11-23 that Paneport names StikDebug's built-in script instead (section 4). [jit.md](jit.md) describes the app side, which M3.1 built and which does not depend on the decision. Where this document and a contract differ, the [contracts](../contracts/README.md) win.
+This document describes the broker side of the JIT request protocol of C-0006: the script that StikDebug runs to serve the app's two commands. Stage M3.1 found that StikJIT's `INTEGRATION.md`, the only source that C-0006 section 2 allows for the script, does not document the interface that a script uses, so the script is **not written**: the brief of M3.1 left that case to a decision by recelilious, who chose on 2026-11-23 that Paneport names StikDebug's built-in script instead (section 4), which C-0006 1.1 records. [jit.md](jit.md) describes the app side, which M3.1 built and which does not depend on the decision. Where this document and a contract differ, the [contracts](../contracts/README.md) win.
 
 ## 1. What the contracts ask
 
-- **The script** is Paneport's own, under the MIT License, in `src/jit-broker/`, written from `INTEGRATION.md` only, bundled in the app at `jit-broker/` and handed to StikDebug through the URL scheme (C-0006 section 2, C-0004 section 2, C-0009 section 4). It handles commands 0 and 1 only, for Paneport's own process only, and performs no other operation (C-0006 section 7).
-- **The boundary.** StikDebug is a separate app under AGPL-3.0. Paneport uses only the convention and the URL scheme that `INTEGRATION.md` documents, and nobody writing Paneport's side reads StikDebug's source or scripts (C-0003 section 9). No code from StikDebug, its bundled or community scripts such as `universal.js`, or any other product's JIT helper is copied, translated or rewritten (C-0001 section 6, C-0006 section 2).
-- **The language level** of the script is the one that StikDebug's script interface supports, recorded here (C-0010 section 1).
+- **The script** is StikDebug's built-in `universal.js`, which the app's request names (C-0006 1.1 sections 1 to 3). Paneport does not write, bundle, copy or read it, and relies only on the behavior that `INTEGRATION.md` documents for it: it serves commands 0 and 1 (C-0006 section 2). So the repository has no folder for a script and the app bundles none (C-0004 1.2 sections 2 and 3, C-0009 1.3 section 4), and Paneport writes no JavaScript, whose language level C-0010 1.2 would otherwise record.
+- **What Paneport no longer guarantees.** The app sends only commands 0 and 1, only in the `requesting` state and only while a debugger is attached now. The script that serves them is StikDebug's, so Paneport cannot guarantee that it performs no other operation or that it acts only on Paneport's process; the device acceptance checks the result, and every evidence record names StikDebug's version, because an update of StikDebug can change the script (C-0006 section 7, C-0012 section 4).
+- **The boundary.** StikDebug is a separate app under AGPL-3.0. Paneport uses only the convention and the URL scheme that `INTEGRATION.md` documents, and nobody writing Paneport's side reads StikDebug's source or scripts (C-0003 section 9). Naming the script in the URL links, embeds and copies nothing: StikDebug runs its own script in its own app (C-0003 1.9 section 9). No code from StikDebug, its bundled or community scripts such as `universal.js`, or any other product's JIT helper is copied, translated or rewritten (C-0001 section 6, C-0006 section 2).
 
 ## 2. What `INTEGRATION.md` documents
 
@@ -38,7 +38,7 @@ The coordinating session put these options to recelilious on 2026-11-23, recomme
 | C | Read the interface's definition in StikDebug's source. | C-0003 section 9 and the AGPL boundary. Not proposed. |
 | D | Keep the script out of M3.1, and let L3 wait for the decision. | Nothing |
 
-recelilious chose A on 2026-11-23, with the words "Yes, option A", and approved the contract changes as drafted: C-0003 1.9, C-0004 1.2, C-0006 1.1, C-0009 1.3 and C-0010 1.2, in pull request #41. Until those changes merge, `src/jit-broker/` holds only its README. The pull request of S3.1.6 follows them: the app's request names `script-name=universal.js` with `bundle-id` and `pid`, `src/jit-broker/` goes, and this document records the URL that the app builds, which L3's JIT setup screen opens (jit.md section 8).
+recelilious chose A on 2026-11-23, with the words "Yes, option A", and approved the contract changes as drafted: C-0003 1.9, C-0004 1.2, C-0006 1.1, C-0009 1.3 and C-0010 1.2, in pull request #41, which merged on 2026-11-23. Pull request #40, the app side, then dropped `src/jit-broker/`, which held only its README. The pull request of S3.1.6 follows #40: the app's request names `script-name=universal.js` with `bundle-id` and `pid`, and this document records the URL that the app builds, which L3's JIT setup screen opens (jit.md section 8).
 
 ## 5. Sources
 

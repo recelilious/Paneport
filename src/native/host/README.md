@@ -12,8 +12,11 @@ The code of the native host (C-0004 section 2), in C17. [native-host.md](../../.
 | `host.c`, `host_state.h` | The life cycle: `pp_init`, `pp_shutdown`, the callback setters, `pp_abi_version`, `pp_free`, and the rule for the main thread |
 | `error.c`, `error.h` | The per-thread message of `pp_last_error` |
 | `event_queue.c`, `event_queue.h` | The bounded lock-free queue with many producers and one consumer |
-| `event_thread.c`, `event_thread.h` | The host event thread, its two queues, the callbacks, the buffer for early log lines, and the overflow notices |
-| `log.c`, `log.h` | The log pipeline, the only path for native log lines |
+| `event_thread.c`, `event_thread.h` | The host event thread, its two queues, the callbacks, the buffer for early log lines, the overflow notices, the post that waits for room, and the lines delivered before each event |
+| `log.c`, `log.h` | The log pipeline, the only path for native log lines, and the entries of the runtime's lines and a Windows program's, with their source and process |
+| `session.c`, `wine_session.h` | The session and process groups of `paneport/session.h` and the Wine bridge of `paneport/wine_bridge.h`: loading the Wine fork's Unix library, the bridge table, the launch's one session and its process, their events, the dispatcher check after a session's start, and its hook in test builds |
+| `guest_output.c`, `guest_output.h` | The capture of a Windows program's standard output and error: the pipes, the reader thread and the splitter of lines |
+| `jit_state.c`, `jit_state.h` | The JIT precondition of `pp_session_start`: M3.1's state, and in test builds the state that `pp_test_jit_set_ready` sets |
 | `memory_budget.c`, `memory_budget.h` | `pp_memory_get_budget`: the system's readings on iOS, a stub that tests set on macOS, and the Game Mode level |
 | `crash_record.h`, `crash_record.c`, `crash_record_writer.c` | The crash record's layout; the preparation of its folder; and its async-signal-safe writer, in a file of its own so that a test can list the calls of its object |
 | `device.c` | `pp_device_get_model`: the device's model identifier, into the caller's buffer |

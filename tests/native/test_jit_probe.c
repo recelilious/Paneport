@@ -168,14 +168,44 @@ static void routine_of_another_page_fails(void) {
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
 }
 
-// Calls the probe handler for one fault in phase, at address and with the program counter pc.
-static uint32_t handle_fault(uint32_t phase, uint64_t address, uint64_t pc) {
+static void routine_of_another_region_fails(void) {
+    // The second region's view runs the routines of the first region's first two pages, which
+    // the test left on the 16 MiB that the probe sees of it, as a view that shows another
+    // region's code would. The probe's own routines for it go to the first region's alias,
+    // which nothing runs any more. Nothing faults, so only the values, which run on across the
+    // regions, can fail the second region's first page.
+    pp_start_host(NULL);
+    const probe_pool_t pool = make_pool();
+    const pp_jit_pool_region_t *view = &pool.regions[1];
+    const uint64_t size = 16U * MIB;
+    const uint64_t last = size - pp_jit_page_size();
+    pp_jit_test_plant_routine(view->write_address, view->exec_address, PP_JIT_PROBE_FIRST_VALUE);
+    pp_jit_test_plant_routine(view->write_address + last, view->exec_address + last,
+                              PP_JIT_PROBE_FIRST_VALUE + 1U);
+    pp_jit_pool_region_t regions[2] = {pool.regions[0], pool.regions[1]};
+    regions[1].write_address = pool.regions[0].write_address;
+    regions[1].size = size;
+    pp_jit_probe_result_t result;
+    pp_jit_probe_run(regions, 2U, &result);
+    PP_CHECK(!result.passed);
+    PP_CHECK_EQUAL(result.pages, 9U + 1U);
+    PP_CHECK_EQUAL(result.region, 1U);
+    PP_CHECK_EQUAL(result.offset, 0U);
+    PP_CHECK_EQUAL(result.returned, PP_JIT_PROBE_FIRST_VALUE);
+    PP_CHECK_EQUAL(result.signal, 0);
+    PP_CHECK_EQUAL(result.faults, 0U);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
+// Calls the probe handler for one fault of signal in phase, at address and with the program
+// counter pc.
+static uint32_t handle_signal(int32_t signal, uint32_t phase, uint64_t address, uint64_t pc) {
     atomic_store(&pp_jit_probe_window.phase, phase);
     pp_guest_fault_t fault;
     memset(&fault, 0, sizeof fault);
     fault.struct_size = (uint32_t)sizeof fault;
     fault.route = PP_FAULT_ROUTE_JIT_PROBE;
-    fault.signal = SIGBUS;
+    fault.signal = signal;
     fault.fault_address = address;
     fault.program_counter = pc;
     // No context: the handler's recovery changes nothing, and its decision is all that counts.
@@ -185,9 +215,16 @@ static uint32_t handle_fault(uint32_t phase, uint64_t address, uint64_t pc) {
     return decision;
 }
 
+// The same for a SIGSEGV.
+static uint32_t handle_fault(uint32_t phase, uint64_t address, uint64_t pc) {
+    return handle_signal(SIGSEGV, phase, address, pc);
+}
+
 static void handler_takes_only_its_window(void) {
     // The handler on its own: it takes a fault only where the current phase of the probe can
-    // make one, and declines every other, which leaves its count alone.
+    // make one, and declines every other, which leaves its count alone. It keeps the signal of
+    // the first fault that it takes, which the probe reports (jit_probe.h): here a SIGBUS, and
+    // every other fault a SIGSEGV.
     pp_jit_probe_window_t *window = &pp_jit_probe_window;
     const uint64_t page = pp_jit_page_size();
     const uint64_t write = UINT64_C(0x300000000);
@@ -198,6 +235,7 @@ static void handler_takes_only_its_window(void) {
     atomic_store(&window->exec_start, exec);
     atomic_store(&window->faults, 0U);
     atomic_store(&window->first_signal, 0);
+    atomic_store(&window->last_signal, 0);
     const uint32_t handled = PP_GUEST_FAULT_HANDLED;
     const uint32_t declined = PP_GUEST_FAULT_DECLINED;
 
@@ -205,7 +243,7 @@ static void handler_takes_only_its_window(void) {
     PP_CHECK_EQUAL(handle_fault(PP_JIT_PROBE_IDLE, write, elsewhere), declined);
     PP_CHECK_EQUAL(handle_fault(PP_JIT_PROBE_IDLE, exec, exec), declined);
     // Storing: only the routine's 8 bytes on the alias.
-    PP_CHECK_EQUAL(handle_fault(PP_JIT_PROBE_STORE, write, elsewhere), handled);
+    PP_CHECK_EQUAL(handle_signal(SIGBUS, PP_JIT_PROBE_STORE, write, elsewhere), handled);
     PP_CHECK_EQUAL(handle_fault(PP_JIT_PROBE_STORE, write + 4U, elsewhere), handled);
     PP_CHECK_EQUAL(handle_fault(PP_JIT_PROBE_STORE, write + 8U, elsewhere), declined);
     PP_CHECK_EQUAL(handle_fault(PP_JIT_PROBE_STORE, write - 1U, elsewhere), declined);
@@ -226,6 +264,7 @@ static void handler_takes_only_its_window(void) {
     PP_CHECK_EQUAL(handle_fault(7U, write, exec), declined);
     PP_CHECK_EQUAL(atomic_load(&window->faults), 6U);
     PP_CHECK_EQUAL(atomic_load(&window->first_signal), SIGBUS);
+    PP_CHECK_EQUAL(atomic_load(&window->last_signal), SIGSEGV);
 
     // Without a page in the window, nothing is inside it.
     atomic_store(&window->write_start, 0U);
@@ -287,6 +326,7 @@ int main(int argc, char **argv) {
         {"fault_on_interval_page", fault_on_interval_page},
         {"fault_off_the_probed_pages", fault_off_the_probed_pages},
         {"routine_of_another_page_fails", routine_of_another_page_fails},
+        {"routine_of_another_region_fails", routine_of_another_region_fails},
         {"handler_takes_only_its_window", handler_takes_only_its_window},
         {"fault_on_the_alias", fault_on_the_alias},
         {"provider_fails_on_a_planted_fault", provider_fails_on_a_planted_fault},

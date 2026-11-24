@@ -43,8 +43,9 @@ static struct {
     pp_jit_pool_region_t regions[PP_JIT_MAX_REGIONS];
     uint32_t region_count;
 #ifdef PANEPORT_TEST_BUILD
-    void (*region_kept)(uint32_t index); // pp_jit_provider_on_region_kept().
-    bool status_planted;                 // pp_jit_provider_plant_status().
+    void (*region_kept)(void *context, uint32_t index); // pp_jit_provider_on_region_kept().
+    void *region_kept_context;
+    bool status_planted; // pp_jit_provider_plant_status().
     pp_jit_status_t planted_status;
 #endif
 } s_jit = {
@@ -295,10 +296,11 @@ static bool keep_region(uint64_t exec_address, uint64_t length) {
 #ifdef PANEPORT_TEST_BUILD
 static void note_region_kept(uint32_t index) {
     (void)pthread_mutex_lock(&s_jit.mutex);
-    void (*const callback)(uint32_t index) = s_jit.region_kept;
+    void (*const callback)(void *context, uint32_t index) = s_jit.region_kept;
+    void *const context = s_jit.region_kept_context;
     (void)pthread_mutex_unlock(&s_jit.mutex);
     if (callback != NULL) {
-        callback(index);
+        callback(context, index);
     }
 }
 #else
@@ -570,9 +572,11 @@ void pp_jit_provider_wake(void) {
     (void)pthread_mutex_unlock(&s_jit.mutex);
 }
 
-void pp_jit_provider_on_region_kept(void (*callback)(uint32_t index)) {
+void pp_jit_provider_on_region_kept(void (*callback)(void *context, uint32_t index),
+                                    void *context) {
     (void)pthread_mutex_lock(&s_jit.mutex);
     s_jit.region_kept = callback;
+    s_jit.region_kept_context = context;
     (void)pthread_mutex_unlock(&s_jit.mutex);
 }
 

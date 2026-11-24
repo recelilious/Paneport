@@ -92,11 +92,13 @@ paneport_native_test(test_jit_mapping CASES
 paneport_native_test(test_jit_probe CASES
     probed_offsets healthy_pool_passes fault_on_first_page fault_on_last_page
     fault_on_interval_page fault_off_the_probed_pages routine_of_another_page_fails
-    handler_takes_only_its_window fault_on_the_alias provider_fails_on_a_planted_fault)
+    routine_of_another_region_fails handler_takes_only_its_window fault_on_the_alias
+    provider_fails_on_a_planted_fault)
 paneport_native_test(test_jit_provider CASES
     simulated_broker_reaches_ready event_on_every_change pool_timeout_fails detach_timeout_fails
     ready_refuses_another_request failed_refuses_everything enabler_taken_back_is_reported
-    commands_after_shutdown shutdown_between_commands shutdown_stops_the_supervisor)
+    commands_after_shutdown nothing_kept_after_shutdown shutdown_between_commands
+    shutdown_stops_the_supervisor)
 
 # The main-thread rule of the shipped builds, on the host that src/native/CMakeLists.txt builds
 # without the test exports and without PANEPORT_TEST_BUILD.

@@ -46,6 +46,7 @@ typedef struct pp_fake_jit_t {
     _Atomic(bool) hold;                  // Command 1 waits while this is true.
     _Atomic(bool) holding;               // A command 1 is waiting now.
     _Atomic(uint64_t) lengths[PP_FAKE_REGIONS];
+    _Atomic(uint64_t) addresses[PP_FAKE_REGIONS]; // What each command 1 returned.
 } pp_fake_jit_t;
 
 static inline pp_fake_jit_t *pp_fake_jit(void) {
@@ -86,10 +87,12 @@ static inline uint64_t pp_fake_prepare_region(void *context, uint64_t length) {
     if (index == atomic_load(&fake->lose_after_region)) {
         atomic_store(&fake->attached, false);
     }
-    if (index == atomic_load(&fake->refuse_region)) {
-        return 0U;
+    const uint64_t address =
+        index == atomic_load(&fake->refuse_region) ? 0U : pp_jit_macos_prepare_region(length);
+    if (index < PP_FAKE_REGIONS) {
+        atomic_store(&fake->addresses[index], address);
     }
-    return pp_jit_macos_prepare_region(length);
+    return address;
 }
 
 static inline void pp_fake_detach(void *context) {

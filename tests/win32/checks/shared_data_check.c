@@ -35,9 +35,15 @@
 // The slack of the clock comparisons, in the 100 ns units of the page's times and in
 // milliseconds. Windows updates the page's clocks at every timer tick, and Wine's wineserver
 // every 16 ms, so a reading lags the clock that an API reads by about that much; the slack
-// leaves room for a busy machine, and still tells a live clock from a stale or wrong field.
+// leaves room for a busy machine. It catches a wrong field, or one more than 5 s stale, but not a
+// copy of the page made shortly before the check, which check_clocks_advance catches.
 #define PP_SD_TIME_SLACK (5ULL * 10000000ULL)
 #define PP_SD_TICK_SLACK_MS 5000ULL
+
+// check_clocks_advance sleeps 100 ms, after which the page's interrupt time must have moved by at
+// least 50 ms, in its 100 ns units, and its tick count by at least one tick.
+#define PP_SD_ADVANCE_SLEEP_MS 100U
+#define PP_SD_ADVANCE_MIN_TIME 500000ULL
 
 // NtDelayExecution waits 20 ms, a relative interval in 100 ns units, and must take between 10 ms
 // and 10 s by the performance counter.
@@ -149,7 +155,8 @@ static void check_syscalls(struct pp_test_run *run, const struct syscall_exports
 
 bool pp_shared_data_imported_syscalls(struct pp_test_run *run, const char *area) {
     unsigned failures = run->failures;
-    // The addresses that the loader wrote into the program's import table for ntdll.
+    // The program's import thunks, which jump through the import table that the loader filled
+    // for ntdll: a constant initializer takes a dllimport function's address as its thunk's.
     struct syscall_exports exports = {
         NtQueryPerformanceCounter,
         NtQuerySystemTime,
@@ -385,6 +392,27 @@ __attribute__((noinline)) static uint64_t read_sse_high_half(uint32_t major) {
     return value >> 32U;
 }
 
+// 8 bytes from 0x7ffe0268 into the lower half of a register of all ones. movlps keeps the upper
+// half, as Windows does, so the form gives NtMajorVersion, the upper half of the 8 bytes, only
+// while the register's upper half is still all ones, and that half otherwise.
+__attribute__((noinline)) static uint64_t read_sse_low_half(uint32_t major) {
+    (void)major;
+    uint64_t low = 0;
+    uint64_t high = 0;
+    __asm__ volatile("pcmpeqd %%xmm0, %%xmm0\n\t"
+                     "movlps %c2, %%xmm0\n\t"
+                     "movq %%xmm0, %0\n\t"
+                     "movhlps %%xmm0, %%xmm0\n\t"
+                     "movq %%xmm0, %1"
+                     : "=r"(low), "=r"(high)
+                     : "i"(PP_SD_PRODUCT_TYPE_VALID)
+                     : "xmm0");
+    if (high != UINT64_MAX) {
+        return high;
+    }
+    return low >> 32U;
+}
+
 // Windows x64 has no red zone, so the push may use the stack below RSP.
 __attribute__((noinline)) static uint64_t read_push(uint32_t major) {
     (void)major;
@@ -455,6 +483,7 @@ static const struct read_form k_read_forms[] = {
     {"movdqu", read_sse_unaligned, EXPECT_MAJOR},
     {"movaps", read_sse_aligned, EXPECT_MAJOR},
     {"movhps", read_sse_high_half, EXPECT_MAJOR},
+    {"movlps, which keeps the register's upper half", read_sse_low_half, EXPECT_MAJOR},
     {"pushq from memory", read_push, EXPECT_MAJOR_AND_MINOR},
     {"lodsl", read_string_load, EXPECT_MAJOR},
     {"rep movsb", read_string_copy, EXPECT_MAJOR},
@@ -624,11 +653,29 @@ static void check_tick_count(struct pp_test_run *run) {
                   "the page's tick count agrees with GetTickCount64");
 }
 
+// The page's clocks must move. A copy of the page, or a field's value taken when a load was
+// translated, keeps its time, which the slack of the comparisons above lets pass for 5 s.
+static void check_clocks_advance(struct pp_test_run *run) {
+    uint64_t interrupt_before = read_interrupt_time();
+    uint64_t register_before = read_time_at(PP_SD_INTERRUPT_TIME);
+    uint64_t ticks_before = read_time_at(PP_SD_TICK_COUNT);
+    Sleep(PP_SD_ADVANCE_SLEEP_MS);
+    uint64_t interrupt_after = read_interrupt_time();
+    uint64_t register_after = read_time_at(PP_SD_INTERRUPT_TIME);
+    uint64_t ticks_after = read_time_at(PP_SD_TICK_COUNT);
+    pp_test_check(run, interrupt_after >= interrupt_before + PP_SD_ADVANCE_MIN_TIME,
+                  "the page's interrupt time moves by 50 ms across a sleep of 100 ms");
+    pp_test_check(run, register_after >= register_before + PP_SD_ADVANCE_MIN_TIME,
+                  "the interrupt time read through a register moves by 50 ms across the sleep");
+    pp_test_check(run, ticks_after > ticks_before, "the page's tick count moves across the sleep");
+}
+
 bool pp_shared_data_clocks(struct pp_test_run *run, const char *area) {
     unsigned failures = run->failures;
     check_interrupt_time(run);
     check_system_time(run);
     check_tick_count(run);
+    check_clocks_advance(run);
     bool passed = run->failures == failures;
     pp_test_line(run,
                  "%s: clocks: the interrupt time, system time and tick count agree with their "

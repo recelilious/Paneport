@@ -31,11 +31,13 @@ bool pp_shared_data_syscalls_by_address(struct pp_test_run *run, const char *are
 // passed.
 bool pp_shared_data_version_fields(struct pp_test_run *run, const char *area);
 
-// Reads the interrupt time, the system time and the tick count from the page, as Windows
-// documents their three-part form and also in one 64-bit load, as Go's runtime reads them, and
-// checks that they bracket what QueryUnbiasedInterruptTime, GetSystemTimeAsFileTime and
-// GetTickCount64 return between two readings, within a second or a few. Prints one line.
-// Returns whether every check passed.
+// Reads the interrupt time, the system time and the tick count from the page in the three-part
+// form that Windows documents, and the interrupt time also in one 64-bit load through a
+// register, as Go's runtime reads its clock. Two readings of the interrupt time bracket what
+// QueryUnbiasedInterruptTime returns, and GetSystemTimeAsFileTime and GetTickCount64, called
+// before and after, bracket the page's system time and tick count, each within 5 s. Then checks
+// that the interrupt time and the tick count move across a sleep of 100 ms, as a copy of the
+// page would not. Prints one line. Returns whether every check passed.
 bool pp_shared_data_clocks(struct pp_test_run *run, const char *area);
 
 // Writes to the page in each of the write forms of its table, which must each raise an access

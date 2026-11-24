@@ -27,15 +27,25 @@ public sealed class StikDebugRequestTests
     }
 
     [Fact]
-    public void AnyOtherCharacterOfTheBundleIdentifierIsEscaped()
+    public void ACharacterThatCouldEndTheValueIsEscaped()
     {
-        // Characters that would end the query item, start another, end the query or change a
-        // value's meaning stay inside the one value, as does a letter beyond ASCII.
-        var identifier = "a b&pid=2#c+d%e/f?" + (char)0x00E9;
+        // Every character outside RFC 3986's unreserved set is percent-encoded as UTF-8: those
+        // that would end the query item, start another, end the query or change a value's
+        // meaning, a control character, a letter beyond ASCII and one beyond the Basic
+        // Multilingual Plane. The underscore and the tilde, which are unreserved, stay.
+        var identifier = "a b&pid=2#c+d%e/f?g;h\"i" + (char)0x0A + (char)0x00E9 + char.ConvertFromUtf32(0x1F600) + "_~";
 
         Assert.Equal(
-            "stikdebug://enable-jit?bundle-id=a%20b%26pid%3D2%23c%2Bd%25e%2Ff%3F%C3%A9&pid=7&script-name=universal.js",
+            "stikdebug://enable-jit?bundle-id=a%20b%26pid%3D2%23c%2Bd%25e%2Ff%3Fg%3Bh%22i%0A%C3%A9%F0%9F%98%80_~&pid=7&script-name=universal.js",
             StikDebugRequest.Build(identifier, 7));
+    }
+
+    [Fact]
+    public void TheIdentifierIsNotTrimmed()
+    {
+        Assert.Equal(
+            "stikdebug://enable-jit?bundle-id=%20a%20&pid=1&script-name=universal.js",
+            StikDebugRequest.Build(" a ", 1));
     }
 
     [Fact]

@@ -32,7 +32,8 @@ public static class StikDebugRequest
     /// <param name="bundleIdentifier">
     /// The app's bundle identifier, with which StikDebug returns to the app. It is percent-encoded
     /// as a query value, which leaves the letters, digits, hyphens and periods of a bundle
-    /// identifier as they are.
+    /// identifier as they are. A lone surrogate, which a real bundle identifier cannot hold,
+    /// becomes U+FFFD, <c>%EF%BF%BD</c>, as <see cref="Uri.EscapeDataString(string)"/> writes it.
     /// </param>
     /// <param name="processId">The app's process identifier, above 0, with which StikDebug finds the process.</param>
     /// <returns>The URL's text, for the URL opener of the iOS head.</returns>

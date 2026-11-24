@@ -8,8 +8,9 @@
 //   compat/schema/title.schema.json, is named after its id, holds to the launch and allow-list rules of
 //   C-0008 section 5 and the rating rule of C-0008 section 3, and names evidence records that exist. The
 //   environment allow-list of the title schema holds no Steam variable (C-0008 section 5).
-// - compat/ios-builds.json matches compat/schema/ios-builds.schema.json (C-0006 section 6), each build and
-//   model appears only once, and every evidence record that an entry names exists.
+// - compat/ios-builds.json reads as JSON the way the app reads a title file, matches
+//   compat/schema/ios-builds.schema.json (C-0006 section 6), each build and model appears only once, and every
+//   evidence record that an entry names exists.
 //
 // The validator is our own (plan decision D8 of 2026-11-23): it implements only the JSON Schema keywords (draft
 // 2020-12) that the schemas use, each only in the forms that it implements, so that no keyword goes unchecked.
@@ -119,9 +120,9 @@ internal sealed class SchemaValidator
     // Everything that the validator implements, the vocabulary of its own cases in the self-test.
     public static readonly IReadOnlySet<string> Everything = s_annotations.Union(s_keywords).ToHashSet(StringComparer.Ordinal);
 
-    // A member that appears twice in one object is refused, in a schema and in the data: a reader that takes one
-    // copy would see a value that the check never saw.
-    public static readonly JsonDocumentOptions Options = new() { AllowDuplicateProperties = false };
+    // A member that appears twice in one object is refused in a schema, as JsonText refuses it in the data: a
+    // reader that takes one copy would see a value that the check never saw.
+    private static readonly JsonDocumentOptions s_options = new() { AllowDuplicateProperties = false };
 
     private readonly JsonElement _root;
     private readonly string _name;
@@ -146,14 +147,14 @@ internal sealed class SchemaValidator
     // The keywords and annotations that the schema uses, which the self-test compares with its vocabulary.
     public IReadOnlySet<string> Used => _used;
 
-    // Loads a schema as the check reads it: parsed with Options, and refused when it is not JSON, repeats a
+    // Loads a schema as the check reads it: parsed with s_options, and refused when it is not JSON, repeats a
     // member or is refused by the validator. Each refusal names the file.
     public static SchemaValidator LoadSchema(string text, string name, IReadOnlySet<string> vocabulary)
     {
         JsonDocument schema;
         try
         {
-            schema = JsonDocument.Parse(text, Options);
+            schema = JsonDocument.Parse(text, s_options);
         }
         catch (JsonException exception)
         {
@@ -794,10 +795,12 @@ internal static class EcmaPattern
     private static string Escapes(params int[] codes) => string.Concat(codes.Select(Escape));
 }
 
-// Reads a file of the compatibility data the way the app's reader does (docs/design/compat-db.md section 6): at
-// most 1 MiB of UTF-8, with or without a byte-order mark, holding one JSON value without comments or trailing
-// commas, with no string or member name that escapes half of a surrogate pair and no member twice in one
-// object. A file that breaks one of these breaks the json rule, and nothing else of it is checked.
+// Reads a file of the compatibility data, a title file or the list of verified iOS builds, the way the app's
+// reader reads a title file (docs/design/compat-db.md section 6): at most 1 MiB of UTF-8, with or without a
+// byte-order mark, holding one JSON value without comments or trailing commas, with no string or member name
+// that escapes half of a surrogate pair and no member twice in one object. A file that breaks one of these
+// breaks the json rule, and nothing else of it is checked. A syntax error is named by its line and byte, never
+// by the text there, which the message of System.Text.Json would quote.
 internal static class JsonText
 {
     public const int MaxBytes = 1 << 20;
@@ -912,27 +915,21 @@ internal static class IosBuilds
     public static SchemaValidator LoadSchema(string schemaText) =>
         SchemaValidator.LoadSchema(schemaText, SchemaPath, Vocabulary);
 
-    public static List<Problem> Check(string dataText, string schemaText, Func<string, bool> evidenceExists)
+    // The list is read as the app reads a title file (JsonText), so that a member twice, half a surrogate pair or
+    // a syntax error is a problem of the data with the json rule, and no message quotes the file.
+    public static List<Problem> Check(byte[] data, string schemaText, Func<string, bool> evidenceExists)
     {
         var validator = LoadSchema(schemaText);
         var problems = new List<Problem>();
-        JsonDocument data;
-        try
+        using var document = JsonText.Read(data, DataPath, problems);
+        if (document is null)
         {
-            data = JsonDocument.Parse(dataText, SchemaValidator.Options);
-        }
-        catch (JsonException exception)
-        {
-            problems.Add(new Problem(DataPath, "", "json", $"the file is not JSON, or repeats a member: {exception.Message}"));
             return problems;
         }
-        using (data)
+        validator.Validate(document.RootElement, DataPath, problems);
+        if (problems.Count == 0)
         {
-            validator.Validate(data.RootElement, DataPath, problems);
-            if (problems.Count == 0)
-            {
-                CheckRules(data.RootElement, evidenceExists, problems);
-            }
+            CheckRules(document.RootElement, evidenceExists, problems);
         }
         return problems;
     }
@@ -1461,7 +1458,7 @@ internal static class CompatCheck
         var root = Git.TopLevel();
         bool evidenceExists(string path) => File.Exists(Path.Combine(root, path));
         var problems = IosBuilds.Check(
-            File.ReadAllText(Path.Combine(root, IosBuilds.DataPath)),
+            File.ReadAllBytes(Path.Combine(root, IosBuilds.DataPath)),
             File.ReadAllText(Path.Combine(root, IosBuilds.SchemaPath)),
             evidenceExists);
         var titleSchema = new TitleSchema(File.ReadAllText(Path.Combine(root, TitleSchema.SchemaPath)));
@@ -1548,6 +1545,9 @@ internal static class SelfTest
     private const string Entry =
         """{ "iosVersion": "26.1", "iosBuild": "23B85", "deviceModel": "iPhone18,1", "evidence": ["docs/evidence/2026-12-01-l3-jit.md"] }""";
 
+    // A device name, which a fixture of the list puts where a problem might show it, and which no problem shows.
+    private const string DeviceName = "The test iPhone";
+
     // The entry with another model, and with another build. Declared before s_fixtures, which
     // uses them, because static fields start in the order of the text.
     private static readonly string s_otherModel = Entry.Replace("iPhone18,1", "iPhone18,2", StringComparison.Ordinal);
@@ -1604,6 +1604,10 @@ internal static class SelfTest
             $"[\"{Record}\", \"{GateRecord}\", \"{Record}\"]", StringComparison.Ordinal)), "uniqueItems"),
         ("a member twice", Doc(Entry.Replace("\"evidence\":",
             "\"evidence\": [\"docs/evidence/2026-12-02-l3-jit.md\"], \"evidence\":", StringComparison.Ordinal)), "json"),
+        ("half a surrogate pair", Doc(Entry.Replace("\"26.1\"", "\"26.1\\ud800\"", StringComparison.Ordinal)),
+            "json"),
+        ("a syntax error before a device name", $$"""{ "schemaVersion": 1, "builds": [ tr, "{{DeviceName}}" ] }""",
+            "json"),
     ];
 
     // Schemas that the check refuses in place of the list's schema, each with the part of the refusal that
@@ -1833,13 +1837,28 @@ internal static class SelfTest
         return 0;
     }
 
+    // Each list must fail for its rule alone, and no problem may show the device name that a list holds.
     private static void CheckIosBuilds(string root, Tally tally)
     {
         var schemaText = File.ReadAllText(Path.Combine(root, IosBuilds.SchemaPath));
         foreach (var (name, data, rule) in s_fixtures)
         {
-            var problems = IosBuilds.Check(data, schemaText, path => path is Record or GateRecord);
-            tally.Expect(OnlyRule(problems, rule), $"ios builds, {name}", Found(rule, problems));
+            List<Problem> problems;
+            try
+            {
+                problems = IosBuilds.Check(Encoding.UTF8.GetBytes(data), schemaText, path => path is Record or GateRecord);
+            }
+            catch (InvalidOperationException exception)
+            {
+                // A value that the reading let through to a reader that cannot take it.
+                tally.Expect(false, $"ios builds, {name}", $"a crash: {exception.Message}");
+                continue;
+            }
+            var shown = problems.Any(problem => problem.ToString().Contains(DeviceName, StringComparison.Ordinal));
+            tally.Expect(
+                OnlyRule(problems, rule) && !shown,
+                $"ios builds, {name}",
+                $"{Found(rule, problems)}{(shown ? "; a problem shows the device name" : "")}");
         }
     }
 

@@ -30,7 +30,9 @@
 //   code signature fails (unsigned), and the app's executable must carry exactly the declared
 //   entitlements in its XML and in its DER form, and every other Mach-O file none
 //   (entitlements-differ).
-// - Debug symbols: a STABS entry in a symbol table, or a __DWARF segment (debug-symbols).
+// - Debug symbols: a STABS entry in a symbol table, other than the marker that Apple's strip writes
+//   as the first entry of a file that it leaves without local symbols, or a __DWARF segment
+//   (debug-symbols).
 // - The exclusions of C-0009 section 4, by name (excluded-file): Valve's client, Microsoft's
 //   runtimes and their installers, unless Wine built the file, Wine Mono, Wine Gecko, any .msi file
 //   and Apple's Metal Shader Converter.
@@ -444,7 +446,8 @@ internal static class Scanner
         }
 
         // Release device builds are stripped (C-0009 section 6): the linker's debug map leaves STABS
-        // entries in the symbol table, and a dSYM file holds its DWARF in a segment of its own.
+        // entries in the symbol table, and a dSYM file holds its DWARF in a segment of its own. The
+        // one entry that strip writes itself names nothing of a build, and MachO lets it pass.
         var symbols = new List<string>();
         if (signature.Stabs)
         {
@@ -1519,9 +1522,10 @@ internal static class Cli
 // every blob in DER (the entitlements and the launch constraints) and which of them are the DER
 // entitlements, the flags of every code directory, whether a code directory or a CMS blob names a
 // team, the byte range of each signature, and the number of slices without a code directory. Of its
-// load commands: whether a symbol table holds a STABS entry and whether a segment is __DWARF. Each
-// super blob is read once, and the blobs copied from a file may hold no more bytes together than
-// the file, which a real signature, whose blobs do not overlap, never reaches.
+// load commands: whether a symbol table holds a STABS entry other than strip's marker and whether a
+// segment is __DWARF. Each super blob is read once, and the blobs copied from a file may hold no
+// more bytes together than the file, which a real signature, whose blobs do not overlap, never
+// reaches.
 internal sealed class Signature(long fileLength)
 {
     private long _copied;
@@ -1563,12 +1567,14 @@ internal sealed class Signature(long fileLength)
 // names the team. The requirements (slot 2), slots 0x10001 and 0x10002 and any other, and the code
 // directory's identifier and hashes are not read; of a code directory only its flags (byte 12),
 // among them CS_ADHOC (0x2) and CS_LINKER_SIGNED (0x20000). Each slice needs a code directory to be
-// signed. The symbol table of LC_SYMTAB holds entries of 16 bytes (nlist_64), whose type byte has a
-// bit of N_STAB (0xE0) set for a debugging entry, and an LC_SEGMENT_64 names its segment in the 16
-// bytes after its size. A 32-bit or big-endian Mach-O file and a fat file with 64-bit offsets are
-// not parsed, and so are unreadable, as are more slices or blobs than a real file holds and a
-// symbol table outside the file. Mach-O headers are little-endian on arm64; fat headers and
-// signature blobs are big-endian. Offsets are long, so that no sum of the file's numbers overflows.
+// signed. LC_SYMTAB gives the offset and the number of the symbol table's entries of 16 bytes
+// (nlist_64), and the offset and the size of its strings; an entry's type byte has a bit of N_STAB
+// (0xE0) set for a debugging entry, of which strip's marker alone passes (IsStripMarker). An
+// LC_SEGMENT_64 names its segment in the 16 bytes after its size. A 32-bit or big-endian Mach-O
+// file and a fat file with 64-bit offsets are not parsed, and so are unreadable, as are more slices
+// or blobs than a real file holds and a symbol table, or the name of a marker, outside the file.
+// Mach-O headers are little-endian on arm64; fat headers and signature blobs are big-endian.
+// Offsets are long, so that no sum of the file's numbers overflows.
 internal static class MachO
 {
     public const uint AdHocFlag = 0x2;
@@ -1592,7 +1598,12 @@ internal static class MachO
     private const uint Segment64CommandSize = 72;
     private const int SymbolSize = 16;
     private const int SymbolTypeField = 4;
+    private const int SymbolSectionField = 5;
+    private const int SymbolDescriptionField = 6;
+    private const int SymbolValueField = 8;
     private const byte StabMask = 0xE0;
+    private const byte OptionStab = 0x3C;
+    private const ulong StripMarkerValue = 0x05614542;
     private const int CodeDirectoryFlagsField = 12;
     private const uint SuperBlobMagic = 0xFADE0CC0;
     private const uint CodeDirectoryMagic = 0xFADE0C02;
@@ -1683,9 +1694,10 @@ internal static class MachO
                 var symbols = start + BinaryPrimitives.ReadUInt32LittleEndian(Slice(bytes, offset + 8, 4));
                 var count = BinaryPrimitives.ReadUInt32LittleEndian(Slice(bytes, offset + 12, 4));
                 var table = Slice(bytes, symbols, count * (long)SymbolSize);
-                for (var entry = SymbolTypeField; entry < table.Length && !signature.Stabs; entry += SymbolSize)
+                for (var entry = 0; entry < table.Length && !signature.Stabs; entry += SymbolSize)
                 {
-                    signature.Stabs = (table[entry] & StabMask) != 0;
+                    signature.Stabs = (table[entry + SymbolTypeField] & StabMask) != 0
+                        && !(entry == 0 && IsStripMarker(bytes, start, offset, table[..SymbolSize]));
                 }
             }
             else if (command == Segment64Command)
@@ -1700,6 +1712,28 @@ internal static class MachO
         {
             signature.UnsignedSlices++;
         }
+    }
+
+    // The name of strip's marker, with the zero byte that ends it in the strings.
+    private static ReadOnlySpan<byte> StripMarkerName => "radr://5614542\0"u8;
+
+    // Whether the first entry of the symbol table that the LC_SYMTAB at the given offset describes is
+    // the one that Apple's strip writes into a file that it leaves with indirect symbols but no local
+    // symbol, so that no indirect symbol gets the index 0, for a workaround in the dynamic linker
+    // (cctools strip.c, radar 5614542): an N_OPT entry (0x3C) without a section or a description,
+    // with the value 0x05614542 and the name radr://5614542 inside the table's strings. It holds no
+    // debug information, and every form of strip but -N, which drops the whole table, keeps it.
+    private static bool IsStripMarker(byte[] bytes, long start, long command, ReadOnlySpan<byte> entry)
+    {
+        var strings = start + BinaryPrimitives.ReadUInt32LittleEndian(Slice(bytes, command + 16, 4));
+        var size = BinaryPrimitives.ReadUInt32LittleEndian(Slice(bytes, command + 20, 4));
+        var name = BinaryPrimitives.ReadUInt32LittleEndian(entry);
+        return entry[SymbolTypeField] == OptionStab
+            && entry[SymbolSectionField] == 0
+            && BinaryPrimitives.ReadUInt16LittleEndian(entry[SymbolDescriptionField..]) == 0
+            && BinaryPrimitives.ReadUInt64LittleEndian(entry[SymbolValueField..]) == StripMarkerValue
+            && name + (long)StripMarkerName.Length <= size
+            && Slice(bytes, strings + name, StripMarkerName.Length).SequenceEqual(StripMarkerName);
     }
 
     private static void ReadSuperBlob(byte[] bytes, long superBlob, Signature signature)
@@ -1970,6 +2004,10 @@ internal static class SelfTest
     // The values that no report line may show; the e-mail addresses stand for the matched text of
     // the others too.
     private static readonly string[] s_planted = [Team, s_udid, s_ecid, Serial, Email, OtherEmail, "/Users/fixture"];
+
+    // The entry that Apple's strip writes as the first of a file that it leaves without local symbols
+    // (MachO.IsStripMarker).
+    private static readonly Symbol s_stripMarker = new(0x3C, "radr://5614542", Value: 0x05614542);
 
     private static int s_failures;
     private static int s_passed;
@@ -2582,6 +2620,33 @@ internal static class SelfTest
         Expect("a symbol table that runs past the file is unreadable",
             Files(("Paneport.iOS", WithSymbols([0x0F], symbols: 0x7FFFFFF0))),
             [new Finding(executable, Rules.UnreadableSignature)]);
+
+        // Strip's marker passes only as the first entry and only with every part as strip writes it.
+        Finding[] debug = [new Finding(executable, Rules.DebugSymbols)];
+        Expect("strip's marker as the first entry, before global symbols, passes",
+            Files(("Paneport.iOS", WithTable([s_stripMarker, new(0x0F, "_main"), new(0x01, "_puts")]))), []);
+        Expect("strip's marker alone in a framework passes", Files((Host, WithTable([s_stripMarker]))), []);
+        Expect("strip's marker before a debug map fails",
+            Files(("Paneport.iOS", WithTable([s_stripMarker, new(0x64, "probe.c")]))), debug);
+        Expect("strip's marker after another entry fails",
+            Files(("Paneport.iOS", WithTable([new(0x0F, "_main"), s_stripMarker]))), debug);
+        Expect("another STABS type with the marker's name and value fails",
+            Files(("Paneport.iOS", WithTable([s_stripMarker with { Type = 0x64 }]))), debug);
+        Expect("the marker with a section fails",
+            Files(("Paneport.iOS", WithTable([s_stripMarker with { Section = 1 }]))), debug);
+        Expect("the marker with a description fails",
+            Files(("Paneport.iOS", WithTable([s_stripMarker with { Description = 1 }]))), debug);
+        Expect("the marker with another value fails",
+            Files(("Paneport.iOS", WithTable([s_stripMarker with { Value = 0x05614543 }]))), debug);
+        Expect("an N_OPT entry with another name fails",
+            Files(("Paneport.iOS", WithTable([s_stripMarker with { Name = "gcc2_compiled." }]))), debug);
+        Expect("a longer name that starts with the marker's fails",
+            Files(("Paneport.iOS", WithTable([s_stripMarker with { Name = "radr://5614542/" }]))), debug);
+        Expect("the marker's name past the end of the strings fails",
+            Files(("Paneport.iOS", WithTable([s_stripMarker], stringsSize: 8))), debug);
+        Expect("strings of the marker outside the file are unreadable",
+            Files(("Paneport.iOS", WithTable([s_stripMarker], strings: 0x7FFFFFF0))),
+            [new Finding(executable, Rules.UnreadableSignature)]);
     }
 
     // The exclusions of C-0009 section 4, by name.
@@ -2810,6 +2875,7 @@ internal static class SelfTest
             "a real file without a signature fails with --entitlements",
             "a real program linked with debug information fails",
             "a real dSYM file fails",
+            "a real program that Apple's strip leaves with its marker passes",
         ];
         if (!OperatingSystem.IsMacOS())
         {
@@ -2827,13 +2893,17 @@ internal static class SelfTest
             string file(string name) => Path.Combine(folder.FullName, name);
             byte[] read(string name) => File.ReadAllBytes(file(name));
             File.WriteAllText(file("probe.c"), "int main(void) { return 0; }\n");
+            // A call through a stub gives the program an indirect symbol, so that strip writes its
+            // marker once it has removed the local symbols.
+            File.WriteAllText(file("calls.c"), "#include <stdio.h>\nint main(void) { return puts(\"probe\") < 0; }\n");
             File.WriteAllBytes(file("Entitlements.plist"), Xml(Entitlements(string.Empty)));
             if (!Tool("xcrun", "clang", "-arch", "arm64", "-o", file("Probe"), file("probe.c"))
-                || !Tool("xcrun", "clang", "-arch", "arm64", "-g", "-o", file("Debug"), file("probe.c")))
+                || !Tool("xcrun", "clang", "-arch", "arm64", "-g", "-o", file("Debug"), file("probe.c"))
+                || !Tool("xcrun", "clang", "-arch", "arm64", "-o", file("Calls"), file("calls.c")))
             {
                 foreach (var name in names)
                 {
-                    Fail(name, "clang could not link the program");
+                    Fail(name, "clang could not link the programs");
                 }
 
                 return;
@@ -2848,11 +2918,13 @@ internal static class SelfTest
             if (!Tool("codesign", [.. sign, file("Probe")])
                 || !Tool("codesign", "--force", "--sign", "-", file("Framework"))
                 || !Tool("codesign", "--remove-signature", file("Unsigned"))
-                || !Tool("xcrun", "dsymutil", file("Debug"), "-o", file("Debug.dSYM")))
+                || !Tool("xcrun", "dsymutil", file("Debug"), "-o", file("Debug.dSYM"))
+                || !Tool("xcrun", "strip", "-S", "-x", file("Calls"))
+                || !Tool("codesign", "--force", "--sign", "-", file("Calls")))
             {
                 foreach (var name in names[1..])
                 {
-                    Fail(name, "codesign or dsymutil failed");
+                    Fail(name, "codesign, dsymutil or strip failed");
                 }
 
                 return;
@@ -2867,6 +2939,15 @@ internal static class SelfTest
             ExpectSome(names[3], Real(read("Debug")), null, $"{RealApp}Probe", Rules.DebugSymbols);
             ExpectSome(names[4], Real(read("Probe"), (Dwarf, read("Debug.dSYM/Contents/Resources/DWARF/Debug"))), null,
                 $"{RealApp}{Dwarf}", Rules.DebugSymbols);
+            var stripped = read("Calls");
+            if (stripped.AsSpan().IndexOf("radr://5614542\0"u8) < 0)
+            {
+                Fail(names[5], "strip left no marker in the program");
+            }
+            else
+            {
+                Expect(names[5], Real(stripped), []);
+            }
         }
         finally
         {
@@ -3176,7 +3257,14 @@ internal static class SelfTest
     // A thin 64-bit Mach-O file signed ad hoc, whose LC_SYMTAB holds nlist_64 entries of the given
     // types, after the load commands or at the given offset, and, with a segment name, with an
     // LC_SEGMENT_64 of that segment.
-    private static byte[] WithSymbols(byte[] types, string? segment = null, uint? symbols = null)
+    private static byte[] WithSymbols(byte[] types, string? segment = null, uint? symbols = null) =>
+        WithTable([.. types.Select(type => new Symbol(type))], segment, symbols);
+
+    // The same with whole entries, whose names follow them in the strings, which LC_SYMTAB gives with
+    // their own offset and size or with the given ones. The strings start with the empty name and are
+    // padded to a multiple of 4 bytes.
+    private static byte[] WithTable(
+        Symbol[] entries, string? segment = null, uint? symbols = null, uint? strings = null, uint? stringsSize = null)
     {
         const int Header = 32;
         const int SymbolTableCommand = 24;
@@ -3185,14 +3273,31 @@ internal static class SelfTest
         var superBlob = SuperBlob(AdHoc(Entitlements(string.Empty)));
         var commands = SymbolTableCommand + (segment is null ? 0 : SegmentCommand) + SignatureCommand;
         var table = Header + commands;
-        var strings = table + (types.Length * 16);
-        var signature = strings + 4;
-        var entries = new byte[types.Length * 16];
-        for (var index = 0; index < types.Length; index++)
+        var names = new List<byte> { 0 };
+        var nlist = new byte[entries.Length * 16];
+        for (var index = 0; index < entries.Length; index++)
         {
-            entries[(index * 16) + 4] = types[index];
+            var entry = nlist.AsSpan(index * 16, 16);
+            if (entries[index].Name.Length > 0)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(entry, (uint)names.Count);
+                names.AddRange(Encoding.ASCII.GetBytes(entries[index].Name));
+                names.Add(0);
+            }
+
+            entry[4] = entries[index].Type;
+            entry[5] = entries[index].Section;
+            BinaryPrimitives.WriteUInt16LittleEndian(entry[6..], entries[index].Description);
+            BinaryPrimitives.WriteUInt64LittleEndian(entry[8..], entries[index].Value);
         }
 
+        while (names.Count % 4 != 0)
+        {
+            names.Add(0);
+        }
+
+        var at = table + nlist.Length;
+        var signature = at + names.Count;
         var segmentName = Encoding.ASCII.GetBytes((segment ?? string.Empty).PadRight(16, '\0'));
         byte[] segmentCommand = segment is null
             ? []
@@ -3200,14 +3305,20 @@ internal static class SelfTest
         return Concat(
         [
             Little(0xFEEDFACF, 0x0100000C, 0, 2, segment is null ? 2U : 3U, (uint)commands, 0, 0),
-            Little(0x2, SymbolTableCommand, symbols ?? (uint)table, (uint)types.Length, (uint)strings, 4),
+            Little(0x2, SymbolTableCommand, symbols ?? (uint)table, (uint)entries.Length, strings ?? (uint)at,
+                stringsSize ?? (uint)names.Count),
             segmentCommand,
             Little(0x1D, SignatureCommand, (uint)signature, (uint)superBlob.Length),
-            entries,
-            new byte[4],
+            nlist,
+            names.ToArray(),
             superBlob,
         ]);
     }
+
+    // An entry of a symbol table as nlist_64 holds it: its type, the name that the strings hold for
+    // it, its section, its description and its value.
+    private readonly record struct Symbol(
+        byte Type, string Name = "", byte Section = 0, ushort Description = 0, ulong Value = 0);
 
     // A package of a real app: an Info.plist that names Probe as the executable, the executable and
     // the given other files.

@@ -6,9 +6,10 @@
 // compat/ios-builds.json must match compat/schema/ios-builds.schema.json (C-0006 section 6),
 // each build and device model may appear only once, and every evidence record that an entry
 // names must exist. The validator is our own and implements only the JSON Schema keywords
-// (draft 2020-12) that the schema uses; a schema with any other keyword is refused, so that no
-// keyword goes unchecked. The title files of compat/titles/ join with M8.3, whose validator
-// waits for decision D8 (C-0011 section 5).
+// (draft 2020-12) that the schema uses; a schema with any other keyword, or with a value that
+// a keyword does not allow, is refused, so that no keyword goes unchecked. The title files of
+// compat/titles/ join with M8.3, which records decision D8 of 2026-11-23: a validator of our
+// own, which M8.3 extends (C-0011 section 5).
 //
 //   dotnet run tools/CheckCompat.cs                 check the repository
 //   dotnet run tools/CheckCompat.cs -- --self-test  check the validator and the rules on fixtures
@@ -58,61 +59,114 @@ internal sealed record Problem(string File, string Pointer, string Rule, string 
 // The validator of the keywords that the schema uses. s_annotations are read and ignored.
 internal sealed class SchemaValidator
 {
-    private static readonly HashSet<string> s_annotations = ["$schema", "$id", "title", "description", "$comment"];
+    private const string DefinitionPrefix = "#/$defs/";
+
+    private static readonly HashSet<string> s_annotations = ["$schema", "$id", "title", "description"];
 
     private static readonly HashSet<string> s_keywords =
     [
-        "type", "required", "properties", "additionalProperties", "const", "enum", "items", "$ref", "$defs",
-        "pattern", "minItems", "uniqueItems", "minLength",
+        "type", "required", "properties", "additionalProperties", "const", "items", "$ref", "$defs",
+        "pattern", "minItems", "uniqueItems",
     ];
+
+    private static readonly HashSet<string> s_types = ["object", "array", "string", "boolean", "null", "number", "integer"];
 
     private readonly JsonElement _root;
     private readonly Dictionary<string, Regex> _patterns = [];
 
     // Reads the schema, and refuses it when it uses a keyword that this validator does not
-    // implement, anywhere in it.
+    // implement, or gives a keyword a value that JSON Schema does not allow, anywhere in it.
     public SchemaValidator(JsonElement root, string name)
     {
         _root = root;
-        CheckKeywords(root, "", name);
+        CheckKeywords(root, root, "", name);
     }
 
-    private static void CheckKeywords(JsonElement schema, string pointer, string name)
+    private static void CheckKeywords(JsonElement root, JsonElement schema, string pointer, string name)
     {
-        if (schema.ValueKind == JsonValueKind.True || schema.ValueKind == JsonValueKind.False)
+        if (schema.ValueKind is JsonValueKind.True or JsonValueKind.False)
         {
             return;
         }
         if (schema.ValueKind != JsonValueKind.Object)
         {
-            throw new InvalidDataException($"{name}: {pointer}: a schema must be an object or a boolean.");
+            throw Refuse(name, pointer, "a schema must be an object or a boolean.");
         }
         foreach (var keyword in schema.EnumerateObject())
         {
+            var at = $"{pointer}/{Escape(keyword.Name)}";
             if (s_annotations.Contains(keyword.Name))
             {
                 continue;
             }
             if (!s_keywords.Contains(keyword.Name))
             {
-                throw new InvalidDataException(
-                    $"{name}: {pointer}/{keyword.Name}: tools/CheckCompat.cs does not implement this keyword.");
+                throw Refuse(name, at, "tools/CheckCompat.cs does not implement this keyword.");
             }
-            var at = $"{pointer}/{keyword.Name}";
+            var value = keyword.Value;
             switch (keyword.Name)
             {
+                case "properties" or "$defs" when value.ValueKind != JsonValueKind.Object:
+                    throw Refuse(name, at, "the keyword needs an object of schemas.");
                 case "properties" or "$defs":
-                    foreach (var child in keyword.Value.EnumerateObject())
+                    foreach (var child in value.EnumerateObject())
                     {
-                        CheckKeywords(child.Value, $"{at}/{child.Name}", name);
+                        CheckKeywords(root, child.Value, $"{at}/{Escape(child.Name)}", name);
                     }
                     break;
                 case "items" or "additionalProperties":
-                    CheckKeywords(keyword.Value, at, name);
+                    CheckKeywords(root, value, at, name);
                     break;
-                case "$ref" when !(keyword.Value.GetString() ?? "").StartsWith("#/$defs/", StringComparison.Ordinal):
-                    throw new InvalidDataException($"{name}: {at}: only references into $defs are implemented.");
+                case "type" when value.ValueKind != JsonValueKind.String || !s_types.Contains(value.GetString()!):
+                    throw Refuse(name, at, "the keyword needs one of the seven type names of JSON Schema.");
+                case "required" when value.ValueKind != JsonValueKind.Array
+                    || value.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.String):
+                    throw Refuse(name, at, "the keyword needs a list of member names.");
+                case "minItems" when value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var least) || least < 0:
+                    throw Refuse(name, at, "the keyword needs a non-negative integer.");
+                case "uniqueItems" when value.ValueKind is not (JsonValueKind.True or JsonValueKind.False):
+                    throw Refuse(name, at, "the keyword needs true or false.");
+                case "pattern" when value.ValueKind != JsonValueKind.String || !Compiles(value.GetString()!):
+                    throw Refuse(name, at, "the keyword needs a regular expression.");
+                case "$ref" when !Resolves(root, value):
+                    throw Refuse(name, at, "only a reference to a member of the root's $defs is implemented.");
             }
+        }
+    }
+
+    private static InvalidDataException Refuse(string name, string pointer, string detail) =>
+        new($"{name}: {(pointer.Length == 0 ? "/" : pointer)}: {detail}");
+
+    // A reference names a member of the root's $defs, written plainly: #/$defs/name.
+    private static bool Resolves(JsonElement root, JsonElement reference)
+    {
+        if (reference.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+        var text = reference.GetString()!;
+        if (!text.StartsWith(DefinitionPrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+        var definition = text[DefinitionPrefix.Length..];
+        return definition.Length > 0
+            && definition.IndexOfAny(['/', '~']) < 0
+            && root.TryGetProperty("$defs", out var definitions)
+            && definitions.ValueKind == JsonValueKind.Object
+            && definitions.TryGetProperty(definition, out _);
+    }
+
+    private static bool Compiles(string pattern)
+    {
+        try
+        {
+            _ = Translate(pattern);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
         }
     }
 
@@ -132,7 +186,7 @@ internal sealed class SchemaValidator
         }
         if (schema.TryGetProperty("$ref", out var reference))
         {
-            var target = _root.GetProperty("$defs").GetProperty(reference.GetString()!["#/$defs/".Length..]);
+            var target = _root.GetProperty("$defs").GetProperty(reference.GetString()![DefinitionPrefix.Length..]);
             Validate(target, instance, pointer, file, problems);
         }
         if (schema.TryGetProperty("type", out var type) && !HasType(instance, type.GetString()!))
@@ -143,11 +197,6 @@ internal sealed class SchemaValidator
         if (schema.TryGetProperty("const", out var constant) && !JsonElement.DeepEquals(instance, constant))
         {
             problems.Add(new Problem(file, pointer, "const", $"the value must be {constant.GetRawText()}"));
-        }
-        if (schema.TryGetProperty("enum", out var choices)
-            && !choices.EnumerateArray().Any(choice => JsonElement.DeepEquals(instance, choice)))
-        {
-            problems.Add(new Problem(file, pointer, "enum", "the value is not one of those the schema lists"));
         }
         switch (instance.ValueKind)
         {
@@ -225,29 +274,30 @@ internal sealed class SchemaValidator
 
     private void ValidateString(JsonElement schema, string value, string pointer, string file, List<Problem> problems)
     {
-        if (schema.TryGetProperty("minLength", out var minimum) && value.Length < minimum.GetInt32())
-        {
-            problems.Add(new Problem(file, pointer, "minLength", $"the text needs at least {minimum.GetInt32()} characters"));
-        }
         if (schema.TryGetProperty("pattern", out var pattern) && !Pattern(pattern.GetString()!).IsMatch(value))
         {
             problems.Add(new Problem(file, pointer, "pattern", $"the text must match {pattern.GetString()}"));
         }
     }
 
-    // JSON Schema's patterns are ECMA-262 regular expressions, whose $ is the end of the text;
-    // .NET's $ also matches before a final line break, so a closing $ becomes \z.
     private Regex Pattern(string pattern)
     {
         if (!_patterns.TryGetValue(pattern, out var regex))
         {
-            var text = pattern.EndsWith('$') && !pattern.EndsWith(@"\$", StringComparison.Ordinal)
-                ? pattern[..^1] + @"\z"
-                : pattern;
-            regex = new Regex(text, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+            regex = Translate(pattern);
             _patterns[pattern] = regex;
         }
         return regex;
+    }
+
+    // JSON Schema's patterns are ECMA-262 regular expressions, whose $ is the end of the text;
+    // .NET's $ also matches before a final line break, so a closing $ becomes \z.
+    private static Regex Translate(string pattern)
+    {
+        var text = pattern.EndsWith('$') && !pattern.EndsWith(@"\$", StringComparison.Ordinal)
+            ? pattern[..^1] + @"\z"
+            : pattern;
+        return new Regex(text, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
     }
 
     private static bool HasType(JsonElement instance, string type) => type switch
@@ -272,19 +322,23 @@ internal static class IosBuilds
     public const string DataPath = "compat/ios-builds.json";
     public const string SchemaPath = "compat/schema/ios-builds.schema.json";
 
+    // A member that appears twice in one object is refused, in the data and in the schema: a
+    // reader that takes one copy would see a value that the check never saw.
+    public static readonly JsonDocumentOptions Options = new() { AllowDuplicateProperties = false };
+
     public static List<Problem> Check(string dataText, string schemaText, Func<string, bool> evidenceExists)
     {
-        using var schema = JsonDocument.Parse(schemaText);
+        using var schema = JsonDocument.Parse(schemaText, Options);
         var validator = new SchemaValidator(schema.RootElement, SchemaPath);
         var problems = new List<Problem>();
         JsonDocument data;
         try
         {
-            data = JsonDocument.Parse(dataText);
+            data = JsonDocument.Parse(dataText, Options);
         }
         catch (JsonException exception)
         {
-            problems.Add(new Problem(DataPath, "", "json", $"the file is not JSON: {exception.Message}"));
+            problems.Add(new Problem(DataPath, "", "json", $"the file is not JSON, or repeats a member: {exception.Message}"));
             return problems;
         }
         using (data)
@@ -383,6 +437,11 @@ internal static class SelfTest
     private const string Entry =
         """{ "iosVersion": "26.1", "iosBuild": "23B85", "deviceModel": "iPhone18,1", "evidence": ["docs/evidence/2026-12-01-l3-jit.md"] }""";
 
+    // The entry with another model, and with another build. Declared before s_fixtures, which
+    // uses them, because static fields start in the order of the text.
+    private static readonly string s_otherModel = Entry.Replace("iPhone18,1", "iPhone18,2", StringComparison.Ordinal);
+    private static readonly string s_otherBuild = Entry.Replace("23B85", "23C55", StringComparison.Ordinal);
+
     private static readonly (string Name, string Data, string? Rule)[] s_fixtures =
     [
         ("empty list", """{ "schemaVersion": 1, "builds": [] }""", null),
@@ -415,6 +474,54 @@ internal static class SelfTest
             "evidence-file"),
         ("a model as a number", Doc(Entry.Replace("\"iPhone18,1\"", "18", StringComparison.Ordinal)), "type"),
         ("the same build and model twice", $$"""{ "schemaVersion": 1, "builds": [{{Entry}}, {{Entry}}] }""", "unique-build"),
+        ("the same build on two models", $$"""{ "schemaVersion": 1, "builds": [{{Entry}}, {{s_otherModel}}] }""", null),
+        ("the same model on two builds", $$"""{ "schemaVersion": 1, "builds": [{{Entry}}, {{s_otherBuild}}] }""", null),
+        ("the same build and model apart",
+            $$"""{ "schemaVersion": 1, "builds": [{{Entry}}, {{s_otherModel}}, {{Entry}}] }""", "unique-build"),
+        ("a bad second entry", $$"""{ "schemaVersion": 1, "builds": [{{Entry}}, {{s_otherBuild.Replace("23C55", "23c55", StringComparison.Ordinal)}}] }""",
+            "pattern"),
+        ("a device name in an entry", Doc(Entry.Replace("\"deviceModel\"", "\"deviceName\": \"The test iPhone\", \"deviceModel\"",
+            StringComparison.Ordinal)), "additionalProperties"),
+        ("no builds", """{ "schemaVersion": 1 }""", "required"),
+        ("no iOS version", Doc(Entry.Replace("\"iosVersion\": \"26.1\", ", "", StringComparison.Ordinal)), "required"),
+        ("no iOS build", Doc(Entry.Replace("\"iosBuild\": \"23B85\", ", "", StringComparison.Ordinal)), "required"),
+        ("no evidence member", Doc(Entry.Replace(", \"evidence\": [\"docs/evidence/2026-12-01-l3-jit.md\"]", "",
+            StringComparison.Ordinal)), "required"),
+        ("a record as a number", Doc(Entry.Replace("[\"docs/evidence/2026-12-01-l3-jit.md\"]", "[18]", StringComparison.Ordinal)),
+            "type"),
+        ("a record twice with another between", Doc(Entry.Replace("[\"docs/evidence/2026-12-01-l3-jit.md\"]",
+            $"[\"{Record}\", \"{GateRecord}\", \"{Record}\"]", StringComparison.Ordinal)), "uniqueItems"),
+        ("a member twice", Doc(Entry.Replace("\"evidence\":",
+            "\"evidence\": [\"docs/evidence/2026-12-02-l3-jit.md\"], \"evidence\":", StringComparison.Ordinal)), "json"),
+    ];
+
+    // Schemas that the validator refuses, each with the part of the refusal that names its
+    // place: an unknown keyword anywhere, a keyword that the schema does not use, a value that a
+    // keyword does not allow, and a member that appears twice.
+    private static readonly (string Name, string Schema, string Refusal)[] s_plantedSchemas =
+    [
+        ("an unknown keyword in a property", """{ "type": "object", "properties": { "a": { "minimum": 1 } } }""",
+            "/properties/a/minimum:"),
+        ("an unknown keyword in a definition", """{ "$defs": { "a": { "maxLength": 1 } } }""", "/$defs/a/maxLength:"),
+        ("an unknown keyword in items", """{ "type": "array", "items": { "format": "date" } }""", "/items/format:"),
+        ("an unknown keyword in additionalProperties", """{ "type": "object", "additionalProperties": { "default": 1 } }""",
+            "/additionalProperties/default:"),
+        ("enum", """{ "enum": [1] }""", "/enum:"),
+        ("minLength", """{ "type": "string", "minLength": 1 }""", "/minLength:"),
+        ("$comment", """{ "$comment": "a note" }""", "/$comment:"),
+        ("a reference to a missing definition", """{ "items": { "$ref": "#/$defs/missing" }, "$defs": {} }""", "/items/$ref:"),
+        ("a reference into a definition",
+            """{ "items": { "$ref": "#/$defs/a/properties/b" }, "$defs": { "a": { "properties": { "b": true } } } }""",
+            "/items/$ref:"),
+        ("uniqueItems as text", """{ "type": "array", "uniqueItems": "true" }""", "/uniqueItems:"),
+        ("minItems as text", """{ "type": "array", "minItems": "1" }""", "/minItems:"),
+        ("minItems below zero", """{ "type": "array", "minItems": -1 }""", "/minItems:"),
+        ("type as a list", """{ "type": ["string"] }""", "/type:"),
+        ("a type JSON Schema lacks", """{ "type": "text" }""", "/type:"),
+        ("required as text", """{ "type": "object", "required": "a" }""", "/required:"),
+        ("a pattern that does not compile", """{ "type": "string", "pattern": "[" }""", "/pattern:"),
+        ("properties as a list", """{ "type": "object", "properties": [] }""", "/properties:"),
+        ("a member twice", """{ "type": "object", "type": "array" }""", "json:"),
     ];
 
     // A list document around one entry.
@@ -436,16 +543,14 @@ internal static class SelfTest
             }
         }
 
-        // A schema with a keyword that the validator does not implement is refused.
-        try
+        foreach (var (name, schema, refusal) in s_plantedSchemas)
         {
-            using var planted = JsonDocument.Parse("""{ "type": "object", "properties": { "a": { "minimum": 1 } } }""");
-            _ = new SchemaValidator(planted.RootElement, "planted schema");
-            failures++;
-            Console.WriteLine("FAIL a schema with an unknown keyword was taken.");
-        }
-        catch (InvalidDataException exception) when (exception.Message.Contains("/properties/a/minimum", StringComparison.Ordinal))
-        {
+            var found = Refusal(schema);
+            if (found is null || !found.Contains(refusal, StringComparison.Ordinal))
+            {
+                failures++;
+                Console.WriteLine($"FAIL the planted schema with {name}: expected a refusal at {refusal}, found {found ?? "none"}");
+            }
         }
 
         if (failures > 0)
@@ -453,7 +558,26 @@ internal static class SelfTest
             Console.WriteLine($"{failures} self-test case(s) failed.");
             return 1;
         }
-        Console.WriteLine($"All {s_fixtures.Length + 1} self-test cases passed.");
+        Console.WriteLine($"All {s_fixtures.Length + s_plantedSchemas.Length} self-test cases passed.");
         return 0;
+    }
+
+    // Loads a schema as the check does, and returns why it was refused, or null.
+    private static string? Refusal(string schema)
+    {
+        try
+        {
+            using var planted = JsonDocument.Parse(schema, IosBuilds.Options);
+            _ = new SchemaValidator(planted.RootElement, "planted schema");
+            return null;
+        }
+        catch (InvalidDataException exception)
+        {
+            return exception.Message;
+        }
+        catch (JsonException exception)
+        {
+            return $"json: {exception.Message}";
+        }
     }
 }

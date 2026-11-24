@@ -14,10 +14,14 @@ namespace Paneport.UI;
 /// A view template must never match null. Avalonia's <see cref="FuncDataTemplate{T}"/> does, when
 /// its type is a reference type. A content presenter that has no content but a template of its
 /// own that does not match null looks further, through the logical tree and then the application's
-/// templates, and builds the first template that matches: the locale box of the Settings page does
-/// so while no locale is selected. A view built in code for null fails on its first member during
-/// layout, where nothing handles the exception, and the app ends. The templates made here match an
-/// instance of their type only.
+/// templates, and builds the first template that matches. The locale box of the Settings page does
+/// so while it has no selection, when the page is left or chosen again, and when its drop-down
+/// recycles its items. A view built in code that reads its view model throws when it is built for
+/// null. During layout nothing handles the exception, and the app ends; inside a binding, such as
+/// the shell's page binding, Avalonia catches it and logs a warning, and the page stays blank.
+/// The templates made here match an instance of their type only. They also build a new view each
+/// time, because a view built in code takes its view model's values when it is built, and a view
+/// handed on to another view model would keep the old ones.
 /// </remarks>
 public static class ViewTemplates
 {

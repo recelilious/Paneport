@@ -382,7 +382,7 @@ static void forward_segv(int signal_number, siginfo_t *info, void *context) {
 static void plant_segv_handler(void *argument) {
     bool *planted = argument;
     if (sigaction(SIGSEGV, NULL, &s_dispatcher_segv) != 0 ||
-        (s_dispatcher_segv.sa_flags & SA_SIGINFO) == 0) {
+        ((unsigned)s_dispatcher_segv.sa_flags & (unsigned)SA_SIGINFO) == 0U) {
         return;
     }
     struct sigaction replacement = s_dispatcher_segv;

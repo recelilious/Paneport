@@ -150,41 +150,53 @@ static bool collect_arguments(char *first, va_list *list, char **arguments) {
     return true;
 }
 
+// The forms of exec that take their arguments one by one.
+typedef enum list_form_t { LIST_EXECL, LIST_EXECLE, LIST_EXECLP } list_form_t;
+
+// Hands on a call of execl, execle or execlp that the trap lets through, to execv, to execve with
+// the environment that follows the null pointer after the arguments, or to execvp. It never runs
+// inline in a replacement: its array of arguments makes the frame big enough that the prologue
+// calls the stack probe, and that call overwrites the link register before the replacement's
+// __builtin_return_address reads its caller there, so the report would name the trap itself.
+__attribute__((noinline)) static int hand_on_list(list_form_t form, const char *path, char *first,
+                                                  va_list *list) {
+    char *arguments[PP_TRAP_LIST_ARGUMENTS];
+    if (!collect_arguments(first, list, arguments)) {
+        return -1;
+    }
+    switch (form) {
+    case LIST_EXECLE:
+        return k_original.execve(path, arguments, va_arg(*list, char **));
+    case LIST_EXECLP:
+        return k_original.execvp(path, arguments);
+    case LIST_EXECL:
+    default:
+        return k_original.execv(path, arguments);
+    }
+}
+
 static int trap_execl(const char *path, char *first, ...) {
     if (pp_trap_refuses()) {
         refuse("execl", 0, __builtin_return_address(0));
         return -1;
     }
-    char *arguments[PP_TRAP_LIST_ARGUMENTS];
     va_list list;
     va_start(list, first);
-    const bool collected = collect_arguments(first, &list, arguments);
+    const int result = hand_on_list(LIST_EXECL, path, first, &list);
     va_end(list);
-    if (!collected) {
-        return -1;
-    }
-    return k_original.execv(path, arguments);
+    return result;
 }
 
-// execle's environment follows the null pointer that ends its arguments.
 static int trap_execle(const char *path, char *first, ...) {
     if (pp_trap_refuses()) {
         refuse("execle", 0, __builtin_return_address(0));
         return -1;
     }
-    char *arguments[PP_TRAP_LIST_ARGUMENTS];
     va_list list;
     va_start(list, first);
-    const bool collected = collect_arguments(first, &list, arguments);
-    char **environment = NULL;
-    if (collected) {
-        environment = va_arg(list, char **);
-    }
+    const int result = hand_on_list(LIST_EXECLE, path, first, &list);
     va_end(list);
-    if (!collected) {
-        return -1;
-    }
-    return k_original.execve(path, arguments, environment);
+    return result;
 }
 
 static int trap_execlp(const char *file, char *first, ...) {
@@ -192,15 +204,11 @@ static int trap_execlp(const char *file, char *first, ...) {
         refuse("execlp", 0, __builtin_return_address(0));
         return -1;
     }
-    char *arguments[PP_TRAP_LIST_ARGUMENTS];
     va_list list;
     va_start(list, first);
-    const bool collected = collect_arguments(first, &list, arguments);
+    const int result = hand_on_list(LIST_EXECLP, file, first, &list);
     va_end(list);
-    if (!collected) {
-        return -1;
-    }
-    return k_original.execvp(file, arguments);
+    return result;
 }
 
 // posix_spawn and posix_spawnp return an error number rather than setting errno.

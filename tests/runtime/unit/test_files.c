@@ -105,14 +105,15 @@ static unsigned check_cases(const char *folder, bool planted, unsigned *kinds) {
 static void cases_are_valid(void) {
     unsigned kinds = 0U;
     PP_CHECK(check_cases("tests/runtime/cases", false, &kinds) >= 14U);
-    const unsigned every_kind = (1U << PP_CASE_PROGRAM) | (1U << PP_CASE_START_STOP) |
-                                (1U << PP_CASE_SECOND_START) | (1U << PP_CASE_JIT_NOT_READY) |
-                                (1U << PP_CASE_DISPATCHER_CHECK);
+    const unsigned every_kind =
+        (1U << (unsigned)PP_CASE_PROGRAM) | (1U << (unsigned)PP_CASE_START_STOP) |
+        (1U << (unsigned)PP_CASE_SECOND_START) | (1U << (unsigned)PP_CASE_JIT_NOT_READY) |
+        (1U << (unsigned)PP_CASE_DISPATCHER_CHECK);
     PP_CHECK_EQUAL(kinds, every_kind);
     // The planted cases run a program, whose wrong line and wrong exit code the runtime job
     // looks for in their lines.
     PP_CHECK_EQUAL(check_cases("tests/runtime/planted", true, &kinds), 2);
-    PP_CHECK_EQUAL(kinds, 1U << PP_CASE_PROGRAM);
+    PP_CHECK_EQUAL(kinds, 1U << (unsigned)PP_CASE_PROGRAM);
 }
 
 static void expected_outputs_are_valid(void) {

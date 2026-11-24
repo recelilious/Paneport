@@ -264,6 +264,8 @@ Not enforced in the app's code: that `rating` matches the reports, and that each
 
 `tools/CheckCompat.cs` runs in the `checks` job on every file in `compat/titles/` (C-0011 sections 1 and 4), and fails when any of them breaks a rule. It reads each file as the app's reader does (section 6), validates it against the schema with a validator of our own (plan decision D8), and then checks in code what a schema cannot state. Each problem names the file, the JSON pointer and the rule, never the value, and a member name that is not a plain name shows as `<name not shown>`, as in section 6.
 
+The validator is the one that M3.1 wrote for the list of verified iOS builds ([jit.md](jit.md) section 9), which the check reads the same way, extended with the keywords that the title schema uses. Each schema may use only its vocabulary, the keywords and annotations that it uses now, so that a keyword that a schema starts to use comes with self-test cases of its own: the list's schema may not use `enum` or `$comment`, which the title schema uses. The self-test checks that each schema uses all of its vocabulary and that the validator implements nothing that no schema uses, and the validator refuses a schema with a keyword's value in a form that it does not implement, or with an annotation that breaks its rules ([repository-checks.md](repository-checks.md) section 9).
+
 | Rule | What fails it |
 |---|---|
 | `json` | More than 1 MiB, text that is not UTF-8, anything but one JSON value, a comment or a trailing comma, a string or member name that escapes half of a surrogate pair, and a member that appears twice in one object (section 6) |

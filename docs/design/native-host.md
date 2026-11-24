@@ -125,7 +125,7 @@ A reader rejects a record whose magic, version or size differs, or whose file is
 
 ## 9. Test builds
 
-The presets `ios-device-test`, `macos-test`, `asan-ubsan` and `tsan` define `PANEPORT_TEST_BUILD`. It adds the main-thread rule of section 3, the exports of `paneport/testing.h`, compiled from `test_exports.c`, and a hook with which a test holds a post between its check that the host runs and its push (section 5); the `ios-device` framework that the main app ships has none of them. The `asan-ubsan` and `tsan` presets also build the host as that framework does, without `PANEPORT_TEST_BUILD`, so that a test runs the main-thread rule that ships.
+The presets `ios-device-test`, `macos-test`, `asan-ubsan` and `tsan` define `PANEPORT_TEST_BUILD`. It adds the main-thread rule of section 3, the exports of `paneport/testing.h`, compiled from `test_exports.c`, a hook with which a test holds a post between its check that the host runs and its push (section 5), and one with which it holds the crash record writer busy (section 8). For the JIT provider it adds a platform that replaces the backend, a call that wakes the supervisor, a hook that the request thread calls with the test's context after it kept a region, a status that `pp_jit_get_state` reports instead of the provider's, and on macOS the simulated broker's mapping of a region for a test ([jit.md](jit.md) section 10). The `ios-device` framework that the main app ships has none of them. The `asan-ubsan` and `tsan` presets also build the host as that framework does, without `PANEPORT_TEST_BUILD`, so that a test runs the main-thread rule that ships.
 
 | Export | Use |
 |---|---|

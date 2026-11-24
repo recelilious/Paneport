@@ -63,8 +63,8 @@ public sealed partial class ViewTemplatesTests
         // FuncDataTemplate or FuncTreeDataTemplate, outside ViewTemplates.cs.
         CallerMatchTemplateOutsideViewTemplates,
 
-        // A type that implements IDataTemplate or an interface that extends it, whose match can
-        // take null.
+        // A type whose base list names IDataTemplate or an interface that extends it, whose match
+        // can take null.
         DataTemplateImplementation,
 
         // A using alias of one of these interfaces or templates, which would hide its name from
@@ -365,10 +365,11 @@ public sealed partial class ViewTemplatesTests
         AssertNoEntries(broken);
     }
 
-    // Each rule of the test above, broken by a planted source, each name that the rules take from
-    // Avalonia's assemblies, and each kind of type declaration and of literal that the rules read.
-    // ViewTemplates.cs may make the non-generic template, and the rules read code only, not
-    // comments or literals.
+    // Each rule of the test above, broken by a planted source, with each name that the rules take
+    // from Avalonia's assemblies, each kind of type declaration, and each kind of literal that the
+    // rules read, with each escape that can end it early. ViewTemplates.cs may make the
+    // non-generic template but not alias it, and the rules read code only, not comments or
+    // literals.
     [Theory]
     [InlineData("tests/device/DeveloperViews.cs", "Add(new FuncDataTemplate<DeveloperMenuViewModel>((menu, _) => Menu(menu)));", TemplateRule.GenericFuncDataTemplate)]
     [InlineData("src/Paneport.UI/ViewTemplates.cs", "return new FuncDataTemplate<T>((model, _) => build(model));", TemplateRule.GenericFuncDataTemplate)]
@@ -383,9 +384,13 @@ public sealed partial class ViewTemplatesTests
     [InlineData("tests/device/DeveloperViews.cs", "internal struct Views : IDataTemplate { }", TemplateRule.DataTemplateImplementation)]
     [InlineData("tests/device/DeveloperViews.cs", "public interface IViews : IDataTemplate { }", TemplateRule.DataTemplateImplementation)]
     [InlineData("tests/device/DeveloperViews.cs", "using Template = Avalonia.Controls.Templates.IDataTemplate;\ninternal sealed class MenuTemplate : Template { }", TemplateRule.TemplateAlias)]
+    [InlineData("src/Paneport.UI/ViewTemplates.cs", "global using F = Avalonia.Controls.Templates.FuncDataTemplate;", TemplateRule.TemplateAlias)]
     [InlineData("tests/device/DeveloperViews.cs", "var link = \"https://example.com/\"; Add(new FuncDataTemplate<DeveloperMenuViewModel>(Build));", TemplateRule.GenericFuncDataTemplate)]
+    [InlineData("tests/device/DeveloperViews.cs", """var s = "a\"b\\"; Add(new FuncDataTemplate<DeveloperMenuViewModel>(Build)); var t = "x";""", TemplateRule.GenericFuncDataTemplate)]
     [InlineData("tests/device/DeveloperViews.cs", "var c = '\"'; Add(new FuncDataTemplate<DeveloperMenuViewModel>(Build)); var d = '\"';", TemplateRule.GenericFuncDataTemplate)]
+    [InlineData("tests/device/DeveloperViews.cs", """var parts = path.Split('\\'); Add(new FuncDataTemplate<DeveloperMenuViewModel>(Build)); var c = 'x';""", TemplateRule.GenericFuncDataTemplate)]
     [InlineData("tests/device/DeveloperViews.cs", "var path = @\"C:\\\"; Add(new FuncDataTemplate<DeveloperMenuViewModel>(Build, \"x\"));", TemplateRule.GenericFuncDataTemplate)]
+    [InlineData("tests/device/DeveloperViews.cs", """var s = @"a""\"; Add(new FuncDataTemplate<DeveloperMenuViewModel>(Build)); var t = "x";""", TemplateRule.GenericFuncDataTemplate)]
     [InlineData("src/Paneport.UI/ViewTemplates.cs", "return new FuncDataTemplate(data => data is T, (data, _) => data is T model ? build(model) : null);", null)]
     [InlineData("tests/device/DeveloperViews.cs", "/* new FuncDataTemplate(match, build) */\n// Avalonia's generic FuncDataTemplate<T> matches null.\nvar text = \"class View : IDataTemplate {\";", null)]
     public void EachRuleForViewTemplatesBreaksOnAPlantedSource(string file, string source, TemplateRule? rule)
@@ -393,6 +398,23 @@ public sealed partial class ViewTemplatesTests
         TemplateRule[] expected = rule is { } broken ? [broken] : [];
 
         Assert.Equal(expected, BrokenRules(file.Replace('/', Path.DirectorySeparatorChar), source));
+    }
+
+    // The source rules allow Avalonia's generic FuncTreeDataTemplate, because it matches only an
+    // instance of its type, with either of its constructors and whatever match the caller gives
+    // it. If a later Avalonia changes that, this test fails, and the rules must name it.
+    [Fact]
+    public void TheGenericFuncTreeDataTemplateNeverMatchesNull()
+    {
+        var byType = new FuncTreeDataTemplate<Marker>((_, _) => new Border(), _ => Array.Empty<Marker>());
+        var byMatch = new FuncTreeDataTemplate<Marker>(_ => true, (_, _) => new Border(), _ => Array.Empty<Marker>());
+
+        Assert.False(byType.Match(null));
+        Assert.False(byMatch.Match(null));
+        Assert.False(byType.Match("marker"));
+        Assert.False(byMatch.Match("marker"));
+        Assert.True(byType.Match(new Marker()));
+        Assert.True(byMatch.Match(new Marker()));
     }
 
     // Shows the Settings page with the template added to the application's templates, then lets a
@@ -602,8 +624,12 @@ public sealed partial class ViewTemplatesTests
     [GeneratedRegex(@"\bFuncDataTemplate\s*<")]
     private static partial Regex GenericFuncDataTemplateCode();
 
-    // The rules that take their names from Avalonia's assemblies, by reflection, so that a template
-    // interface or a template with the caller's match that a later version adds is caught too.
+    // The rules that take their names by reflection, only from the Avalonia assemblies that
+    // Paneport.UI references: the public interfaces assignable to IDataTemplate, and the non-generic
+    // templates with a public constructor parameter of type Func<object?, bool>. Generic templates
+    // are handled by name: the generic FuncDataTemplate is rejected, and the generic
+    // FuncTreeDataTemplate is allowed, because it matches only an instance of its type, as
+    // TheGenericFuncTreeDataTemplateNeverMatchesNull pins.
     private sealed record TemplateRules(Regex CallerMatchTemplate, Regex Implementation, Regex Alias)
     {
         public static TemplateRules FromAvalonia()
@@ -617,8 +643,9 @@ public sealed partial class ViewTemplatesTests
             // Every public interface that extends IDataTemplate, and IDataTemplate itself.
             var interfaces = Names(types.Where(type => type.IsInterface && typeof(IDataTemplate).IsAssignableFrom(type)));
 
-            // Every public template that takes its match as a function of the data, so that the
-            // caller decides whether it matches null.
+            // Every public template that is not generic and has a public constructor with a
+            // parameter of type Func<object?, bool>, its match, so that the caller decides whether
+            // it matches null.
             var callerMatch = Names(types.Where(type =>
                 type.IsClass
                 && !type.IsGenericTypeDefinition

@@ -477,13 +477,13 @@ static const struct read_form k_read_forms[] = {
     {"movq to a general register", read_quadword, EXPECT_MAJOR_AND_MINOR},
     {"addl from memory", read_add_source, EXPECT_MAJOR},
     {"cmpl with memory", read_compare, EXPECT_TRUE},
-    {"testb $1, as the syscall thunks test the page", read_test, EXPECT_TRUE},
+    {"testb $1 as the syscall thunks test the page", read_test, EXPECT_TRUE},
     {"movd to an SSE register", read_sse_doubleword, EXPECT_MAJOR},
     {"movq to an SSE register", read_sse_quadword, EXPECT_MAJOR_AND_MINOR},
     {"movdqu", read_sse_unaligned, EXPECT_MAJOR},
     {"movaps", read_sse_aligned, EXPECT_MAJOR},
     {"movhps", read_sse_high_half, EXPECT_MAJOR},
-    {"movlps, which keeps the register's upper half", read_sse_low_half, EXPECT_MAJOR},
+    {"movlps into the lower half of a register of all ones", read_sse_low_half, EXPECT_MAJOR},
     {"pushq from memory", read_push, EXPECT_MAJOR_AND_MINOR},
     {"lodsl", read_string_load, EXPECT_MAJOR},
     {"rep movsb", read_string_copy, EXPECT_MAJOR},
@@ -546,8 +546,9 @@ bool pp_shared_data_version_fields(struct pp_test_run *run, const char *area) {
 
 // A KSYSTEM_TIME as Windows documents its reading: High1Time, LowPart, then High2Time, until
 // both high parts agree. This one reads the interrupt time with constant addresses, as
-// compilers emit for a field of the page. Returns 0 when no try agreed.
-static uint64_t read_interrupt_time(void) {
+// compilers emit for a field of the page, and is not inlined, so that every call runs the same
+// loads. Returns 0 when no try agreed.
+__attribute__((noinline)) static uint64_t read_interrupt_time(void) {
     for (unsigned attempt = 0; attempt < PP_SD_TIME_TRIES; attempt++) {
         uint32_t high1 = 0;
         uint32_t low = 0;
@@ -653,8 +654,10 @@ static void check_tick_count(struct pp_test_run *run) {
                   "the page's tick count agrees with GetTickCount64");
 }
 
-// The page's clocks must move. A copy of the page, or a field's value taken when a load was
-// translated, keeps its time, which the slack of the comparisons above lets pass for 5 s.
+// The page's clocks must move. A copy of the page keeps its time, which the slack of the
+// comparisons above lets pass for 5 s. So does a field's value taken when a load was
+// translated: read_interrupt_time is not inlined, so its readings before and after the sleep
+// run the same loads, translated once, however the translator splits the code into blocks.
 static void check_clocks_advance(struct pp_test_run *run) {
     uint64_t interrupt_before = read_interrupt_time();
     uint64_t register_before = read_time_at(PP_SD_INTERRUPT_TIME);

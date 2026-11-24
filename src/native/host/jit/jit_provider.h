@@ -19,7 +19,8 @@
 
 // Stops the supervisor and waits for it. pp_shutdown calls it before the event thread stops,
 // so that the provider's last events still arrive. The request thread may be inside a command
-// that never returns, so nobody waits for it; it sends nothing once the host has stopped.
+// that never returns, so nobody waits for it. From this call on it sends no command and keeps
+// no region that a command returns; it gives back the region's alias and ends.
 void pp_jit_provider_stop(void);
 
 // Returns whether the state is ready: the precondition of pp_session_start (C-0005 section 2).
@@ -38,6 +39,11 @@ void pp_jit_provider_use_platform(const pp_jit_platform_t *replacement);
 
 // Test builds only: wakes the supervisor at once, as a test that moved its clock needs.
 void pp_jit_provider_wake(void);
+
+// Test builds only: makes the request thread call callback, with the region's index, each time
+// it has kept a region and before it asks whether the next command may go out, so that a test
+// can stop it between two commands.
+void pp_jit_provider_on_region_kept(void (*callback)(uint32_t index));
 #endif
 
 #endif // PANEPORT_HOST_JIT_PROVIDER_H

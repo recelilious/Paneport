@@ -115,7 +115,7 @@ void pp_jit_probe_run(const pp_jit_pool_region_t *regions, uint32_t count,
                                                     offsets, PP_JIT_PROBE_MAX_PAGES);
         for (uint32_t page = 0U; page < pages; page++) {
             // A value of its own for each page, so a routine that ran from another page fails.
-            const uint32_t value = 0x5000U + (serial & 0x0FFFU);
+            const uint32_t value = PP_JIT_PROBE_FIRST_VALUE + (serial & 0x0FFFU);
             serial++;
             const uint64_t returned =
                 pp_jit_probe_page(regions[index].write_address + offsets[page],

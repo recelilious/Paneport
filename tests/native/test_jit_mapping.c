@@ -100,23 +100,38 @@ static void writable_executable_is_found(void) {
     PP_CHECK_EQUAL(pp_jit_map_alias(data_address, size, &mapped), PP_JIT_FAILURE_REGION_REFUSED);
     PP_CHECK_EQUAL(munmap(data, size), 0);
 
-    // Nor is a range that is not mapped throughout, or that is not page-aligned.
+    // Nor is a range that is not page-aligned.
     const uint64_t page = pp_jit_page_size();
-    const uint64_t exec_address = pp_jit_macos_prepare_region(2U * size);
+    const uint64_t exec_address = pp_jit_macos_prepare_region(size);
     PP_CHECK(exec_address != 0U);
-    pp_jit_macos_release_region(exec_address + size, size);
-    PP_CHECK_EQUAL(pp_jit_map_alias(exec_address, 2U * size, &mapped),
-                   PP_JIT_FAILURE_REGION_REFUSED);
-    PP_CHECK(pp_jit_map_has_writable_executable(exec_address, 2U * size));
     PP_CHECK_EQUAL(pp_jit_map_alias(exec_address + 64U, size - page, &mapped),
                    PP_JIT_FAILURE_REGION_REFUSED);
     PP_CHECK_EQUAL(pp_jit_map_alias(exec_address, size - 64U, &mapped),
                    PP_JIT_FAILURE_REGION_REFUSED);
     PP_CHECK_EQUAL(pp_jit_map_alias(0U, size, &mapped), PP_JIT_FAILURE_REGION_REFUSED);
-    // What is left of the region is still one.
+    // The region itself still is one.
     PP_CHECK_EQUAL(pp_jit_map_alias(exec_address, size, &mapped), PP_JIT_FAILURE_NONE);
     pp_jit_map_release_alias(mapped.write_address, size);
     pp_jit_macos_release_region(exec_address, size);
+
+    // Nor is a range that is not mapped throughout. The maxima of its three thirds are lowered
+    // to readable and executable, so that nothing but the hole in the middle can make the whole
+    // range fail.
+    const uint64_t third = (uint64_t)size;
+    const uint64_t base = pp_jit_macos_prepare_region(3U * third);
+    PP_CHECK(base != 0U);
+    PP_CHECK_EQUAL(vm_protect(mach_task_self(), (vm_address_t)base, (vm_size_t)(3U * third), TRUE,
+                              PP_JIT_EXEC_PROTECTION),
+                   KERN_SUCCESS);
+    PP_CHECK(!pp_jit_map_has_writable_executable(base, 3U * third));
+    pp_jit_macos_release_region(base + third, third);
+    PP_CHECK(!pp_jit_map_has_writable_executable(base, third));
+    PP_CHECK(!pp_jit_map_has_writable_executable(base + (2U * third), third));
+    PP_CHECK(pp_jit_map_has_writable_executable(base, 3U * third));
+    PP_CHECK(!pp_jit_map_has_protection(base, 3U * third, PP_JIT_EXEC_PROTECTION, false));
+    PP_CHECK_EQUAL(pp_jit_map_alias(base, 3U * third, &mapped), PP_JIT_FAILURE_REGION_REFUSED);
+    pp_jit_macos_release_region(base, third);
+    pp_jit_macos_release_region(base + (2U * third), third);
 }
 
 // Runs a request to the end with the fake, and returns the status.

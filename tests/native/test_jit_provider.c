@@ -182,6 +182,78 @@ static void failed_refuses_everything(void) {
     PP_CHECK_EQUAL(status.state, PP_JIT_STATE_FAILED);
     PP_CHECK_EQUAL(status.failure, PP_JIT_FAILURE_REGION_REFUSED);
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+    // The change to failed that the refused region makes is reported like any other.
+    const pp_jit_state_t expected[] = {
+        PP_JIT_STATE_DEBUGGER_ATTACHED,
+        PP_JIT_STATE_REQUESTING,
+        PP_JIT_STATE_FAILED,
+    };
+    pp_jit_check_events(&events, expected, 3U);
+}
+
+static void enabler_taken_back_is_reported(void) {
+    (void)pp_fake_jit_install();
+    pp_jit_events_t events;
+    start_with_events(&events);
+    PP_CHECK_EQUAL(pp_jit_set_enabler_opened(1U), PP_OK);
+    (void)pp_jit_wait_for_state(PP_JIT_STATE_DEBUGGER_ATTACHED);
+    // The app takes the enabler back: the debugger no longer counts as the broker.
+    PP_CHECK_EQUAL(pp_jit_set_enabler_opened(0U), PP_OK);
+    PP_CHECK_EQUAL(pp_jit_read_status().state, PP_JIT_STATE_NOT_DEBUGGED);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+    const pp_jit_state_t expected[] = {
+        PP_JIT_STATE_DEBUGGER_ATTACHED,
+        PP_JIT_STATE_NOT_DEBUGGED,
+    };
+    pp_jit_check_events(&events, expected, 2U);
+}
+
+static void commands_after_shutdown(void) {
+    pp_fake_jit_t *fake = pp_fake_jit_install();
+    atomic_store(&fake->hold, true);
+    pp_jit_events_t events;
+    start_with_events(&events);
+    request_when_attached(PP_JIT_POOL_DEFAULT_MIB);
+    pp_wait_for_flag(&fake->holding);
+    // pp_shutdown returns while command 1 for the first region is still in the debugger.
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+    PP_CHECK_EQUAL(atomic_load(&fake->prepares), 1U);
+    atomic_store(&fake->hold, false);
+    pp_sleep_milliseconds(200);
+    // The request thread sends nothing more and keeps no region (jit_provider.h).
+    PP_CHECK_EQUAL(atomic_load(&fake->prepares), 1U);
+    PP_CHECK_EQUAL(atomic_load(&fake->detaches), 0U);
+    pp_jit_pool_region_t regions[PP_JIT_MAX_REGIONS];
+    uint32_t count = PP_JIT_MAX_REGIONS;
+    pp_jit_pool_copy(regions, PP_JIT_MAX_REGIONS, &count);
+    PP_CHECK_EQUAL(count, 0U);
+}
+
+static _Atomic(bool) s_between_commands;
+static _Atomic(bool) s_go_on;
+
+static void stop_after_first_region(uint32_t index) {
+    if (index == 0U) {
+        atomic_store(&s_between_commands, true);
+        while (!atomic_load(&s_go_on)) {
+            pp_sleep_milliseconds(1);
+        }
+    }
+}
+
+static void shutdown_between_commands(void) {
+    pp_fake_jit_t *fake = pp_fake_jit_install();
+    pp_jit_provider_on_region_kept(stop_after_first_region);
+    pp_jit_events_t events;
+    start_with_events(&events);
+    request_when_attached(PP_JIT_POOL_DEFAULT_MIB);
+    pp_wait_for_flag(&s_between_commands);
+    // pp_shutdown returns after the first region was kept and before command 1 of the next.
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+    atomic_store(&s_go_on, true);
+    pp_sleep_milliseconds(200);
+    PP_CHECK_EQUAL(atomic_load(&fake->prepares), 1U);
+    PP_CHECK_EQUAL(atomic_load(&fake->detaches), 0U);
 }
 
 static void shutdown_stops_the_supervisor(void) {
@@ -206,6 +278,9 @@ int main(int argc, char **argv) {
         {"detach_timeout_fails", detach_timeout_fails},
         {"ready_refuses_another_request", ready_refuses_another_request},
         {"failed_refuses_everything", failed_refuses_everything},
+        {"enabler_taken_back_is_reported", enabler_taken_back_is_reported},
+        {"commands_after_shutdown", commands_after_shutdown},
+        {"shutdown_between_commands", shutdown_between_commands},
         {"shutdown_stops_the_supervisor", shutdown_stops_the_supervisor},
     };
     return pp_run_case(argc, argv, cases, PP_CASE_COUNT(cases));

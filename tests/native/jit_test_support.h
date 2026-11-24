@@ -177,6 +177,25 @@ static inline uint8_t pp_jit_test_load_byte(uint64_t address) {
     return (uint8_t)value;
 }
 
+// Leaves the probe's routine that returns value on a page, as jit_probe.c writes it: movz w0,
+// #value and ret, written through the alias at write_address and made visible to instruction
+// fetches at exec_address. Unlike the probe, it does not take the routine away.
+static inline void pp_jit_test_plant_routine(uint64_t write_address, uint64_t exec_address,
+                                             uint32_t value) {
+    const uint32_t movz = 0x52800000U | ((value & 0xFFFFU) << 5U);
+    const uint32_t ret = 0xD65F03C0U;
+    __asm__ volatile("str %w1, [%0]\n"
+                     "str %w2, [%0, #4]\n"
+                     "dc cvau, %0\n"
+                     "dsb ish\n"
+                     "ic ivau, %3\n"
+                     "dsb ish\n"
+                     "isb\n"
+                     :
+                     : "r"(write_address), "r"(movz), "r"(ret), "r"(exec_address)
+                     : "memory");
+}
+
 // The JIT events that reached the event callback, in order.
 #define PP_JIT_EVENTS 32U
 

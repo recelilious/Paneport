@@ -19,14 +19,24 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "jit/jit_machine.h"
 #include "jit/jit_map.h"
 #include "signals/signals.h"
 
 // The probed pages are the first of every block of this size, and the last page.
 #define PP_JIT_PROBE_INTERVAL (UINT64_C(16) * 1024U * 1024U)
 
-// The most pages the probe runs in one region of PP_JIT_REGION_MIB.
-#define PP_JIT_PROBE_MAX_PAGES 9U
+// The most pages the probe runs in one region, which is at most PP_JIT_REGION_MIB: one in
+// every interval, and the last page. It follows the region size, so that a larger region
+// still has its last page probed.
+#define PP_JIT_PROBE_MAX_PAGES                                                                     \
+    ((uint32_t)((((uint64_t)PP_JIT_REGION_MIB * 1024U * 1024U) + PP_JIT_PROBE_INTERVAL - 1U) /     \
+                PP_JIT_PROBE_INTERVAL) +                                                           \
+     1U)
+
+// The value that the routine of the probe's first page returns. Each later page's routine
+// returns the next value, so that a page that runs another page's routine fails.
+#define PP_JIT_PROBE_FIRST_VALUE 0x5000U
 
 // The value that x0 holds when a probed routine faulted.
 #define PP_JIT_PROBE_FAULTED UINT64_C(0xFFFFFFFF)

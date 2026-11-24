@@ -42,6 +42,9 @@ static struct {
     bool probe_started;
     pp_jit_pool_region_t regions[PP_JIT_MAX_REGIONS];
     uint32_t region_count;
+#ifdef PANEPORT_TEST_BUILD
+    void (*region_kept)(uint32_t index); // pp_jit_provider_on_region_kept().
+#endif
 } s_jit = {
     .mutex = PTHREAD_MUTEX_INITIALIZER,
     .wake = PTHREAD_COND_INITIALIZER,
@@ -209,16 +212,19 @@ static bool start_supervisor(void) {
 
 // The request thread's helpers lock the mutex themselves.
 
-// Reads the flags, and returns whether a command may go out now: the state is requesting and a
-// debugger is attached now (C-0006 section 3). For command 0 it also starts the detach timeout.
+// Reads the flags, and returns whether a command may go out now: pp_shutdown has not begun, the
+// state is requesting and a debugger is attached now (C-0006 section 3). For command 0 it also
+// starts the detach timeout.
 static bool command_allowed(bool detach) {
     (void)pthread_mutex_lock(&s_jit.mutex);
-    step();
     bool allowed = false;
-    if (machine()->state == PP_JIT_STATE_REQUESTING && machine()->flags.attached_now) {
-        allowed = true;
-        if (detach) {
-            pp_jit_machine_detach_sent(machine(), now());
+    if (!s_jit.stopping) {
+        step();
+        if (machine()->state == PP_JIT_STATE_REQUESTING && machine()->flags.attached_now) {
+            allowed = true;
+            if (detach) {
+                pp_jit_machine_detach_sent(machine(), now());
+            }
         }
     }
     (void)pthread_mutex_unlock(&s_jit.mutex);
@@ -226,7 +232,8 @@ static bool command_allowed(bool detach) {
 }
 
 // Maps the alias of the region that command 1 returned, registers both views with the
-// dispatcher, and adds the region to the registry. Returns whether the request goes on.
+// dispatcher, and adds the region to the registry. Returns whether the request goes on. Once
+// pp_shutdown has begun, the region is not kept, as in a state that takes no more regions.
 static bool keep_region(uint64_t exec_address, uint64_t length) {
     pp_jit_failure_t failure = PP_JIT_FAILURE_REGION_REFUSED;
     pp_jit_map_result_t mapped = {.write_address = 0U, .maxima_lowered = false};
@@ -251,7 +258,7 @@ static bool keep_region(uint64_t exec_address, uint64_t length) {
 
     (void)pthread_mutex_lock(&s_jit.mutex);
     bool kept = false;
-    if (machine()->state == PP_JIT_STATE_REQUESTING) {
+    if (!s_jit.stopping && machine()->state == PP_JIT_STATE_REQUESTING) {
         if (failure != PP_JIT_FAILURE_NONE) {
             fail(failure);
         } else {
@@ -270,7 +277,8 @@ static bool keep_region(uint64_t exec_address, uint64_t length) {
     (void)pthread_mutex_unlock(&s_jit.mutex);
 
     if (!kept) {
-        // A region that came too late, after a timeout, or that failed: nothing keeps it.
+        // A region that came too late, after a timeout or pp_shutdown, or that failed: nothing
+        // keeps it.
         if (region.exec_range != 0U) {
             (void)pp_signals_remove_pool_range(region.exec_range);
         }
@@ -281,6 +289,19 @@ static bool keep_region(uint64_t exec_address, uint64_t length) {
     }
     return kept;
 }
+
+#ifdef PANEPORT_TEST_BUILD
+static void note_region_kept(uint32_t index) {
+    (void)pthread_mutex_lock(&s_jit.mutex);
+    void (*const callback)(uint32_t index) = s_jit.region_kept;
+    (void)pthread_mutex_unlock(&s_jit.mutex);
+    if (callback != NULL) {
+        callback(index);
+    }
+}
+#else
+static void note_region_kept(uint32_t index) { (void)index; }
+#endif
 
 static void *request_main(void *argument) {
     (void)argument;
@@ -301,6 +322,7 @@ static void *request_main(void *argument) {
         if (!keep_region(exec_address, length)) {
             return NULL;
         }
+        note_region_kept(index);
     }
 
     // Step 5: command 0, then the wait for the detach.
@@ -538,6 +560,12 @@ void pp_jit_provider_use_platform(const pp_jit_platform_t *replacement) {
 void pp_jit_provider_wake(void) {
     (void)pthread_mutex_lock(&s_jit.mutex);
     wake_supervisor();
+    (void)pthread_mutex_unlock(&s_jit.mutex);
+}
+
+void pp_jit_provider_on_region_kept(void (*callback)(uint32_t index)) {
+    (void)pthread_mutex_lock(&s_jit.mutex);
+    s_jit.region_kept = callback;
     (void)pthread_mutex_unlock(&s_jit.mutex);
 }
 #endif

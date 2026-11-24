@@ -4,23 +4,25 @@
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Paneport.UI;
 
 namespace Paneport.DeviceTest;
 
 // The views of the developer pages, built in code and matched to their view models by type, as
-// App.axaml matches the shell's pages (app-shell.md section 5); no view is looked up by name. They
+// App.axaml matches the shell's pages (app-shell.md section 5); no view is looked up by name. Their
+// templates come from ViewTemplates and never match null: Avalonia's generic FuncDataTemplate
+// does, and the Settings page's locale box built the menu's view for null and ended the app. They
 // use the shell's styles: buttons of the class "title", texts of the classes "name" and
 // "secondary".
 internal static class DeveloperViews
 {
     public static void Register(Application application)
     {
-        application.DataTemplates.Add(new FuncDataTemplate<DeveloperMenuViewModel>((menu, _) => Menu(menu)));
-        application.DataTemplates.Add(new FuncDataTemplate<DeveloperToolViewModel>((tool, _) => Tool(tool)));
-        application.DataTemplates.Add(new FuncDataTemplate<SignalGateViewModel>((page, _) => SignalGatePage(page)));
+        application.DataTemplates.Add(ViewTemplates.For<DeveloperMenuViewModel>(Menu));
+        application.DataTemplates.Add(ViewTemplates.For<DeveloperToolViewModel>(Tool));
+        application.DataTemplates.Add(ViewTemplates.For<SignalGateViewModel>(SignalGatePage));
     }
 
     private static ScrollViewer Menu(DeveloperMenuViewModel menu)

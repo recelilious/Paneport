@@ -15,7 +15,7 @@ The device test flavor of the iOS app head (plan section 7.3): the full app plus
 | `DeveloperToolViewModel.cs`, `DeveloperAction.cs` | A developer page: a description, its actions and the result of the last one. |
 | `DeveloperTools.cs` | The first pages: Interface conformance, Token store and Crash record. |
 | `SignalGateViewModel.cs`, `SignalGateRun.cs` | The signal gate page of L2 steps 11 to 13: the startup check, a run of four hours or ten minutes with live counters, and the verdict; and the run itself, with the host's stress harness, a managed null-reference loop, garbage collection pressure and a heartbeat ([signals.md](../../docs/design/signals.md) section 9). |
-| `DeveloperViews.cs` | The pages' views, built in code and matched to their view models by type. |
+| `DeveloperViews.cs` | The pages' views, built in code and matched to their view models by type, through templates from `ViewTemplates.For<T>` in Paneport.UI. A view template must never match null, and Avalonia's generic `FuncDataTemplate<T>` does: with it, the Settings page built the developer menu's view for null and ended the app ([app-shell.md](../../docs/design/app-shell.md) section 5). |
 | `packages.lock.json` | The lock file, which only a restore with the iOS workload can write; to renew it without a Mac, follow [dev-environment.md](../../docs/design/dev-environment.md) section 5. |
 
 Building it needs what the head needs: a Mac with the pinned Xcode and the iOS workload, and the `ios-device-test` framework, built first with the CMake preset of that name in `src/native`. From the repository root:

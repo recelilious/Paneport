@@ -44,6 +44,8 @@ static struct {
     uint32_t region_count;
 #ifdef PANEPORT_TEST_BUILD
     void (*region_kept)(uint32_t index); // pp_jit_provider_on_region_kept().
+    bool status_planted;                 // pp_jit_provider_plant_status().
+    pp_jit_status_t planted_status;
 #endif
 } s_jit = {
     .mutex = PTHREAD_MUTEX_INITIALIZER,
@@ -402,6 +404,11 @@ PP_EXPORT pp_status_t pp_jit_get_state(pp_jit_status_t *status) {
     pp_jit_status_t full;
     (void)pthread_mutex_lock(&s_jit.mutex);
     pp_jit_machine_status(machine(), now(), &full);
+#ifdef PANEPORT_TEST_BUILD
+    if (s_jit.status_planted) {
+        full = s_jit.planted_status;
+    }
+#endif
     (void)pthread_mutex_unlock(&s_jit.mutex);
     copy_status(&full, status);
     return PP_OK;
@@ -566,6 +573,16 @@ void pp_jit_provider_wake(void) {
 void pp_jit_provider_on_region_kept(void (*callback)(uint32_t index)) {
     (void)pthread_mutex_lock(&s_jit.mutex);
     s_jit.region_kept = callback;
+    (void)pthread_mutex_unlock(&s_jit.mutex);
+}
+
+void pp_jit_provider_plant_status(const pp_jit_status_t *status) {
+    (void)pthread_mutex_lock(&s_jit.mutex);
+    s_jit.status_planted = false;
+    if (status != NULL) {
+        s_jit.planted_status = *status;
+        s_jit.status_planted = true;
+    }
     (void)pthread_mutex_unlock(&s_jit.mutex);
 }
 #endif

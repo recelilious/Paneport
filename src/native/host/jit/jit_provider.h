@@ -16,6 +16,7 @@
 
 #include "jit/jit_map.h"
 #include "jit/jit_platform.h"
+#include "paneport/jit.h"
 
 // Stops the supervisor and waits for it. pp_shutdown calls it before the event thread stops,
 // so that the provider's last events still arrive. The request thread may be inside a command
@@ -44,6 +45,11 @@ void pp_jit_provider_wake(void);
 // it has kept a region and before it asks whether the next command may go out, so that a test
 // can stop it between two commands.
 void pp_jit_provider_on_region_kept(void (*callback)(uint32_t index));
+
+// Test builds only: makes pp_jit_get_state report a copy of status, whose struct_size must be
+// sizeof(pp_jit_status_t), instead of the provider's own status; NULL ends it. The state of
+// the provider does not change. pp_test_jit_plant_status uses it.
+void pp_jit_provider_plant_status(const pp_jit_status_t *status);
 #endif
 
 #endif // PANEPORT_HOST_JIT_PROVIDER_H

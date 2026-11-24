@@ -8,11 +8,66 @@ namespace Paneport.Interop.Tests;
 
 // The JIT group of version 1.3 against the host test library, whose macOS backend has a
 // simulated broker (M3.1). The JIT state belongs to the process, which runs one host for every
-// test, so a single test drives the whole request.
+// test, so a single test drives the whole request. Another reads the planted statuses of
+// pp_test_jit_plant_status, which leave the state alone, to tell every member apart.
 public sealed class JitBindingTests(HostFixture host)
 {
     private const ulong Mebibyte = 1024 * 1024;
     private const int WaitMilliseconds = 30_000;
+
+    [Fact]
+    public void TheStatusKeepsEveryMemberApart()
+    {
+        try
+        {
+            // The patterns of paneport/testing.h: no two numbers are equal, and any two flags
+            // differ in one of the two.
+            HostTestExports.PlantJitStatus(1);
+            var first = NativeHost.GetJitStatus();
+            Assert.Equal(HostJitState.Failed, first.State);
+            Assert.Equal(HostJitFailure.SystemFailure, first.Failure);
+            Assert.True(first.DebuggedSinceLaunch);
+            Assert.True(first.AttachedNow);
+            Assert.False(first.EnablerOpened);
+            Assert.False(first.ForeignDebugger);
+            Assert.Equal(601U, first.RequestedMiB);
+            Assert.Equal(602U, first.PoolMiB);
+            Assert.Equal(5U, first.RegionsPlanned);
+            Assert.Equal(7U, first.RegionsMapped);
+            Assert.Equal(1001UL, first.InStateMilliseconds);
+            Assert.Equal(1002UL, first.DebuggerAttachedMilliseconds);
+            Assert.Equal(1003UL, first.RequestingMilliseconds);
+            Assert.Equal(1004UL, first.WaitingDetachMilliseconds);
+            Assert.Equal(1005UL, first.VerifyingMilliseconds);
+            Assert.Equal(1006UL, first.AuthorizationMilliseconds);
+
+            HostTestExports.PlantJitStatus(2);
+            var second = NativeHost.GetJitStatus();
+            Assert.Equal(HostJitState.Verifying, second.State);
+            Assert.Equal(HostJitFailure.MemoryLimit, second.Failure);
+            Assert.True(second.DebuggedSinceLaunch);
+            Assert.False(second.AttachedNow);
+            Assert.True(second.EnablerOpened);
+            Assert.False(second.ForeignDebugger);
+            Assert.Equal(603U, second.RequestedMiB);
+            Assert.Equal(604U, second.PoolMiB);
+            Assert.Equal(2U, second.RegionsPlanned);
+            Assert.Equal(3U, second.RegionsMapped);
+            Assert.Equal(2001UL, second.InStateMilliseconds);
+            Assert.Equal(2002UL, second.DebuggerAttachedMilliseconds);
+            Assert.Equal(2003UL, second.RequestingMilliseconds);
+            Assert.Equal(2004UL, second.WaitingDetachMilliseconds);
+            Assert.Equal(2005UL, second.VerifyingMilliseconds);
+            Assert.Equal(2006UL, second.AuthorizationMilliseconds);
+
+            var refused = Assert.Throws<HostException>(() => HostTestExports.PlantJitStatus(3));
+            Assert.Equal(HostStatus.InvalidArgument, refused.Status);
+        }
+        finally
+        {
+            HostTestExports.PlantJitStatus(0);
+        }
+    }
 
     [Fact]
     public void ARequestReachesReadyWithTheSimulatedBroker()

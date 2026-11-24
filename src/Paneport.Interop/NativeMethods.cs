@@ -62,6 +62,9 @@ internal static unsafe partial class NativeMethods
     [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_set_memory_stub")]
     internal static partial int TestSetMemoryStub(ulong availableBytes, ulong footprintBytes);
 
+    [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_jit_plant_status")]
+    internal static partial int TestJitPlantStatus(uint pattern);
+
     [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_post_event")]
     internal static partial int TestPostEvent(uint kind, long code);
 

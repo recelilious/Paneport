@@ -27,12 +27,12 @@ Back to the [development plan](../development-plan.md).
 | S8.2.5 | Cache cleanup | Small | Planned | | |
 | S8.2.6 | Steam service coordination | Small | Planned | | |
 | S8.2.7 | CEG preparation | Small | Planned | | |
-| M8.3 | Compatibility checks and reports | Medium | In progress | `feat/m8-3-compatibility-checks` | 2026-11-23 |
-| S8.3.1 | Validator | Small | In progress | `feat/m8-3-compatibility-checks` | 2026-11-23 |
-| S8.3.2 | Rule checks | Small | In progress | `feat/m8-3-compatibility-checks` | 2026-11-23 |
-| S8.3.3 | Rating computation | Small | In progress | `feat/m8-3-compatibility-checks` | 2026-11-23 |
-| S8.3.4 | Failing fixtures | Small | In progress | `feat/m8-3-compatibility-checks` | 2026-11-23 |
-| S8.3.5 | First entries | Small | In progress | `feat/m8-3-compatibility-checks` | 2026-11-23 |
+| M8.3 | Compatibility checks and reports | Medium | In progress: the merge waits for recelilious's review of the contract draft that records D8 and adds `tests/compat/` to C-0004's tree | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
+| S8.3.1 | Validator | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
+| S8.3.2 | Rule checks | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
+| S8.3.3 | Rating computation | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
+| S8.3.4 | Failing fixtures | Small | Blocked: `tests/compat/` waits for C-0004 1.3, in the contract draft that recelilious reviews | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
+| S8.3.5 | First entries | Small | Done: no title has been tested on the device yet, so there is no entry; M6.6 and S7.0.3 add the first ones | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
 | M8.4 | AAA performance and launcher-service titles | Medium | Planned | | |
 | S8.4.1 | MetalFX spatial upscaling and render scale | Small | Planned | | |
 | S8.4.2 | Frame rate cap | Small | Planned | | |
@@ -276,7 +276,30 @@ _No sessions yet._
 
 **Session log.**
 
-_No sessions yet._
+- **2026-11-23 (session 1).** The title check, on #40's head `9f4d3e4`, before #40 merged.
+  - **Done.**
+    - D8: asked "For D8, use our own small JSON Schema validator instead of JsonSchema.Net?", recelilious answered "Use our own" on 2026-11-23. Plan section 4.2 records it, and plan section 8 the contract changes it brings.
+    - `tools/CheckCompat.cs`, which M3.1 wrote for `compat/ios-builds.json`, also checks every title file of `compat/titles/` (S8.3.1 to S8.3.3). It reads each file as the app's reader does, validates it against the title schema with the validator, which gains the keywords that the title schema uses and gives each pattern its ECMA-262 meaning, and checks in code the file name, the launch and allow-list rules, the rating and the evidence records ([compat-db.md](../compat-db.md) sections 2.2, 8.1 and 9).
+    - `tests/compat/` (S8.3.4): 9 valid title files and 36 fixtures that each fail exactly one rule.
+    - S8.3.5: no title has been tested on the device yet, so `compat/titles/` holds no entry. M6.6 and S7.0.3 add the first ones; the L6 and L7 briefs and this brief's notes for L8 say what the check asks of them.
+    - compat-db.md sections 2.2, 8.1 and 9, the READMEs of `compat/titles/`, `tests/` and `tests/compat/`, and two test comments of M6.4 that waited for M8.3.
+  - **Verification.** On the workstation: the self-test, 379 cases after the review's fixes; the check of the repository; `dotnet format whitespace tools`; the personal-data scan; and the license check. Each of 25 mutants of the check fails a case. An independent review of the tool found no serious defect and seven small ones. Six are fixed in `97ed608`, which 12 more mutants pin; the seventh, R40IV1, is in the reading of `compat/ios-builds.json`, which #40 owned.
+  - **Decisions.**
+    - The rating ([compat-db.md](../compat-db.md) section 2.2): for each target device its latest report on the highest release counts, the one with the latest date and, of two on one date, the later in the list; the lowest of those wins. A pre-release tag counts as a release tag, ordered by Semantic Versioning 2.0.0. Each model identifier counts as a device, so the two identifiers of the iPhone 18 Pro Max count as two, and where they disagree the lower rating wins.
+    - The check does not use Paneport.Core, though C-0004 section 2 would allow it, so that it and the app's reader check each other ([compat-db.md](../compat-db.md) section 8.1).
+  - **Left.** The contract draft for D8 and `tests/compat/`, on the local branch `contract/m8-3-own-validator`, which recelilious reviews: C-0003 1.10, C-0011 1.4 and C-0004 1.3.
+- **2026-11-24 (session 2).** Pull request [#44](https://github.com/recelilious/Paneport/pull/44), rebased onto main `301471e`, which holds [#40](https://github.com/recelilious/Paneport/pull/40) and [#43](https://github.com/recelilious/Paneport/pull/43).
+  - **Done.**
+    - The rebase keeps #40's rules of the validator and its 60 cases. Each schema has a vocabulary, the keywords and annotations that it uses now, and may use no other: the list's schema still refuses `enum` and `$comment`, which the title schema uses. A case checks that each schema uses all of its vocabulary and that the validator implements nothing that no schema uses. The title schema loads through #40's loader, and `$comment` must be a string. The rebase merged #40's two fix rounds into the first and third commits, so no commit drops one of its rules.
+    - R40IV1, which the coordinator gave this stage: `compat/ios-builds.json` is read through `JsonText.Read`, as the title files are, so half a surrogate pair no longer crashes the tool, and a syntax error is named by its line and byte, never by the file's text (`3577c5c`).
+    - The documents that #40 wrote for the check: tools/README.md, [repository-checks.md](../repository-checks.md), [jit.md](../jit.md) section 9, the READMEs of `compat/`, `compat/schema/` and `.github/workflows/`, and the comments of ci.yml. [compat-db.md](../compat-db.md) section 8.1 says that the validator is #40's, with a vocabulary for each schema.
+    - S8.3.1, S8.3.2, S8.3.3 and S8.3.5 are Done.
+  - **Verification.** On the workstation, the self-test passes 427 cases, the check of the repository passes, and `dotnet format whitespace tools`, the personal-data scan and the license check are clean. Each of 7 mutants of the merge with #40's rules and 2 of R40IV1's fix fails a case. The runs of CI on the final head are in [#44](https://github.com/recelilious/Paneport/pull/44).
+  - **Decisions.** The coordinator decided that R40IV1 goes in this pull request, and that counting each model identifier as a device stays as documented, for recelilious to see.
+  - **Left.**
+    - The contract draft of session 1. The merge needs it, because `tests/compat/` must be in C-0004's tree, so S8.3.4 is Blocked and M8.3 In progress until it is accepted.
+    - The `paneportVersion` pattern of the title schema accepts `v1.0.0-01`, which is no release tag; the check does not count such a report. A later change of the schema can close it.
+  - **For later sessions.** The notes for M6.6, S7.0.3 and L8 from session 1 stand.
 
 ## M8.4 AAA performance and launcher-service titles
 

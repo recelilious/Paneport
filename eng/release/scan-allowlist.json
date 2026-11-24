@@ -180,6 +180,18 @@
       "rule": "local-path",
       "sha256": "781d73adcb8fea590f6fc5b83e38ad6ac15fa3542562527efd7d41f646bd8849",
       "reason": "The home folder of the user of Microsoft's build agent, in the path of the PDB that the debug directory of Microsoft.iOS.dll records, as the runtime pack of .NET for iOS 27.1.10018 ships the assembly; the iOS build keeps recorded symbol paths (docs/design/release-engineering.md section 9.5). It names no person."
+    },
+    {
+      "file": "Paneport.iOS",
+      "rule": "local-path",
+      "sha256": "9a09ac3910170055d9de7a25ac97f23402295686d31cd3e6f70765fe40872b4d",
+      "reason": "The home folder of the user of Microsoft's build agent, in the source paths that string literals of Microsoft's prebuilt static libraries keep, which the .NET SDK links into the executable from its runtime packs. Every such path lies in work/1 below that folder, the working folder of an Azure Pipelines agent, and none in this job's checkout folder, which the build-path rule checks; no strip removes text from __TEXT (docs/design/release-engineering.md section 9.7). It names no person."
+    },
+    {
+      "file": "Paneport.DeviceTest",
+      "rule": "local-path",
+      "sha256": "9a09ac3910170055d9de7a25ac97f23402295686d31cd3e6f70765fe40872b4d",
+      "reason": "The home folder of the user of Microsoft's build agent, in the source paths that string literals of Microsoft's prebuilt static libraries keep, which the .NET SDK links into the device test executable from its runtime packs, as into the main app's. Every such path lies in work/1 below that folder, the working folder of an Azure Pipelines agent, and none in this job's checkout folder, which the build-path rule checks; no strip removes text from __TEXT (docs/design/release-engineering.md section 9.7). It names no person."
     }
   ]
 }

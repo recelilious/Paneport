@@ -11,7 +11,7 @@ Back to the [development plan](../development-plan.md).
 | Stage | Title | Level | Status | Branch or PR | Last session |
 |---|---|---|---|---|---|
 | L3 | JIT on the iPhone | Large | Planned | | |
-| M3.1 | JIT provider and broker script | Medium | In progress: S3.1.6 follows in a pull request of its own | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
+| M3.1 | JIT provider and broker script | Medium | Done | [#40](https://github.com/recelilious/Paneport/pull/40), [#43](https://github.com/recelilious/Paneport/pull/43) | 2026-11-24 |
 | S3.0.1 | JIT setup screen | Small | Planned | | |
 | S3.0.2 | JIT self-test | Small | Planned | | |
 | S3.0.3 | First verified iOS build entry | Small | Planned | | |
@@ -20,7 +20,7 @@ Back to the [development plan](../development-plan.md).
 | S3.1.3 | Region request and mapping | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
 | S3.1.4 | Verification probe | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
 | S3.1.5 | macOS backend with a simulated broker | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
-| S3.1.6 | Broker script | Small | Ready: C-0006 1.1 names StikDebug's built-in script ([jit-broker.md](../jit-broker.md) section 4) | | 2026-11-24 |
+| S3.1.6 | Broker script | Small | Done | [#43](https://github.com/recelilious/Paneport/pull/43) | 2026-11-24 |
 | S3.1.7 | iOS build list and schema | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
 
 ## L3 JIT on the iPhone
@@ -243,3 +243,13 @@ _No sessions yet._
     - The lone surrogate escape stays with M8.3.
   - **Left.** S3.1.6, after [#40](https://github.com/recelilious/Paneport/pull/40) merges. Everything on the device is L3's.
   - **For later sessions.** The M4.4 note in the L4 brief now says that the pool's regions on the harness are not `MAP_JIT` memory.
+- **2026-11-24 (session 4).** S3.1.6 in [#43](https://github.com/recelilious/Paneport/pull/43), from main `344ab84`, after [#40](https://github.com/recelilious/Paneport/pull/40) merged.
+  - **Done.**
+    - `StikDebugRequest.Build` in `src/Paneport.Core/Jit/` builds the request of C-0006 section 3 step 2. It has six tests with eight cases in `tests/Paneport.Core.Tests/Jit/`.
+    - [jit-broker.md](../jit-broker.md) section 5 records the request. This brief's texts that named a script of Paneport's own now describe the request, as do jit.md sections 8 and 11 and the READMEs of Paneport.Core and its tests.
+    - The two open notes of #40's fix check: native-host.md section 9 lists every hook of the test builds, and jit-broker.md section 1 no longer says that C-0010 1.2 would record a JavaScript level.
+    - S3.1.6 and M3.1 are Done.
+  - **Verification.** On the workstation: `dotnet build` with no warning, the 510 tests of `tests/Paneport.Core.Tests`, `dotnet format` and the personal-data scan. Each of eight mutants of the builder fails a test. The runs of CI on the final head are in [#43](https://github.com/recelilious/Paneport/pull/43).
+  - **Decisions.** The builder returns the URL's text and not a `System.Uri`, whose text adds a `/` before the query; the query items come in the brief's order: `bundle-id`, `pid`, `script-name`.
+  - **Left.** Everything on the device is L3's, which opens the URL through the iOS head's opener (S3.0.1).
+  - **For later sessions.** The L3 note on the URL names the builder, and the M4.4 note in the L4 brief no longer waits for M3.1.

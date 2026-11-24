@@ -17,10 +17,10 @@ namespace Paneport.UI.Tests;
 // shell view model, the main view in a window, and the start once the window has opened.
 internal sealed class ShellHarness : IDisposable
 {
-    private ShellHarness(FakeServices fakes, double width, double height)
+    private ShellHarness(FakeServices fakes, double width, double height, Func<INavigator, PageViewModel>? developerPage)
     {
         Fakes = fakes;
-        Shell = new ShellViewModel(fakes.ToAppServices());
+        Shell = new ShellViewModel(fakes.ToAppServices(), developerPage);
         View = new MainView { DataContext = Shell };
         Window = new Window { Width = width, Height = height, Content = View };
         Window.Opened += (_, _) => Shell.StartCommand.Execute(null);
@@ -36,9 +36,14 @@ internal sealed class ShellHarness : IDisposable
 
     public Window Window { get; }
 
-    // The default size is the desktop head's window; a phone held upright is about 390 by 844.
-    public static ShellHarness Show(FakeServices? fakes = null, double width = 1024, double height = 720) =>
-        new(fakes ?? new FakeServices(), width, height);
+    // The default size is the desktop head's window; a phone held upright is about 390 by 844. A
+    // developer page adds the Developer section, as the device test flavor's developer menu does.
+    public static ShellHarness Show(
+        FakeServices? fakes = null,
+        double width = 1024,
+        double height = 720,
+        Func<INavigator, PageViewModel>? developerPage = null) =>
+        new(fakes ?? new FakeServices(), width, height, developerPage);
 
     // The page view that the shell shows now.
     public T Page<T>()

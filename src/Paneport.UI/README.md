@@ -13,6 +13,7 @@ The Avalonia views, styles and in-game overlay controls that the desktop and iOS
 | `Views/MainView.axaml` | The shell's view: the navigation bar, the Back button and heading, and the page shown. Each head hosts it as its main view. |
 | `Views/LibraryPage.axaml`, `Views/TitleDetailsPage.axaml` | The Library page, which lists the titles, and the Title details page. |
 | `Views/SettingsPage.axaml`, `Views/DiagnosticsPage.axaml` | The Settings page and the Diagnostics page. |
+| `ViewTemplates.cs` | Makes the data templates of views built in code, such as the device test flavor's developer pages. Each matches an instance of its view model type and never null, which Avalonia's generic `FuncDataTemplate<T>` would match ([app-shell.md](../../docs/design/app-shell.md) section 5). |
 | `AvaloniaLogForwarder.cs` | Passes what Avalonia logs at warning level or above, such as a binding that fails at run time, to the app's log, without the exception text or error message that could name a local path. A head installs it as Avalonia's log sink. |
 
 - **Depends on:** Paneport.Core only, and the Avalonia and Avalonia.Themes.Fluent packages.

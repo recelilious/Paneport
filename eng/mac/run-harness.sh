@@ -83,6 +83,31 @@ end_case_child() {
     pkill -KILL -f -- "--run-single $case_file " > /dev/null 2>&1 || true
 }
 
+# Prints the end of a failed case's error output and output, those of its last run, so that the
+# failure can be read in the job's log without its artifact; under GitHub Actions in a group of
+# its own, which the log shows folded. The planted cases fail on purpose, so their logs stay out.
+show_case_logs() {
+    local folder="$logs/$1"
+    local file
+    local lines
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        printf '::group::The end of the logs of %s\n' "$1"
+    fi
+    for file in stderr.txt stdout.txt; do
+        lines=100
+        if [ "$file" = stdout.txt ]; then
+            lines=40
+        fi
+        if [ -s "$folder/$file" ]; then
+            printf -- '--- the last %s lines of %s/%s\n' "$lines" "$1" "$file"
+            tail -n "$lines" "$folder/$file"
+        fi
+    done
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        printf '::endgroup::\n'
+    fi
+}
+
 # Runs a command and ends it after the given number of seconds; returns 124 then.
 with_timeout() {
     local seconds=$1
@@ -239,7 +264,12 @@ for name in "${names[@]}"; do
     case "$line" in
         "PASS "*) passed=$((passed + 1)) ;;
         "SKIP "*) ;;
-        *) failed=$((failed + 1)) ;;
+        *)
+            failed=$((failed + 1))
+            if [ "$planted" = false ]; then
+                show_case_logs "$name"
+            fi
+            ;;
     esac
     printf '| %s | %s |\n' "$name" "$(printf '%s' "$line" | sed 's/|/\\|/g')" >> "$summary"
 done

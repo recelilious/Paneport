@@ -412,10 +412,10 @@ jobs:
 
       # S4.2.5: every case passes. The runner makes a template prefix with wineboot, runs each
       # case in a fresh harness process with a fresh copy of it, and writes a summary.
-      - name: Run the harness's cases (eng/mac/run-harness.sh --mode multi)
+      - name: Run the harness's cases (eng/mac/run-harness.sh --mode single)
         id: cases
         if: ${{ !cancelled() && (steps.wine-cache.outputs.cache-hit == 'true' || steps.wine.outcome == 'success') && (steps.fex-cache.outputs.cache-hit == 'true' || steps.fex.outcome == 'success') && steps.win32.outcome == 'success' && steps.harness.outcome == 'success' }}
-        run: eng/mac/run-harness.sh --mode multi --no-build
+        run: eng/mac/run-harness.sh --mode single --no-build
 
       # Each run of the runner replaces its logs, so the cases' logs are kept before the next.
       - name: Keep the logs of the cases
@@ -434,7 +434,7 @@ jobs:
         if: ${{ !cancelled() && steps.cases.outcome != 'skipped' }}
         run: |
           status=0
-          output=$(GITHUB_STEP_SUMMARY= eng/mac/run-harness.sh --planted --mode multi --no-build 2>&1) || status=$?
+          output=$(GITHUB_STEP_SUMMARY= eng/mac/run-harness.sh --planted --mode single --no-build 2>&1) || status=$?
           echo "$output"
           if [ "$status" -eq 0 ]; then
             echo "::error title=Planted cases::The planted cases passed."

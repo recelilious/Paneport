@@ -5,7 +5,7 @@
  * @file
  * The session and process groups of the host interface (C-0005 section 2): starting and
  * stopping the launch's one Wine session, and launching, following and terminating the Windows
- * program that it runs. Version 1.3 of the interface added them.
+ * program that it runs. Version 1.4 of the interface added them.
  *
  * A launch of the app runs at most one session, and a session that ended cannot start again:
  * switching games needs a relaunch (C-0004 section 1). In this version a session runs one
@@ -37,11 +37,11 @@ PP_EXTERN_C_BEGIN
 /** The status codes of the session and process groups. */
 enum {
     /** pp_session_start needs the JIT state ready (C-0006 sections 3 and 5). */
-    PP_E_JIT_NOT_READY = -10,
+    PP_E_JIT_NOT_READY = -11,
     /** A session has already run in this process; another needs a relaunch (C-0004 section 1). */
-    PP_E_SESSION_EXISTS = -11,
+    PP_E_SESSION_EXISTS = -12,
     /** The call needs a running session. */
-    PP_E_NO_SESSION = -12,
+    PP_E_NO_SESSION = -13,
 };
 
 /** The architecture of the Windows programs that a session runs. */
@@ -55,11 +55,11 @@ enum {
 /** The kinds of event that the session and process groups report, in pp_event_t's kind. */
 enum {
     /** The session ended: code is 0, or the negative status that ended it. */
-    PP_EVENT_SESSION_ENDED = 1,
+    PP_EVENT_SESSION_ENDED = 2,
     /** A process finished its start and runs the program: handle names it. */
-    PP_EVENT_PROCESS_STARTED = 2,
+    PP_EVENT_PROCESS_STARTED = 3,
     /** A process ended, or failed to start: handle names it, code is its exit code. */
-    PP_EVENT_PROCESS_EXITED = 3,
+    PP_EVENT_PROCESS_EXITED = 4,
 };
 
 /** The states of a process, in pp_process_state_t. */

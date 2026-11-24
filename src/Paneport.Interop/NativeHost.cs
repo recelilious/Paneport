@@ -270,7 +270,7 @@ public static unsafe class NativeHost
         }
     }
 
-    // Where the members that version 1.3 appended to pp_log_line_t end. The conformance test
+    // Where the members that version 1.4 appended to pp_log_line_t end. The conformance test
     // checks the offsets that they rest on, 24 for source and 32 for process.
     private const uint SourceEnd = 28;
     private const uint ProcessEnd = 40;
@@ -281,7 +281,7 @@ public static unsafe class NativeHost
         try
         {
             var handler = (Action<HostLogLine>?)GCHandle.FromIntPtr((nint)userData).Target;
-            // A host older than version 1.3 sends a shorter line, without its source and process.
+            // A host older than version 1.4 sends a shorter line, without its source and process.
             var source = line->StructSize >= SourceEnd ? (HostLogSource)line->Source : HostLogSource.Host;
             var process = line->StructSize >= ProcessEnd ? line->Process : 0;
             handler?.Invoke(

@@ -5,7 +5,7 @@ namespace Paneport.Interop;
 
 /// <summary>
 /// Where a log line of the host comes from: the <c>PP_LOG_SOURCE_</c> values of
-/// <c>paneport/host.h</c>, which version 1.3 of the interface added.
+/// <c>paneport/host.h</c>, which version 1.4 of the interface added.
 /// </summary>
 public enum HostLogSource
 {

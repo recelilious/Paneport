@@ -188,7 +188,7 @@ public static unsafe class HostTestExports
 
     /// <summary>
     /// Sets whether the JIT state counts as ready for a session to start, which the macOS
-    /// harness needs until the JIT provider exists (<c>pp_test_jit_set_ready</c>, version 1.3).
+    /// harness needs until the JIT provider exists (<c>pp_test_jit_set_ready</c>, version 1.4).
     /// Any thread.
     /// </summary>
     /// <param name="ready">True for ready.</param>

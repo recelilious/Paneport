@@ -64,7 +64,7 @@ enum {
 };
 
 /**
- * Where a log line comes from. Version 1.3 of the interface added the source to
+ * Where a log line comes from. Version 1.4 of the interface added the source to
  * pp_log_line_t; a line of an older host comes from the host itself.
  */
 enum {
@@ -92,11 +92,11 @@ typedef struct pp_log_line_t {
      * a Windows program holds whatever they wrote. Valid until the callback returns.
      */
     const char *text;
-    /** One of the PP_LOG_SOURCE_ values. Version 1.3 appended it. */
+    /** One of the PP_LOG_SOURCE_ values. Version 1.4 appended it. */
     uint32_t source;
     /**
      * The handle of the Windows process that wrote the line, for the guest sources, or 0.
-     * Version 1.3 appended it.
+     * Version 1.4 appended it.
      */
     uint64_t process;
 } pp_log_line_t;

@@ -248,7 +248,7 @@ PP_EXPORT pp_status_t pp_test_signal_harness_read(pp_test_signal_counters_t *cou
 /**
  * Sets whether the JIT state counts as ready for pp_session_start (C-0005 section 2), which the
  * macOS harness needs until the JIT provider exists: there, FEX maps its code with MAP_JIT.
- * Until it is called, the state is not ready. Version 1.3 added it.
+ * Until it is called, the state is not ready. Version 1.4 added it.
  *
  * Thread rule: [any]. Memory: none.
  *

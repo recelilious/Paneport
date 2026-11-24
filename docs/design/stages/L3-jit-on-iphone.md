@@ -20,7 +20,7 @@ Back to the [development plan](../development-plan.md).
 | S3.1.3 | Region request and mapping | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
 | S3.1.4 | Verification probe | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
 | S3.1.5 | macOS backend with a simulated broker | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
-| S3.1.6 | Broker script | Small | Done | [#43](https://github.com/recelilious/Paneport/pull/43) | 2026-11-24 |
+| S3.1.6 | Request that names StikDebug's built-in script | Small | Done | [#43](https://github.com/recelilious/Paneport/pull/43) | 2026-11-24 |
 | S3.1.7 | iOS build list and schema | Small | Done | [#40](https://github.com/recelilious/Paneport/pull/40) | 2026-11-24 |
 
 ## L3 JIT on the iPhone
@@ -165,7 +165,8 @@ _No sessions yet._
   - requested sizes are clamped to 256 to 896 MiB and to one eighth of the simulated memory limit, and a below-minimum limit yields `failed` (C-0006 section 4);
   - the headers compile as C17 and C++20 and the interface conformance check passes (C-0005 section 5).
 - `checks` CI job (C-0011 section 4): the compatibility checker validates `compat/ios-builds.json` against `compat/schema/ios-builds.schema.json`, including a failing fixture that the check must reject. REUSE, gitleaks and the personal-data check pass over the new files.
-- Scripts this stage creates: the CTest suite and its fake debugger-state source in `tests/native/`, the macOS test backend with a simulated broker, and the extension to the C# compatibility checker in `tools/` for `compat/ios-builds.json`.
+- `dotnet` CI job on Windows and Linux (C-0011 section 4): `tests/Paneport.Core.Tests`, with `StikDebugRequestTests` (S3.1.6).
+- Scripts this stage creates: the CTest suite and its fake debugger-state source in `tests/native/`, the macOS test backend with a simulated broker, the extension to the C# compatibility checker in `tools/` for `compat/ios-builds.json`, and `tests/Paneport.Core.Tests/Jit/StikDebugRequestTests.cs`.
 
 **Done when.** The deliverables exist, the verification above passes in CI, the design documents are written (C-0012 section 1 item 8), the definition of done in C-0012 section 1 holds, and the branch is merged by recelilious after review. No device behavior is claimed; the pull request marks the device path as "not yet verified on device" (C-0012 section 1 item 9), which L3 then verifies.
 
@@ -253,3 +254,10 @@ _No sessions yet._
   - **Decisions.** The builder returns the URL's text and not a `System.Uri`, whose text adds a `/` before the query; the query items come in the brief's order: `bundle-id`, `pid`, `script-name`.
   - **Left.** Everything on the device is L3's, which opens the URL through the iOS head's opener (S3.0.1).
   - **For later sessions.** The L3 note on the URL names the builder, and the M4.4 note in the L4 brief no longer waits for M3.1.
+- **2026-11-24 (session 5).** Fix round 1 of [#43](https://github.com/recelilious/Paneport/pull/43). The coordinator's review of `de92c9b` (one checker and one skeptic) found that all 12 claims hold, and five low defects.
+  - **Done.**
+    - The escaping case is renamed `ACharacterThatCouldEndTheValueIsEscaped` and pins every character outside RFC 3986's unreserved set, with `_` and `~` kept, a line feed and a character beyond the Basic Multilingual Plane among them. A new case, `TheIdentifierIsNotTrimmed`, keeps the spaces around an identifier. Seven tests with nine cases.
+    - The builder's documentation and [jit-broker.md](../jit-broker.md) section 5 say that a lone surrogate becomes U+FFFD; section 6 lists RFC 3986 and Apple's `CFBundleIdentifier` reference.
+    - M3.1's Verification names the `dotnet` job and the test file, and the stage table gives S3.1.6 its new title.
+  - **Verification.** On the workstation, the 511 tests of `tests/Paneport.Core.Tests` pass. Each of eight escapers that the review found passing now fails a case: one that works one UTF-16 unit at a time, by `Uri.EscapeDataString` or by hand; one that trims; ones that leave `;`, `"` or a line feed raw; one that escapes `_` and `~`; and one that escapes only nine characters and those beyond ASCII. The runs of CI on the final head are in [#43](https://github.com/recelilious/Paneport/pull/43).
+  - **Left.** Everything on the device is L3's.

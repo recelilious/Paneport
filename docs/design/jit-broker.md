@@ -2,7 +2,7 @@
 
 | Author | Timestamp (UTC) |
 |---|---|
-| Claude (Anthropic), for the Paneport project | 2026-11-24T16:52Z |
+| Claude (Anthropic), for the Paneport project | 2026-11-24T18:22Z |
 
 Back to the [design index](README.md).
 
@@ -53,14 +53,15 @@ stikdebug://enable-jit?bundle-id=<bundle identifier>&pid=<process identifier>&sc
   - `pid` is its process identifier, in decimal digits.
   - `script-name` is the file name of StikDebug's built-in script.
   - The Trusted Execution Monitor is active on every target device, so the request always names the script and never carries `script-data` (C-0006 section 3 step 2).
-- **Escaping.** The bundle identifier is percent-encoded as a query value (RFC 3986). Its letters, digits, hyphens and periods, which are all that a bundle identifier holds, stay as they are. Any other character, such as one that a re-signing tool might add, cannot end the value or start another item. The process identifier and the script's name need no escaping.
+- **Escaping.** The bundle identifier is percent-encoded as a query value (RFC 3986). Its letters, digits, hyphens and periods, which are all that a bundle identifier holds (Apple's `CFBundleIdentifier` reference), stay as they are, as do `_` and `~`, which RFC 3986 also leaves unreserved. Any other character, such as one that a re-signing tool might add, is encoded as UTF-8, so it cannot end the value or start another item. A lone surrogate, which a real bundle identifier cannot hold, becomes U+FFFD, `%EF%BF%BD`, as `Uri.EscapeDataString` writes it. The process identifier and the script's name need no escaping.
 - **Refusals.** An empty bundle identifier, or a process identifier that is not above 0, is refused with an argument exception. The head passes its own `CFBundleIdentifier` and process identifier, so either means a bug in the head.
-- **No platform API.** The builder is pure, as Paneport.Core is (C-0004 section 2), and returns the URL's text, which the head opens as it is. It is not a `System.Uri`, whose text adds a `/` before the query, which the URL of `INTEGRATION.md` does not have.
+- **No platform API.** The builder is pure and, as C-0004 section 2 asks of Paneport.Core, uses no platform API; it returns the URL's text, which the head opens as it is. It is not a `System.Uri`, whose text adds a `/` before the query, which the URL of `INTEGRATION.md` does not have.
 - **Its use** (L3, S3.0.1): the JIT setup screen calls `pp_jit_set_enabler_opened(1)` on the main thread right before the URL opener of the iOS head opens the URL, and `pp_jit_set_enabler_opened(0)` when iOS refuses it (jit.md sections 5 and 8). Opening the URL only means that iOS accepted it; the provider then waits for the broker.
 - **Tests.** `tests/Paneport.Core.Tests/Jit/StikDebugRequestTests.cs` checks these:
   - the exact URL for the app's bundle identifier;
   - a bundle identifier's letters, digits, hyphens and periods kept as they are;
-  - every character that could end the value escaped, a letter beyond ASCII among them;
+  - every character outside RFC 3986's unreserved set escaped as UTF-8, with `_` and `~` kept: those that could end the value (`&`, `=`, `#`, `;` and others), `"`, a line feed, a letter beyond ASCII and one beyond the Basic Multilingual Plane;
+  - spaces around the identifier kept as `%20`, so the builder does not trim it;
   - the largest process identifier written in full;
   - both refusals.
 - **Not yet verified on device:** whether StikDebug accepts the URL. Step 3 of L3's acceptance shows it, and its evidence record names StikDebug's version (C-0006 section 7).
@@ -71,3 +72,5 @@ Public material consulted (C-0001 section 6):
 
 - StikJIT's `INTEGRATION.md`, commit `a9ccad90c7a8cb547f77ff338890e6633a65ac43` of 2026-11-08, MPL-2.0, read in full through GitHub's API: <https://github.com/StikDebug/StikJIT/blob/a9ccad90c7a8cb547f77ff338890e6633a65ac43/INTEGRATION.md>
 - The names of the files of the StikDebug/StikDebug repository, through GitHub's API, without their contents, to see whether any is named for a script interface; none is.
+- RFC 3986, *Uniform Resource Identifier (URI): Generic Syntax*, sections 2.3 (the unreserved characters) and 3.4 (the query), read on 2026-11-24: <https://www.rfc-editor.org/rfc/rfc3986>
+- Apple's `CFBundleIdentifier` reference, which allows only letters, digits, hyphens and periods in a bundle identifier, read on 2026-11-24: <https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleidentifier>

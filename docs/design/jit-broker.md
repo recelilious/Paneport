@@ -1,16 +1,16 @@
-# JIT Broker Script
+# JIT Broker Script and Request
 
 | Author | Timestamp (UTC) |
 |---|---|
-| Claude (Anthropic), for the Paneport project | 2026-11-24T13:20Z |
+| Claude (Anthropic), for the Paneport project | 2026-11-24T18:22Z |
 
 Back to the [design index](README.md).
 
-This document describes the broker side of the JIT request protocol of C-0006: the script that StikDebug runs to serve the app's two commands. Stage M3.1 found that StikJIT's `INTEGRATION.md`, the only source that C-0006 section 2 allows for the script, does not document the interface that a script uses, so the script is **not written**: the brief of M3.1 left that case to a decision by recelilious, who chose on 2026-11-23 that Paneport names StikDebug's built-in script instead (section 4), which C-0006 1.1 records. [jit.md](jit.md) describes the app side, which M3.1 built and which does not depend on the decision. Where this document and a contract differ, the [contracts](../contracts/README.md) win.
+This document describes the broker side of the JIT request protocol of C-0006: the script that StikDebug runs to serve the app's two commands, and the request with which the app names it. Stage M3.1 found that StikJIT's `INTEGRATION.md`, the only source that C-0006 section 2 allows for the script, does not document the interface that a script uses, so Paneport writes **no script**: the brief of M3.1 left that case to a decision by recelilious, who chose on 2026-11-23 that Paneport names StikDebug's built-in script instead (section 4), which C-0006 1.1 records. S3.1.6 built the request that names it (section 5). [jit.md](jit.md) describes the app side, which does not depend on the decision. Where this document and a contract differ, the [contracts](../contracts/README.md) win.
 
 ## 1. What the contracts ask
 
-- **The script** is StikDebug's built-in `universal.js`, which the app's request names (C-0006 1.1 sections 1 to 3). Paneport does not write, bundle, copy or read it, and relies only on the behavior that `INTEGRATION.md` documents for it: it serves commands 0 and 1 (C-0006 section 2). So the repository has no folder for a script and the app bundles none (C-0004 1.2 sections 2 and 3, C-0009 1.3 section 4), and Paneport writes no JavaScript, whose language level C-0010 1.2 would otherwise record.
+- **The script** is StikDebug's built-in `universal.js`, which the app's request names (C-0006 1.1 sections 1 to 3). Paneport does not write, bundle, copy or read it, and relies only on the behavior that `INTEGRATION.md` documents for it: it serves commands 0 and 1 (C-0006 section 2). So the repository has no folder for a script and the app bundles none (C-0004 1.2 sections 2 and 3, C-0009 1.3 section 4). Paneport writes no JavaScript either: C-0010 1.2 section 1 dropped the row of the broker script, and writing the language again would need a change to that contract.
 - **What Paneport no longer guarantees.** The app sends only commands 0 and 1, only in the `requesting` state and only while a debugger is attached now. The script that serves them is StikDebug's, so Paneport cannot guarantee that it performs no other operation or that it acts only on Paneport's process; the device acceptance checks the result, and every evidence record names StikDebug's version, because an update of StikDebug can change the script (C-0006 section 7, C-0012 section 4).
 - **The boundary.** StikDebug is a separate app under AGPL-3.0. Paneport uses only the convention and the URL scheme that `INTEGRATION.md` documents, and nobody writing Paneport's side reads StikDebug's source or scripts (C-0003 section 9). Naming the script in the URL links, embeds and copies nothing: StikDebug runs its own script in its own app (C-0003 1.9 section 9). No code from StikDebug, its bundled or community scripts such as `universal.js`, or any other product's JIT helper is copied, translated or rewritten (C-0001 section 6, C-0006 section 2).
 
@@ -38,11 +38,39 @@ The coordinating session put these options to recelilious on 2026-11-23, recomme
 | C | Read the interface's definition in StikDebug's source. | C-0003 section 9 and the AGPL boundary. Not proposed. |
 | D | Keep the script out of M3.1, and let L3 wait for the decision. | Nothing |
 
-recelilious chose A on 2026-11-23, with the words "Yes, option A", and approved the contract changes as drafted: C-0003 1.9, C-0004 1.2, C-0006 1.1, C-0009 1.3 and C-0010 1.2, in pull request #41, which merged on 2026-11-23. Pull request #40, the app side, then dropped `src/jit-broker/`, which held only its README. The pull request of S3.1.6 follows #40: the app's request names `script-name=universal.js` with `bundle-id` and `pid`, and this document records the URL that the app builds, which L3's JIT setup screen opens (jit.md section 8).
+recelilious chose A on 2026-11-23, with the words "Yes, option A", and approved the contract changes as drafted: C-0003 1.9, C-0004 1.2, C-0006 1.1, C-0009 1.3 and C-0010 1.2, in pull request #41, which merged on 2026-11-23. Pull request #40, the app side, then dropped `src/jit-broker/`, which held only its README. The pull request of S3.1.6 followed #40 and built the request, which names `script-name=universal.js` with `bundle-id` and `pid` and which L3's JIT setup screen opens (section 5, jit.md section 8).
 
-## 5. Sources
+## 5. The request
+
+`StikDebugRequest.Build` in `src/Paneport.Core/Jit/` builds the URL with which the app asks StikDebug for JIT (S3.1.6, C-0006 section 3 step 2):
+
+```text
+stikdebug://enable-jit?bundle-id=<bundle identifier>&pid=<process identifier>&script-name=universal.js
+```
+
+- **The query items** come in that order, so that one app and one process give one text. `INTEGRATION.md` does not ask for an order.
+  - `bundle-id` is the app's bundle identifier, with which StikDebug returns to the app.
+  - `pid` is its process identifier, in decimal digits.
+  - `script-name` is the file name of StikDebug's built-in script.
+  - The Trusted Execution Monitor is active on every target device, so the request always names the script and never carries `script-data` (C-0006 section 3 step 2).
+- **Escaping.** The bundle identifier is percent-encoded as a query value (RFC 3986). Its letters, digits, hyphens and periods, which are all that a bundle identifier holds (Apple's `CFBundleIdentifier` reference), stay as they are, as do `_` and `~`, which RFC 3986 also leaves unreserved. Any other character, such as one that a re-signing tool might add, is encoded as UTF-8, so it cannot end the value or start another item. A lone surrogate, which a real bundle identifier cannot hold, becomes U+FFFD, `%EF%BF%BD`, as `Uri.EscapeDataString` writes it. The process identifier and the script's name need no escaping.
+- **Refusals.** An empty bundle identifier, or a process identifier that is not above 0, is refused with an argument exception. The head passes its own `CFBundleIdentifier` and process identifier, so either means a bug in the head.
+- **No platform API.** The builder is pure and, as C-0004 section 2 asks of Paneport.Core, uses no platform API; it returns the URL's text, which the head opens as it is. It is not a `System.Uri`, whose text adds a `/` before the query, which the URL of `INTEGRATION.md` does not have.
+- **Its use** (L3, S3.0.1): the JIT setup screen calls `pp_jit_set_enabler_opened(1)` on the main thread right before the URL opener of the iOS head opens the URL, and `pp_jit_set_enabler_opened(0)` when iOS refuses it (jit.md sections 5 and 8). Opening the URL only means that iOS accepted it; the provider then waits for the broker.
+- **Tests.** `tests/Paneport.Core.Tests/Jit/StikDebugRequestTests.cs` checks these:
+  - the exact URL for the app's bundle identifier;
+  - a bundle identifier's letters, digits, hyphens and periods kept as they are;
+  - every character outside RFC 3986's unreserved set escaped as UTF-8, with `_` and `~` kept: those that could end the value (`&`, `=`, `#`, `;` and others), `"`, a line feed, a letter beyond ASCII and one beyond the Basic Multilingual Plane;
+  - spaces around the identifier kept as `%20`, so the builder does not trim it;
+  - the largest process identifier written in full;
+  - both refusals.
+- **Not yet verified on device:** whether StikDebug accepts the URL. Step 3 of L3's acceptance shows it, and its evidence record names StikDebug's version (C-0006 section 7).
+
+## 6. Sources
 
 Public material consulted (C-0001 section 6):
 
 - StikJIT's `INTEGRATION.md`, commit `a9ccad90c7a8cb547f77ff338890e6633a65ac43` of 2026-11-08, MPL-2.0, read in full through GitHub's API: <https://github.com/StikDebug/StikJIT/blob/a9ccad90c7a8cb547f77ff338890e6633a65ac43/INTEGRATION.md>
 - The names of the files of the StikDebug/StikDebug repository, through GitHub's API, without their contents, to see whether any is named for a script interface; none is.
+- RFC 3986, *Uniform Resource Identifier (URI): Generic Syntax*, sections 2.3 (the unreserved characters) and 3.4 (the query), read on 2026-11-24: <https://www.rfc-editor.org/rfc/rfc3986>
+- Apple's `CFBundleIdentifier` reference, which allows only letters, digits, hyphens and periods in a bundle identifier, read on 2026-11-24: <https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleidentifier>

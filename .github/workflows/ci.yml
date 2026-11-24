@@ -959,9 +959,9 @@ jobs:
           fi
           exit "$status"
 
-      # M9.1: release device builds are stripped of symbols (C-0009 section 6). dotnet build leaves the
-      # linker's debug map in the executable and the frameworks, so the debugging and local symbols of
-      # every Mach-O file go before signing; the full scan below fails on any that are left.
+      # M9.1: release device builds are stripped of symbols (C-0009 section 6). dotnet build in Release
+      # strips them already; this step makes sure of it before signing, whatever the SDK or a package
+      # does, and the full scan below fails on any debugging entry but strip's own marker.
       - name: Strip both apps (eng/release/strip-binaries.sh)
         if: ${{ !cancelled() && (steps.apps.outputs.main != '' || steps.apps.outputs.test != '') }}
         env:

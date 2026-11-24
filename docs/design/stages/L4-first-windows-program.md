@@ -13,7 +13,7 @@ Back to the [development plan](../development-plan.md).
 | L4 | First Windows program on the iPhone | Large | Planned | | |
 | M4.1 | Forks, submodules and toolchains | Medium | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | M4.2 | ARM64EC Wine with FEX on macOS | Medium | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
-| M4.3 | Single-process Wine on macOS | Medium | In progress | `feat/m4-3-single-process-wine` | 2026-11-23 |
+| M4.3 | Single-process Wine on macOS | Medium | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-24 |
 | M4.4 | Runtime on iOS | Medium | Planned | | |
 | M4.5 | Shared user data for x86-64 guests | Medium | Done | [#38](https://github.com/recelilious/Paneport/pull/38) | 2026-11-24 |
 | S4.0.1 | In-app console and the Run sample program action | Small | Planned | | |
@@ -28,15 +28,15 @@ Back to the [development plan](../development-plan.md).
 | S4.2.4 | Win32 test programs | Small | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
 | S4.2.5 | Harness, runner and expected outputs | Small | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
 | S4.2.6 | Runtime CI job, layout proposal and build caching | Small | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
-| S4.3.1 | Single-process design document | Small | Planned | | |
-| S4.3.2 | wineserver thread and in-process connections | Small | Planned | | |
-| S4.3.3 | In-process start of the first process | Small | Planned | | |
-| S4.3.4 | Signal integration through the bridge | Small | Planned | | |
-| S4.3.5 | Mach thread control in the fork | Small | Planned | | |
-| S4.3.6 | Teardown and exit semantics | Small | Planned | | |
-| S4.3.7 | Prefix bootstrap and drive letters | Small | Planned | | |
-| S4.3.8 | Bridge header and the host session API | Small | Planned | | |
-| S4.3.9 | Fork and exec trap | Small | Planned | | |
+| S4.3.1 | Single-process design document | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-24 |
+| S4.3.2 | wineserver thread and in-process connections | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-24 |
+| S4.3.3 | In-process start of the first process | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-24 |
+| S4.3.4 | Signal integration through the bridge | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-24 |
+| S4.3.5 | Mach thread control in the fork | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-24 |
+| S4.3.6 | Teardown and exit semantics | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-24 |
+| S4.3.7 | Prefix bootstrap and drive letters | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-24 |
+| S4.3.8 | Bridge header and the host session API | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-24 |
+| S4.3.9 | Fork and exec trap | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-24 |
 | S4.4.1 | iOS cross-build | Small | Planned | | |
 | S4.4.2 | Framework packaging and loader paths | Small | Planned | | |
 | S4.4.3 | FEX pool allocator hook | Small | Planned | | |
@@ -573,13 +573,28 @@ Out: a second Windows process, `CreateProcess` from a guest and helper programs 
     - Each move of the Wine pointer builds Wine cold in the `runtime` job, so fork changes are best batched.
 - **2026-11-23 (UTC), second session.**
   - **Done.**
-    - The native job's failures on the first session's head: a launch whose process started and ended before `pp_process_launch` looked counted as a failed start, and clang-tidy 23 found 29 points in the new host code and tests (`2e4b99a`). The bridge's `start_thread` gives its threads 8 MiB stacks, because the wineserver runs on one, which upstream runs on a process's main thread (`1cc034d`).
+    - The native job's failures on the first session's head: a launch whose process started and ended before `pp_process_launch` looked counted as a failed start, and clang-tidy 23 found 29 points in the new host code and tests (`20cad6b`). The bridge's `start_thread` gives its threads 8 MiB stacks, because the wineserver runs on one, which upstream runs on a process's main thread (`220df76`).
     - S4.3.2 to S4.3.7 in the Wine fork, on `paneport/M4.3` at `d7044ab`: the server library's entry points (`8fb790b`), ntdll's single-process mode with the process's start, the boot step and thread control (`c34c925`), the wineserver as a thread (`05a1612`), and the umask, read once before the server's thread starts (`d7044ab`). The FEX fork's new branch `paneport/M4.3` at `cb6781e` keeps `ExitFunctionEC`'s entry thunk offset in x5 instead of x23, the likely cause of the race in the notes of M4.2.
-    - Both pointers moved (`cb19efe`). `eng/mac/build-wine.sh` passes the bridge header's folder to Wine's compiler, records the header's SHA-256, refuses a repository path with spaces, and checks that `bin/wineserver.so` exports the server's five entry points.
-    - threads.exe's check of the syscall loop sets the context back again (`acd1dc8`).
-    - The harness's single mode, the fork and exec trap (S4.3.9) and the session cases, by a subagent (`67eb7dc`); the third session reviewed it.
-  - **Verification.** CI on `acd1dc8` built the fork cold on macOS, the first build of its Apple-only code, and multi mode passed every case on it, `threads_multiblock_off` with the context set back (runs 45182938197 and 45183281260).
+    - Both pointers moved (`09ff286`). `eng/mac/build-wine.sh` passes the bridge header's folder to Wine's compiler, records the header's SHA-256, refuses a repository path with spaces, and checks that `bin/wineserver.so` exports the server's five entry points.
+    - threads.exe's check of the syscall loop sets the context back again (`91c5cc7`).
+    - The harness's single mode, the fork and exec trap (S4.3.9) and the session cases, by a subagent (`2f69ba9`); the third session reviewed it.
+  - **Verification.** CI built the fork cold on macOS, the first build of its Apple-only code, on the commit of threads.exe's check, now `91c5cc7` (run 45182938197), and multi mode passed every case there and on the harness's commit, now `2f69ba9` (run 45183281260), `threads_multiblock_off` with the context set back. The harness's commit failed the `native` job, on the trap's caller and seven findings of clang-tidy 23, which the third session fixed.
   - **Left.** The review of the harness's work, single mode in CI, the design document and the documentation updates, and the rebase.
+- **2026-11-24 (UTC), third session.**
+  - **Done.**
+    - The review of the harness's work, line by line, and the native job's two failures in it (`c8893be`): the trap named itself as `execl`'s caller, because the replacements of the forms of exec that take their arguments one by one held a 1024-entry array, so their prologue called the stack probe, whose call overwrote the return address before the trap read it; a helper that is never inlined holds the array now. And seven findings of clang-tidy 23.
+    - CI runs the cases and the planted cases in single mode, and prints the end of a failed case's error output and output into the job's log (`c6a98bd`).
+    - The Wine fork's fixes for what single mode's runs found, on `paneport/M4.3` at `45216b4`: a program not at its base runs relocated, and any other failure to load it ends the process instead of falling back to `start.exe` (`6f8ad14`); a fatal error ends the app through the dispatcher (`2659a71`); the boot step writes the volatile keys of `HKLM\Hardware\Description\System` (`c5bd94e`) and makes their missing parents one at a time (`6e36f4a`); and `perform_relocations` changes a section's whole span up to its section alignment and restores only the protections that it changed (`45216b4`). The pointer moved with each (`fdc9645`, `bf13fdd` and `08dab69`).
+    - S4.3.1: [single-process-wine.md](../single-process-wine.md) (`1baa73d`, `cb1f3e4`, `d087517` and this session's last commit); signals.md section 12 on how thread control uses Mach (`42ad60e`); runtime-macos-harness.md sections 5 to 7, 9 and 11; native-host.md; and the READMEs of `include/paneport`, `host` and `tests/native`.
+    - The rebases onto `main` after #42, after #40 (M3.1) and after #43 (S3.1.6). The session's codes and events follow M3.1's (`a5c44ac`): `PP_E_JIT_NOT_READY` (-11), `PP_E_SESSION_EXISTS` (-12), `PP_E_NO_SESSION` (-13), the event kinds 2 to 4, and interface version 1.4. The session's start reads M3.1's `pp_jit_is_ready`, and the test hook only adds to it.
+    - The checkouts of the forks that recelilious allowed on 2026-11-23 are deleted, since this stage's fork work is finished.
+  - **Found.**
+    - In the first run of single mode, run [45418731618](https://github.com/recelilious/Paneport/actions/runs/45418731618), every x86-64 program ended before its first line with `0xC000001D`: FEX's ARM64EC module found no `CentralProcessor\0` key, a volatile key that `wineboot` writes and the template cannot hold. A program not at its base fell back to `start.exe`, whose `CreateProcess` forked, which the trap refused and named. The wineserver creates only the last level of a key's path.
+    - The fault before a program's first line that #40 met once in multi mode is a fault of relocated programs: on 16 KiB host pages, `perform_relocations` asked for a host page that would be writable and executable, macOS refused, and the restore applied a stale `PAGE_NOACCESS` to the code section. Single mode met it often, since the harness's own mappings may hold the programs' base. `main`'s multi mode keeps it until this branch merges; a rerun of the job is the workaround (runtime-macos-harness.md section 11).
+    - Thread control by Mach calls does not settle M4.2's race by itself; the FEX fork's `cb6781e` removes its likely cause, and the check that sets the context back passes in both modes ([single-process-wine.md](../single-process-wine.md) section 13).
+  - **Verification.** Run [45453104970](https://github.com/recelilious/Paneport/actions/runs/45453104970) on `2005b89`, with Wine `45216b4` built cold and FEX `cb6781e`: all six jobs passed, and in single mode all 14 cases passed, `console_repeated` with 20 runs in fresh harness processes, with no refused call; the planted cases failed with exactly their two lines. The pull request records CI on the branch's last commit.
+  - **Left.** The merge. If [#38](https://github.com/recelilious/Paneport/pull/38) (M4.5) merges first, the FEX fork's `paneport/M4.3` is rebased onto its `paneport/integration` and the pointer moves ([forks.md](../forks.md) section 4.2).
+  - **For later sessions.** Notes left in the sections of M4.4, of M6.5 in the [L6 brief](L6-2d-game.md) and of M8.1 in the [L8 brief](L8-dock-alpha.md).
 
 ## M4.4 Runtime on iOS
 
@@ -672,6 +687,10 @@ Out: display, input and audio (M5.1, M6.1, M6.2); DXMT (M5.2); 32-bit pieces (M7
 - M4.2 (fix round of 2026-11-22): the runner keeps `MAP_JIT` memory writable and executable for every thread, so CI cannot catch a missing write scope in FEX through the hardware; only the handler for misaligned accesses checks a depth of its scope instead (FEX `379b052`, `bddc603` and `aa8f7a6`). This stage verifies on the same runner, so the first run that enforces the protection is the device check of L4's acceptance, or a run on a Mac with Apple silicon: read a fault on a write to FEX's code buffer there as a missing scope first, and keep the depth check whatever way the pool switches (runtime-macos-harness.md section 3.1).
 - M3.1 (session logs of 2026-11-23 and 2026-11-24): the pool registry is `pp_jit_pool_copy` in `src/native/host/jit/jit_provider.h`: for each region, which is 128 MiB but for the last one, which takes the rest of the pool, `exec_address`, readable and executable, `write_address`, readable and writable, both with maxima lowered where the system allows it (best effort, logged otherwise; jit.md section 6), `size`, and the signal dispatcher's handles of both views, which stay registered. The bridge member declares a struct of its own, because `paneport/wine_bridge.h` includes no other Paneport header. On the harness, the macOS backend's simulated broker, whose regions are anonymous readable and executable memory and not `MAP_JIT` memory ([jit.md](../jit.md) section 2), reaches `ready` after `pp_jit_set_enabler_opened(1)` and `pp_jit_request_pool`, with the memory stub set ([jit.md](../jit.md) sections 2, 6 and 11). M3.1 is Done with the pull request of S3.1.6, [#43](https://github.com/recelilious/Paneport/pull/43), so this stage no longer waits for M3.1.
 - M4.5 (session log of 2026-11-23): FEX redirects x86-64 guest reads of the shared user data at `0x7ffe0000` to where Wine maps it (FEX `01b877e`, `b2ad56d` and `72b7ac6`, runtime-macos-harness.md section 3.1). iOS apps keep a page zero too, so the iOS build needs the same path: the ARM64EC frontend reads the page's address from ntdll's `__wine_get_user_shared_data` at process start, the constant-address loads that go through `LoadSource_WithOpSize` read the copy as the JIT translates them, and other reads, among them `movhps` and `movlps` even at a constant address, fault and are emulated. Check on iOS that such a fault reaches FEX's `ResetToConsistentState` with its fault address, as on macOS, and run the `shared_data` case in pool mode; the JIT writes the copy's address into generated code as a constant. Native ARM64EC code that is given the fixed address still faults.
+- M4.3 (session log of 2026-11-24): a few paths of single mode that only a broken start reaches still call `exit`, which the harness's trap does not intercept: the failure of `virtual_init`'s mappings of the shared user data and of the first thread's data, and the help texts that `WINEDEBUG=help` and `WINEDLLOVERRIDES=help` print. This stage replaces them before they can be reached on the device ([single-process-wine.md](../single-process-wine.md) section 8).
+- M4.3 (session log of 2026-11-24): Wine sets state of the host's process, which this stage checks against the app's own use: the environment, which holds the session's variables and `WINEPREFIX`, the locale through `setlocale`, the descriptor limit, the umask, SIGPIPE ignored, the SIGUSR2 handler, and unbuffered standard output and error ([single-process-wine.md](../single-process-wine.md) section 11).
+- M4.3 (session log of 2026-11-24): on 16 KiB host pages, ntdll's `perform_relocations` must change whole host pages, or the system refuses one that would be writable and executable and the restore loses the old protection; the Wine fork's `45216b4` changes each section's span up to its section alignment. A program or DLL that is not at its base takes that path on the device too (runtime-macos-harness.md section 11).
+- M4.3 (session log of 2026-11-24): FEX's ARM64EC module ends every x86-64 process with `0xC000001D` before any x86-64 code runs when `HKLM\Hardware\Description\System\CentralProcessor\0` is missing. The boot step writes that volatile key at every start from ntdll's SMBIOS table, so a first run on the device that ends that way points at the table there ([single-process-wine.md](../single-process-wine.md) section 9).
 
 **Session log.**
 

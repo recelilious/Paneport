@@ -5,11 +5,14 @@
 // The compatibility check of C-0011 section 1, so far for the list of verified iOS builds:
 // compat/ios-builds.json must match compat/schema/ios-builds.schema.json (C-0006 section 6),
 // each build and device model may appear only once, and every evidence record that an entry
-// names must exist. The validator is our own and implements only the JSON Schema keywords
-// (draft 2020-12) that the schema uses; a schema with any other keyword, or with a value that
-// a keyword does not allow, is refused, so that no keyword goes unchecked. The title files of
-// compat/titles/ join with M8.3, which records decision D8 of 2026-11-23: a validator of our
-// own, which M8.3 extends (C-0011 section 5).
+// names must exist. The validator is our own: it implements only the JSON Schema keywords
+// (draft 2020-12) that the schema uses, each only in the forms that it implements, so that no
+// keyword goes unchecked. It refuses a schema with any other keyword or another form of a
+// keyword's value; with a $schema other than draft 2020-12, or a $schema or $id below the
+// root; with a title, description or $id that is not a string; with a required list that names
+// a member twice; and with a member that appears twice. The title files of compat/titles/ join
+// with M8.3, which records decision D8 of 2026-11-23: a validator of our own, which M8.3
+// extends (C-0011 section 5).
 //
 //   dotnet run tools/CheckCompat.cs                 check the repository
 //   dotnet run tools/CheckCompat.cs -- --self-test  check the validator and the rules on fixtures
@@ -56,10 +59,14 @@ internal sealed record Problem(string File, string Pointer, string Rule, string 
     public override string ToString() => $"{File}: {(Pointer.Length == 0 ? "/" : Pointer)}: {Rule}: {Detail}";
 }
 
-// The validator of the keywords that the schema uses. s_annotations are read and ignored.
+// The validator of the keywords that the schema uses. The annotations of s_annotations take no
+// part in validation; CheckAnnotation checks their values.
 internal sealed class SchemaValidator
 {
     private const string DefinitionPrefix = "#/$defs/";
+
+    // The dialect that the validator implements (C-0010 section 1).
+    private const string Dialect = "https://json-schema.org/draft/2020-12/schema";
 
     private static readonly HashSet<string> s_annotations = ["$schema", "$id", "title", "description"];
 
@@ -74,8 +81,9 @@ internal sealed class SchemaValidator
     private readonly JsonElement _root;
     private readonly Dictionary<string, Regex> _patterns = [];
 
-    // Reads the schema, and refuses it when it uses a keyword that this validator does not
-    // implement, or gives a keyword a value that JSON Schema does not allow, anywhere in it.
+    // Reads the schema, and refuses it when, anywhere in it, a keyword is one that this validator
+    // does not implement, a keyword's value takes a form that it does not implement, or an
+    // annotation breaks a rule of CheckAnnotation.
     public SchemaValidator(JsonElement root, string name)
     {
         _root = root;
@@ -95,15 +103,16 @@ internal sealed class SchemaValidator
         foreach (var keyword in schema.EnumerateObject())
         {
             var at = $"{pointer}/{Escape(keyword.Name)}";
+            var value = keyword.Value;
             if (s_annotations.Contains(keyword.Name))
             {
+                CheckAnnotation(keyword.Name, value, pointer, at, name);
                 continue;
             }
             if (!s_keywords.Contains(keyword.Name))
             {
                 throw Refuse(name, at, "tools/CheckCompat.cs does not implement this keyword.");
             }
-            var value = keyword.Value;
             switch (keyword.Name)
             {
                 case "properties" or "$defs" when value.ValueKind != JsonValueKind.Object:
@@ -122,6 +131,9 @@ internal sealed class SchemaValidator
                 case "required" when value.ValueKind != JsonValueKind.Array
                     || value.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.String):
                     throw Refuse(name, at, "the keyword needs a list of member names.");
+                case "required" when value.EnumerateArray().Select(item => item.GetString())
+                    .Distinct(StringComparer.Ordinal).Count() != value.GetArrayLength():
+                    throw Refuse(name, at, "the keyword names each member once.");
                 case "minItems" when value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var least) || least < 0:
                     throw Refuse(name, at, "the keyword needs a non-negative integer.");
                 case "uniqueItems" when value.ValueKind is not (JsonValueKind.True or JsonValueKind.False):
@@ -131,6 +143,26 @@ internal sealed class SchemaValidator
                 case "$ref" when !Resolves(root, value):
                     throw Refuse(name, at, "only a reference to a member of the root's $defs is implemented.");
             }
+        }
+    }
+
+    // The annotations take no part in validation, but JSON Schema 2020-12 wants each to be a
+    // string, $schema names the dialect, which must be the one that this validator implements,
+    // and below the root $schema and $id would start a schema of their own, which it does not
+    // implement.
+    private static void CheckAnnotation(string keyword, JsonElement value, string pointer, string at, string name)
+    {
+        if (keyword is "$schema" or "$id" && pointer.Length > 0)
+        {
+            throw Refuse(name, at, "only the root may give $schema or $id.");
+        }
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw Refuse(name, at, "the keyword needs a string.");
+        }
+        if (keyword == "$schema" && value.GetString() != Dialect)
+        {
+            throw Refuse(name, at, $"tools/CheckCompat.cs implements only the dialect {Dialect}.");
         }
     }
 
@@ -326,10 +358,29 @@ internal static class IosBuilds
     // reader that takes one copy would see a value that the check never saw.
     public static readonly JsonDocumentOptions Options = new() { AllowDuplicateProperties = false };
 
+    // Loads the schema as the check reads it: parsed with Options, and refused when it is not
+    // JSON, repeats a member or is refused by SchemaValidator. Each refusal names the file.
+    public static SchemaValidator LoadSchema(string schemaText)
+    {
+        JsonDocument schema;
+        try
+        {
+            schema = JsonDocument.Parse(schemaText, Options);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException(
+                $"{SchemaPath}: the schema is not JSON, or repeats a member: {exception.Message}", exception);
+        }
+        using (schema)
+        {
+            return new SchemaValidator(schema.RootElement.Clone(), SchemaPath);
+        }
+    }
+
     public static List<Problem> Check(string dataText, string schemaText, Func<string, bool> evidenceExists)
     {
-        using var schema = JsonDocument.Parse(schemaText, Options);
-        var validator = new SchemaValidator(schema.RootElement, SchemaPath);
+        var validator = LoadSchema(schemaText);
         var problems = new List<Problem>();
         JsonDocument data;
         try
@@ -495,9 +546,10 @@ internal static class SelfTest
             "\"evidence\": [\"docs/evidence/2026-12-02-l3-jit.md\"], \"evidence\":", StringComparison.Ordinal)), "json"),
     ];
 
-    // Schemas that the validator refuses, each with the part of the refusal that names its
-    // place: an unknown keyword anywhere, a keyword that the schema does not use, a value that a
-    // keyword does not allow, and a member that appears twice.
+    // Schemas that the check refuses, each with the part of the refusal that names its place: an
+    // unknown keyword anywhere, a keyword that the schema does not use, a keyword's value in a
+    // form that the validator does not implement, an annotation that breaks its rules, and a
+    // member that appears twice, which names the file.
     private static readonly (string Name, string Schema, string Refusal)[] s_plantedSchemas =
     [
         ("an unknown keyword in a property", """{ "type": "object", "properties": { "a": { "minimum": 1 } } }""",
@@ -521,7 +573,23 @@ internal static class SelfTest
         ("required as text", """{ "type": "object", "required": "a" }""", "/required:"),
         ("a pattern that does not compile", """{ "type": "string", "pattern": "[" }""", "/pattern:"),
         ("properties as a list", """{ "type": "object", "properties": [] }""", "/properties:"),
-        ("a member twice", """{ "type": "object", "type": "array" }""", "json:"),
+        ("a required name that is not text", """{ "type": "object", "required": [1] }""", "/required:"),
+        ("a required name twice", """{ "type": "object", "required": ["a", "a"] }""", "/required:"),
+        ("a pattern that is not text", """{ "type": "string", "pattern": 1 }""", "/pattern:"),
+        ("a reference that is not text", """{ "items": { "$ref": 1 }, "$defs": {} }""", "/items/$ref:"),
+        ("a reference to a name with a slash", """{ "items": { "$ref": "#/$defs/a/b" }, "$defs": { "a/b": true } }""",
+            "/items/$ref:"),
+        ("items that is not a schema", """{ "items": 1 }""", "/items:"),
+        ("another dialect", """{ "$schema": "http://json-schema.org/draft-07/schema#" }""", "/$schema:"),
+        ("$schema below the root", """{ "items": { "$schema": "https://json-schema.org/draft/2020-12/schema" } }""",
+            "/items/$schema:"),
+        ("$id below the root", """{ "$defs": { "a": { "$id": "https://example.com/a" } } }""", "/$defs/a/$id:"),
+        ("an $id that is not text", """{ "$id": 5 }""", "/$id:"),
+        ("a title that is not text", """{ "title": 5 }""", "/title:"),
+        ("a description that is not text", """{ "type": "object", "properties": { "a": { "description": [] } } }""",
+            "/properties/a/description:"),
+        ("a member twice", """{ "type": "object", "type": "array" }""",
+            $"{IosBuilds.SchemaPath}: the schema is not JSON, or repeats a member:"),
     ];
 
     // A list document around one entry.
@@ -562,22 +630,22 @@ internal static class SelfTest
         return 0;
     }
 
-    // Loads a schema as the check does, and returns why it was refused, or null.
+    // Loads a schema through the check's own loader, and returns why it was refused, or null.
     private static string? Refusal(string schema)
     {
         try
         {
-            using var planted = JsonDocument.Parse(schema, IosBuilds.Options);
-            _ = new SchemaValidator(planted.RootElement, "planted schema");
+            _ = IosBuilds.LoadSchema(schema);
             return null;
         }
         catch (InvalidDataException exception)
         {
             return exception.Message;
         }
-        catch (JsonException exception)
+        catch (InvalidOperationException exception)
         {
-            return $"json: {exception.Message}";
+            // A rule that went missing lets a value through to a reader that cannot take it.
+            return $"a crash: {exception.Message}";
         }
     }
 }

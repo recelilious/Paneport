@@ -15,7 +15,8 @@ using Xunit;
 
 namespace Paneport.UI.Tests;
 
-// Every [AvaloniaFact] test runs inside the real Paneport application on the headless platform.
+// Every [AvaloniaFact] and [AvaloniaTheory] test runs inside the real Paneport application on the
+// headless platform.
 public static class TestAppBuilder
 {
     public static AppBuilder BuildAvaloniaApp() =>

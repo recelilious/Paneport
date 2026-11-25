@@ -123,7 +123,10 @@ else()
 endif()
 target_include_directories(paneport_host_objects
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/host" "${PANEPORT_WINE_ENTRY_INCLUDE}")
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/host")
+# The fork's headers are system headers, so that the project's warnings apply to our own code
+# alone (C-0010 section 3).
+target_include_directories(paneport_host_objects SYSTEM PRIVATE "${PANEPORT_WINE_ENTRY_INCLUDE}")
 if(PANEPORT_TEST_BUILD)
     target_compile_definitions(paneport_host_objects PUBLIC PANEPORT_TEST_BUILD=1)
 endif()
@@ -173,7 +176,9 @@ if(PANEPORT_TESTS)
     add_library(paneport_host_shipped STATIC ${PANEPORT_HOST_SOURCES})
     target_include_directories(paneport_host_shipped
         PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
-        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/host" "${PANEPORT_WINE_ENTRY_INCLUDE}")
+        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/host")
+    target_include_directories(paneport_host_shipped SYSTEM PRIVATE
+        "${PANEPORT_WINE_ENTRY_INCLUDE}")
     target_link_libraries(paneport_host_shipped PUBLIC Threads::Threads)
 
     enable_testing()

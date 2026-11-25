@@ -104,8 +104,9 @@ paneport_native_test(test_jit_provider CASES
 add_library(fake_wine_fork MODULE fake_wine_fork.c)
 target_include_directories(fake_wine_fork PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${PANEPORT_REPOSITORY_ROOT}/src/native/include"
-    "${PANEPORT_WINE_ENTRY_INCLUDE}")
+    "${PANEPORT_REPOSITORY_ROOT}/src/native/include")
+# The fork's entry header is a system header, as for the host (C-0010 section 3).
+target_include_directories(fake_wine_fork SYSTEM PRIVATE "${PANEPORT_WINE_ENTRY_INCLUDE}")
 target_link_libraries(fake_wine_fork PRIVATE Threads::Threads)
 paneport_native_test(test_session CASES
     start_needs_host_and_jit fork_receives_the_bridge events_arrive_on_event_thread

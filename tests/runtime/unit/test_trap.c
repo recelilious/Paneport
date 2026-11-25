@@ -4,9 +4,10 @@
 // S4.3.9: the fork and exec trap. Armed, posix_spawn is refused and reported with its caller,
 // this test's own image; disarmed, it runs and nothing is reported. The other calls are checked
 // where a call that the trap missed could not harm the test: an exec of a program that does not
-// exist, a fork whose child would exit at once, and signals that the test handles itself. The
-// trap and this test are built without the sanitizers, whose runtimes interpose some of the same
-// calls (tests/runtime/CMakeLists.txt).
+// exist, a fork or vfork whose child would exit at once, system and popen with a command that
+// only exits, signals that the test handles itself, and a signal to a process group of the test's
+// own. The trap and this test are built without the sanitizers, whose runtimes interpose some of
+// the same calls (tests/runtime/CMakeLists.txt).
 
 #include <errno.h>
 #include <pthread.h>
@@ -22,10 +23,29 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#ifdef __APPLE__
+#include <mach/mach.h>
+#endif
+
 #include "pp_check.h"
 #include "trap.h"
 
 extern char **environ;
+
+// clang-tidy reports every call of system and popen (bugprone-command-processor) and every
+// reference to vfork (bugprone-unsafe-functions), so the test calls them through names of its
+// own, which dyld's interposing binds as it binds a call: system and popen through pointers to
+// the SDK's declarations, which name the symbols of the trap's tuples, and vfork by its symbol as
+// an assembler label, as trap_darwin.c declares it, and __pthread_kill as well.
+static int (*const k_system)(const char *) = system;
+static FILE *(*const k_popen)(const char *, const char *) = popen;
+#ifdef __APPLE__
+extern pid_t pp_test_vfork(void) __asm__("_vfork");
+extern int pp_test_kernel_pthread_kill(mach_port_t thread,
+                                       int signal_number) __asm__("___pthread_kill");
+#else
+extern pid_t pp_test_vfork(void) __asm__("vfork");
+#endif
 
 // This test's image, as the trap names a caller in it.
 #define PP_TEST_IMAGE "test_trap"
@@ -214,6 +234,47 @@ static void armed_fork_is_refused(void) {
     check_report(0U, "fork");
 }
 
+// Armed, vfork is refused with EPERM. A vfork that the trap missed has a child that exits at
+// once, as the child of a vfork must, and the test fails.
+static void armed_vfork_is_refused(void) {
+    pp_trap_arm();
+    errno = 0;
+    const pid_t child = pp_test_vfork();
+    if (child == 0) {
+        _exit(0);
+    }
+    const int reason = errno;
+    if (child > 0) {
+        (void)waitpid(child, NULL, 0);
+    }
+    PP_CHECK_EQUAL(child, -1);
+    PP_CHECK_EQUAL(reason, EPERM);
+    PP_CHECK_EQUAL(pp_trap_count(), 1);
+    check_report(0U, "vfork");
+}
+
+// Armed, system and popen are refused with EPERM, system with -1 and popen with no stream, before
+// any shell starts. One that the trap missed would run a shell that exits with 3.
+static void armed_shell_is_refused(void) {
+    pp_trap_arm();
+    errno = 0;
+    const int status = k_system("exit 3");
+    const int system_reason = errno;
+    errno = 0;
+    FILE *const stream = k_popen("exit 3", "r");
+    const int popen_reason = errno;
+    if (stream != NULL) {
+        (void)pclose(stream);
+    }
+    PP_CHECK_EQUAL(status, -1);
+    PP_CHECK_EQUAL(system_reason, EPERM);
+    PP_CHECK(stream == NULL);
+    PP_CHECK_EQUAL(popen_reason, EPERM);
+    PP_CHECK_EQUAL(pp_trap_count(), 2);
+    check_report(0U, "system");
+    check_report(1U, "popen");
+}
+
 // The signals that the test received: process-wide singletons of the test, which its handler
 // counts in.
 static atomic_int s_user1;
@@ -267,6 +328,57 @@ static void signals_refused_while_armed(void) {
     PP_CHECK_EQUAL(pp_trap_count(), 3);
 }
 
+// Armed, killpg is refused for SIGUSR1. It names a process group of the test's own, which a child
+// makes with setpgid and in which the child waits for its pipe to close, so that a send that the
+// trap missed would end that child, never the group in which CTest runs the test.
+static void armed_group_signal_is_refused(void) {
+    int ends[2];
+    PP_CHECK_EQUAL(pipe(ends), 0);
+    const pid_t child = fork();
+    PP_CHECK(child >= 0);
+    if (child == 0) {
+        (void)close(ends[1]);
+        (void)setpgid(0, 0);
+        char byte = 0;
+        (void)read(ends[0], &byte, sizeof byte);
+        _exit(0);
+    }
+    PP_CHECK_EQUAL(close(ends[0]), 0);
+    // The parent makes the group too, so that it exists whichever of the two runs first.
+    PP_CHECK_EQUAL(setpgid(child, child), 0);
+    pp_trap_arm();
+    errno = 0;
+    const int result = killpg(child, SIGUSR1);
+    const int reason = errno;
+    PP_CHECK_EQUAL(close(ends[1]), 0);
+    int status = 0;
+    PP_CHECK(waitpid(child, &status, 0) == child);
+    PP_CHECK(WIFEXITED(status));
+    PP_CHECK_EQUAL(WEXITSTATUS(status), 0);
+    PP_CHECK_EQUAL(result, -1);
+    PP_CHECK_EQUAL(reason, EPERM);
+    PP_CHECK_EQUAL(pp_trap_count(), 1);
+    check_report(0U, "killpg(SIGUSR1)");
+}
+
+// Armed, libsystem_kernel's __pthread_kill, with which the wineserver of multi mode signals a
+// thread by its Mach port (Wine's server/mach.c), is refused for SIGQUIT, which the test handles,
+// so that a send that the trap missed counts as received. Other systems have no such call.
+static void armed_thread_port_signal_is_refused(void) {
+#ifdef __APPLE__
+    handle(SIGQUIT);
+    pp_trap_arm();
+    errno = 0;
+    const int result = pp_test_kernel_pthread_kill(pthread_mach_thread_np(pthread_self()), SIGQUIT);
+    const int reason = errno;
+    PP_CHECK_EQUAL(result, -1);
+    PP_CHECK_EQUAL(reason, EPERM);
+    PP_CHECK_EQUAL(atomic_load(&s_quit), 0);
+    PP_CHECK_EQUAL(pp_trap_count(), 1);
+    check_report(0U, "__pthread_kill(SIGQUIT)");
+#endif
+}
+
 int main(int argc, char **argv) {
     static const pp_test_case_t cases[] = {
         {"armed_spawn_is_refused", armed_spawn_is_refused},
@@ -274,7 +386,11 @@ int main(int argc, char **argv) {
         {"armed_exec_is_refused", armed_exec_is_refused},
         {"disarmed_exec_forwards", disarmed_exec_forwards},
         {"armed_fork_is_refused", armed_fork_is_refused},
+        {"armed_vfork_is_refused", armed_vfork_is_refused},
+        {"armed_shell_is_refused", armed_shell_is_refused},
         {"signals_refused_while_armed", signals_refused_while_armed},
+        {"armed_group_signal_is_refused", armed_group_signal_is_refused},
+        {"armed_thread_port_signal_is_refused", armed_thread_port_signal_is_refused},
     };
     return pp_run_case(argc, argv, cases, PP_CASE_COUNT(cases));
 }

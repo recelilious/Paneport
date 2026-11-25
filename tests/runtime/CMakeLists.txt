@@ -89,7 +89,9 @@ if(PANEPORT_TESTS)
     # S4.3.9: the trap, in a process that holds no sanitizer runtime, as the harness's does not.
     paneport_harness_test(test_trap LIBRARY paneport_trap CASES
         armed_spawn_is_refused disarmed_spawn_runs armed_exec_is_refused disarmed_exec_forwards
-        armed_fork_is_refused signals_refused_while_armed)
+        armed_fork_is_refused armed_vfork_is_refused armed_shell_is_refused
+        signals_refused_while_armed armed_group_signal_is_refused
+        armed_thread_port_signal_is_refused)
     if(PANEPORT_SANITIZERS)
         target_compile_options(test_trap PRIVATE -fno-sanitize=all)
         target_link_options(test_trap PRIVATE -fno-sanitize=all)

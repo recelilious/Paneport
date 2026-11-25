@@ -277,6 +277,37 @@ static void wake_ends_a_reader_whose_pipes_stay_open(void) {
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
 }
 
+// A NUL byte of a program's output becomes U+FFFD, so the rest of its line still arrives, and a
+// line that the replacements make longer than a log line holds arrives in pieces, cut between
+// two replacement characters.
+static void nul_bytes_become_replacements(void) {
+    guest_lines_t lines;
+    int writers[2];
+    pp_guest_output_t *reader = start_reader(&lines, writers);
+    write_all(writers[0], "abc\0def\n", 8U);
+    char nuls[201];
+    memset(nuls, 0, sizeof nuls - 1U);
+    nuls[200] = '\n';
+    write_all(writers[0], nuls, sizeof nuls);
+    (void)close(writers[0]);
+    (void)close(writers[1]);
+    pp_guest_output_join(reader);
+    pp_wait_for_count(&lines.count, 3U);
+    PP_CHECK_TEXT(lines.text[0], "abc"
+                                 "\xef\xbf\xbd"
+                                 "def");
+    // 200 replacements of 3 bytes: 170 of them fill the 511 bytes of a piece as far as whole
+    // characters go, and 30 follow.
+    PP_CHECK_EQUAL(strlen(lines.text[1]), 510U);
+    PP_CHECK_EQUAL(strlen(lines.text[2]), 90U);
+    for (size_t piece = 1U; piece < 3U; piece++) {
+        for (size_t offset = 0U; lines.text[piece][offset] != '\0'; offset += 3U) {
+            PP_CHECK(memcmp(lines.text[piece] + offset, "\xef\xbf\xbd", 3U) == 0);
+        }
+    }
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
 int main(int argc, char **argv) {
     static const pp_test_case_t k_cases[] = {
         {"every_chunking_gives_the_same_lines", every_chunking_gives_the_same_lines},
@@ -284,6 +315,7 @@ int main(int argc, char **argv) {
         {"carriage_returns", carriage_returns},
         {"empty_lines_and_the_end", empty_lines_and_the_end},
         {"wake_ends_a_reader_whose_pipes_stay_open", wake_ends_a_reader_whose_pipes_stay_open},
+        {"nul_bytes_become_replacements", nul_bytes_become_replacements},
     };
     return pp_run_case(argc, argv, k_cases, PP_CASE_COUNT(k_cases));
 }

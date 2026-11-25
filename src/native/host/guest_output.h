@@ -6,9 +6,11 @@
 // thread of the host reads the other ends, splits what arrives into lines, and queues each line
 // for the log callback, marked with its source and the process's handle. The splitter is the
 // same whatever the chunks: a line ends at a line feed, a carriage return right before it goes,
-// and a line longer than a log line holds is split into pieces at character boundaries, so no
-// byte is lost. When the log queue is full, the reader waits for room, so that a burst slows the
-// program down instead of losing lines (docs/design/single-process-wine.md section 8).
+// and a line longer than a log line holds is split into pieces at character boundaries. A log
+// line's text ends at its first NUL, so the reader turns each NUL byte into U+FFFD, the
+// replacement character, and a line that the replacements make too long goes in pieces too; no
+// other byte is lost. When the log queue is full, the reader waits for room, so that a burst
+// slows the program down instead of losing lines (docs/design/single-process-wine.md section 8).
 
 #ifndef PANEPORT_HOST_GUEST_OUTPUT_H
 #define PANEPORT_HOST_GUEST_OUTPUT_H

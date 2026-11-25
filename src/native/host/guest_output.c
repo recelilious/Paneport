@@ -95,12 +95,49 @@ struct pp_guest_output_t {
     stream_t streams[PP_GUEST_STREAMS];
 };
 
-static void post_line(const char *line, size_t length, void *context) {
-    const stream_t *stream = context;
+// U+FFFD, the replacement character, in UTF-8.
+static const char k_replacement[] = "\xef\xbf\xbd";
+#define PP_REPLACEMENT_SIZE (sizeof k_replacement - 1U)
+
+static void post_piece(const stream_t *stream, const char *text, size_t length) {
     pp_log_entry_t entry;
-    pp_log_text(&entry, PP_LOG_INFO, stream->source, stream->process, line, length);
+    pp_log_text(&entry, PP_LOG_INFO, stream->source, stream->process, text, length);
     // Once the host stops, nobody reads the lines, so they go.
     (void)pp_event_thread_post_log_waiting(&entry);
+}
+
+// Queues a line of at most PP_GUEST_LINE_MAX bytes. A log line's text ends at its first NUL, so
+// each NUL byte becomes U+FFFD, and a line that the replacements make longer than a log line
+// holds goes in pieces cut at character boundaries, as the splitter cuts.
+static void post_line(const char *line, size_t length, void *context) {
+    const stream_t *stream = context;
+    if (memchr(line, '\0', length) == NULL) {
+        post_piece(stream, line, length);
+        return;
+    }
+    char text[PP_GUEST_LINE_MAX * PP_REPLACEMENT_SIZE];
+    size_t used = 0U;
+    for (size_t index = 0U; index < length; index++) {
+        if (line[index] == '\0') {
+            memcpy(text + used, k_replacement, PP_REPLACEMENT_SIZE);
+            used += PP_REPLACEMENT_SIZE;
+        } else {
+            text[used] = line[index];
+            used++;
+        }
+    }
+    size_t offset = 0U;
+    while (offset < used) {
+        size_t piece = used - offset;
+        if (piece > PP_GUEST_LINE_MAX) {
+            piece = pp_utf8_cut(text + offset, PP_GUEST_LINE_MAX);
+            if (piece == 0U) {
+                piece = PP_GUEST_LINE_MAX;
+            }
+        }
+        post_piece(stream, text + offset, piece);
+        offset += piece;
+    }
 }
 
 static void close_stream(stream_t *stream) {

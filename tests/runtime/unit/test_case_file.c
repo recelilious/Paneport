@@ -161,20 +161,23 @@ static void environment_of_the_runs(void) {
                    "\"timeout_seconds\": 9, \"exit_code\": 0, \"expected\": \"seh.txt\"}",
                    &result, error, sizeof error));
     char path[] = "PATH=/bin";
+    // A name that starts the case's own, or that the case's starts, is another variable.
+    char shorter[] = "FEX=1";
     char inherited[] = "FEX_MULTIBLOCK=1";
     char longer[] = "FEX_MULTIBLOCKS=1";
     char prefix[] = "WINEPREFIX=/old";
-    char *const base[] = {path, inherited, longer, prefix, NULL};
+    char *const base[] = {path, shorter, inherited, longer, prefix, NULL};
     char *owned = NULL;
     char **environment = pp_case_environment(&result, base, "/new", &owned);
     PP_CHECK(environment != NULL);
     if (environment != NULL) {
         PP_CHECK_TEXT(environment[0], "PATH=/bin");
-        PP_CHECK_TEXT(environment[1], "FEX_MULTIBLOCKS=1");
-        PP_CHECK_TEXT(environment[2], "FEX_MULTIBLOCK=0");
-        PP_CHECK_TEXT(environment[3], "WINEPREFIX=/new");
-        PP_CHECK(environment[4] == NULL);
-        PP_CHECK(environment[3] == owned);
+        PP_CHECK_TEXT(environment[1], "FEX=1");
+        PP_CHECK_TEXT(environment[2], "FEX_MULTIBLOCKS=1");
+        PP_CHECK_TEXT(environment[3], "FEX_MULTIBLOCK=0");
+        PP_CHECK_TEXT(environment[4], "WINEPREFIX=/new");
+        PP_CHECK(environment[5] == NULL);
+        PP_CHECK(environment[4] == owned);
     }
     free((void *)environment);
     free(owned);
@@ -190,18 +193,20 @@ static void inherited_environment(void) {
                    "\"timeout_seconds\": 9, \"exit_code\": 0, \"expected\": \"seh.txt\"}",
                    &result, error, sizeof error));
     char path[] = "PATH=/bin";
+    char shorter[] = "FEX=1";
     char inherited[] = "FEX_MULTIBLOCK=1";
     char longer[] = "FEX_MULTIBLOCKS=1";
     char prefix[] = "WINEPREFIX=/old";
     char debug[] = "WINEDEBUG=err+all";
-    char *const base[] = {path, inherited, longer, prefix, debug, NULL};
+    char *const base[] = {path, shorter, inherited, longer, prefix, debug, NULL};
     char **environment = pp_case_inherited_environment(&result, base);
     PP_CHECK(environment != NULL);
     if (environment != NULL) {
         PP_CHECK_TEXT(environment[0], "PATH=/bin");
-        PP_CHECK_TEXT(environment[1], "FEX_MULTIBLOCKS=1");
-        PP_CHECK_TEXT(environment[2], "WINEDEBUG=err+all");
-        PP_CHECK(environment[3] == NULL);
+        PP_CHECK_TEXT(environment[1], "FEX=1");
+        PP_CHECK_TEXT(environment[2], "FEX_MULTIBLOCKS=1");
+        PP_CHECK_TEXT(environment[3], "WINEDEBUG=err+all");
+        PP_CHECK(environment[4] == NULL);
     }
     free((void *)environment);
     pp_case_free(&result);

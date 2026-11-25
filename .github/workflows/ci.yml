@@ -366,6 +366,16 @@ jobs:
           path: build/fex/install
           key: ${{ steps.keys.outputs.fex }}
 
+      # M4.5: the FEX fork's test of the decoder that emulates the guest loads of the shared user
+      # data that fault (C-0011 section 1, fork unit tests). Its run.sh builds the test with the
+      # pinned Xcode's clang under AddressSanitizer and UndefinedBehaviorSanitizer and runs it.
+      # Only the build step fetches the fork, so a module from the cache leaves that to this step.
+      - name: Run the FEX fork's unit tests (unittests/Paneport/SharedUserData/run.sh)
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: |
+          git submodule update --init --depth 1 external/Paneport-FEX
+          sh external/Paneport-FEX/unittests/Paneport/SharedUserData/run.sh
+
       # S4.2.4: the Win32 test programs, which the device test flavor bundles from M4.4 on. They
       # build with the pinned llvm-mingw, with every compiler warning an error and every link
       # warning an error but the expected one that eng/mac/build-win32-tests.sh names.

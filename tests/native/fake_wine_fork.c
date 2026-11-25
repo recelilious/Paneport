@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // A fake of the Wine fork's Unix library for the session tests (test_session.c): a module that
-// exports the four entry points of the fork's header include/wine/paneport.h and plays a
+// exports the five entry points of the fork's header include/wine/paneport.h and plays a
 // session through the bridge as the fork does, with a "wineserver" thread that the host creates
-// and a process thread that writes scripted output in odd chunks. FAKE_FORK_MODE in the
-// session's environment chooses what it does:
+// and a process thread that writes scripted output in odd chunks. Its query reports what it
+// recorded of its process, as the fork's does. FAKE_FORK_MODE in the session's environment
+// chooses what it does:
 //
 //   normal         the process starts, writes its output and ends with exit code 3, and the
 //                  server thread ends after it, which ends the session
@@ -14,6 +15,8 @@
 //   sigsegv        the session start installs a SIGSEGV handler of its own
 //   launch_refuse  the launch fails
 //   fail_start     the process ends before it finishes its start
+//   query_exited   as wait, but the query reports the process as ended, with exit code
+//                  FAKE_FORK_QUERY_EXIT_CODE, which the bridge never reports
 //
 // fake_fork_bridge_ok reports whether the bridge it received is complete.
 
@@ -45,6 +48,10 @@ static struct {
     uint64_t process;
     int output_fd;
     int errors_fd;
+    // What the query reports: 0 before a launch, then a WINE_PANEPORT_PROCESS_ state, and the
+    // exit code that the bridge reported.
+    uint32_t query_state;
+    uint32_t query_exit_code;
 } s_fake = {
     .mutex = PTHREAD_MUTEX_INITIALIZER,
     .changed = PTHREAD_COND_INITIALIZER,
@@ -69,6 +76,22 @@ static void read_mode(const char *environment) {
 }
 
 static bool mode_is(const char *mode) { return strcmp(s_fake.mode, mode) == 0; }
+
+// Whether the process waits until it is terminated or the session stops.
+static bool process_waits(void) {
+    if (mode_is("wait")) {
+        return true;
+    }
+    return mode_is("query_exited");
+}
+
+// Records what the query reports, before the bridge hears of it, as the fork records it.
+static void record_state(uint32_t state, uint32_t exit_code) {
+    (void)pthread_mutex_lock(&s_fake.mutex);
+    s_fake.query_state = state;
+    s_fake.query_exit_code = exit_code;
+    (void)pthread_mutex_unlock(&s_fake.mutex);
+}
 
 static void on_segv(int signal) { (void)signal; }
 
@@ -111,8 +134,9 @@ static void *run_process(void *argument) {
         exit_code = FAKE_FORK_START_FAILURE;
     } else {
         bridge->log(PP_WINE_LOG_INFO, "fake runtime: process started\nsecond runtime line");
+        record_state(WINE_PANEPORT_PROCESS_RUNNING, 0U);
         bridge->process_started(s_fake.process);
-        if (mode_is("wait")) {
+        if (process_waits()) {
             (void)pthread_mutex_lock(&s_fake.mutex);
             while (!s_fake.terminate && !s_fake.stop_server) {
                 (void)pthread_cond_wait(&s_fake.changed, &s_fake.mutex);
@@ -139,6 +163,7 @@ static void *run_process(void *argument) {
         (void)close(s_fake.errors_fd);
     }
     (void)bridge->unmark_thread();
+    record_state(WINE_PANEPORT_PROCESS_EXITED, exit_code);
     bridge->process_exited(s_fake.process, exit_code);
     (void)pthread_mutex_lock(&s_fake.mutex);
     s_fake.process_running = false;
@@ -191,8 +216,11 @@ FAKE_EXPORT int32_t __wine_paneport_process_launch(const struct wine_paneport_la
     // The host closes its copies of the descriptors once the launch returns.
     s_fake.output_fd = launch->stdout_fd >= 0 ? dup(launch->stdout_fd) : -1;
     s_fake.errors_fd = launch->stderr_fd >= 0 ? dup(launch->stderr_fd) : -1;
+    (void)pthread_mutex_lock(&s_fake.mutex);
     s_fake.process = launch->process;
     s_fake.process_running = true;
+    s_fake.query_state = WINE_PANEPORT_PROCESS_STARTING;
+    (void)pthread_mutex_unlock(&s_fake.mutex);
     pthread_t thread;
     if (pthread_create(&thread, NULL, run_process, NULL) != 0) {
         return PP_WINE_E_SYSTEM;
@@ -210,6 +238,28 @@ FAKE_EXPORT int32_t __wine_paneport_process_terminate(uint64_t process, uint32_t
     }
     (void)pthread_mutex_unlock(&s_fake.mutex);
     return PP_WINE_OK;
+}
+
+FAKE_EXPORT int32_t __wine_paneport_process_query(uint64_t process,
+                                                  struct wine_paneport_process_state *state) {
+    if (state == NULL || state->struct_size < sizeof(struct wine_paneport_process_state)) {
+        return PP_WINE_E_INVALID_ARGUMENT;
+    }
+    int32_t status = PP_WINE_E_INVALID_ARGUMENT;
+    (void)pthread_mutex_lock(&s_fake.mutex);
+    // Only a launched process is known, as the fork's server knows only the processes it took.
+    if (process != 0U && process == s_fake.process && s_fake.query_state != 0U) {
+        state->state = s_fake.query_state;
+        state->exit_code =
+            s_fake.query_state == WINE_PANEPORT_PROCESS_EXITED ? s_fake.query_exit_code : 0U;
+        if (mode_is("query_exited")) {
+            state->state = WINE_PANEPORT_PROCESS_EXITED;
+            state->exit_code = FAKE_FORK_QUERY_EXIT_CODE;
+        }
+        status = PP_WINE_OK;
+    }
+    (void)pthread_mutex_unlock(&s_fake.mutex);
+    return status;
 }
 
 FAKE_EXPORT int fake_fork_bridge_ok(void) {

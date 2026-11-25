@@ -43,6 +43,11 @@ _Static_assert(PP_WINE_E_SYSTEM == PP_E_SYSTEM, "A status code differs.");
 _Static_assert(PP_WINE_LOG_DEBUG == PP_LOG_DEBUG, "The bridge's log levels differ from PP_LOG_.");
 _Static_assert(PP_WINE_LOG_ERROR == PP_LOG_ERROR, "The bridge's log levels differ from PP_LOG_.");
 
+// The states that the fork's query reports are those of paneport/session.h.
+_Static_assert(WINE_PANEPORT_PROCESS_STARTING == PP_PROCESS_STARTING, "A process state differs.");
+_Static_assert(WINE_PANEPORT_PROCESS_RUNNING == PP_PROCESS_RUNNING, "A process state differs.");
+_Static_assert(WINE_PANEPORT_PROCESS_EXITED == PP_PROCESS_EXITED, "A process state differs.");
+
 // The life of the launch's one session.
 enum {
     PP_SESSION_NONE = 0,
@@ -99,6 +104,7 @@ static struct {
     wine_paneport_session_stop_t stop;
     wine_paneport_process_launch_t launch;
     wine_paneport_process_terminate_t terminate;
+    wine_paneport_process_query_t query;
     session_thread_t threads[PP_SESSION_THREADS];
     uint32_t thread_count;
     uint32_t threads_running;
@@ -510,11 +516,13 @@ PP_EXPORT pp_status_t pp_session_start(const pp_session_config_t *config) {
     wine_paneport_session_stop_t stop = NULL;
     wine_paneport_process_launch_t launch = NULL;
     wine_paneport_process_terminate_t terminate = NULL;
+    wine_paneport_process_query_t query = NULL;
     if (!find_entry(library, WINE_PANEPORT_SESSION_START, (void *)&start, sizeof start) ||
         !find_entry(library, WINE_PANEPORT_SESSION_STOP, (void *)&stop, sizeof stop) ||
         !find_entry(library, WINE_PANEPORT_PROCESS_LAUNCH, (void *)&launch, sizeof launch) ||
         !find_entry(library, WINE_PANEPORT_PROCESS_TERMINATE, (void *)&terminate,
                     sizeof terminate) ||
+        !find_entry(library, WINE_PANEPORT_PROCESS_QUERY, (void *)&query, sizeof query) ||
         start == NULL) {
         return fail_started_session(PP_E_IO);
     }
@@ -523,6 +531,7 @@ PP_EXPORT pp_status_t pp_session_start(const pp_session_config_t *config) {
     s_session.stop = stop;
     s_session.launch = launch;
     s_session.terminate = terminate;
+    s_session.query = query;
     (void)pthread_mutex_unlock(&s_session.mutex);
 
     const struct wine_paneport_session session = {
@@ -814,11 +823,26 @@ PP_EXPORT pp_status_t pp_process_get_state(uint64_t process, pp_process_state_t 
     }
     (void)pthread_mutex_lock(&s_session.mutex);
     const bool known = names_the_process(process);
-    const uint32_t current = s_session.process.state;
-    const uint32_t exit_code = current == PP_PROCESS_EXITED ? s_session.process.exit_code : 0U;
+    uint32_t current = s_session.process.state;
+    uint32_t exit_code = current == PP_PROCESS_EXITED ? s_session.process.exit_code : 0U;
+    // Until the host recorded the process's end, the runtime may know more, such as an end whose
+    // report is still on its way; once the host recorded it, the record answers.
+    const wine_paneport_process_query_t query =
+        current != PP_PROCESS_EXITED ? s_session.query : NULL;
     (void)pthread_mutex_unlock(&s_session.mutex);
     if (!known) {
         return pp_error_set(PP_E_INVALID_ARGUMENT, "The handle names no process of this launch.");
+    }
+    if (query != NULL) {
+        struct wine_paneport_process_state reported = {
+            .struct_size = (uint32_t)sizeof(struct wine_paneport_process_state),
+        };
+        // The runtime answers only for a process that its server knows.
+        if (query(process, &reported) == PP_WINE_OK && reported.state >= PP_PROCESS_STARTING &&
+            reported.state <= PP_PROCESS_EXITED) {
+            current = reported.state;
+            exit_code = current == PP_PROCESS_EXITED ? reported.exit_code : 0U;
+        }
     }
     state->state = current;
     if (state->struct_size >= offsetof(pp_process_state_t, exit_code) + sizeof state->exit_code) {

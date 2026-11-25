@@ -16,6 +16,9 @@
 // The exit code of a waiting process that the session's stop ends.
 #define FAKE_FORK_STOPPED_EXIT_CODE 9U
 
+// The exit code that the query reports in the mode query_exited, which the bridge never reports.
+#define FAKE_FORK_QUERY_EXIT_CODE 42U
+
 // A line of 600 bytes, longer than a log line holds.
 #define FAKE_FORK_X10 "xxxxxxxxxx"
 #define FAKE_FORK_X100                                                                             \

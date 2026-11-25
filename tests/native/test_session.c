@@ -430,6 +430,22 @@ static void terminate_sets_the_exit_code(void) {
     stop_host();
 }
 
+// Until the host recorded the process's end, pp_process_get_state asks the runtime's query, whose
+// answer here, an end with an exit code that the bridge never reported, differs from the host's
+// record; once the bridge reported the end, the host's record answers.
+static void get_state_asks_the_fork(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=query_exited\0");
+    const uint64_t process = launch(0U, PP_OK);
+    check_state(process, PP_PROCESS_EXITED, FAKE_FORK_QUERY_EXIT_CODE);
+    PP_CHECK_EQUAL(pp_process_terminate(process, 7U), PP_OK);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_PROCESS_EXITED).code, 7);
+    check_state(process, PP_PROCESS_EXITED, 7U);
+    stop_host();
+}
+
 // Stopping a session ends its running process first; the exit event comes before the session's.
 static void stop_ends_a_running_process(void) {
     fixture_t fixture;
@@ -554,6 +570,7 @@ int main(int argc, char **argv) {
         {"runtime_refusal_fails_session", runtime_refusal_fails_session},
         {"launch_needs_a_session", launch_needs_a_session},
         {"terminate_sets_the_exit_code", terminate_sets_the_exit_code},
+        {"get_state_asks_the_fork", get_state_asks_the_fork},
         {"stop_ends_a_running_process", stop_ends_a_running_process},
         {"failed_start_is_reported", failed_start_is_reported},
         {"launch_refusal_is_reported", launch_refusal_is_reported},

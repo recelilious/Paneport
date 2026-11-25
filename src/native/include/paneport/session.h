@@ -195,6 +195,13 @@ PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint6
  * Reads the state of a process of the session, and its exit code once it ended. It also works
  * after the session ended.
  *
+ * The host keeps its own record of the process from the runtime's reports of its start and its
+ * end, which the process-started and process-exited events follow. Until that record says that
+ * the process ended, the host asks the runtime's query of the process (C-0005 section 3), and
+ * reports the runtime's answer when the runtime knows the process: the runtime can know of an end
+ * whose report, and so whose event, is still on its way. Once the record says that the process
+ * ended, the record answers.
+ *
  * Thread rule: [any]. Memory: the caller owns state.
  *
  * @param process A handle that pp_process_launch returned.

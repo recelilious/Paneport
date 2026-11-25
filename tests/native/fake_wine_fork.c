@@ -23,9 +23,16 @@
 //   launch_refuse_keep
 //                  the launch keeps copies of the pipes' write ends and fails, so that the
 //                  host's reader of the output never sees their end
+//   quick          as normal, but the launch returns only once the process started and ended
+//   flood          as normal, but the process writes FAKE_FORK_FLOOD_LINES lines and the runtime
+//                  logs as many, faster than the host's log callback takes them
+//   late_output    the process reports its end, then writes FAKE_FORK_LATE_LINE and closes its
+//                  handles, as a process that the fork's server terminates may
+//   five_threads   the session start has the host create four threads, and a fifth refused
 //
-// fake_fork_bridge_ok reports whether the bridge it received is complete, and fake_fork_launches
-// how often the host called its launch.
+// fake_fork_bridge_ok reports whether the bridge it received is complete,
+// fake_fork_server_stack_kib the stack of the server's thread, and fake_fork_launches how often
+// the host called its launch. Its terminate refuses a process that is not running.
 
 #include <pthread.h>
 #include <signal.h>
@@ -33,6 +40,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "fake_wine_fork.h"
@@ -60,6 +68,8 @@ static struct {
     uint32_t query_state;
     uint32_t query_exit_code;
     int launches;
+    // The stack size of the server's thread, as the thread itself reads it.
+    size_t server_stack;
 } s_fake = {
     .mutex = PTHREAD_MUTEX_INITIALIZER,
     .changed = PTHREAD_COND_INITIALIZER,
@@ -111,13 +121,29 @@ static void install_segv_handler(void) {
     (void)sigaction(SIGSEGV, &action, NULL);
 }
 
-static void run_server(void *argument) {
-    (void)argument;
+static void wait_for_stop(void) {
     (void)pthread_mutex_lock(&s_fake.mutex);
     while (!s_fake.stop_server) {
         (void)pthread_cond_wait(&s_fake.changed, &s_fake.mutex);
     }
     (void)pthread_mutex_unlock(&s_fake.mutex);
+}
+
+// The "wineserver": it records the stack that the host gave its thread and waits for the stop.
+static void run_server(void *argument) {
+    (void)argument;
+    const size_t stack = pthread_get_stacksize_np(pthread_self());
+    (void)pthread_mutex_lock(&s_fake.mutex);
+    s_fake.server_stack = stack;
+    (void)pthread_cond_broadcast(&s_fake.changed);
+    (void)pthread_mutex_unlock(&s_fake.mutex);
+    wait_for_stop();
+}
+
+// A further thread of the mode five_threads, which waits for the stop.
+static void run_helper(void *argument) {
+    (void)argument;
+    wait_for_stop();
 }
 
 // Writes text in chunks of 1, 2, 3, 5, 8 and 13 bytes, over and over, so that lines, carriage
@@ -138,6 +164,38 @@ static void write_chunked(int fd, const char *text) {
         text += written;
         left -= (size_t)written;
         round++;
+    }
+}
+
+// Writes the scripted output, or in the mode flood FAKE_FORK_FLOOD_LINES lines of output and as
+// many lines of the runtime, as fast as the host takes them; in the mode late_output nothing yet.
+static void write_output(const pp_wine_bridge_t *bridge) {
+    if (mode_is("flood")) {
+        for (uint32_t index = 0U; index < FAKE_FORK_FLOOD_LINES; index++) {
+            if (s_fake.output_fd >= 0) {
+                write_chunked(s_fake.output_fd, FAKE_FORK_FLOOD_TEXT "\n");
+            }
+            bridge->log(PP_WINE_LOG_INFO, FAKE_FORK_FLOOD_TEXT);
+        }
+        return;
+    }
+    if (mode_is("late_output")) {
+        return;
+    }
+    if (s_fake.output_fd >= 0) {
+        write_chunked(s_fake.output_fd, FAKE_FORK_OUTPUT);
+    }
+    if (s_fake.errors_fd >= 0) {
+        write_chunked(s_fake.errors_fd, FAKE_FORK_ERRORS);
+    }
+}
+
+static void close_handles(void) {
+    if (s_fake.output_fd >= 0) {
+        (void)close(s_fake.output_fd);
+    }
+    if (s_fake.errors_fd >= 0) {
+        (void)close(s_fake.errors_fd);
     }
 }
 
@@ -166,25 +224,25 @@ static void *run_process(void *argument) {
             }
             (void)pthread_mutex_unlock(&s_fake.mutex);
         } else {
-            if (s_fake.output_fd >= 0) {
-                write_chunked(s_fake.output_fd, FAKE_FORK_OUTPUT);
-            }
-            if (s_fake.errors_fd >= 0) {
-                write_chunked(s_fake.errors_fd, FAKE_FORK_ERRORS);
-            }
+            write_output(bridge);
         }
     }
-    // The process's handles go before it reports its end, as the fork closes them.
-    if (s_fake.output_fd >= 0) {
-        (void)close(s_fake.output_fd);
-    }
-    if (s_fake.errors_fd >= 0) {
-        (void)close(s_fake.errors_fd);
+    // The process's handles go before it reports its end, as the fork closes them, except in the
+    // mode late_output: the fork's server reports the end of a process that it terminates before
+    // the process's threads closed theirs.
+    if (!mode_is("late_output")) {
+        close_handles();
     }
     (void)bridge->unmark_thread();
     if (!mode_is("silent_exit")) {
         record_state(WINE_PANEPORT_PROCESS_EXITED, exit_code);
         bridge->process_exited(s_fake.process, exit_code);
+    }
+    if (mode_is("late_output")) {
+        if (s_fake.output_fd >= 0) {
+            write_chunked(s_fake.output_fd, FAKE_FORK_LATE_LINE "\n");
+        }
+        close_handles();
     }
     (void)pthread_mutex_lock(&s_fake.mutex);
     s_fake.process_running = false;
@@ -211,7 +269,21 @@ FAKE_EXPORT int32_t __wine_paneport_session_start(const pp_wine_bridge_t *bridge
     if (mode_is("sigsegv")) {
         install_segv_handler();
     }
-    return bridge->start_thread("fake.wineserver", run_server, NULL);
+    const int32_t status = bridge->start_thread("fake.wineserver", run_server, NULL);
+    if (status != PP_WINE_OK || !mode_is("five_threads")) {
+        return status;
+    }
+    // The host keeps four threads for a session: three more start, and it refuses a fifth.
+    for (int index = 0; index < 3; index++) {
+        const int32_t started = bridge->start_thread("fake.helper", run_helper, NULL);
+        if (started != PP_WINE_OK) {
+            return started;
+        }
+    }
+    if (bridge->start_thread("fake.fifth", run_helper, NULL) != PP_WINE_E_BUSY) {
+        return PP_WINE_E_UNSUPPORTED;
+    }
+    return PP_WINE_OK;
 }
 
 FAKE_EXPORT int32_t __wine_paneport_session_stop(void) {
@@ -251,19 +323,27 @@ FAKE_EXPORT int32_t __wine_paneport_process_launch(const struct wine_paneport_la
     if (pthread_create(&thread, NULL, run_process, NULL) != 0) {
         return PP_WINE_E_SYSTEM;
     }
+    if (mode_is("quick")) {
+        // The process starts and ends before the host looks at it.
+        (void)pthread_join(thread, NULL);
+        return PP_WINE_OK;
+    }
     (void)pthread_detach(thread);
     return PP_WINE_OK;
 }
 
+// Terminates the running process; a process that ended is no longer the server's to terminate.
 FAKE_EXPORT int32_t __wine_paneport_process_terminate(uint64_t process, uint32_t exit_code) {
+    int32_t status = PP_WINE_E_INVALID_ARGUMENT;
     (void)pthread_mutex_lock(&s_fake.mutex);
     if (process == s_fake.process && s_fake.process_running) {
         s_fake.terminate = true;
         s_fake.exit_code = exit_code;
         (void)pthread_cond_broadcast(&s_fake.changed);
+        status = PP_WINE_OK;
     }
     (void)pthread_mutex_unlock(&s_fake.mutex);
-    return PP_WINE_OK;
+    return status;
 }
 
 FAKE_EXPORT int32_t __wine_paneport_process_query(uint64_t process,
@@ -286,6 +366,22 @@ FAKE_EXPORT int32_t __wine_paneport_process_query(uint64_t process,
     }
     (void)pthread_mutex_unlock(&s_fake.mutex);
     return status;
+}
+
+// Waits up to a minute for the server's thread to record its stack, which it does when it starts.
+FAKE_EXPORT int fake_fork_server_stack_kib(void) {
+    struct timespec until;
+    (void)clock_gettime(CLOCK_REALTIME, &until);
+    until.tv_sec += 60;
+    (void)pthread_mutex_lock(&s_fake.mutex);
+    while (s_fake.server_stack == 0U) {
+        if (pthread_cond_timedwait(&s_fake.changed, &s_fake.mutex, &until) != 0) {
+            break;
+        }
+    }
+    const size_t stack = s_fake.server_stack;
+    (void)pthread_mutex_unlock(&s_fake.mutex);
+    return (int)(stack / 1024U);
 }
 
 FAKE_EXPORT int fake_fork_launches(void) {

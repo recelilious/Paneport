@@ -25,6 +25,7 @@
 #include "fake_wine_fork.h"
 #include "guest_output.h"
 #include "paneport/host.h"
+#include "paneport/jit.h"
 #include "paneport/session.h"
 #include "paneport/testing.h"
 #include "pp_check.h"
@@ -41,7 +42,8 @@ enum { MAX_EVENTS = 16, MAX_LINES = 64, LINE_SIZE = 512 };
 #define MARKER_EVENT 99U
 
 // What the callbacks saw. lines_before[i] counts the runtime and guest lines that had arrived
-// when event i arrived; the marker events are only counted.
+// when event i arrived; the marker events are only counted. The lines of the mode flood are
+// counted by source, and slow_lines makes the log callback take 20 us a line.
 static struct {
     pthread_mutex_t mutex;
     pthread_cond_t changed;
@@ -55,6 +57,10 @@ static struct {
     uint64_t processes[MAX_LINES];
     uint32_t line_count;
     bool line_off_thread;
+    bool slow_lines;
+    uint32_t flood_output;
+    uint32_t flood_runtime;
+    uint32_t flood_output_at_exit;
 } s_seen = {
     .mutex = PTHREAD_MUTEX_INITIALIZER,
     .changed = PTHREAD_COND_INITIALIZER,
@@ -73,6 +79,9 @@ static void record_event(const pp_event_t *event, void *user_data) {
         s_seen.lines_before[s_seen.event_count] = s_seen.line_count;
         s_seen.event_count++;
     }
+    if (event->kind == PP_EVENT_PROCESS_EXITED) {
+        s_seen.flood_output_at_exit = s_seen.flood_output;
+    }
     (void)pthread_cond_broadcast(&s_seen.changed);
     (void)pthread_mutex_unlock(&s_seen.mutex);
 }
@@ -84,14 +93,25 @@ static void record_line(const pp_log_line_t *line, void *user_data) {
     if (!pp_event_thread_is_current()) {
         s_seen.line_off_thread = true;
     }
-    if (line->source != PP_LOG_SOURCE_HOST && s_seen.line_count < (uint32_t)MAX_LINES) {
+    if (strcmp(line->text, FAKE_FORK_FLOOD_TEXT) == 0) {
+        if (line->source == PP_LOG_SOURCE_GUEST_OUTPUT) {
+            s_seen.flood_output++;
+        } else if (line->source == PP_LOG_SOURCE_RUNTIME) {
+            s_seen.flood_runtime++;
+        }
+    } else if (line->source != PP_LOG_SOURCE_HOST && s_seen.line_count < (uint32_t)MAX_LINES) {
         (void)snprintf(s_seen.lines[s_seen.line_count], LINE_SIZE, "%s", line->text);
         s_seen.sources[s_seen.line_count] = line->source;
         s_seen.processes[s_seen.line_count] = line->process;
         s_seen.line_count++;
     }
+    const bool slow = s_seen.slow_lines;
     (void)pthread_cond_broadcast(&s_seen.changed);
     (void)pthread_mutex_unlock(&s_seen.mutex);
+    if (slow) {
+        const struct timespec pause = {.tv_sec = 0, .tv_nsec = 20000L};
+        (void)nanosleep(&pause, NULL);
+    }
 }
 
 // Waits up to a minute for an event of the kind, and returns it.
@@ -250,6 +270,9 @@ static void fork_receives_the_bridge(void) {
     start_host();
     start_session(&fixture, NULL);
     PP_CHECK_EQUAL(call_fake(&fixture, "fake_fork_bridge_ok"), 1);
+    // The host gave the server's thread the stack of a main thread, 8 MiB (paneport/wine_bridge.h);
+    // the default stack of a thread on Darwin is 512 KiB.
+    PP_CHECK(call_fake(&fixture, "fake_fork_server_stack_kib") >= 8 * 1024);
     stop_host();
 }
 
@@ -277,7 +300,13 @@ static void events_arrive_on_event_thread(void) {
     PP_CHECK(!s_seen.line_off_thread);
     (void)pthread_mutex_unlock(&s_seen.mutex);
     check_state(process, PP_PROCESS_EXITED, FAKE_FORK_EXIT_CODE);
-    stop_host();
+    // The session ended by itself, so its stop reports no second end.
+    PP_CHECK_EQUAL(pp_session_stop(), PP_OK);
+    settle();
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.event_count, 3U);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
 }
 
 // The program's lines arrive whole, marked with their source and process, before its exit
@@ -451,6 +480,13 @@ static void launch_needs_a_session(void) {
     PP_CHECK_EQUAL(pp_process_launch(&config, &process), PP_E_INVALID_ARGUMENT);
     config.program_folder = "/nonexistent-paneport-folder";
     PP_CHECK_EQUAL(pp_process_launch(&config, &process), PP_E_INVALID_ARGUMENT);
+    // An arguments block whose empty string does not come within 32 KiB.
+    char arguments[(32U * 1024U) + 1U];
+    memset(arguments, 'a', sizeof arguments - 1U);
+    arguments[sizeof arguments - 1U] = '\0';
+    config = process_config(1U);
+    config.arguments = arguments;
+    PP_CHECK_EQUAL(pp_process_launch(&config, &process), PP_E_INVALID_ARGUMENT);
 
     process = launch(1U, PP_OK);
     PP_CHECK(process != 0U);
@@ -472,12 +508,18 @@ static void terminate_sets_the_exit_code(void) {
     PP_CHECK_EQUAL(wait_for_event(PP_EVENT_PROCESS_EXITED).code, 7);
     (void)wait_for_event(PP_EVENT_SESSION_ENDED);
     check_state(process, PP_PROCESS_EXITED, 7U);
+    // A process that ended is not terminated again: the fake's terminate would refuse it.
     PP_CHECK_EQUAL(pp_process_terminate(process, 8U), PP_OK);
     PP_CHECK_EQUAL(pp_process_terminate(process + 1U, 8U), PP_E_INVALID_ARGUMENT);
     pp_process_state_t state = {.struct_size = (uint32_t)sizeof(pp_process_state_t)};
     PP_CHECK_EQUAL(pp_process_get_state(process + 1U, &state), PP_E_INVALID_ARGUMENT);
     state.struct_size = 4U;
     PP_CHECK_EQUAL(pp_process_get_state(process, &state), PP_E_INVALID_ARGUMENT);
+    // A caller that knows 8 bytes of the struct gets no exit code written past them.
+    state = (pp_process_state_t){.struct_size = 8U, .state = 0U, .exit_code = 0xFFFFFFFFU};
+    PP_CHECK_EQUAL(pp_process_get_state(process, &state), PP_OK);
+    PP_CHECK_EQUAL(state.state, PP_PROCESS_EXITED);
+    PP_CHECK_EQUAL(state.exit_code, 0xFFFFFFFFU);
     stop_host();
 }
 
@@ -650,6 +692,111 @@ static void launch_refusal_is_reported(void) {
     stop_host();
 }
 
+// A program that starts and ends before the launch looks at it still started: the launch
+// succeeds, and both events and the exit code arrive (the race that commit 20cad6b fixed).
+static void quick_program_still_started(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=quick\0");
+    const uint64_t process = launch(1U, PP_OK);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_PROCESS_EXITED).code, FAKE_FORK_EXIT_CODE);
+    (void)wait_for_event(PP_EVENT_SESSION_ENDED);
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.events[0].kind, PP_EVENT_PROCESS_STARTED);
+    PP_CHECK_EQUAL(s_seen.events[1].kind, PP_EVENT_PROCESS_EXITED);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    check_state(process, PP_PROCESS_EXITED, FAKE_FORK_EXIT_CODE);
+    stop_host();
+}
+
+// A program and the runtime that write more lines than the log queue holds, faster than the log
+// callback takes them, lose none, since the reader and the bridge's log wait for room, and every
+// line of the program arrives before its exit event.
+static void a_flood_of_lines_loses_none(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    s_seen.slow_lines = true;
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=flood\0");
+    (void)launch(1U, PP_OK);
+    (void)wait_for_event(PP_EVENT_SESSION_ENDED);
+    settle();
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.flood_output, FAKE_FORK_FLOOD_LINES);
+    PP_CHECK_EQUAL(s_seen.flood_runtime, FAKE_FORK_FLOOD_LINES);
+    PP_CHECK_EQUAL(s_seen.flood_output_at_exit, FAKE_FORK_FLOOD_LINES);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    stop_host();
+}
+
+// The runtime may report a process's end before the process's last line reached its pipe, as the
+// fork's server does for a process that it terminates: the exit event still waits for the reader
+// of the output, so the line arrives before it.
+static void exit_waits_for_the_last_line(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=late_output\0");
+    (void)launch(1U, PP_OK);
+    (void)wait_for_event(PP_EVENT_SESSION_ENDED);
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    bool found = false;
+    for (uint32_t index = 0U; index < s_seen.line_count; index++) {
+        if (strcmp(s_seen.lines[index], FAKE_FORK_LATE_LINE) == 0) {
+            found = true;
+        }
+    }
+    PP_CHECK(found);
+    PP_CHECK_EQUAL(s_seen.events[1].kind, PP_EVENT_PROCESS_EXITED);
+    PP_CHECK_EQUAL(s_seen.lines_before[1], s_seen.line_count);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    stop_host();
+}
+
+// The host creates at most four threads for the fork's session: the fake has it create four, and
+// the start fails unless the fifth is refused with PP_WINE_E_BUSY.
+static void four_threads_at_most(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=five_threads\0");
+    stop_host();
+}
+
+// Reads the JIT state until it is the one given, for up to a minute.
+static void wait_for_jit_state(pp_jit_state_t expected) {
+    pp_jit_status_t status = {.struct_size = (uint32_t)sizeof(pp_jit_status_t)};
+    for (int round = 0; round < 60000; round++) {
+        PP_CHECK_EQUAL(pp_jit_get_state(&status), PP_OK);
+        if (status.state == expected || status.state == PP_JIT_STATE_FAILED) {
+            break;
+        }
+        pp_sleep_milliseconds(1);
+    }
+    PP_CHECK_EQUAL(status.state, expected);
+}
+
+// M3.1's JIT state answers the session's precondition by itself: with the macOS backend's
+// simulated broker the provider reaches ready, and a session starts without the answer of the
+// test builds.
+static void start_accepts_the_providers_ready_state(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    // One eighth of 8 GiB leaves room for the default pool (C-0006 section 4).
+    PP_CHECK_EQUAL(pp_test_set_memory_stub(UINT64_C(8192) * 1024U * 1024U, 0U), PP_OK);
+    PP_CHECK_EQUAL(pp_jit_set_enabler_opened(1U), PP_OK);
+    wait_for_jit_state(PP_JIT_STATE_DEBUGGER_ATTACHED);
+    PP_CHECK_EQUAL(pp_jit_request_pool(PP_JIT_POOL_DEFAULT_MIB), PP_OK);
+    wait_for_jit_state(PP_JIT_STATE_READY);
+    const pp_session_config_t config = session_config(&fixture, NULL);
+    PP_CHECK_EQUAL(pp_session_start(&config), PP_OK);
+    stop_host();
+}
+
 // pp_shutdown refuses while a session runs, which it could not stop afterwards, and leaves the
 // host and the session as they were; once the session stopped, the host stops.
 static void shutdown_refused_while_a_session_runs(void) {
@@ -767,6 +914,11 @@ int main(int argc, char **argv) {
         {"stop_wakes_a_reader_without_an_end", stop_wakes_a_reader_without_an_end},
         {"failed_start_is_reported", failed_start_is_reported},
         {"launch_refusal_is_reported", launch_refusal_is_reported},
+        {"quick_program_still_started", quick_program_still_started},
+        {"a_flood_of_lines_loses_none", a_flood_of_lines_loses_none},
+        {"exit_waits_for_the_last_line", exit_waits_for_the_last_line},
+        {"four_threads_at_most", four_threads_at_most},
+        {"start_accepts_the_providers_ready_state", start_accepts_the_providers_ready_state},
         {"shutdown_refused_while_a_session_runs", shutdown_refused_while_a_session_runs},
         {"load_failure_counts_as_run", load_failure_counts_as_run},
         {"configuration_checks", configuration_checks},

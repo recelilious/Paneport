@@ -113,12 +113,14 @@ target_link_libraries(fake_wine_fork PRIVATE Threads::Threads)
 paneport_native_test(test_session CASES
     start_needs_host_and_jit fork_receives_the_bridge events_arrive_on_event_thread
     output_lines_arrive_before_the_exit second_session_refused replaced_handler_fails_session
-    launch_check_fails_the_session started_hook_runs_before_check runtime_refusal_fails_session launch_needs_a_session
-    terminate_sets_the_exit_code get_state_asks_the_fork stop_ends_a_running_process
-    stop_during_a_launch stop_counts_an_unreported_end stop_wakes_a_reader_without_an_end
-    failed_start_is_reported
-    launch_refusal_is_reported shutdown_refused_while_a_session_runs load_failure_counts_as_run
-    configuration_checks wrong_thread)
+    launch_check_fails_the_session started_hook_runs_before_check runtime_refusal_fails_session
+    launch_needs_a_session terminate_sets_the_exit_code get_state_asks_the_fork
+    stop_ends_a_running_process stop_during_a_launch stop_counts_an_unreported_end
+    stop_wakes_a_reader_without_an_end failed_start_is_reported launch_refusal_is_reported
+    quick_program_still_started a_flood_of_lines_loses_none exit_waits_for_the_last_line
+    four_threads_at_most start_accepts_the_providers_ready_state
+    shutdown_refused_while_a_session_runs load_failure_counts_as_run configuration_checks
+    wrong_thread)
 target_compile_definitions(test_session PRIVATE "FAKE_FORK_PATH=\"$<TARGET_FILE:fake_wine_fork>\"")
 add_dependencies(test_session fake_wine_fork)
 paneport_native_test(test_guest_output CASES

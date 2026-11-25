@@ -40,4 +40,12 @@
 // The standard error.
 #define FAKE_FORK_ERRORS "an error line\n"
 
+// The mode flood: how many lines the process writes and the runtime logs, more than the host's
+// log queue holds, and their text.
+#define FAKE_FORK_FLOOD_LINES 1500U
+#define FAKE_FORK_FLOOD_TEXT "a line of the flood"
+
+// The line that the process writes in the mode late_output after it reported its end.
+#define FAKE_FORK_LATE_LINE "a line after the end was reported"
+
 #endif // PANEPORT_TESTS_FAKE_WINE_FORK_H

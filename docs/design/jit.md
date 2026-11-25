@@ -174,3 +174,4 @@ Public material consulted (C-0001 section 6):
 - Arm, Arm Architecture Reference Manual for A-profile architecture (document DDI 0487), section B2.4.4, "Concurrent modification and execution of instructions", and the descriptions of `DC CVAU`, `IC IVAU`, `DSB` and `ISB`. Arm's site refuses link checkers, so the manual is named by its number.
 - Arm, A64 Instruction Set Architecture (document DDI 0602): `MOVZ`, `RET`, `BLR` and `BRK`, and the range of `B` and `BL`.
 - JSON Schema, draft 2020-12, core and validation: <https://json-schema.org/draft/2020-12>
+- RFC 6901, JavaScript Object Notation (JSON) Pointer, the pointer that each problem of the check of the list names: <https://www.rfc-editor.org/rfc/rfc6901>

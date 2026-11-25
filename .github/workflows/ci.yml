@@ -157,7 +157,7 @@ jobs:
         run: dotnet run tools/ScanPackage.cs -- --self-test
 
       # Its fixtures, in the tool and in tests/compat, break one rule each, and each must fail
-      # naming that rule (M3.1, M8.3).
+      # naming that rule; its valid fixtures must pass (M3.1, M8.3).
       - name: Self-test the compatibility check
         if: ${{ !cancelled() }}
         run: dotnet run tools/CheckCompat.cs -- --self-test

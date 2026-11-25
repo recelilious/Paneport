@@ -17,7 +17,10 @@
 //                    PP_RESULT_ITEMS; failures_cut says that more were found
 //   failures_cut 1
 //
-// A text holds no control character. Every function here runs on one thread.
+// A text holds no control character. trap_count is always there, once, and the trap lines come
+// after it, no more of them than it counts: the parent names the refused calls by the count, so
+// a file that breaks this is refused rather than read as one without them. Every function here
+// runs on one thread.
 
 #ifndef PP_HARNESS_RUN_RESULT_H
 #define PP_HARNESS_RUN_RESULT_H
@@ -59,8 +62,8 @@ void pp_run_result_add_trap(pp_run_result_t *result, const char *report);
 // Writes the result to path, through path with ".new" added and a rename. Returns whether it did.
 bool pp_run_result_write(const pp_run_result_t *result, const char *path);
 
-// Reads the result at path. Returns false, with a message in error, when there is no such file
-// or it is malformed.
+// Reads the result at path. Returns false, with a message in error, when there is no such file,
+// it is malformed or it has no trap_count line, and leaves the result cleared.
 bool pp_run_result_read(const char *path, pp_run_result_t *result, char *error, size_t error_size);
 
 // Compares the program's whole Windows exit code, which single mode has from the process-exited

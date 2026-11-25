@@ -107,8 +107,10 @@ static bool read_number(const char *text, uint32_t *value) {
     return true;
 }
 
-// Reads one line, "<name> <value>", into the result; false when it is malformed.
-static bool read_item(char *line, pp_run_result_t *result) {
+// Reads one line, "<name> <value>", into the result; false when it is malformed. trap_count
+// comes once, and the trap lines follow it, at most as many as it counts, since the parent
+// names the refused calls by the count.
+static bool read_item(char *line, pp_run_result_t *result, bool *trap_count_seen) {
     char *space = strchr(line, ' ');
     if (space == NULL) {
         return false;
@@ -123,9 +125,14 @@ static bool read_item(char *line, pp_run_result_t *result) {
         return true;
     }
     if (strcmp(line, "trap_count") == 0) {
-        return read_number(value, &result->trap_count);
+        if (*trap_count_seen || !read_number(value, &result->trap_count)) {
+            return false;
+        }
+        *trap_count_seen = true;
+        return true;
     }
-    if (strcmp(line, "trap") == 0 && result->trap_lines < PP_RESULT_ITEMS) {
+    if (strcmp(line, "trap") == 0 && result->trap_lines < result->trap_count &&
+        result->trap_lines < PP_RESULT_ITEMS) {
         pp_run_result_add_trap(result, value);
         return true;
     }
@@ -158,6 +165,7 @@ bool pp_run_result_read(const char *path, pp_run_result_t *result, char *error, 
         valid = false;
     }
     unsigned number = 1U;
+    bool trap_count_seen = false;
     char *line = text;
     while (valid && *line != '\0') {
         char *end = strchr(line, '\n');
@@ -166,7 +174,7 @@ bool pp_run_result_read(const char *path, pp_run_result_t *result, char *error, 
             break;
         }
         *end = '\0';
-        valid = read_item(line, result);
+        valid = read_item(line, result, &trap_count_seen);
         if (valid) {
             line = end + 1;
             number++;
@@ -175,6 +183,12 @@ bool pp_run_result_read(const char *path, pp_run_result_t *result, char *error, 
     free(text);
     if (!valid) {
         (void)snprintf(error, error_size, "line %u of the result file is malformed", number);
+    } else if (!trap_count_seen) {
+        // The writer always writes the count, so a file without it is not a whole result.
+        (void)snprintf(error, error_size, "the result file has no trap_count line");
+        valid = false;
+    }
+    if (!valid) {
         pp_run_result_init(result);
     }
     return valid;

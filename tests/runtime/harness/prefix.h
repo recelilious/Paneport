@@ -17,9 +17,10 @@
 bool pp_prefix_remove(const char *folder, char *error, size_t error_size);
 
 // Makes target, which must not exist, a copy of the folder source: folders and files with their
-// permissions, and symbolic links as links, never followed. On macOS each file is cloned, which
-// APFS does without copying its data, and copied where cloning fails. On failure it writes a
-// message into error, and target may hold part of the copy.
+// permissions, and symbolic links as links, never followed. source must be the folder itself:
+// anything else, a symbolic link to a folder among it, is refused before anything is made. On
+// macOS each file is cloned, which APFS does without copying its data, and copied where cloning
+// fails. On failure it writes a message into error, and target may hold part of the copy.
 bool pp_prefix_copy(const char *source, const char *target, char *error, size_t error_size);
 
 #endif

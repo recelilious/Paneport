@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // The prefixes of single mode: a copy of the template keeps its folders, files, permissions and
-// symbolic links, and the removal of a run's prefix takes all of it, a folder that its owner
-// cannot write and a dangling link among it.
+// symbolic links, whatever the umask, and is made from a folder only; and the removal of a run's
+// prefix takes all of it, a folder that its owner cannot write and a dangling link among it, or
+// fails and names what it could not read.
 
 #include <errno.h>
 #include <fcntl.h>
@@ -12,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -53,15 +55,16 @@ static void make_link(const char *base, const char *name, const char *target) {
     PP_CHECK_EQUAL(symlink(target, path), 0);
 }
 
-// A template like a small prefix: folders, a script with its execute bits, an empty file, a link
-// into the tree as dosdevices/c: is, a dangling link, and a folder that its owner can read but
-// not write.
+// A template like a small prefix: folders, one with the sticky bit, a script with its execute
+// bits, an empty file, a link into the tree as dosdevices/c: is, a dangling link, and a folder
+// that its owner can read but not write.
 static void make_template(const char *root) {
     PP_CHECK_EQUAL(mkdir(root, 0700), 0);
     PP_CHECK_EQUAL(chmod(root, 0755), 0);
     make_folder(root, "dosdevices", 0755);
     make_folder(root, "drive_c", 0755);
     make_folder(root, "drive_c/windows", 0750);
+    make_folder(root, "drive_c/shared", 01755);
     write_text(root, "system.reg", "WINE REGISTRY Version 2\n", 0644);
     write_text(root, ".update-timestamp", "", 0600);
     write_text(root, "drive_c/windows/run.sh", "#!/bin/sh\nexit 0\n", 0750);
@@ -128,6 +131,7 @@ static void check_copy(const char *root, const char *source) {
     }
     PP_CHECK_EQUAL(mode_of(target, "."), 0755);
     PP_CHECK_EQUAL(mode_of(target, "drive_c/windows"), 0750);
+    PP_CHECK_EQUAL(mode_of(target, "drive_c/shared"), 01755);
     PP_CHECK_EQUAL(mode_of(target, "drive_c/sealed"), 0500);
     check_file(target, "system.reg", "WINE REGISTRY Version 2\n", 0644);
     check_file(target, ".update-timestamp", "", 0600);
@@ -153,6 +157,51 @@ static void copy_keeps_the_tree(void) {
     path_of(slashed, sizeof slashed, source, "/");
     check_copy(root, slashed);
     char error[512] = "";
+    PP_CHECK(pp_prefix_remove(root, error, sizeof error));
+}
+
+// The permissions of the copy are the template's whatever the umask, which open and mkdir apply
+// to what they make. On macOS APFS clones each file with its permissions, so there the umask
+// reaches only the folders.
+static void copy_ignores_the_umask(void) {
+    char root[PATH_MAX];
+    make_temporary(root, sizeof root);
+    char source[PATH_MAX];
+    path_of(source, sizeof source, root, "template");
+    make_template(source);
+    const mode_t saved = umask(077);
+    check_copy(root, source);
+    (void)umask(saved);
+    char error[512] = "";
+    PP_CHECK(pp_prefix_remove(root, error, sizeof error));
+}
+
+// The template must be a folder, and nothing is made from anything else: from a symbolic link to
+// the template, whose copy would be a link through which every run wrote into the template, with
+// or without a slash at its end, or from a file.
+static void copy_needs_a_folder(void) {
+    char root[PATH_MAX];
+    make_temporary(root, sizeof root);
+    char source[PATH_MAX];
+    path_of(source, sizeof source, root, "template");
+    make_template(source);
+    make_link(root, "link", source);
+    write_text(root, "file", "file\n", 0644);
+    char target[PATH_MAX];
+    path_of(target, sizeof target, root, "copy");
+    static const char *const k_sources[] = {"link", "link/", "file"};
+    char error[512] = "";
+    for (size_t index = 0; index < sizeof k_sources / sizeof k_sources[0]; index++) {
+        char named[PATH_MAX];
+        path_of(named, sizeof named, root, k_sources[index]);
+        error[0] = '\0';
+        PP_CHECK(!pp_prefix_copy(named, target, error, sizeof error));
+        if (strstr(error, "which is not a folder") == NULL) {
+            (void)fprintf(stderr, "for %s: \"%s\"\n", k_sources[index], error);
+            PP_CHECK(false);
+        }
+        PP_CHECK(!exists(target));
+    }
     PP_CHECK(pp_prefix_remove(root, error, sizeof error));
 }
 
@@ -212,12 +261,46 @@ static void remove_takes_links_and_missing_folders(void) {
     PP_CHECK(!exists(root));
 }
 
+// A folder that the walk cannot read fails the removal, which names it, and what it holds stays:
+// a removal that passed over the folder would report success with the prefix still there. The
+// process has no descriptor left with which the walk could open the folder: its lowest free
+// descriptor becomes the limit for the removal.
+static void remove_names_what_it_cannot_read(void) {
+    char root[PATH_MAX];
+    make_temporary(root, sizeof root);
+    make_folder(root, "unread", 0755);
+    write_text(root, "unread/file.txt", "kept\n", 0644);
+    char folder[PATH_MAX];
+    path_of(folder, sizeof folder, root, "unread");
+    const int lowest = open("/dev/null", O_RDONLY | O_CLOEXEC);
+    PP_CHECK(lowest >= 0);
+    PP_CHECK_EQUAL(close(lowest), 0);
+    struct rlimit saved;
+    PP_CHECK_EQUAL(getrlimit(RLIMIT_NOFILE, &saved), 0);
+    struct rlimit limit = saved;
+    limit.rlim_cur = (rlim_t)lowest;
+    PP_CHECK_EQUAL(setrlimit(RLIMIT_NOFILE, &limit), 0);
+    char error[512] = "";
+    const bool removed = pp_prefix_remove(folder, error, sizeof error);
+    PP_CHECK_EQUAL(setrlimit(RLIMIT_NOFILE, &saved), 0);
+    PP_CHECK(!removed);
+    if (strstr(error, folder) == NULL) {
+        (void)fprintf(stderr, "\"%s\" does not name %s\n", error, folder);
+        PP_CHECK(false);
+    }
+    check_file(folder, "file.txt", "kept\n", 0644);
+    PP_CHECK(pp_prefix_remove(root, error, sizeof error));
+}
+
 int main(int argc, char **argv) {
     static const pp_test_case_t cases[] = {
         {"copy_keeps_the_tree", copy_keeps_the_tree},
+        {"copy_ignores_the_umask", copy_ignores_the_umask},
+        {"copy_needs_a_folder", copy_needs_a_folder},
         {"copy_needs_a_new_target", copy_needs_a_new_target},
         {"remove_takes_everything", remove_takes_everything},
         {"remove_takes_links_and_missing_folders", remove_takes_links_and_missing_folders},
+        {"remove_names_what_it_cannot_read", remove_names_what_it_cannot_read},
     };
     return pp_run_case(argc, argv, cases, PP_CASE_COUNT(cases));
 }

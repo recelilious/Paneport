@@ -219,6 +219,18 @@ bool pp_prefix_copy(const char *source, const char *target, char *error, size_t 
     }
     memcpy(root, source, root_length);
     root[root_length] = '\0';
+    // The walk copies a symbolic link as a link and follows none, its root included, since the
+    // removal shares it and must not empty what a link names. The copy of a link to the template
+    // would therefore be a link to it, through which every run wrote into the template itself.
+    struct stat status;
+    if (lstat(root, &status) != 0) {
+        describe(error, error_size, "read", root, errno);
+        return false;
+    }
+    if (!S_ISDIR(status.st_mode)) {
+        (void)snprintf(error, error_size, "cannot copy %s, which is not a folder", root);
+        return false;
+    }
     FTS *tree = open_tree(root);
     if (tree == NULL) {
         describe(error, error_size, "open", root, errno);

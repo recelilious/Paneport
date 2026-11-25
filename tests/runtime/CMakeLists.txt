@@ -79,8 +79,9 @@ if(PANEPORT_TESTS)
     target_compile_definitions(test_files PRIVATE
         "PP_REPOSITORY_ROOT=\"${PANEPORT_REPOSITORY_ROOT}\"")
     paneport_harness_test(test_prefix CASES
-        copy_keeps_the_tree copy_needs_a_new_target remove_takes_everything
-        remove_takes_links_and_missing_folders)
+        copy_keeps_the_tree copy_ignores_the_umask copy_needs_a_folder copy_needs_a_new_target
+        remove_takes_everything remove_takes_links_and_missing_folders
+        remove_names_what_it_cannot_read)
     paneport_harness_test(test_run_result CASES
         round_trip exit_codes texts_stay_on_their_lines failed_write_changes_nothing
         exit_code_compared_whole missing_file_named malformed_files_refused)

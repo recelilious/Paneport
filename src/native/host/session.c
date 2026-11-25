@@ -122,12 +122,21 @@ static struct {
 // The hooks and the stop's wait of the test builds, guarded by the session's mutex.
 static pp_session_hook_t s_started_hook;
 static void *s_started_hook_argument;
+static pp_session_hook_t s_launch_hook;
+static void *s_launch_hook_argument;
 static uint32_t s_stop_wait_milliseconds;
 
 void pp_session_set_started_hook(pp_session_hook_t hook, void *argument) {
     (void)pthread_mutex_lock(&s_session.mutex);
     s_started_hook = hook;
     s_started_hook_argument = argument;
+    (void)pthread_mutex_unlock(&s_session.mutex);
+}
+
+void pp_session_set_launch_hook(pp_session_hook_t hook, void *argument) {
+    (void)pthread_mutex_lock(&s_session.mutex);
+    s_launch_hook = hook;
+    s_launch_hook_argument = argument;
     (void)pthread_mutex_unlock(&s_session.mutex);
 }
 
@@ -716,6 +725,58 @@ static void refuse_process(uint64_t handle, bool without_reader) {
     bridge_process_exited(handle, 1U);
 }
 
+// Opens the pipes of a launch that captures the program's output and starts their reader, which
+// takes their read ends. On a failure it marks the process as refused and returns the error.
+static pp_status_t start_capture(uint64_t handle, int output_pipe[2], int errors_pipe[2],
+                                 pp_guest_output_t **output) {
+    if (!open_pipe(output_pipe)) {
+        refuse_process(handle, true);
+        return pp_error_set(PP_E_SYSTEM, "The pipes for the program's output could not open.");
+    }
+    if (!open_pipe(errors_pipe)) {
+        close_if_open(output_pipe[0]);
+        close_if_open(output_pipe[1]);
+        refuse_process(handle, true);
+        return pp_error_set(PP_E_SYSTEM, "The pipes for the program's output could not open.");
+    }
+    const pp_status_t status =
+        pp_guest_output_start(output_pipe[0], errors_pipe[0], handle, output_ended, output);
+    if (status != PP_OK) {
+        close_if_open(output_pipe[1]);
+        close_if_open(errors_pipe[1]);
+        refuse_process(handle, true);
+        return pp_error_set(status, "The reader of the program's output could not start.");
+    }
+    return PP_OK;
+}
+
+// Runs the launch hook of the test builds. Nothing in the shipped builds.
+static void run_launch_hook(void) {
+#ifdef PANEPORT_TEST_BUILD
+    (void)pthread_mutex_lock(&s_session.mutex);
+    const pp_session_hook_t hook = s_launch_hook;
+    void *const hook_argument = s_launch_hook_argument;
+    (void)pthread_mutex_unlock(&s_session.mutex);
+    if (hook != NULL) {
+        hook(hook_argument);
+    }
+#endif
+}
+
+// Hands the launch's reader, or none, to pp_session_stop while the session still runs, and
+// returns whether it does. The stop may have begun while the pipes and the reader were set up,
+// and then it took no reader: the launch ends its process itself, before the runtime hears of it,
+// so that no reader outlives the stop and no program starts in a session that stopped.
+static bool keep_reader(pp_guest_output_t *output) {
+    (void)pthread_mutex_lock(&s_session.mutex);
+    const bool running = s_session.state == PP_SESSION_RUNNING;
+    if (running) {
+        s_session.process.output = output;
+    }
+    (void)pthread_mutex_unlock(&s_session.mutex);
+    return running;
+}
+
 PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint64_t *process) {
     pp_error_clear();
     if (config == NULL || process == NULL) {
@@ -773,29 +834,22 @@ PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint6
 
     int output_pipe[2] = {-1, -1};
     int errors_pipe[2] = {-1, -1};
+    pp_guest_output_t *output = NULL;
     if (config->capture_output == 1U) {
-        if (!open_pipe(output_pipe)) {
-            refuse_process(handle, true);
-            return pp_error_set(PP_E_SYSTEM, "The pipes for the program's output could not open.");
-        }
-        if (!open_pipe(errors_pipe)) {
-            close_if_open(output_pipe[0]);
-            close_if_open(output_pipe[1]);
-            refuse_process(handle, true);
-            return pp_error_set(PP_E_SYSTEM, "The pipes for the program's output could not open.");
-        }
-        pp_guest_output_t *output = NULL;
-        status =
-            pp_guest_output_start(output_pipe[0], errors_pipe[0], handle, output_ended, &output);
+        status = start_capture(handle, output_pipe, errors_pipe, &output);
         if (status != PP_OK) {
-            close_if_open(output_pipe[1]);
-            close_if_open(errors_pipe[1]);
-            refuse_process(handle, true);
-            return pp_error_set(status, "The reader of the program's output could not start.");
+            return status;
         }
-        (void)pthread_mutex_lock(&s_session.mutex);
-        s_session.process.output = output;
-        (void)pthread_mutex_unlock(&s_session.mutex);
+    }
+    run_launch_hook();
+    if (!keep_reader(output)) {
+        close_if_open(output_pipe[1]);
+        close_if_open(errors_pipe[1]);
+        // The reader sees the end of both pipes at once, since nothing else holds their ends.
+        pp_guest_output_join(output);
+        refuse_process(handle, false);
+        return pp_error_set(PP_E_NO_SESSION,
+                            "The session stopped while pp_process_launch started the program.");
     }
 
     const struct wine_paneport_launch request = {

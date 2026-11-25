@@ -230,20 +230,26 @@ static void start_needs_host_and_jit(void) {
     stop_host();
 }
 
+// Calls a function of the fake that the host loaded, which takes nothing and returns an int.
+static int call_fake(const fixture_t *fixture, const char *name) {
+    void *module = dlopen(fixture->library, RTLD_NOW | RTLD_NOLOAD);
+    PP_CHECK(module != NULL);
+    void *symbol = dlsym(module, name);
+    PP_CHECK(symbol != NULL);
+    int (*function)(void) = NULL;
+    memcpy((void *)&function, (const void *)&symbol, sizeof function);
+    const int result = function();
+    PP_CHECK_EQUAL(dlclose(module), 0);
+    return result;
+}
+
 // The fork receives a complete bridge of this version (C-0005 section 3).
 static void fork_receives_the_bridge(void) {
     fixture_t fixture;
     make_fixture(&fixture);
     start_host();
     start_session(&fixture, NULL);
-    void *module = dlopen(fixture.library, RTLD_NOW | RTLD_NOLOAD);
-    PP_CHECK(module != NULL);
-    void *symbol = dlsym(module, "fake_fork_bridge_ok");
-    PP_CHECK(symbol != NULL);
-    int (*bridge_ok)(void) = NULL;
-    memcpy((void *)&bridge_ok, (const void *)&symbol, sizeof bridge_ok);
-    PP_CHECK_EQUAL(bridge_ok(), 1);
-    PP_CHECK_EQUAL(dlclose(module), 0);
+    PP_CHECK_EQUAL(call_fake(&fixture, "fake_fork_bridge_ok"), 1);
     stop_host();
 }
 
@@ -493,6 +499,63 @@ static void stop_ends_a_running_process(void) {
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
 }
 
+// What a launch that the launch hook holds returned, and whether the stop has returned.
+typedef struct held_launch_t {
+    _Atomic(bool) in_hook;
+    _Atomic(bool) stopped;
+    _Atomic(int) status;
+    uint64_t process;
+} held_launch_t;
+
+static void hold_launch(void *argument) {
+    held_launch_t *held = argument;
+    atomic_store(&held->in_hook, true);
+    pp_wait_for_flag(&held->stopped);
+}
+
+static void *launch_held(void *argument) {
+    held_launch_t *held = argument;
+    const pp_process_config_t config = process_config(1U);
+    atomic_store(&held->status, pp_process_launch(&config, &held->process));
+    return NULL;
+}
+
+// A stop that overtakes a launch between the start of its output reader and its call into the
+// runtime leaves the launch to end its process: the launch fails with PP_E_NO_SESSION, the
+// runtime never hears of the process, the launch joins its reader, and the exit event comes
+// before the session's end.
+static void stop_during_a_launch(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=wait\0");
+    held_launch_t held = {.process = 0U};
+    atomic_init(&held.in_hook, false);
+    atomic_init(&held.stopped, false);
+    atomic_init(&held.status, 1);
+    pp_session_set_launch_hook(hold_launch, &held);
+    const pthread_t thread = pp_start_thread(launch_held, &held);
+    pp_wait_for_flag(&held.in_hook);
+    pp_session_set_stop_wait(200U);
+    PP_CHECK_EQUAL(pp_session_stop(), PP_OK);
+    atomic_store(&held.stopped, true);
+    pp_join_thread(thread);
+    pp_session_set_launch_hook(NULL, NULL);
+    PP_CHECK_EQUAL(atomic_load(&held.status), PP_E_NO_SESSION);
+    PP_CHECK(held.process != 0U);
+    check_state(held.process, PP_PROCESS_EXITED, 1U);
+    PP_CHECK_EQUAL(call_fake(&fixture, "fake_fork_launches"), 0);
+    (void)wait_for_event(PP_EVENT_SESSION_ENDED);
+    settle();
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.event_count, 2U);
+    PP_CHECK_EQUAL(s_seen.events[0].kind, PP_EVENT_PROCESS_EXITED);
+    PP_CHECK_EQUAL(s_seen.events[0].code, 1);
+    PP_CHECK_EQUAL(s_seen.events[1].kind, PP_EVENT_SESSION_ENDED);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
 // A process that the runtime never reports as ended counts as terminated by the stop, with exit
 // code 1, once the stop's wait is over.
 static void stop_counts_an_unreported_end(void) {
@@ -642,6 +705,7 @@ int main(int argc, char **argv) {
         {"terminate_sets_the_exit_code", terminate_sets_the_exit_code},
         {"get_state_asks_the_fork", get_state_asks_the_fork},
         {"stop_ends_a_running_process", stop_ends_a_running_process},
+        {"stop_during_a_launch", stop_during_a_launch},
         {"stop_counts_an_unreported_end", stop_counts_an_unreported_end},
         {"stop_wakes_a_reader_without_an_end", stop_wakes_a_reader_without_an_end},
         {"failed_start_is_reported", failed_start_is_reported},

@@ -22,7 +22,8 @@
 //                  the launch keeps copies of the pipes' write ends and fails, so that the
 //                  host's reader of the output never sees their end
 //
-// fake_fork_bridge_ok reports whether the bridge it received is complete.
+// fake_fork_bridge_ok reports whether the bridge it received is complete, and fake_fork_launches
+// how often the host called its launch.
 
 #include <pthread.h>
 #include <signal.h>
@@ -56,6 +57,7 @@ static struct {
     // exit code that the bridge reported.
     uint32_t query_state;
     uint32_t query_exit_code;
+    int launches;
 } s_fake = {
     .mutex = PTHREAD_MUTEX_INITIALIZER,
     .changed = PTHREAD_COND_INITIALIZER,
@@ -212,6 +214,9 @@ FAKE_EXPORT int32_t __wine_paneport_session_stop(void) {
 }
 
 FAKE_EXPORT int32_t __wine_paneport_process_launch(const struct wine_paneport_launch *launch) {
+    (void)pthread_mutex_lock(&s_fake.mutex);
+    s_fake.launches++;
+    (void)pthread_mutex_unlock(&s_fake.mutex);
     if (launch == NULL || launch->struct_size < sizeof(struct wine_paneport_launch) ||
         launch->program == NULL) {
         return PP_WINE_E_INVALID_ARGUMENT;
@@ -272,6 +277,13 @@ FAKE_EXPORT int32_t __wine_paneport_process_query(uint64_t process,
     }
     (void)pthread_mutex_unlock(&s_fake.mutex);
     return status;
+}
+
+FAKE_EXPORT int fake_fork_launches(void) {
+    (void)pthread_mutex_lock(&s_fake.mutex);
+    const int launches = s_fake.launches;
+    (void)pthread_mutex_unlock(&s_fake.mutex);
+    return launches;
 }
 
 FAKE_EXPORT int fake_fork_bridge_ok(void) {

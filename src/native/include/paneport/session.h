@@ -182,7 +182,9 @@ PP_EXPORT pp_status_t pp_session_stop(void);
  * @param config The settings. Must not be NULL, and struct_size must cover every member that
  *               this version declares.
  * @param process Receives the process's handle, which is never 0. Must not be NULL.
- * @return PP_OK; PP_E_NO_SESSION unless a session runs; PP_E_UNSUPPORTED when the session
+ * @return PP_OK; PP_E_NO_SESSION unless a session runs, also when the session's stop began during
+ *         the launch, before the runtime heard of the process, which then counts as ended with
+ *         exit code 1, with *process set; PP_E_UNSUPPORTED when the session
  *         already runs its process, since this version runs one per session;
  *         PP_E_INVALID_ARGUMENT for a missing or malformed member, a folder that is relative,
  *         too long or not a folder, or a block that is malformed or too long; PP_E_SYSTEM when

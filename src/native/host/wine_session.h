@@ -17,13 +17,18 @@
 #define PP_WINE_LIBRARY_PATH "lib/wine/aarch64-unix/ntdll.so"
 
 #ifdef PANEPORT_TEST_BUILD
-// A function that pp_session_start runs after the fork started the session and before the
-// check of the signal dispatcher, so that a test can plant a handler of its own there.
+// A function of a test that the session runs at a point of its own, with its argument.
 typedef void (*pp_session_hook_t)(void *argument);
 
-// Test builds only: sets the hook and its argument, or no hook for NULL. Any thread, before
-// pp_session_start.
+// Test builds only: sets a hook that pp_session_start runs after the fork started the session
+// and before the check of the signal dispatcher, so that a test can plant a handler of its own
+// there, or no hook for NULL. Any thread, before pp_session_start.
 void pp_session_set_started_hook(pp_session_hook_t hook, void *argument);
+
+// Test builds only: sets a hook that pp_process_launch runs after it started the reader of the
+// program's output and before its last check that the session runs, or no hook for NULL, so that
+// a test can stop the session there. Any thread, before pp_process_launch.
+void pp_session_set_launch_hook(pp_session_hook_t hook, void *argument);
 
 // Test builds only: sets how long pp_session_stop waits for the end of the session's process and
 // of the reader of its output, in milliseconds, instead of 30 s, or 30 s again for 0, so that a

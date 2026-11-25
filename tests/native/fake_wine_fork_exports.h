@@ -24,4 +24,7 @@ int32_t __wine_paneport_process_query(uint64_t process, struct wine_paneport_pro
 // 1 when the bridge that the fake received is complete and of this version, else 0.
 int fake_fork_bridge_ok(void);
 
+// How often the host called the fake's launch.
+int fake_fork_launches(void);
+
 #endif // PANEPORT_TESTS_FAKE_WINE_FORK_EXPORTS_H

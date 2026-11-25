@@ -14,6 +14,17 @@
 #include "platform.h"
 #include "thread_role.h"
 
+// How long the thread waits, before it delivers an event, for a line that a producer claimed
+// below the event's lines_end but has not published yet (drain).
+#define PP_LINE_WAIT_NANOSECONDS (UINT64_C(100) * 1000U * 1000U)
+
+// An event as it waits in its queue: the event, and the log queue's tail as its post read it.
+// Every line whose post returned before the event's post lies below lines_end.
+typedef struct queued_event_t {
+    pp_event_t event;
+    uint64_t lines_end;
+} queued_event_t;
+
 // The event thread, its queues and its callbacks: a process-wide singleton (C-0010
 // section 3), which pp_init starts and pp_shutdown stops.
 static struct {
@@ -54,6 +65,11 @@ static struct {
     uint64_t pending_dropped;
     bool events_overflow_reported;
     bool logs_overflow_reported;
+
+    // Used by the event thread only: the position of the log queue whose unpublished line kept
+    // an event waiting until the wait ended, so that it does not hold the next one too.
+    bool line_wait_ended;
+    uint64_t line_wait_position;
 } s_thread = {
     .wake_mutex = PTHREAD_MUTEX_INITIALIZER,
     .wake_condition = PTHREAD_COND_INITIALIZER,
@@ -208,22 +224,59 @@ static void report_overflow(void) {
                        "counted, not logged.");
 }
 
-// Before it delivers an event, the thread delivers every log line that the queue holds by then,
-// so that a line whose post happened before the event's post arrives before the event: the
-// lines of a Windows program come before its process-exited event (paneport/session.h).
-static void drain(void) {
-    pp_event_t event;
+static uint64_t monotonic_nanoseconds(void) {
+    struct timespec now;
+    (void)clock_gettime(CLOCK_MONOTONIC, &now);
+    return ((uint64_t)now.tv_sec * UINT64_C(1000000000)) + (uint64_t)now.tv_nsec;
+}
+
+// Delivers the log lines below lines_end, which an event carries: every line whose post
+// returned before the event's post lies there, so it arrives before the event, and lines
+// posted later do not hold the event back. A slot below lines_end that a producer claimed but
+// has not published yet holds the event back for at most PP_LINE_WAIT_NANOSECONDS. A producer
+// is inside a push for a few instructions, unless it is preempted there, or is a guest thread
+// that is suspended there, which can last any time; so past the wait the event goes first, its
+// line follows, and the same slot does not hold another event.
+static void deliver_lines_before(uint64_t lines_end) {
     pp_log_entry_t entry;
+    bool waiting = false;
+    uint64_t deadline = 0U;
+    while (pp_queue_head(&s_thread.logs) < lines_end) {
+        if (pp_queue_pop(&s_thread.logs, &entry)) {
+            receive_line(&entry);
+            waiting = false;
+            continue;
+        }
+        const uint64_t position = pp_queue_head(&s_thread.logs);
+        if (s_thread.line_wait_ended && s_thread.line_wait_position == position) {
+            return;
+        }
+        const uint64_t now = monotonic_nanoseconds();
+        if (!waiting) {
+            waiting = true;
+            deadline = now + PP_LINE_WAIT_NANOSECONDS;
+        } else if (now >= deadline) {
+            s_thread.line_wait_ended = true;
+            s_thread.line_wait_position = position;
+            return;
+        }
+        (void)sched_yield();
+    }
+}
+
+// Delivers events and log lines in turn, each event after the lines posted before it: the lines
+// of a Windows program come before its process-exited event (paneport/session.h).
+static void drain(void) {
     bool delivered = true;
     while (delivered) {
         delivered = false;
-        if (pp_queue_pop(&s_thread.events, &event)) {
-            while (pp_queue_pop(&s_thread.logs, &entry)) {
-                receive_line(&entry);
-            }
-            receive_event(&event);
+        queued_event_t queued;
+        if (pp_queue_pop(&s_thread.events, &queued)) {
+            deliver_lines_before(queued.lines_end);
+            receive_event(&queued.event);
             delivered = true;
         }
+        pp_log_entry_t entry;
         if (pp_queue_pop(&s_thread.logs, &entry)) {
             receive_line(&entry);
             delivered = true;
@@ -255,7 +308,7 @@ static void *thread_main(void *argument) {
 
 pp_status_t pp_event_thread_start(void) {
     pp_status_t status =
-        pp_queue_init(&s_thread.events, PP_EVENT_QUEUE_CAPACITY, (uint32_t)sizeof(pp_event_t));
+        pp_queue_init(&s_thread.events, PP_EVENT_QUEUE_CAPACITY, (uint32_t)sizeof(queued_event_t));
     if (status != PP_OK) {
         return status;
     }
@@ -273,6 +326,8 @@ pp_status_t pp_event_thread_start(void) {
     s_thread.pending_dropped = 0U;
     s_thread.events_overflow_reported = false;
     s_thread.logs_overflow_reported = false;
+    s_thread.line_wait_ended = false;
+    s_thread.line_wait_position = 0U;
 
     if (pthread_create(&s_thread.thread, NULL, thread_main, NULL) != 0) {
         pp_queue_destroy(&s_thread.logs);
@@ -335,13 +390,19 @@ static void run_post_hook(void) {
 #endif
 }
 
-static pp_status_t post(pp_queue_t *queue, const void *entry) {
+// Queues an entry. For an event, lines_end names its member that receives the log queue's tail,
+// which is read once the thread accepts the post, while both queues exist.
+static pp_status_t post(pp_queue_t *queue, const void *entry, uint64_t *lines_end) {
     (void)atomic_fetch_add(&s_thread.posting, 1U);
     pp_status_t status = PP_OK;
     if (!atomic_load(&s_thread.accepting)) {
         status = PP_E_NOT_INITIALIZED;
     } else {
         run_post_hook();
+        if (lines_end != NULL) {
+            // Every line whose post returned before this post claimed a position below the tail.
+            *lines_end = pp_queue_tail(&s_thread.logs);
+        }
         if (!pp_queue_push(queue, entry)) {
             status = PP_E_BUSY;
         } else {
@@ -353,11 +414,12 @@ static pp_status_t post(pp_queue_t *queue, const void *entry) {
 }
 
 pp_status_t pp_event_thread_post_event(const pp_event_t *event) {
-    return post(&s_thread.events, event);
+    queued_event_t queued = {.event = *event, .lines_end = 0U};
+    return post(&s_thread.events, &queued, &queued.lines_end);
 }
 
 pp_status_t pp_event_thread_post_log(const pp_log_entry_t *entry) {
-    return post(&s_thread.logs, entry);
+    return post(&s_thread.logs, entry, NULL);
 }
 
 pp_status_t pp_event_thread_post_log_waiting(const pp_log_entry_t *entry) {

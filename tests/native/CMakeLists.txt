@@ -32,7 +32,9 @@ paneport_native_test(test_status CASES
 paneport_native_test(test_event_queue CASES
     full_queue_refuses many_producers)
 paneport_native_test(test_event_thread CASES
-    lines_before_an_event_arrive_first events_reach_event_thread none_after_shutdown post_in_progress_is_delivered
+    lines_before_an_event_arrive_first event_during_a_flood_arrives_soon
+    no_event_dropped_during_a_flood held_producer_keeps_the_order held_producer_holds_an_event_once
+    events_reach_event_thread none_after_shutdown post_in_progress_is_delivered
     event_overflow_logged_once second_init_fails wrong_thread replaced_callback_finished)
 paneport_native_test(test_log CASES
     lines_whole_and_ordered early_lines_arrive overlong_line_cut overflow_logged_once

@@ -11,8 +11,8 @@ The code of the native host (C-0004 section 2), in C17. [native-host.md](../../.
 |---|---|
 | `host.c`, `host_state.h` | The life cycle: `pp_init`, `pp_shutdown`, the callback setters, `pp_abi_version`, `pp_free`, and the rule for the main thread |
 | `error.c`, `error.h` | The per-thread message of `pp_last_error` |
-| `event_queue.c`, `event_queue.h` | The bounded lock-free queue with many producers and one consumer |
-| `event_thread.c`, `event_thread.h` | The host event thread, its two queues, the callbacks, the buffer for early log lines, the overflow notices, the post that waits for room, and the lines delivered before each event |
+| `event_queue.c`, `event_queue.h` | The bounded lock-free queue with many producers and one consumer, and the hook of the test builds between a push's claim of a slot and its publication |
+| `event_thread.c`, `event_thread.h` | The host event thread, its two queues, the callbacks, the buffer for early log lines, the overflow notices, the post that waits for room, and each event delivered after the lines posted before it, with a bounded wait for a producer inside its push |
 | `log.c`, `log.h` | The log pipeline, the only path for native log lines, and the entries of the runtime's lines and a Windows program's, with their source and process |
 | `session.c`, `wine_session.h` | The session and process groups of `paneport/session.h` and the Wine bridge of `paneport/wine_bridge.h`: loading the Wine fork's Unix library, the bridge table, the launch's one session and its process, their events, the dispatcher check after a session's start, and its hook in test builds |
 | `guest_output.c`, `guest_output.h` | The capture of a Windows program's standard output and error: the pipes, the reader thread and the splitter of lines |

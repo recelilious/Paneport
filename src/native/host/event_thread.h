@@ -3,8 +3,10 @@
 
 // The host event thread: the only thread that runs the .NET side's callbacks (C-0005
 // section 1). Two bounded queues feed it, one for events and one for log lines, so that a
-// flood of log lines never pushes out an event. docs/design/native-host.md section 5
-// describes how it sleeps, wakes, buffers early log lines and reports overflow.
+// flood of log lines never fills the events' queue. Each event arrives after the lines whose
+// posts returned before its post, and lines posted after it do not hold it back.
+// docs/design/native-host.md section 5 describes how it sleeps, wakes, orders lines and events,
+// buffers early log lines and reports overflow.
 
 #ifndef PANEPORT_HOST_EVENT_THREAD_H
 #define PANEPORT_HOST_EVENT_THREAD_H
@@ -41,9 +43,10 @@ pp_status_t pp_event_thread_start(void);
 // pp_shutdown.
 void pp_event_thread_stop(void);
 
-// Queues an event. Any thread. Returns PP_OK, PP_E_NOT_INITIALIZED when the thread is not
-// running, or PP_E_BUSY when the queue is full. Not async-signal-safe: waking the thread may
-// take a lock.
+// Queues an event, with the log queue's tail, so that the lines whose posts returned before this
+// call arrive before the event. Any thread. Returns PP_OK, PP_E_NOT_INITIALIZED when the thread
+// is not running, or PP_E_BUSY when the queue is full. Not async-signal-safe: waking the thread
+// may take a lock.
 pp_status_t pp_event_thread_post_event(const pp_event_t *event);
 
 // Queues a log line. Any thread. The same results and rule as pp_event_thread_post_event.

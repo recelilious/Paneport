@@ -62,4 +62,21 @@ bool pp_queue_is_empty(const pp_queue_t *queue);
 // Returns how many pushes the queue refused. Any thread.
 uint64_t pp_queue_overflow_count(const pp_queue_t *queue);
 
+// Returns the position that the next push claims. Every position below it is claimed, though a
+// push may still be copying its entry there and not have published it yet. Any thread.
+uint64_t pp_queue_tail(const pp_queue_t *queue);
+
+// Returns the position that the next pop reads. The consumer thread only.
+uint64_t pp_queue_head(const pp_queue_t *queue);
+
+#ifdef PANEPORT_TEST_BUILD
+// A function that a push calls between its claim of a slot and the slot's publication.
+typedef void (*pp_queue_push_hook_t)(void *argument);
+
+// Test builds only: makes every later push of every queue call hook with argument there, or no
+// hook for NULL, so that a test can hold a producer where a preempted or suspended one stops
+// (tests/native/test_event_thread.c). A hook that blocks makes the push block too.
+void pp_queue_set_push_hook(pp_queue_push_hook_t hook, void *argument);
+#endif
+
 #endif // PANEPORT_HOST_EVENT_QUEUE_H

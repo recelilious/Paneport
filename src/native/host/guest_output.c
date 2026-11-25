@@ -4,6 +4,7 @@
 #include "guest_output.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -74,6 +75,9 @@ void pp_line_splitter_finish(pp_line_splitter_t *splitter, pp_line_sink_t sink, 
 
 enum { PP_GUEST_STREAMS = 2 };
 
+// How much of a stream the reader takes once it is woken: what a pipe holds, at most.
+#define PP_GUEST_FLUSH_LIMIT ((size_t)64U * 1024U)
+
 // Where the lines of one stream go.
 typedef struct stream_t {
     int fd;
@@ -86,6 +90,8 @@ struct pp_guest_output_t {
     pthread_t thread;
     pp_guest_output_end_t on_end;
     uint64_t process;
+    // The pipe through which pp_guest_output_wake ends the reader: wake[0] is in its poll set.
+    int wake[2];
     stream_t streams[PP_GUEST_STREAMS];
 };
 
@@ -119,19 +125,48 @@ static nfds_t open_streams(pp_guest_output_t *reader, struct pollfd waits[PP_GUE
     return count;
 }
 
+// Ends the streams once the reader was woken: what each pipe holds still becomes lines, read
+// without waiting, though a copy of the write end stays open somewhere.
+static void flush_streams(pp_guest_output_t *reader, char *buffer, size_t size) {
+    for (size_t index = 0U; index < PP_GUEST_STREAMS; index++) {
+        stream_t *stream = &reader->streams[index];
+        if (stream->fd < 0) {
+            continue;
+        }
+        const int flags = fcntl(stream->fd, F_GETFL);
+        if (flags >= 0 && fcntl(stream->fd, F_SETFL, flags | O_NONBLOCK) == 0) {
+            size_t taken = 0U;
+            while (taken < PP_GUEST_FLUSH_LIMIT) {
+                const ssize_t read_count = read(stream->fd, buffer, size);
+                if (read_count <= 0) {
+                    break;
+                }
+                pp_line_splitter_feed(&stream->splitter, buffer, (size_t)read_count, post_line,
+                                      stream);
+                taken += (size_t)read_count;
+            }
+        }
+        close_stream(stream);
+    }
+}
+
 static void *read_output(void *argument) {
     pp_guest_output_t *reader = argument;
     pp_platform_name_thread("paneport.guest-output");
     char buffer[16384];
     for (;;) {
-        struct pollfd waits[PP_GUEST_STREAMS];
+        // The open streams, and the wake pipe after them.
+        struct pollfd waits[PP_GUEST_STREAMS + 1];
         stream_t *streams[PP_GUEST_STREAMS];
         const nfds_t count = open_streams(reader, waits, streams);
         if (count == 0U) {
             reader->on_end(reader->process);
             return NULL;
         }
-        if (poll(waits, count, -1) < 0) {
+        waits[count].fd = reader->wake[0];
+        waits[count].events = POLLIN;
+        waits[count].revents = 0;
+        if (poll(waits, count + 1U, -1) < 0) {
             if (errno == EINTR) {
                 continue;
             }
@@ -139,6 +174,11 @@ static void *read_output(void *argument) {
             for (nfds_t index = 0U; index < count; index++) {
                 close_stream(streams[index]);
             }
+            reader->on_end(reader->process);
+            return NULL;
+        }
+        if (waits[count].revents != 0) {
+            flush_streams(reader, buffer, sizeof buffer);
             reader->on_end(reader->process);
             return NULL;
         }
@@ -157,21 +197,41 @@ static void *read_output(void *argument) {
     }
 }
 
+static void close_both(const int fds[2]) {
+    for (size_t index = 0U; index < 2U; index++) {
+        if (fds[index] >= 0) {
+            (void)close(fds[index]);
+        }
+    }
+}
+
+// Opens the wake pipe, whose ends reach no program that the host starts.
+static bool open_wake_pipe(int wake[2]) {
+    if (pipe(wake) != 0) {
+        return false;
+    }
+    if (fcntl(wake[0], F_SETFD, FD_CLOEXEC) != 0 || fcntl(wake[1], F_SETFD, FD_CLOEXEC) != 0) {
+        close_both(wake);
+        return false;
+    }
+    return true;
+}
+
 pp_status_t pp_guest_output_start(int output_fd, int errors_fd, uint64_t process,
                                   pp_guest_output_end_t on_end, pp_guest_output_t **reader) {
+    const int fds[PP_GUEST_STREAMS] = {output_fd, errors_fd};
     pp_guest_output_t *created = calloc(1U, sizeof *created);
     if (created == NULL) {
-        if (output_fd >= 0) {
-            (void)close(output_fd);
-        }
-        if (errors_fd >= 0) {
-            (void)close(errors_fd);
-        }
+        close_both(fds);
         return PP_E_OUT_OF_MEMORY;
+    }
+    if (!open_wake_pipe(created->wake)) {
+        close_both(fds);
+        free(created);
+        return PP_E_SYSTEM;
     }
     created->on_end = on_end;
     created->process = process;
-    const int fds[PP_GUEST_STREAMS] = {output_fd, errors_fd};
     const uint32_t sources[PP_GUEST_STREAMS] = {
         PP_LOG_SOURCE_GUEST_OUTPUT,
         PP_LOG_SOURCE_GUEST_ERRORS,
@@ -183,11 +243,8 @@ pp_status_t pp_guest_output_start(int output_fd, int errors_fd, uint64_t process
         pp_line_splitter_init(&created->streams[index].splitter);
     }
     if (pthread_create(&created->thread, NULL, read_output, created) != 0) {
-        for (size_t index = 0U; index < PP_GUEST_STREAMS; index++) {
-            if (fds[index] >= 0) {
-                (void)close(fds[index]);
-            }
-        }
+        close_both(fds);
+        close_both(created->wake);
         free(created);
         return PP_E_SYSTEM;
     }
@@ -195,10 +252,22 @@ pp_status_t pp_guest_output_start(int output_fd, int errors_fd, uint64_t process
     return PP_OK;
 }
 
+void pp_guest_output_wake(pp_guest_output_t *reader) {
+    if (reader == NULL) {
+        return;
+    }
+    static const char k_byte = 1;
+    ssize_t written = 0;
+    do {
+        written = write(reader->wake[1], &k_byte, 1U);
+    } while (written < 0 && errno == EINTR);
+}
+
 void pp_guest_output_join(pp_guest_output_t *reader) {
     if (reader == NULL) {
         return;
     }
     (void)pthread_join(reader->thread, NULL);
+    close_both(reader->wake);
     free(reader);
 }

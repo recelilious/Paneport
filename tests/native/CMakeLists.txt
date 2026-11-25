@@ -115,13 +115,13 @@ paneport_native_test(test_session CASES
     output_lines_arrive_before_the_exit second_session_refused replaced_handler_fails_session
     started_hook_runs_before_check runtime_refusal_fails_session launch_needs_a_session
     terminate_sets_the_exit_code get_state_asks_the_fork stop_ends_a_running_process
-    failed_start_is_reported
+    stop_counts_an_unreported_end stop_wakes_a_reader_without_an_end failed_start_is_reported
     launch_refusal_is_reported configuration_checks wrong_thread)
 target_compile_definitions(test_session PRIVATE "FAKE_FORK_PATH=\"$<TARGET_FILE:fake_wine_fork>\"")
 add_dependencies(test_session fake_wine_fork)
 paneport_native_test(test_guest_output CASES
     every_chunking_gives_the_same_lines piece_ends_at_a_character carriage_returns
-    empty_lines_and_the_end)
+    empty_lines_and_the_end wake_ends_a_reader_whose_pipes_stay_open)
 
 # The main-thread rule of the shipped builds, on the host that src/native/CMakeLists.txt builds
 # without the test exports and without PANEPORT_TEST_BUILD.

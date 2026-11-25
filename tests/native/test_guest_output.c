@@ -2,15 +2,21 @@
 // SPDX-License-Identifier: MIT
 
 // S4.3.8: the splitter of a Windows program's output (guest_output.h) gives the same lines
-// however the bytes arrive: whole, in chunks of every size, or cut at random.
+// however the bytes arrive: whole, in chunks of every size, or cut at random; and the reader of
+// a program's pipes, which ends when it is woken although a write end stays open.
 
+#include <pthread.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "fake_wine_fork.h"
 #include "guest_output.h"
+#include "paneport/host.h"
 #include "pp_check.h"
+#include "test_support.h"
 
 enum { MAX_LINES = 64, MAX_LINE = 600 };
 
@@ -181,12 +187,103 @@ static void empty_lines_and_the_end(void) {
     free(lines);
 }
 
+// What the log callback saw of a reader's lines, in a context of the case.
+typedef struct guest_lines_t {
+    pthread_mutex_t mutex;
+    char text[MAX_LINES][MAX_LINE + 1];
+    uint32_t source[MAX_LINES];
+    _Atomic(uint64_t) count;
+} guest_lines_t;
+
+static void record_guest_line(const pp_log_line_t *line, void *user_data) {
+    guest_lines_t *lines = user_data;
+    if (line->source != PP_LOG_SOURCE_GUEST_OUTPUT && line->source != PP_LOG_SOURCE_GUEST_ERRORS) {
+        return;
+    }
+    PP_CHECK_EQUAL(line->process, 5U);
+    (void)pthread_mutex_lock(&lines->mutex);
+    const uint64_t index = atomic_load(&lines->count);
+    PP_CHECK(index < (uint64_t)MAX_LINES);
+    (void)snprintf(lines->text[index], sizeof lines->text[index], "%s", line->text);
+    lines->source[index] = line->source;
+    atomic_store(&lines->count, index + 1U);
+    (void)pthread_mutex_unlock(&lines->mutex);
+}
+
+// The handle that the reader's end named: on_end takes no context, so this is the program's one
+// record of it.
+static _Atomic(uint64_t) s_ended_process;
+
+static void note_end(uint64_t process) { atomic_store(&s_ended_process, process); }
+
+// Starts the host with the callback and a reader of two pipes for process 5, whose write ends go
+// to writers.
+static pp_guest_output_t *start_reader(guest_lines_t *lines, int writers[2]) {
+    (void)pthread_mutex_init(&lines->mutex, NULL);
+    atomic_init(&lines->count, 0U);
+    pp_start_host(NULL);
+    PP_CHECK_EQUAL(pp_set_log_callback(record_guest_line, lines), PP_OK);
+    int output[2];
+    int errors[2];
+    PP_CHECK_EQUAL(pipe(output), 0);
+    PP_CHECK_EQUAL(pipe(errors), 0);
+    pp_guest_output_t *reader = NULL;
+    PP_CHECK_EQUAL(pp_guest_output_start(output[0], errors[0], 5U, note_end, &reader), PP_OK);
+    writers[0] = output[1];
+    writers[1] = errors[1];
+    return reader;
+}
+
+static void write_all(int fd, const char *text, size_t length) {
+    PP_CHECK_EQUAL(write(fd, text, length), (ssize_t)length);
+}
+
+// A reader whose pipes keep a write end open, as a runtime's copy would, ends once it is woken:
+// what the pipes hold still arrives, the last piece without a line feed too, and its end names
+// the process.
+static void wake_ends_a_reader_whose_pipes_stay_open(void) {
+    guest_lines_t lines;
+    int writers[2];
+    pp_guest_output_t *reader = start_reader(&lines, writers);
+    write_all(writers[0], "first\n", 6U);
+    pp_wait_for_count(&lines.count, 1U);
+    write_all(writers[1], "an error\nlast piece", 19U);
+    write_all(writers[0], "output piece", 12U);
+    pp_guest_output_wake(reader);
+    pp_guest_output_join(reader);
+    PP_CHECK_EQUAL(atomic_load(&s_ended_process), 5U);
+    pp_wait_for_count(&lines.count, 4U);
+    PP_CHECK_TEXT(lines.text[0], "first");
+    // The two streams' lines may interleave; each stream keeps its own order.
+    static const char *const k_texts[] = {"output piece", "an error", "last piece"};
+    static const uint32_t k_sources[] = {
+        PP_LOG_SOURCE_GUEST_OUTPUT,
+        PP_LOG_SOURCE_GUEST_ERRORS,
+        PP_LOG_SOURCE_GUEST_ERRORS,
+    };
+    size_t found[3] = {0U, 0U, 0U};
+    for (size_t text = 0U; text < 3U; text++) {
+        for (size_t index = 1U; index < 4U; index++) {
+            if (strcmp(lines.text[index], k_texts[text]) == 0) {
+                found[text] = index;
+            }
+        }
+        PP_CHECK(found[text] != 0U);
+        PP_CHECK_EQUAL(lines.source[found[text]], k_sources[text]);
+    }
+    PP_CHECK(found[1] < found[2]);
+    (void)close(writers[0]);
+    (void)close(writers[1]);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
 int main(int argc, char **argv) {
     static const pp_test_case_t k_cases[] = {
         {"every_chunking_gives_the_same_lines", every_chunking_gives_the_same_lines},
         {"piece_ends_at_a_character", piece_ends_at_a_character},
         {"carriage_returns", carriage_returns},
         {"empty_lines_and_the_end", empty_lines_and_the_end},
+        {"wake_ends_a_reader_whose_pipes_stay_open", wake_ends_a_reader_whose_pipes_stay_open},
     };
     return pp_run_case(argc, argv, k_cases, PP_CASE_COUNT(k_cases));
 }

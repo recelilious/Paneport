@@ -17,6 +17,10 @@
 //   fail_start     the process ends before it finishes its start
 //   query_exited   as wait, but the query reports the process as ended, with exit code
 //                  FAKE_FORK_QUERY_EXIT_CODE, which the bridge never reports
+//   silent_exit    as wait, but the process ends without reporting its end through the bridge
+//   launch_refuse_keep
+//                  the launch keeps copies of the pipes' write ends and fails, so that the
+//                  host's reader of the output never sees their end
 //
 // fake_fork_bridge_ok reports whether the bridge it received is complete.
 
@@ -79,7 +83,7 @@ static bool mode_is(const char *mode) { return strcmp(s_fake.mode, mode) == 0; }
 
 // Whether the process waits until it is terminated or the session stops.
 static bool process_waits(void) {
-    if (mode_is("wait")) {
+    if (mode_is("wait") || mode_is("silent_exit")) {
         return true;
     }
     return mode_is("query_exited");
@@ -163,8 +167,10 @@ static void *run_process(void *argument) {
         (void)close(s_fake.errors_fd);
     }
     (void)bridge->unmark_thread();
-    record_state(WINE_PANEPORT_PROCESS_EXITED, exit_code);
-    bridge->process_exited(s_fake.process, exit_code);
+    if (!mode_is("silent_exit")) {
+        record_state(WINE_PANEPORT_PROCESS_EXITED, exit_code);
+        bridge->process_exited(s_fake.process, exit_code);
+    }
     (void)pthread_mutex_lock(&s_fake.mutex);
     s_fake.process_running = false;
     // The session's last process ended, so the server ends after it, as the fork's does.
@@ -211,6 +217,12 @@ FAKE_EXPORT int32_t __wine_paneport_process_launch(const struct wine_paneport_la
         return PP_WINE_E_INVALID_ARGUMENT;
     }
     if (mode_is("launch_refuse")) {
+        return PP_WINE_E_SYSTEM;
+    }
+    if (mode_is("launch_refuse_keep")) {
+        // The copies stay open for the rest of the process.
+        s_fake.output_fd = launch->stdout_fd >= 0 ? dup(launch->stdout_fd) : -1;
+        s_fake.errors_fd = launch->stderr_fd >= 0 ? dup(launch->stderr_fd) : -1;
         return PP_WINE_E_SYSTEM;
     }
     // The host closes its copies of the descriptors once the launch returns.

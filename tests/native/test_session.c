@@ -37,14 +37,18 @@
 
 enum { MAX_EVENTS = 16, MAX_LINES = 64, LINE_SIZE = 512 };
 
+// The kind of the marker event with which settle() waits for the events posted before it.
+#define MARKER_EVENT 99U
+
 // What the callbacks saw. lines_before[i] counts the runtime and guest lines that had arrived
-// when event i arrived.
+// when event i arrived; the marker events are only counted.
 static struct {
     pthread_mutex_t mutex;
     pthread_cond_t changed;
     pp_event_t events[MAX_EVENTS];
     uint32_t lines_before[MAX_EVENTS];
     uint32_t event_count;
+    uint32_t markers;
     bool event_off_thread;
     char lines[MAX_LINES][LINE_SIZE];
     uint32_t sources[MAX_LINES];
@@ -62,7 +66,9 @@ static void record_event(const pp_event_t *event, void *user_data) {
     if (!pp_event_thread_is_current()) {
         s_seen.event_off_thread = true;
     }
-    if (s_seen.event_count < (uint32_t)MAX_EVENTS) {
+    if (event->kind == MARKER_EVENT) {
+        s_seen.markers++;
+    } else if (s_seen.event_count < (uint32_t)MAX_EVENTS) {
         s_seen.events[s_seen.event_count] = *event;
         s_seen.lines_before[s_seen.event_count] = s_seen.line_count;
         s_seen.event_count++;
@@ -111,6 +117,27 @@ static pp_event_t wait_for_event(uint32_t kind) {
         pp_check_failed(__FILE__, __LINE__, "the event arrived within a minute");
     }
     return found;
+}
+
+// Waits until every event and line posted before the call has arrived: a marker event posted
+// after them arrives after them (native-host.md section 5).
+static void settle(void) {
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    const uint32_t expected = s_seen.markers + 1U;
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    PP_CHECK_EQUAL(pp_test_post_event(MARKER_EVENT, 0), PP_OK);
+    struct timespec until;
+    (void)clock_gettime(CLOCK_REALTIME, &until);
+    until.tv_sec += 60;
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    while (s_seen.markers < expected) {
+        if (pthread_cond_timedwait(&s_seen.changed, &s_seen.mutex, &until) == ETIMEDOUT) {
+            break;
+        }
+    }
+    const uint32_t markers = s_seen.markers;
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    PP_CHECK_EQUAL(markers, expected);
 }
 
 // The folders that a session needs: a runtime folder whose ntdll.so is the fake, and a prefix.
@@ -466,6 +493,49 @@ static void stop_ends_a_running_process(void) {
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
 }
 
+// A process that the runtime never reports as ended counts as terminated by the stop, with exit
+// code 1, once the stop's wait is over.
+static void stop_counts_an_unreported_end(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=silent_exit\0");
+    const uint64_t process = launch(1U, PP_OK);
+    pp_session_set_stop_wait(200U);
+    PP_CHECK_EQUAL(pp_session_stop(), PP_OK);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_PROCESS_EXITED).code, 1);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_SESSION_ENDED).code, PP_OK);
+    check_state(process, PP_PROCESS_EXITED, 1U);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
+// A launch that keeps copies of the pipes' write ends and fails, as the fork's branch for a
+// thread that it cannot create did, leaves the reader of the output waiting for an end that never
+// comes, and the exit event waits for the reader. pp_session_stop wakes the reader once its wait
+// is over, and returns, and the exit event and the session's end follow in their order.
+static void stop_wakes_a_reader_without_an_end(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=launch_refuse_keep\0");
+    const uint64_t process = launch(1U, PP_E_SYSTEM);
+    check_state(process, PP_PROCESS_EXITED, 1U);
+    settle();
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.event_count, 0U);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    pp_session_set_stop_wait(200U);
+    PP_CHECK_EQUAL(pp_session_stop(), PP_OK);
+    (void)wait_for_event(PP_EVENT_SESSION_ENDED);
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.event_count, 2U);
+    PP_CHECK_EQUAL(s_seen.events[0].kind, PP_EVENT_PROCESS_EXITED);
+    PP_CHECK_EQUAL(s_seen.events[0].code, 1);
+    PP_CHECK_EQUAL(s_seen.events[1].kind, PP_EVENT_SESSION_ENDED);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
 // A process that ends before it finishes its start fails the launch, keeps its exit code, and
 // never reports a start.
 static void failed_start_is_reported(void) {
@@ -572,6 +642,8 @@ int main(int argc, char **argv) {
         {"terminate_sets_the_exit_code", terminate_sets_the_exit_code},
         {"get_state_asks_the_fork", get_state_asks_the_fork},
         {"stop_ends_a_running_process", stop_ends_a_running_process},
+        {"stop_counts_an_unreported_end", stop_counts_an_unreported_end},
+        {"stop_wakes_a_reader_without_an_end", stop_wakes_a_reader_without_an_end},
         {"failed_start_is_reported", failed_start_is_reported},
         {"launch_refusal_is_reported", launch_refusal_is_reported},
         {"configuration_checks", configuration_checks},

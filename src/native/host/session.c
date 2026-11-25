@@ -67,7 +67,8 @@ enum {
 #define PP_ARGUMENTS_MAX ((size_t)32U * 1024U)
 
 // How long pp_process_launch waits for the process to finish its start, and pp_session_stop for
-// the runtime to report the end of the process that it terminated.
+// the runtime to report the end of the process that it terminated and for the reader of the
+// process's output to reach the end of its pipes.
 #define PP_LAUNCH_WAIT_SECONDS 120
 #define PP_STOP_WAIT_SECONDS 30
 
@@ -118,8 +119,10 @@ static struct {
 };
 
 #ifdef PANEPORT_TEST_BUILD
+// The hooks and the stop's wait of the test builds, guarded by the session's mutex.
 static pp_session_hook_t s_started_hook;
 static void *s_started_hook_argument;
+static uint32_t s_stop_wait_milliseconds;
 
 void pp_session_set_started_hook(pp_session_hook_t hook, void *argument) {
     (void)pthread_mutex_lock(&s_session.mutex);
@@ -127,7 +130,29 @@ void pp_session_set_started_hook(pp_session_hook_t hook, void *argument) {
     s_started_hook_argument = argument;
     (void)pthread_mutex_unlock(&s_session.mutex);
 }
+
+void pp_session_set_stop_wait(uint32_t milliseconds) {
+    (void)pthread_mutex_lock(&s_session.mutex);
+    s_stop_wait_milliseconds = milliseconds;
+    (void)pthread_mutex_unlock(&s_session.mutex);
+}
 #endif
+
+// Returns when pp_session_stop's wait ends. The caller holds the mutex.
+static struct timespec stop_deadline(void) {
+    uint64_t milliseconds = (uint64_t)PP_STOP_WAIT_SECONDS * 1000U;
+#ifdef PANEPORT_TEST_BUILD
+    if (s_stop_wait_milliseconds != 0U) {
+        milliseconds = s_stop_wait_milliseconds;
+    }
+#endif
+    struct timespec until;
+    (void)clock_gettime(CLOCK_REALTIME, &until);
+    const uint64_t nanoseconds = (uint64_t)until.tv_nsec + ((milliseconds % 1000U) * 1000000U);
+    until.tv_sec += (time_t)(milliseconds / 1000U) + (time_t)(nanoseconds / 1000000000U);
+    until.tv_nsec = (long)(nanoseconds % 1000000000U);
+    return until;
+}
 
 // --- Events ---------------------------------------------------------------------------------
 
@@ -597,22 +622,35 @@ PP_EXPORT pp_status_t pp_session_stop(void) {
         (void)pp_log(PP_LOG_WARNING, "The Wine runtime reported a problem while it stopped.");
     }
     join_session_threads();
-    // The reader ends once the runtime closed its ends of the pipes, with the process.
-    pp_guest_output_join(output);
 
     (void)pthread_mutex_lock(&s_session.mutex);
     s_session.state = PP_SESSION_ENDED;
     session_process_t *process = &s_session.process;
-    // The runtime reports the end of the process that the stop terminated, perhaps after it
-    // closed the process's pipes; wait a while for the report.
-    struct timespec until;
-    (void)clock_gettime(CLOCK_REALTIME, &until);
-    until.tv_sec += PP_STOP_WAIT_SECONDS;
-    while (process->handle != 0U && process->state != PP_PROCESS_EXITED) {
+    // The runtime reports the end of the process that the stop terminated, and the reader of its
+    // output ends once the runtime closed its copies of the pipes' write ends, with the process;
+    // wait a while for both.
+    const struct timespec until = stop_deadline();
+    while (process->handle != 0U &&
+           (process->state != PP_PROCESS_EXITED || (output != NULL && !process->output_done))) {
         if (pthread_cond_timedwait(&s_session.changed, &s_session.mutex, &until) == ETIMEDOUT) {
             break;
         }
     }
+    bool reader_waits = false;
+    if (output != NULL && !process->output_done) {
+        reader_waits = true;
+    }
+    (void)pthread_mutex_unlock(&s_session.mutex);
+    if (reader_waits) {
+        // A copy of a write end stays open in the runtime: the reader takes what the pipes hold
+        // and ends, so that the join below is bounded too.
+        (void)pp_log(PP_LOG_WARNING, "The output of the Wine runtime's process did not end with "
+                                     "the session, so its reader was stopped.");
+        pp_guest_output_wake(output);
+    }
+    pp_guest_output_join(output);
+
+    (void)pthread_mutex_lock(&s_session.mutex);
     if (process->handle != 0U && !process->exit_posted) {
         // The reader has ended; a process that the runtime never reported as ended counts as
         // terminated by the stop.

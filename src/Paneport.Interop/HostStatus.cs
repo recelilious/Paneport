@@ -5,7 +5,8 @@ namespace Paneport.Interop;
 
 /// <summary>
 /// The status codes of the host interface (<c>pp_status_t</c>, C-0005 section 1), as
-/// <c>paneport/common.h</c> defines them in version 1.0, and the codes of the session group that
+/// <c>paneport/common.h</c> defines them in version 1.0, the code of the JIT group that
+/// <c>paneport/jit.h</c> adds in version 1.3, and the codes of the session group that
 /// <c>paneport/session.h</c> adds in version 1.4.
 /// </summary>
 public enum HostStatus

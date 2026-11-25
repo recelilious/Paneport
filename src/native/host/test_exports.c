@@ -278,6 +278,19 @@ PP_EXPORT pp_status_t pp_test_log(int32_t level, const char *text) {
     return posted(pp_log(level, "%s", text), "log");
 }
 
+PP_EXPORT pp_status_t pp_test_log_with_source(int32_t level, uint32_t source, uint64_t process,
+                                              const char *text) {
+    pp_error_clear();
+    if (text == NULL || level < PP_LOG_DEBUG || level > PP_LOG_ERROR ||
+        source > PP_LOG_SOURCE_GUEST_ERRORS) {
+        return pp_error_set(PP_E_INVALID_ARGUMENT, "pp_test_log_with_source needs a text, a known "
+                                                   "level and a known source.");
+    }
+    pp_log_entry_t entry;
+    pp_log_text(&entry, level, source, process, text, strlen(text));
+    return posted(pp_event_thread_post_log(&entry), "log");
+}
+
 PP_EXPORT pp_status_t pp_test_duplicate_text(const char *text, char **copy) {
     pp_error_clear();
     if (text == NULL || copy == NULL) {

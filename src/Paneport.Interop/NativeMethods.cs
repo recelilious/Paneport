@@ -85,6 +85,9 @@ internal static unsafe partial class NativeMethods
     [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_log", StringMarshalling = StringMarshalling.Utf8)]
     internal static partial int TestLog(int level, string text);
 
+    [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_log_with_source", StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int TestLogWithSource(int level, uint source, ulong process, string text);
+
     [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_duplicate_text", StringMarshalling = StringMarshalling.Utf8)]
     internal static partial int TestDuplicateText(string text, byte** copy);
 

@@ -650,6 +650,44 @@ static void launch_refusal_is_reported(void) {
     stop_host();
 }
 
+// pp_shutdown refuses while a session runs, which it could not stop afterwards, and leaves the
+// host and the session as they were; once the session stopped, the host stops.
+static void shutdown_refused_while_a_session_runs(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=wait\0");
+    PP_CHECK_EQUAL(pp_shutdown(), PP_E_BUSY);
+    PP_CHECK(strstr(pp_last_error(), "pp_session_stop") != NULL);
+    const uint64_t process = launch(1U, PP_OK);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_E_BUSY);
+    check_state(process, PP_PROCESS_RUNNING, 0U);
+    PP_CHECK_EQUAL(pp_session_stop(), PP_OK);
+    (void)wait_for_event(PP_EVENT_SESSION_ENDED);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
+// A start whose runtime cannot be loaded counts as a session that ran: its end is reported with
+// PP_E_IO, and a start with a runtime that loads is refused afterwards.
+static void load_failure_counts_as_run(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    PP_CHECK_EQUAL(unlink(fixture.library), 0);
+    FILE *file = fopen(fixture.library, "w");
+    PP_CHECK(file != NULL);
+    PP_CHECK(fputs("not a library\n", file) >= 0);
+    PP_CHECK_EQUAL(fclose(file), 0);
+    start_host();
+    PP_CHECK_EQUAL(pp_test_jit_set_ready(1U), PP_OK);
+    const pp_session_config_t config = session_config(&fixture, NULL);
+    PP_CHECK_EQUAL(pp_session_start(&config), PP_E_IO);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_SESSION_ENDED).code, PP_E_IO);
+    PP_CHECK_EQUAL(unlink(fixture.library), 0);
+    PP_CHECK_EQUAL(symlink(FAKE_FORK_PATH, fixture.library), 0);
+    PP_CHECK_EQUAL(pp_session_start(&config), PP_E_SESSION_EXISTS);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
 // A configuration that is wrong fails with its code and leaves the launch's session unused.
 static void configuration_checks(void) {
     fixture_t fixture;
@@ -729,6 +767,8 @@ int main(int argc, char **argv) {
         {"stop_wakes_a_reader_without_an_end", stop_wakes_a_reader_without_an_end},
         {"failed_start_is_reported", failed_start_is_reported},
         {"launch_refusal_is_reported", launch_refusal_is_reported},
+        {"shutdown_refused_while_a_session_runs", shutdown_refused_while_a_session_runs},
+        {"load_failure_counts_as_run", load_failure_counts_as_run},
         {"configuration_checks", configuration_checks},
         {"wrong_thread", wrong_thread},
     };

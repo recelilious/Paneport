@@ -17,6 +17,7 @@
 #include "platform.h"
 #include "signals/signals.h"
 #include "thread_role.h"
+#include "wine_session.h"
 
 enum {
     PP_HOST_NOT_STARTED = 0,
@@ -124,6 +125,12 @@ PP_EXPORT pp_status_t pp_shutdown(void) {
     const pp_status_t status = pp_host_check_main_call("pp_shutdown");
     if (status != PP_OK) {
         return status;
+    }
+    // The session's threads and its Windows process would outlive the event thread, and the
+    // session could no longer be stopped.
+    if (pp_session_is_active()) {
+        return pp_error_set(
+            PP_E_BUSY, "pp_shutdown needs the Wine session stopped: call pp_session_stop first.");
     }
 
     (void)pp_log(PP_LOG_INFO, "The native host is stopping.");

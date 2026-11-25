@@ -257,14 +257,16 @@ static void *run_session_thread(void *argument) {
 
 static int32_t bridge_start_thread(const char *name, pp_wine_thread_body_t body, void *argument) {
     if (name == NULL || body == NULL) {
-        return PP_E_INVALID_ARGUMENT;
+        return PP_WINE_E_INVALID_ARGUMENT;
     }
     (void)pthread_mutex_lock(&s_session.mutex);
-    int32_t status = PP_OK;
+    int32_t status = PP_WINE_OK;
     if (s_session.state != PP_SESSION_STARTING && s_session.state != PP_SESSION_RUNNING) {
-        status = PP_E_NO_SESSION;
+        // A session that stops or ended gets no more threads; the bridge's codes have no other
+        // for it.
+        status = PP_WINE_E_SYSTEM;
     } else if (s_session.thread_count == PP_SESSION_THREADS) {
-        status = PP_E_BUSY;
+        status = PP_WINE_E_BUSY;
     } else {
         session_thread_t *slot = &s_session.threads[s_session.thread_count];
         slot->body = body;
@@ -284,7 +286,7 @@ static int32_t bridge_start_thread(const char *name, pp_wine_thread_body_t body,
         }
         if (created != 0) {
             s_session.threads_running--;
-            status = PP_E_SYSTEM;
+            status = PP_WINE_E_SYSTEM;
         } else {
             s_session.thread_count++;
         }
@@ -611,6 +613,20 @@ PP_EXPORT pp_status_t pp_session_start(const pp_session_config_t *config) {
     (void)pthread_mutex_unlock(&s_session.mutex);
     (void)pp_log(PP_LOG_INFO, "The Wine session started.");
     return PP_OK;
+}
+
+bool pp_session_is_active(void) {
+    (void)pthread_mutex_lock(&s_session.mutex);
+    const int state = s_session.state;
+    (void)pthread_mutex_unlock(&s_session.mutex);
+    switch (state) {
+    case PP_SESSION_STARTING:
+    case PP_SESSION_RUNNING:
+    case PP_SESSION_STOPPING:
+        return true;
+    default:
+        return false;
+    }
 }
 
 PP_EXPORT pp_status_t pp_session_stop(void) {

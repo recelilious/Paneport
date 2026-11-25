@@ -10,11 +10,16 @@
 #ifndef PANEPORT_HOST_WINE_SESSION_H
 #define PANEPORT_HOST_WINE_SESSION_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 // Where the fork's Unix library lies in the runtime folder: ntdll's Unix side, which exports the
 // entry points.
 #define PP_WINE_LIBRARY_PATH "lib/wine/aarch64-unix/ntdll.so"
+
+// Returns whether the launch's session is starting, running or stopping, so that pp_shutdown
+// refuses to stop the host under it. Any thread.
+bool pp_session_is_active(void);
 
 #ifdef PANEPORT_TEST_BUILD
 // A function of a test that the session runs at a point of its own, with its argument.

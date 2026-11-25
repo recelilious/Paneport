@@ -117,7 +117,8 @@ paneport_native_test(test_session CASES
     terminate_sets_the_exit_code get_state_asks_the_fork stop_ends_a_running_process
     stop_during_a_launch stop_counts_an_unreported_end stop_wakes_a_reader_without_an_end
     failed_start_is_reported
-    launch_refusal_is_reported configuration_checks wrong_thread)
+    launch_refusal_is_reported shutdown_refused_while_a_session_runs load_failure_counts_as_run
+    configuration_checks wrong_thread)
 target_compile_definitions(test_session PRIVATE "FAKE_FORK_PATH=\"$<TARGET_FILE:fake_wine_fork>\"")
 add_dependencies(test_session fake_wine_fork)
 paneport_native_test(test_guest_output CASES

@@ -146,23 +146,38 @@ typedef struct pp_process_state_t {
  * Thread rule: [main]. Memory: the host copies what it keeps; the caller keeps ownership of
  * config.
  *
+ * A session counts as having run once the checks of the arguments passed and the host begins to
+ * load the runtime: a start that fails from there on, also one whose runtime cannot be loaded,
+ * ends the session, with the session-ended event carrying the start's status, and another start
+ * needs a relaunch.
+ *
  * @param config The settings. Must not be NULL, and struct_size must cover every member that
  *               this version declares.
  * @return PP_OK; PP_E_NOT_INITIALIZED; PP_E_WRONG_THREAD; PP_E_JIT_NOT_READY unless the JIT
  *         state is ready; PP_E_SESSION_EXISTS when a session has already run in this process,
- *         also one that failed after the runtime was loaded; PP_E_INVALID_ARGUMENT for a
- *         missing or malformed member, a path that is relative, too long or not a folder, or an
- *         environment block that is malformed or too long; PP_E_UNSUPPORTED for an architecture
- *         that this build does not run; PP_E_IO when the runtime cannot be loaded;
- *         PP_E_SYSTEM when the runtime refuses to start, or when a signal handler of the
- *         dispatcher was replaced; PP_E_OUT_OF_MEMORY.
+ *         also one whose start failed; PP_E_INVALID_ARGUMENT for a missing or malformed member,
+ *         a path that is relative, too long or not a folder, a runtime folder without the
+ *         runtime's library, or an environment block that is malformed or too long;
+ *         PP_E_UNSUPPORTED for an architecture that this build does not run; PP_E_IO when the
+ *         runtime cannot be loaded or lacks one of its entry points; when the runtime refuses to
+ *         start the session, its own negative status, a PP_WINE_E_ code of
+ *         paneport/wine_bridge.h, whose values are those of the host, such as PP_E_IO for a
+ *         prefix that it cannot prepare or PP_E_OUT_OF_MEMORY, and PP_E_SYSTEM for any other
+ *         answer; in test builds PP_E_SYSTEM when a signal handler of the dispatcher was
+ *         replaced.
  */
 PP_EXPORT pp_status_t pp_session_start(const pp_session_config_t *config);
 
 /**
  * Stops the session: terminates its processes, stops its wineserver, and waits for the threads
- * that the host created for it to end. The session-ended event follows unless the session had
+ * that the host created for it to end. It waits up to 30 s for the runtime's report of the
+ * process's end and for the end of the process's output, and then counts a process whose end was
+ * not reported as ended with exit code 1. The session-ended event follows unless the session had
  * already ended. Once it returns, no thread of the session runs Windows code again.
+ *
+ * pp_shutdown refuses with PP_E_BUSY while a session is starting, running or stopping, so the
+ * caller stops the session first; after a session that ended by itself, this call still joins
+ * the threads that the host created for it.
  *
  * Thread rule: [main]. Memory: none.
  *
@@ -187,12 +202,19 @@ PP_EXPORT pp_status_t pp_session_stop(void);
  * @param process Receives the process's handle, which is never 0. Must not be NULL.
  * @return PP_OK; PP_E_NO_SESSION unless a session runs, also when the session's stop began during
  *         the launch, before the runtime heard of the process, which then counts as ended with
- *         exit code 1, with *process set; PP_E_UNSUPPORTED when the session
- *         already runs its process, since this version runs one per session;
- *         PP_E_INVALID_ARGUMENT for a missing or malformed member, a folder that is relative,
- *         too long or not a folder, or a block that is malformed or too long; PP_E_SYSTEM when
- *         the runtime refuses the launch or the program fails to start, with *process set, so
- *         that pp_process_get_state reports its exit code; PP_E_OUT_OF_MEMORY.
+ *         exit code 1, with *process set; PP_E_UNSUPPORTED when the session already runs its
+ *         process, since this version runs one per session; PP_E_INVALID_ARGUMENT for a missing
+ *         or malformed member, a folder that is relative, too long or not a folder, or a block
+ *         that is malformed or too long. With *process set: PP_E_SYSTEM or PP_E_OUT_OF_MEMORY
+ *         when the host cannot set up the capture of the output, and, when the runtime refuses
+ *         the launch, its own negative status, a PP_WINE_E_ code of paneport/wine_bridge.h such
+ *         as PP_E_OUT_OF_MEMORY or PP_E_IO, or PP_E_SYSTEM for any other answer; the process
+ *         then counts as ended with exit code 1. PP_E_SYSTEM when the program ended before it
+ *         finished its start, so that pp_process_get_state reports its exit code. PP_E_SYSTEM
+ *         when the program did not finish its start within 120 s: the process is then still
+ *         PP_PROCESS_STARTING, without an exit code, and its process-started or process-exited
+ *         event follows once the runtime reports it. In test builds PP_E_SYSTEM when its start
+ *         replaced a handler of the signal dispatcher.
  */
 PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint64_t *process);
 

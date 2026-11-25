@@ -9,7 +9,7 @@ The code of the native host (C-0004 section 2), in C17. [native-host.md](../../.
 
 | File | What it holds |
 |---|---|
-| `host.c`, `host_state.h` | The life cycle: `pp_init`, `pp_shutdown`, the callback setters, `pp_abi_version`, `pp_free`, and the rule for the main thread |
+| `host.c`, `host_state.h` | The life cycle: `pp_init`, `pp_shutdown`, which refuses while a Wine session runs, the callback setters, `pp_abi_version`, `pp_free`, and the rule for the main thread |
 | `error.c`, `error.h` | The per-thread message of `pp_last_error` |
 | `event_queue.c`, `event_queue.h` | The bounded lock-free queue with many producers and one consumer, and the hook of the test builds between a push's claim of a slot and its publication |
 | `event_thread.c`, `event_thread.h` | The host event thread, its two queues, the callbacks, the buffer for early log lines, the overflow notices, the post that waits for room, and each event delivered after the lines posted before it, with a bounded wait for a producer inside its push |

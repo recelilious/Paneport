@@ -452,7 +452,7 @@ static bool wait_for_count_within(_Atomic(uint64_t) *counter, uint64_t expected,
 }
 
 // What the flood cases watch. A producer posts lines as the reader of a program's output does,
-// waiting for room, until stop is set, and the log callback takes 50 us a line, so the log queue
+// waiting for room, until stop is set, and the log callback takes 20 us a line, so the log queue
 // stays full while the producer runs.
 typedef struct flood_t {
     _Atomic(bool) stop;
@@ -464,7 +464,7 @@ typedef struct flood_t {
 static void slow_line(const pp_log_line_t *line, void *user_data) {
     (void)line;
     (void)user_data;
-    const struct timespec pause = {.tv_sec = 0, .tv_nsec = 50000L};
+    const struct timespec pause = {.tv_sec = 0, .tv_nsec = 20000L};
     (void)nanosleep(&pause, NULL);
 }
 
@@ -500,7 +500,7 @@ static pthread_t start_flood(flood_t *flood, pp_thread_argument_t *argument) {
     PP_CHECK_EQUAL(pp_set_event_callback(count_flood_event, flood), PP_OK);
     pthread_t thread;
     pp_start_threads(&thread, argument, 1U, flood_lines, flood);
-    // The queue holds 512 lines, which the callback takes about 26 ms for.
+    // The queue holds 512 lines, which the callback takes about 10 ms for.
     PP_CHECK(wait_for_count_within(&flood->posted, 2000U, 60000U));
     return thread;
 }
@@ -525,18 +525,19 @@ static void event_during_a_flood_arrives_soon(void) {
     stop_flood(&flood, thread);
 }
 
-// Events posted every 2 ms during a flood, faster than the 512 lines of a full queue arrive, are
-// all taken and all arrive while the flood goes on: none waits for the lines posted after it, so
-// the event queue never fills.
+// Events posted every 2 ms during a flood, five times as fast as the 512 lines of a full queue
+// arrive, are all taken and all arrive while the flood goes on: none waits for the lines posted
+// after it, so the event queue never fills. An event that waited for a full queue each would
+// fill it within the 600.
 static void no_event_dropped_during_a_flood(void) {
     flood_t flood;
     pp_thread_argument_t argument;
     const pthread_t thread = start_flood(&flood, &argument);
-    for (int64_t index = 0; index < 300; index++) {
+    for (int64_t index = 0; index < 600; index++) {
         PP_CHECK_EQUAL(pp_test_post_event(21U, index), PP_OK);
         pp_sleep_milliseconds(2);
     }
-    PP_CHECK(wait_for_count_within(&flood.events, 300U, 20000U));
+    PP_CHECK(wait_for_count_within(&flood.events, 600U, 20000U));
     PP_CHECK(atomic_load(&flood.producing));
     stop_flood(&flood, thread);
 }

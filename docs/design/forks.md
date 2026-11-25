@@ -74,6 +74,7 @@ The toolchain that goes with them is llvm-mingw 20261104, with LLVM 23.1.5 (sect
 | `paneport/integration` | The fork's default branch: the base of section 2, the configuration commits of section 3, and every change of a merged stage. It moves only by fast-forward, except at a rebase (section 4.4). |
 | `paneport/<stage ID>`, such as `paneport/M4.2` | The changes of one stage, branched from `paneport/integration` (plan section 3.3). |
 | `paneport/archive/<base>`, such as `paneport/archive/wine-11.20` | A tag on the last commit of `paneport/integration` before a rebase moved it to another base. |
+| `paneport/archive/<stage ID>-<old base>`, such as `paneport/archive/M4.3-aa8f7a6` | A tag on a stage branch's tip before the stage rebased the branch onto a newer `paneport/integration`, because another stage merged first (section 4.2), so that the commit that the stage's pull request recorded stays reachable. |
 
 ### 4.2 How a pointer moves
 

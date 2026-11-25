@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000803,
+    "slug": "fixture-dock-steam-stub"
+  },
+  "name": "Fixture Dock Steam Stub",
+  "drm": {
+    "steamApi": false,
+    "steamStub": true,
+    "ceg": "no"
+  },
+  "launch": "dock"
+}

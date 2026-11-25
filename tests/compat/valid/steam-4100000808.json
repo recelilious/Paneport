@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000808,
+    "slug": "fixture-dock-without-drm"
+  },
+  "name": "Fixture Dock Without Drm",
+  "launch": "dock"
+}

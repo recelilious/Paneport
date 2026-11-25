@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000635,
+    "slug": "fixture-direct-steam-api"
+  },
+  "name": "Fixture Direct Steam Api",
+  "executable": {
+    "path": "DirectSteamApi.exe"
+  },
+  "drm": {
+    "steamApi": true,
+    "steamStub": false,
+    "ceg": "no"
+  },
+  "launch": "direct"
+}

@@ -95,6 +95,16 @@ Registered as under review, and not used until recelilious decides:
 
 Not allowed: FluentAssertions 8 and later. They are under Xceed's proprietary Community License, which is free only for non-commercial use (it counts open-source development as non-commercial) and needs a paid license for any commercial use. That makes it a non-commercial-only license, which C-0003 section 5 forbids.
 
+## Proposed changes for 1.4
+
+**Not yet accepted.** Version 1.3 above stays binding until recelilious approves these changes. They come from stage M4.5 and from recelilious's answer of 2026-11-25 to the questions of #38: asked whether a CI step should run the FEX fork's test of the decoder that M4.5 added, recelilious answered "All as recommended", which accepted the step. The decoder, the fork's `Source/Windows/Common/SharedUserData.cpp`, emulates the guest loads of the shared user data that fault. FEX's own build does not compile its test, and section 4 lists every job's steps, so the step needs this change first.
+
+1. **Section 1, a new row after the runtime tests.** Add a row for the level "Fork unit tests". What it covers: "Our own changes in a fork that a test checks apart from the fork's build: the FEX fork's decoder of the guest loads of the shared user data, in the fork's `unittests/Paneport/SharedUserData`". Tools: "The fork's script `run.sh`, which builds the test with AddressSanitizer and UndefinedBehaviorSanitizer and runs it". Runs on: "macOS in CI".
+
+2. **Section 4, the row of the `runtime` job.** After "Saves each fork's build to the cache as soon as it is built.", add: "Runs the fork unit tests of section 1 with the clang of the pinned Xcode."
+
+3. **Change log.** On acceptance, add a row for 1.4, dated the day of acceptance, with the notes "Accepted by recelilious. Comes from stage M4.5 and from recelilious's answer of 2026-11-25 to the questions of #38, which accepted a CI step for the FEX fork's test of its decoder of the guest loads of the shared user data. Section 1 adds the fork unit tests, of which that test is the first, and section 4 has the `runtime` job run them."
+
 ## Change log
 
 | Version | Date | Notes |

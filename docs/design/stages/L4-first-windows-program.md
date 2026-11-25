@@ -595,6 +595,40 @@ Out: a second Windows process, `CreateProcess` from a guest and helper programs 
   - **Verification.** Run [45453104970](https://github.com/recelilious/Paneport/actions/runs/45453104970) on `2005b89`, now `5fa2c6f`, with Wine `45216b4` built cold and FEX `cb6781e`, now `ab5a40b`: all six jobs passed, and in single mode all 14 cases passed, `console_repeated` with 20 runs in fresh harness processes, with no refused call; the planted cases failed with exactly their two lines. The pull request records CI on the branch's last commit.
   - **Left.** The merge. If [#38](https://github.com/recelilious/Paneport/pull/38) (M4.5) merges first, the FEX fork's `paneport/M4.3` is rebased onto its `paneport/integration` and the pointer moves ([forks.md](../forks.md) section 4.2).
   - **For later sessions.** Notes left in the sections of M4.4, of M6.5 in the [L6 brief](L6-2d-game.md) and of M8.1 in the [L8 brief](L8-dock-alpha.md).
+- **2026-11-25 (UTC), fix round 1 of #39.** The independent review of `eb8b86e`, now `30c6073` (workflow `wf_004fba9f-086`), found seven medium defects, R39HD-1, R39HD-5, R39RD-1, R39FD-1, R39FD-2, R39FD-3 and R39FD-4, and the rest low. The coordinator decided to fix all of them.
+  - **Done.**
+    - The rebases. [#38](https://github.com/recelilious/Paneport/pull/38) (M4.5) merged first, so the FEX fork's `paneport/M4.3` was rebased onto `paneport/integration` `a73652b` as `ab5a40b`. Its old tip `cb6781e` is tagged `paneport/archive/M4.3-aa8f7a6`, and its message now gives the iOS reason and says that the change may remove the race's likely cause. This branch was rebased onto `main` `4ad40c8`, the 15 commits without a `Stage: M4.3` line gained one (plan section 3.4), and `3bf5ad1` moves the FEX pointer to `ab5a40b`.
+    - The Wine fork's `paneport/M4.3`, `af8ea28` to `7911818` (pointer `f11badd`):
+      - the start folder counted in WCHARs (R39FD-2);
+      - the query of a process as the fifth entry point, which keeps C-0005 section 3 as it is (R39HD-5);
+      - the launch's descriptors closed when its thread cannot start, and that thread created detached (R39HD-6, R39HV-2);
+      - every `exit` call that single mode reaches replaced by `paneport_fatal`, so S4.3.6 stays Done without a deferral (R39FD-4);
+      - the server's fatal errors written to standard error first (R39FD-7);
+      - corrected comments and wineboot.c's copyright lines (R39FD-10, R39FD-13, R39FV-2). The last commit's message also gives the iOS reasons of `d7044ab`, `c5bd94e`, `6e36f4a` and `45216b4`.
+    - The host, `dd9022a` to `0201793`:
+      - each event delivered after the lines posted before it only, with a bounded wait for a held slot (R39HD-1, R39HD-2). The queue's tail is read when the event is posted, not after its pop, since the tail read at the pop still let a flood refuse events;
+      - `pp_process_get_state` asks the fork's query (R39HD-5);
+      - the stop's wait for the output reader bounded by a wake pipe (R39HD-6);
+      - the session checked again before a launch calls the fork (R39HD-3);
+      - the session ended with `PP_E_SYSTEM` when the check after a launch fails (R39HD-4);
+      - NUL bytes of a program's output replaced with U+FFFD (R39HD-7);
+      - `pp_shutdown` refused with `PP_E_BUSY` during a session (R39HV-1);
+      - the session's codes documented (R39HD-8);
+      - the fork's entry header included as a system header (R39RV-1);
+      - the session bindings called without a session (R39HD-9);
+      - a case for each surviving mutant that a case can catch.
+    - The harness and CI, `2d004a5` to `365ea20`:
+      - `bridge_sha256` checked on every run before Wine's cache restore (R39RD-1);
+      - the whole exit code compared in single mode (R39RD-5);
+      - the result file's `trap_count` rules (R39RD-4, R39RV-2);
+      - a prefix made only from a template folder (R39RD-6);
+      - armed cases for the trap's five unpinned refusals (R39RD-3);
+      - cases for the surviving mutants;
+      - the documents of the harness and of the checks (R39RD-2, R39RD-7).
+    - The documents (`c05e9d3` and this round's last commit): [single-process-wine.md](../single-process-wine.md) for the fork's changes, the launch check, the stop and `pp_shutdown`, the current folder, the priorities and the sources; the commit IDs after the rebase; the three pointer moves of the third session (R39FD-6); the M4.4 and M8.1 notes; and [forks.md](../forks.md)'s row for the archive tag of a stage branch.
+  - **Found.** Every `exit` call that single mode reaches could take `paneport_fatal`, because the debug channels read `WINEDEBUG` lazily, after the session's start has set the bridge. Not caught by any case: the bridge's `start_thread` refusing a stopping session, which today's fork never reaches, the 120 s launch timeout, and, in the harness, fts errors that only an allocation failure gives, `O_EXCL` on a name that the copy just made, and the copy's fallback from cloning, which APFS never takes on the runner.
+  - **Verification.** Run [45556411980](https://github.com/recelilious/Paneport/actions/runs/45556411980) on `f11badd`, with Wine `7911818` built cold and FEX `ab5a40b`: every job that ran passed, and in single mode all 15 cases passed, M4.5's `shared_data` among them; its `ios` job gave way to a newer push. The pull request records CI on the branch's last commit.
+  - **Left.** The coordinator's fix check and the merge. After the merge the coordinator fast-forwards both forks' `paneport/integration`, Wine to `7911818` and FEX to `ab5a40b`, and deletes both `paneport/M4.3` branches ([forks.md](../forks.md) section 4.2).
 
 ## M4.4 Runtime on iOS
 

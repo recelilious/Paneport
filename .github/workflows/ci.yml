@@ -268,11 +268,22 @@ jobs:
       # A pin that no fork build uses, such as gitleaks', is in no key, so that moving it
       # rebuilds nothing. A key names its fork's commit in full; the rest is a SHA-256 prefix.
       # The build steps only fetch a fork and call its script, with no option or environment of
-      # their own: every option that shapes a build lives in the keyed scripts.
+      # their own: every option that shapes a build lives in the keyed scripts. Wine's build
+      # also includes src/native/include/paneport/wine_bridge.h, which its key follows through
+      # the header's SHA-256 in build-wine.sh. The script checks it only when it builds, so it is
+      # checked here on every run, before any restore: a stale value would keep the key, and the
+      # job would restore a Wine built against the old header.
       - name: Compute the cache keys
         id: keys
         run: |
           set -o pipefail
+          bridge=$(shasum -a 256 src/native/include/paneport/wine_bridge.h | cut -d ' ' -f 1)
+          if ! grep -qxF "bridge_sha256=$bridge" eng/mac/build-wine.sh; then
+            echo "::error title=Cache keys::src/native/include/paneport/wine_bridge.h has" \
+              "changed: update bridge_sha256 in eng/mac/build-wine.sh to its SHA-256, $bridge," \
+              "so that Wine's cache key follows it." >&2
+            exit 1
+          fi
           pins() {
             for tool in "$@"; do
               printf '%s ' "$tool"

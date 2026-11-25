@@ -297,9 +297,46 @@ _No sessions yet._
   - **Verification.** On the workstation, the self-test passes 427 cases, the check of the repository passes, and `dotnet format whitespace tools`, the personal-data scan and the license check are clean. Each of 7 mutants of the merge with #40's rules and 2 of R40IV1's fix fails a case. The runs of CI on the final head are in [#44](https://github.com/recelilious/Paneport/pull/44).
   - **Decisions.** The coordinator decided that R40IV1 goes in this pull request, and that counting each model identifier as a device stays as documented, for recelilious to see.
   - **Left.**
-    - The contract draft of session 1. The merge needs it, because `tests/compat/` must be in C-0004's tree, so S8.3.4 is Blocked and M8.3 In progress until it is accepted.
+    - The contract draft of session 1. The merge needs the whole draft: it records D8 in C-0003 and C-0011, as plan section 8 and the Done-when list expect, and adds `tests/compat/` to C-0004's tree. S8.3.4 is Blocked and M8.3 In progress until it is accepted.
     - The `paneportVersion` pattern of the title schema accepts `v1.0.0-01`, which is no release tag; the check does not count such a report. A later change of the schema can close it.
   - **For later sessions.** The notes for M6.6, S7.0.3 and L8 from session 1 stand.
+- **2026-11-25 (session 3).** Fix round 1 of the independent review of [#44](https://github.com/recelilious/Paneport/pull/44), on the same base `301471e`. Main has moved on to `4ad40c8` with [#38](https://github.com/recelilious/Paneport/pull/38), which touches neither the tool nor `compat/`, and the pull request does not conflict with it.
+  - **Done.**
+    - The rating counts the four target devices of C-0001 section 2, as C-0008 section 3 does, not model identifiers. The check names a report's device through a map of the table of [compat-db.md](../compat-db.md) section 2.1, so `iPhone19,3` and `iPhone19,7` are one device, the iPhone 18 Pro Max, whose latest report on the release counts. This replaces the counting in session 1's Decisions. Two cases compare the map with the table and with the schema.
+    - Valid fixtures that tell the rating rule apart: the lower device reporting first, a later report listed first, both identifiers of the iPhone 18 Pro Max, and a device written in another letter case, which does not count.
+    - The launch rule: two invalid fixtures, a Direct title with `steamApi` true and a local title with `steamStub` true, and four valid Dock titles, three whose `drm` closes the Direct path in each way and one without `drm`.
+    - The validator:
+      - An exclusive minimum is compared also against the double that the reader reads, so `1e-400` fails it.
+      - An escaped hyphen in a class may start a range, as in ECMA-262.
+      - The exponent of a number is clamped, so that a huge one cannot overflow.
+      - A pattern that does not finish within 1 s fails `pattern` with its file and pointer.
+      - `uniqueItems` compares numbers, `true`, `false` and `null` through sets.
+      - A schema that escapes half of a surrogate pair, or whose reference leads back to itself without a step into the value, is refused with exit 2.
+      - Patterns are read by UTF-16 code units, as ECMA-262 reads them without the `u` flag, and the documents say so.
+    - The rules in code test the type of each value that they read. A schema that drops a type then makes the rule fail the value instead of throwing, an allow-list of `true` fails `allow-list`, and a target device that is not a text is refused.
+    - More cases:
+      - each Steam variable of C-0008 section 5, and `steamappid`, in the environment allow-list;
+      - the release tags `v1.0.0-0a`, `v1.0.0-RC.1`, `v2.1.0` and `v2.1.1`;
+      - the missing record in a second report;
+      - a `readme.md`, and a file of neither name form;
+      - the size limit at 1 MiB, and two byte-order marks;
+      - the 64 characters of a plain name;
+      - the refusals of the loader below `anyOf`, `oneOf`, `if`, `then` and `else`, and the forms of keywords that no schema uses.
+    - The documents:
+      - [compat-db.md](../compat-db.md) sections 2.2, 8.1, 9 and 11;
+      - [repository-checks.md](../repository-checks.md) sections 6 and 9;
+      - [jit.md](../jit.md) section 13 and the design index;
+      - the READMEs of `compat/titles/` and `tests/compat/`, the L7 note and a comment of ci.yml;
+      - why the merge waits for the whole contract draft.
+  - **Verification.** On the workstation:
+    - The self-test passes 572 cases, and the check of the repository passes.
+    - `dotnet format whitespace tools`, the personal-data scan and the license check are clean.
+    - Each of 63 mutants of this round fails a case or crashes the self-test. The pull request lists them.
+    - The 25 and 12 mutants of session 1 were not kept, so they are not listed.
+  - **Decisions.** The coordinator decided fix round 1:
+    - The rating counts the four devices, as the contract does, so how devices count is no longer a question for recelilious.
+    - The reading that a device's latest report on the release replaces its earlier ones goes to her, with the recommendation to accept it.
+  - **Left.** The contract draft of session 1 and the latest-report reading wait for recelilious.
 
 ## M8.4 AAA performance and launcher-service titles
 

@@ -173,8 +173,11 @@ PP_EXPORT pp_status_t pp_session_stop(void);
 
 /**
  * Launches a Windows program as the session's process, and returns once it finished its start,
- * or failed to start. The process-started event follows when it started, and the
- * process-exited event when it ends.
+ * or failed to start. The process-started event follows when it started, and the process-exited
+ * event when it ends. The process's start sets up Wine's signal handling, so test builds then
+ * check again that the signal dispatcher holds its six signals: a replaced handler terminates the
+ * process with exit code 1, fails the launch with PP_E_SYSTEM, and ends the session with
+ * PP_E_SYSTEM (C-0005 section 4).
  *
  * Thread rule: [any]. Memory: the host copies what it keeps; the caller keeps ownership of
  * config.

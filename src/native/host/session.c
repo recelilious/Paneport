@@ -112,6 +112,8 @@ static struct {
     bool ended_reported;
     bool end_pending;
     pp_status_t end_status;
+    // A failure of the running session, which its end reports instead of PP_OK.
+    pp_status_t failure;
     session_process_t process;
 } s_session = {
     .mutex = PTHREAD_MUTEX_INITIALIZER,
@@ -177,11 +179,14 @@ static void post_event(uint32_t kind, uint64_t handle, int64_t code) {
     (void)pp_event_thread_post_event(&event);
 }
 
-// Reports the end of the session once, after the process's exit event. The caller holds the
-// mutex.
+// Reports the end of the session once, after the process's exit event, with the failure of the
+// running session in place of PP_OK. The caller holds the mutex.
 static void report_session_ended(pp_status_t status) {
     if (s_session.ended_reported) {
         return;
+    }
+    if (status == PP_OK) {
+        status = s_session.failure;
     }
     if (s_session.process.handle != 0U && !s_session.process.exit_posted) {
         s_session.end_pending = true;
@@ -777,6 +782,31 @@ static bool keep_reader(pp_guest_output_t *output) {
     return running;
 }
 
+// The start of a process set up Wine's signal handling: in single mode ntdll does it on the
+// process's first thread, inside the launch, so test builds check the dispatcher again there
+// (C-0005 section 4). A replaced handler terminates the process and fails the session. Nothing in
+// the shipped builds.
+static pp_status_t check_dispatcher_after_start(uint64_t handle) {
+#ifdef PANEPORT_TEST_BUILD
+    int32_t replaced = 0;
+    if (pp_signals_check_installed(&replaced) != PP_OK) {
+        (void)pp_log(PP_LOG_ERROR,
+                     "The Windows process failed the check of the signal dispatcher.");
+        (void)pthread_mutex_lock(&s_session.mutex);
+        s_session.failure = PP_E_SYSTEM;
+        (void)pthread_mutex_unlock(&s_session.mutex);
+        (void)pp_process_terminate(handle, 1U);
+        return pp_error_set(PP_E_SYSTEM,
+                            "The process's start replaced the handler of %s of the signal "
+                            "dispatcher, so the process was terminated and the session fails.",
+                            pp_signals_name(replaced));
+    }
+#else
+    (void)handle;
+#endif
+    return PP_OK;
+}
+
 PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint64_t *process) {
     pp_error_clear();
     if (config == NULL || process == NULL) {
@@ -892,19 +922,7 @@ PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint6
                             "0x%x.",
                             (unsigned)exit_code);
     }
-#ifdef PANEPORT_TEST_BUILD
-    // The process's start set up Wine's signal handling, so test builds check the dispatcher
-    // again, and end the process when its handlers were replaced (C-0005 section 4).
-    status = pp_signals_check_installed(NULL);
-    if (status != PP_OK) {
-        (void)pp_log(PP_LOG_ERROR,
-                     "The Windows process failed the check of the signal dispatcher.");
-        (void)pp_process_terminate(handle, 1U);
-        return pp_error_set(PP_E_SYSTEM, "The process's start replaced a handler of the signal "
-                                         "dispatcher, so it was terminated.");
-    }
-#endif
-    return PP_OK;
+    return check_dispatcher_after_start(handle);
 }
 
 PP_EXPORT pp_status_t pp_process_get_state(uint64_t process, pp_process_state_t *state) {

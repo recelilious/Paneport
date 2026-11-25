@@ -18,6 +18,8 @@
 //   query_exited   as wait, but the query reports the process as ended, with exit code
 //                  FAKE_FORK_QUERY_EXIT_CODE, which the bridge never reports
 //   silent_exit    as wait, but the process ends without reporting its end through the bridge
+//   launch_sigsegv as wait, but the process's start installs a SIGSEGV handler of its own, as
+//                  Wine's signal_init_process does upstream
 //   launch_refuse_keep
 //                  the launch keeps copies of the pipes' write ends and fails, so that the
 //                  host's reader of the output never sees their end
@@ -85,7 +87,7 @@ static bool mode_is(const char *mode) { return strcmp(s_fake.mode, mode) == 0; }
 
 // Whether the process waits until it is terminated or the session stops.
 static bool process_waits(void) {
-    if (mode_is("wait") || mode_is("silent_exit")) {
+    if (mode_is("wait") || mode_is("silent_exit") || mode_is("launch_sigsegv")) {
         return true;
     }
     return mode_is("query_exited");
@@ -100,6 +102,14 @@ static void record_state(uint32_t state, uint32_t exit_code) {
 }
 
 static void on_segv(int signal) { (void)signal; }
+
+static void install_segv_handler(void) {
+    struct sigaction action;
+    memset(&action, 0, sizeof action);
+    action.sa_handler = on_segv;
+    (void)sigemptyset(&action.sa_mask);
+    (void)sigaction(SIGSEGV, &action, NULL);
+}
 
 static void run_server(void *argument) {
     (void)argument;
@@ -140,6 +150,9 @@ static void *run_process(void *argument) {
         exit_code = FAKE_FORK_START_FAILURE;
     } else {
         bridge->log(PP_WINE_LOG_INFO, "fake runtime: process started\nsecond runtime line");
+        if (mode_is("launch_sigsegv")) {
+            install_segv_handler();
+        }
         record_state(WINE_PANEPORT_PROCESS_RUNNING, 0U);
         bridge->process_started(s_fake.process);
         if (process_waits()) {
@@ -196,11 +209,7 @@ FAKE_EXPORT int32_t __wine_paneport_session_start(const pp_wine_bridge_t *bridge
         return PP_WINE_E_SYSTEM;
     }
     if (mode_is("sigsegv")) {
-        struct sigaction action;
-        memset(&action, 0, sizeof action);
-        action.sa_handler = on_segv;
-        (void)sigemptyset(&action.sa_mask);
-        (void)sigaction(SIGSEGV, &action, NULL);
+        install_segv_handler();
     }
     return bridge->start_thread("fake.wineserver", run_server, NULL);
 }

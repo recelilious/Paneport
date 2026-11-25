@@ -365,6 +365,24 @@ static void replaced_handler_fails_session(void) {
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
 }
 
+// In single mode Wine sets up its signal handling when a process starts, inside the launch, so
+// test builds check the dispatcher again then: a process whose start installs a SIGSEGV handler
+// of its own fails the launch, is terminated with exit code 1, and its session ends with
+// PP_E_SYSTEM (C-0005 section 4).
+static void launch_check_fails_the_session(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=launch_sigsegv\0");
+    const uint64_t process = launch(1U, PP_E_SYSTEM);
+    PP_CHECK(process != 0U);
+    PP_CHECK(strstr(pp_last_error(), "SIGSEGV") != NULL);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_PROCESS_EXITED).code, 1);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_SESSION_ENDED).code, PP_E_SYSTEM);
+    check_state(process, PP_PROCESS_EXITED, 1U);
+    stop_host();
+}
+
 static void plant_sigbus_handler(void *argument) {
     (void)argument;
     struct sigaction action;
@@ -699,6 +717,7 @@ int main(int argc, char **argv) {
         {"output_lines_arrive_before_the_exit", output_lines_arrive_before_the_exit},
         {"second_session_refused", second_session_refused},
         {"replaced_handler_fails_session", replaced_handler_fails_session},
+        {"launch_check_fails_the_session", launch_check_fails_the_session},
         {"started_hook_runs_before_check", started_hook_runs_before_check},
         {"runtime_refusal_fails_session", runtime_refusal_fails_session},
         {"launch_needs_a_session", launch_needs_a_session},

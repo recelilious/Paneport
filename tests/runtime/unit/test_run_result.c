@@ -3,7 +3,8 @@
 
 // The result file of single mode, which the harness's child writes and its parent reads: what
 // the child writes reads back the same, a text stays on its line, the items that do not fit are
-// cut, and a file that is missing or malformed is refused.
+// cut, a file that is missing or malformed is refused, and the program's exit code is compared
+// whole.
 
 #include <limits.h>
 #include <stdbool.h>
@@ -122,6 +123,24 @@ static void texts_stay_on_their_lines(void) {
     remove_path(folder, path);
 }
 
+// Single mode compares the program's whole Windows exit code: a code whose low 8 bits are the
+// expected ones fails too, and a code above 255 is named in hexadecimal as well.
+static void exit_code_compared_whole(void) {
+    char reason[128] = "";
+    PP_CHECK(pp_run_result_exit_code_matches(0U, 0, reason, sizeof reason));
+    PP_CHECK(pp_run_result_exit_code_matches(3U, 3, reason, sizeof reason));
+    PP_CHECK_TEXT(reason, "");
+    PP_CHECK(!pp_run_result_exit_code_matches(3U, 4, reason, sizeof reason));
+    PP_CHECK_TEXT(reason, "exited with 3, not 4");
+    PP_CHECK(!pp_run_result_exit_code_matches(0x100U, 0, reason, sizeof reason));
+    PP_CHECK_TEXT(reason, "exited with 256, not 0 (Windows exit code 0x100)");
+    // STILL_ACTIVE, whose low 8 bits are 3.
+    PP_CHECK(!pp_run_result_exit_code_matches(0x103U, 3, reason, sizeof reason));
+    PP_CHECK_TEXT(reason, "exited with 259, not 3 (Windows exit code 0x103)");
+    PP_CHECK(!pp_run_result_exit_code_matches(0xC0000100U, 0, reason, sizeof reason));
+    PP_CHECK_TEXT(reason, "exited with 3221225728, not 0 (Windows exit code 0xc0000100)");
+}
+
 static void missing_file_named(void) {
     pp_run_result_t result;
     char error[256] = "";
@@ -175,6 +194,7 @@ int main(int argc, char **argv) {
         {"round_trip", round_trip},
         {"exit_codes", exit_codes},
         {"texts_stay_on_their_lines", texts_stay_on_their_lines},
+        {"exit_code_compared_whole", exit_code_compared_whole},
         {"missing_file_named", missing_file_named},
         {"malformed_files_refused", malformed_files_refused},
     };

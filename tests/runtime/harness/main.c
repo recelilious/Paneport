@@ -291,23 +291,6 @@ typedef struct single_run_t {
     char result_error[PP_HARNESS_ERROR_SIZE];
 } single_run_t;
 
-// Compares the program's Windows exit code as multi mode compares the loader's exit status, which
-// carries its low 8 bits, and names the whole code when it has more.
-static void compare_exit_code(const pp_case_t *test, uint32_t exit_code, char *reasons) {
-    const int low = (int)(exit_code & 0xFFU);
-    if (low == test->exit_code) {
-        return;
-    }
-    char reason[128];
-    if (exit_code > 0xFFU) {
-        (void)snprintf(reason, sizeof reason, "exited with %d, not %d (Windows exit code 0x%x)",
-                       low, test->exit_code, (unsigned)exit_code);
-    } else {
-        (void)snprintf(reason, sizeof reason, "exited with %d, not %d", low, test->exit_code);
-    }
-    add_reason(reasons, reason);
-}
-
 // Appends text to a reason of PP_HARNESS_REASONS_SIZE bytes, cut where it would not fit.
 static void append_text(char *reason, const char *separator, const char *text) {
     const size_t used = strlen(reason);
@@ -372,8 +355,8 @@ static void report_child(const pp_case_t *test, const single_run_t *run, char *r
     }
 }
 
-// Judges a run of single mode: the same comparison, exit code and reports of Wine as in multi
-// mode, then what the harness child found.
+// Judges a run of single mode: the same comparison and reports of Wine as in multi mode, the
+// program's whole exit code, then what the harness child found.
 static void judge_single(const pp_case_t *test, const pp_expected_t *expected,
                          const single_run_t *run, char *reasons) {
     const pp_child_result_t *child = &run->child;
@@ -388,7 +371,11 @@ static void judge_single(const pp_case_t *test, const pp_expected_t *expected,
                        child->signal);
         add_reason(reasons, reason);
     } else if (test->kind == PP_CASE_PROGRAM && run->result_read && run->result.has_exit_code) {
-        compare_exit_code(test, run->result.exit_code, reasons);
+        char reason[128];
+        if (!pp_run_result_exit_code_matches(run->result.exit_code, test->exit_code, reason,
+                                             sizeof reason)) {
+            add_reason(reasons, reason);
+        }
     }
     report_streams(child, reasons);
     report_child(test, run, reasons);

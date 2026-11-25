@@ -63,4 +63,12 @@ bool pp_run_result_write(const pp_run_result_t *result, const char *path);
 // or it is malformed.
 bool pp_run_result_read(const char *path, pp_run_result_t *result, char *error, size_t error_size);
 
+// Compares the program's whole Windows exit code, which single mode has from the process-exited
+// event, with the code that a case expects, from 0 to 255; multi mode has only the low 8 bits
+// that the loader's exit status carries. Returns true when they are equal; otherwise writes why
+// into reason, as "exited with 3, not 4", with a code above 255 also in hexadecimal, as an
+// NTSTATUS reads: "exited with 3221225781, not 0 (Windows exit code 0xc0000135)".
+bool pp_run_result_exit_code_matches(uint32_t exit_code, int expected, char *reason,
+                                     size_t reason_size);
+
 #endif

@@ -179,3 +179,18 @@ bool pp_run_result_read(const char *path, pp_run_result_t *result, char *error, 
     }
     return valid;
 }
+
+bool pp_run_result_exit_code_matches(uint32_t exit_code, int expected, char *reason,
+                                     size_t reason_size) {
+    if (exit_code == (uint32_t)expected) {
+        return true;
+    }
+    if (exit_code > 0xFFU) {
+        (void)snprintf(reason, reason_size, "exited with %u, not %d (Windows exit code 0x%x)",
+                       (unsigned)exit_code, expected, (unsigned)exit_code);
+    } else {
+        (void)snprintf(reason, reason_size, "exited with %u, not %d", (unsigned)exit_code,
+                       expected);
+    }
+    return false;
+}

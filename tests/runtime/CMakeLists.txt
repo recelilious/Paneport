@@ -82,7 +82,8 @@ if(PANEPORT_TESTS)
         copy_keeps_the_tree copy_needs_a_new_target remove_takes_everything
         remove_takes_links_and_missing_folders)
     paneport_harness_test(test_run_result CASES
-        round_trip exit_codes texts_stay_on_their_lines missing_file_named malformed_files_refused)
+        round_trip exit_codes texts_stay_on_their_lines exit_code_compared_whole missing_file_named
+        malformed_files_refused)
 
     # S4.3.9: the trap, in a process that holds no sanitizer runtime, as the harness's does not.
     paneport_harness_test(test_trap LIBRARY paneport_trap CASES

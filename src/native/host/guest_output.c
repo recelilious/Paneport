@@ -171,7 +171,8 @@ static void flush_streams(pp_guest_output_t *reader, char *buffer, size_t size) 
             continue;
         }
         const int flags = fcntl(stream->fd, F_GETFL);
-        if (flags >= 0 && fcntl(stream->fd, F_SETFL, flags | O_NONBLOCK) == 0) {
+        if (flags >= 0 &&
+            fcntl(stream->fd, F_SETFL, (int)((unsigned)flags | (unsigned)O_NONBLOCK)) == 0) {
             size_t taken = 0U;
             while (taken < PP_GUEST_FLUSH_LIMIT) {
                 const ssize_t read_count = read(stream->fd, buffer, size);

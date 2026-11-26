@@ -5,6 +5,7 @@
 // however the bytes arrive: whole, in chunks of every size, or cut at random; and the reader of
 // a program's pipes, which ends when it is woken although a write end stays open.
 
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdint.h>
@@ -12,6 +13,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "event_thread.h"
 #include "fake_wine_fork.h"
 #include "guest_output.h"
 #include "paneport/host.h"
@@ -277,6 +279,134 @@ static void wake_ends_a_reader_whose_pipes_stay_open(void) {
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
 }
 
+// How much the writer of woken_reader_takes_at_most_64_kib adds to the pipe each time it is asked.
+enum { FILL_SIZE = 600 };
+
+// What woken_reader_takes_at_most_64_kib watches. A writer thread keeps the output pipe from
+// running dry while the woken reader takes from it, as a program that keeps writing would: the
+// post hook asks it for FILL_SIZE more bytes before each post of the reader and waits for them,
+// so that every read of the reader finds bytes, which are x's. The hook holds the reader's first
+// post, of the one line written before the wake, until the test woke the reader, and the log
+// callback adds up the length of the pieces of x's that arrive.
+typedef struct filled_pipe_t {
+    pthread_mutex_t mutex;
+    pthread_cond_t changed;
+    pthread_t test_thread;
+    int fd;
+    uint64_t requested;
+    uint64_t filled;
+    bool stop;
+    _Atomic(bool) in_hook;
+    _Atomic(bool) release;
+    _Atomic(uint64_t) taken;
+    _Atomic(uint64_t) other_lines;
+} filled_pipe_t;
+
+static void fill_before_a_post(void *argument) {
+    filled_pipe_t *filled = argument;
+    if (pthread_equal(pthread_self(), filled->test_thread) != 0) {
+        return;
+    }
+    if (!atomic_exchange(&filled->in_hook, true)) {
+        pp_wait_for_flag(&filled->release);
+    }
+    (void)pthread_mutex_lock(&filled->mutex);
+    filled->requested++;
+    const uint64_t request = filled->requested;
+    (void)pthread_cond_broadcast(&filled->changed);
+    while (filled->filled < request) {
+        (void)pthread_cond_wait(&filled->changed, &filled->mutex);
+    }
+    (void)pthread_mutex_unlock(&filled->mutex);
+}
+
+static void *fill_on_request(void *argument) {
+    filled_pipe_t *filled = argument;
+    char chunk[FILL_SIZE];
+    memset(chunk, 'x', sizeof chunk);
+    (void)pthread_mutex_lock(&filled->mutex);
+    for (;;) {
+        while (!filled->stop && filled->filled == filled->requested) {
+            (void)pthread_cond_wait(&filled->changed, &filled->mutex);
+        }
+        if (filled->stop) {
+            break;
+        }
+        (void)pthread_mutex_unlock(&filled->mutex);
+        // The write end does not block: a full pipe takes what fits, or nothing, and holds bytes.
+        (void)write(filled->fd, chunk, sizeof chunk);
+        (void)pthread_mutex_lock(&filled->mutex);
+        filled->filled++;
+        (void)pthread_cond_broadcast(&filled->changed);
+    }
+    (void)pthread_mutex_unlock(&filled->mutex);
+    return NULL;
+}
+
+static void count_taken(const pp_log_line_t *line, void *user_data) {
+    filled_pipe_t *filled = user_data;
+    if (line->source != PP_LOG_SOURCE_GUEST_OUTPUT) {
+        return;
+    }
+    const size_t length = strlen(line->text);
+    if (length > 0U && strspn(line->text, "x") == length) {
+        (void)atomic_fetch_add(&filled->taken, (uint64_t)length);
+    } else {
+        (void)atomic_fetch_add(&filled->other_lines, 1U);
+    }
+}
+
+// A reader that is woken while a writer keeps its pipe from running dry, as the runtime's
+// process may after the stop's wait, ends within a bound, after it took exactly 64 KiB of that
+// stream: the limit bounds the join of pp_session_stop.
+static void woken_reader_takes_at_most_64_kib(void) {
+    filled_pipe_t filled = {.test_thread = pthread_self(), .requested = 0U, .filled = 0U};
+    PP_CHECK_EQUAL(pthread_mutex_init(&filled.mutex, NULL), 0);
+    PP_CHECK_EQUAL(pthread_cond_init(&filled.changed, NULL), 0);
+    atomic_init(&filled.in_hook, false);
+    atomic_init(&filled.release, false);
+    atomic_init(&filled.taken, 0U);
+    atomic_init(&filled.other_lines, 0U);
+    pp_start_host(NULL);
+    PP_CHECK_EQUAL(pp_set_log_callback(count_taken, &filled), PP_OK);
+    int output[2];
+    int errors[2];
+    PP_CHECK_EQUAL(pipe(output), 0);
+    PP_CHECK_EQUAL(pipe(errors), 0);
+    const int flags = fcntl(output[1], F_GETFL);
+    PP_CHECK(flags >= 0);
+    PP_CHECK_EQUAL(fcntl(output[1], F_SETFL, (int)((unsigned)flags | (unsigned)O_NONBLOCK)), 0);
+    filled.fd = output[1];
+    pp_event_thread_set_post_hook(fill_before_a_post, &filled);
+    const pthread_t writer = pp_start_thread(fill_on_request, &filled);
+    pp_guest_output_t *reader = NULL;
+    PP_CHECK_EQUAL(pp_guest_output_start(output[0], errors[0], 5U, note_end, &reader), PP_OK);
+
+    write_all(output[1], "first\n", 6U);
+    pp_wait_for_flag(&filled.in_hook);
+    pp_guest_output_wake(reader);
+    atomic_store(&filled.release, true);
+    for (int round = 0; round < 30000 && atomic_load(&s_ended_process) == 0U; round++) {
+        pp_sleep_milliseconds(1);
+    }
+    PP_CHECK_EQUAL(atomic_load(&s_ended_process), 5U);
+    pp_guest_output_join(reader);
+
+    (void)pthread_mutex_lock(&filled.mutex);
+    filled.stop = true;
+    (void)pthread_cond_broadcast(&filled.changed);
+    (void)pthread_mutex_unlock(&filled.mutex);
+    pp_join_thread(writer);
+    pp_event_thread_set_post_hook(NULL, NULL);
+    (void)close(output[1]);
+    (void)close(errors[1]);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+    PP_CHECK_EQUAL(atomic_load(&filled.taken), 64U * 1024U);
+    PP_CHECK_EQUAL(atomic_load(&filled.other_lines), 1U);
+    (void)pthread_cond_destroy(&filled.changed);
+    (void)pthread_mutex_destroy(&filled.mutex);
+}
+
 // A NUL byte of a program's output becomes U+FFFD, so the rest of its line still arrives, and a
 // line that the replacements make longer than a log line holds arrives in pieces, cut between
 // two replacement characters.
@@ -315,6 +445,7 @@ int main(int argc, char **argv) {
         {"carriage_returns", carriage_returns},
         {"empty_lines_and_the_end", empty_lines_and_the_end},
         {"wake_ends_a_reader_whose_pipes_stay_open", wake_ends_a_reader_whose_pipes_stay_open},
+        {"woken_reader_takes_at_most_64_kib", woken_reader_takes_at_most_64_kib},
         {"nul_bytes_become_replacements", nul_bytes_become_replacements},
     };
     return pp_run_case(argc, argv, k_cases, PP_CASE_COUNT(k_cases));

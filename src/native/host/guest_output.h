@@ -62,9 +62,9 @@ pp_status_t pp_guest_output_start(int output_fd, int errors_fd, uint64_t process
                                   pp_guest_output_end_t on_end, pp_guest_output_t **reader);
 
 // Wakes the reader through a pipe of its own, so that it ends although a copy of a pipe's write
-// end stays open: it takes what each pipe holds without waiting, at most 64 KiB, queues the
-// lines and the last piece of each stream, and ends. Any thread, before pp_guest_output_join;
-// nothing for NULL.
+// end stays open: it takes what each pipe holds without waiting, at most 64 KiB of each, also
+// while a writer keeps a pipe from running dry, queues the lines and the last piece of each
+// stream, and ends. Any thread, before pp_guest_output_join; nothing for NULL.
 void pp_guest_output_wake(pp_guest_output_t *reader);
 
 // Waits for the reader to end, joins its thread and frees it; nothing for NULL.

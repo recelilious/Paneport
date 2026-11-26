@@ -75,7 +75,8 @@ void pp_line_splitter_finish(pp_line_splitter_t *splitter, pp_line_sink_t sink, 
 
 enum { PP_GUEST_STREAMS = 2 };
 
-// How much of a stream the reader takes once it is woken: what a pipe holds, at most.
+// How much of each stream the reader takes at most once it is woken, what a pipe holds, also
+// while a writer keeps the pipe from running dry: the limit bounds the join of pp_session_stop.
 #define PP_GUEST_FLUSH_LIMIT ((size_t)64U * 1024U)
 
 // Where the lines of one stream go.
@@ -175,7 +176,12 @@ static void flush_streams(pp_guest_output_t *reader, char *buffer, size_t size) 
             fcntl(stream->fd, F_SETFL, (int)((unsigned)flags | (unsigned)O_NONBLOCK)) == 0) {
             size_t taken = 0U;
             while (taken < PP_GUEST_FLUSH_LIMIT) {
-                const ssize_t read_count = read(stream->fd, buffer, size);
+                // No read goes past the limit.
+                size_t wanted = PP_GUEST_FLUSH_LIMIT - taken;
+                if (wanted > size) {
+                    wanted = size;
+                }
+                const ssize_t read_count = read(stream->fd, buffer, wanted);
                 if (read_count <= 0) {
                     break;
                 }

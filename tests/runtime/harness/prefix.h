@@ -23,4 +23,11 @@ bool pp_prefix_remove(const char *folder, char *error, size_t error_size);
 // fails. On failure it writes a message into error, and target may hold part of the copy.
 bool pp_prefix_copy(const char *source, const char *target, char *error, size_t error_size);
 
+// Makes target a copy of source as pp_prefix_copy does, but copies the data of every file, as a
+// file system that cannot clone does. Only test_prefix calls it, never a run: the runner's
+// template and prefixes share one APFS volume, where every clone works, so the copy of the data
+// would go untested there otherwise.
+bool pp_prefix_copy_without_clones(const char *source, const char *target, char *error,
+                                   size_t error_size);
+
 #endif

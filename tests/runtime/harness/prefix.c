@@ -146,13 +146,17 @@ static bool copy_data(const char *source, const char *target, mode_t mode, char 
     return copied;
 }
 
-static bool copy_file(const char *source, const char *target, mode_t mode, char *error,
-                      size_t error_size) {
+// Copies a file, through a clone when cloning is set, which only pp_prefix_copy_without_clones
+// clears.
+static bool copy_file(const char *source, const char *target, mode_t mode, bool cloning,
+                      char *error, size_t error_size) {
 #ifdef __APPLE__
     // APFS clones a file without copying its data; another file system takes the copy below.
-    if (clonefile(source, target, CLONE_NOFOLLOW) == 0) {
+    if (cloning && clonefile(source, target, CLONE_NOFOLLOW) == 0) {
         return true;
     }
+#else
+    (void)cloning;
 #endif
     return copy_data(source, target, mode, error, error_size);
 }
@@ -172,7 +176,8 @@ static bool copy_link(const char *source, const char *target, char *error, size_
     return true;
 }
 
-static bool copy_entry(const FTSENT *entry, const char *target, char *error, size_t error_size) {
+static bool copy_entry(const FTSENT *entry, const char *target, bool cloning, char *error,
+                       size_t error_size) {
     const mode_t mode = (mode_t)(entry->fts_statp->st_mode & 07777U);
     switch (entry->fts_info) {
     case FTS_D:
@@ -189,7 +194,7 @@ static bool copy_entry(const FTSENT *entry, const char *target, char *error, siz
         }
         return true;
     case FTS_F:
-        return copy_file(entry->fts_accpath, target, mode, error, error_size);
+        return copy_file(entry->fts_accpath, target, mode, cloning, error, error_size);
     case FTS_SL:
     case FTS_SLNONE:
         return copy_link(entry->fts_accpath, target, error, error_size);
@@ -206,7 +211,8 @@ static bool copy_entry(const FTSENT *entry, const char *target, char *error, siz
     }
 }
 
-bool pp_prefix_copy(const char *source, const char *target, char *error, size_t error_size) {
+static bool copy_tree(const char *source, const char *target, bool cloning, char *error,
+                      size_t error_size) {
     // fts names every entry by the root as given, so the root loses any slash at its end.
     char root[PATH_MAX];
     size_t root_length = strlen(source);
@@ -246,7 +252,7 @@ bool pp_prefix_copy(const char *source, const char *target, char *error, size_t 
             (void)snprintf(error, error_size, "a path in the copy of %s is too long", root);
             copied = false;
         } else {
-            copied = copy_entry(entry, destination, error, error_size);
+            copied = copy_entry(entry, destination, cloning, error, error_size);
         }
     }
     if (copied && errno != 0) {
@@ -255,4 +261,13 @@ bool pp_prefix_copy(const char *source, const char *target, char *error, size_t 
     }
     (void)fts_close(tree);
     return copied;
+}
+
+bool pp_prefix_copy(const char *source, const char *target, char *error, size_t error_size) {
+    return copy_tree(source, target, true, error, error_size);
+}
+
+bool pp_prefix_copy_without_clones(const char *source, const char *target, char *error,
+                                   size_t error_size) {
+    return copy_tree(source, target, false, error, error_size);
 }

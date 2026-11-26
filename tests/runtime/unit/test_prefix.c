@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // The prefixes of single mode: a copy of the template keeps its folders, files, permissions and
-// symbolic links, whatever the umask, and is made from a folder only; and the removal of a run's
-// prefix takes all of it, a folder that its owner cannot write and a dangling link among it, or
-// fails and names what it could not read.
+// symbolic links, whatever the umask, and is made from a folder only, both as a run makes it and
+// without clones, as a file system that cannot clone takes it; and the removal of a run's prefix
+// takes all of it, a folder that its owner cannot write and a dangling link among it, or fails
+// and names what it could not read.
 
 #include <errno.h>
 #include <fcntl.h>
@@ -20,6 +21,24 @@
 
 #include "pp_check.h"
 #include "prefix.h"
+
+// A way to copy the template: as a run copies it, which clones each file on macOS, or without
+// clones, as a file system that cannot clone copies it. The runner's template and prefixes share
+// one APFS volume, where every clone works, so each copy case runs both ways.
+typedef struct copy_way_t {
+    const char *name;
+    bool (*copy)(const char *source, const char *target, char *error, size_t error_size);
+} copy_way_t;
+
+static const copy_way_t k_ways[] = {
+    {"pp_prefix_copy", pp_prefix_copy},
+    {"pp_prefix_copy_without_clones", pp_prefix_copy_without_clones},
+};
+
+#define PP_WAY_COUNT (sizeof k_ways / sizeof k_ways[0])
+
+// Names the way that a round of a copy case takes, so that a failed check of the round shows it.
+static void start_round(const copy_way_t *way) { (void)fprintf(stderr, "through %s\n", way->name); }
 
 static void make_temporary(char *path, size_t size) {
     PP_CHECK(snprintf(path, size, "/tmp/paneport-prefix-XXXXXX") > 0);
@@ -120,12 +139,13 @@ static bool exists(const char *path) {
     return lstat(path, &status) == 0;
 }
 
-// Copies the template from source into a new folder copy of root, and checks the copy.
-static void check_copy(const char *root, const char *source) {
+// Copies the template from source into a new folder copy of root, the way given, and checks the
+// copy.
+static void check_copy(const char *root, const char *source, const copy_way_t *way) {
     char target[PATH_MAX];
     path_of(target, sizeof target, root, "copy");
     char error[512] = "";
-    if (!pp_prefix_copy(source, target, error, sizeof error)) {
+    if (!way->copy(source, target, error, sizeof error)) {
         (void)fprintf(stderr, "%s\n", error);
         PP_CHECK(false);
     }
@@ -151,18 +171,22 @@ static void copy_keeps_the_tree(void) {
     char source[PATH_MAX];
     path_of(source, sizeof source, root, "template");
     make_template(source);
-    check_copy(root, source);
     // A template named with slashes at its end gives the same copy.
     char slashed[PATH_MAX];
     path_of(slashed, sizeof slashed, source, "/");
-    check_copy(root, slashed);
+    for (size_t index = 0; index < PP_WAY_COUNT; index++) {
+        start_round(&k_ways[index]);
+        check_copy(root, source, &k_ways[index]);
+        check_copy(root, slashed, &k_ways[index]);
+    }
     char error[512] = "";
     PP_CHECK(pp_prefix_remove(root, error, sizeof error));
 }
 
 // The permissions of the copy are the template's whatever the umask, which open and mkdir apply
 // to what they make. On macOS APFS clones each file with its permissions, so there the umask
-// reaches only the folders.
+// reaches only the folders, and only the round without clones shows that a file whose data is
+// copied gets its permissions back.
 static void copy_ignores_the_umask(void) {
     char root[PATH_MAX];
     make_temporary(root, sizeof root);
@@ -170,7 +194,10 @@ static void copy_ignores_the_umask(void) {
     path_of(source, sizeof source, root, "template");
     make_template(source);
     const mode_t saved = umask(077);
-    check_copy(root, source);
+    for (size_t index = 0; index < PP_WAY_COUNT; index++) {
+        start_round(&k_ways[index]);
+        check_copy(root, source, &k_ways[index]);
+    }
     (void)umask(saved);
     char error[512] = "";
     PP_CHECK(pp_prefix_remove(root, error, sizeof error));
@@ -191,16 +218,19 @@ static void copy_needs_a_folder(void) {
     path_of(target, sizeof target, root, "copy");
     static const char *const k_sources[] = {"link", "link/", "file"};
     char error[512] = "";
-    for (size_t index = 0; index < sizeof k_sources / sizeof k_sources[0]; index++) {
-        char named[PATH_MAX];
-        path_of(named, sizeof named, root, k_sources[index]);
-        error[0] = '\0';
-        PP_CHECK(!pp_prefix_copy(named, target, error, sizeof error));
-        if (strstr(error, "which is not a folder") == NULL) {
-            (void)fprintf(stderr, "for %s: \"%s\"\n", k_sources[index], error);
-            PP_CHECK(false);
+    for (size_t way = 0; way < PP_WAY_COUNT; way++) {
+        start_round(&k_ways[way]);
+        for (size_t index = 0; index < sizeof k_sources / sizeof k_sources[0]; index++) {
+            char named[PATH_MAX];
+            path_of(named, sizeof named, root, k_sources[index]);
+            error[0] = '\0';
+            PP_CHECK(!k_ways[way].copy(named, target, error, sizeof error));
+            if (strstr(error, "which is not a folder") == NULL) {
+                (void)fprintf(stderr, "for %s: \"%s\"\n", k_sources[index], error);
+                PP_CHECK(false);
+            }
+            PP_CHECK(!exists(target));
         }
-        PP_CHECK(!exists(target));
     }
     PP_CHECK(pp_prefix_remove(root, error, sizeof error));
 }
@@ -212,17 +242,21 @@ static void copy_needs_a_new_target(void) {
     char source[PATH_MAX];
     path_of(source, sizeof source, root, "template");
     make_template(source);
-    char error[512] = "";
-    PP_CHECK(!pp_prefix_copy(source, root, error, sizeof error));
-    PP_CHECK(strstr(error, "cannot make") != NULL);
     char missing[PATH_MAX];
     path_of(missing, sizeof missing, root, "missing");
     char target[PATH_MAX];
     path_of(target, sizeof target, root, "copy");
-    error[0] = '\0';
-    PP_CHECK(!pp_prefix_copy(missing, target, error, sizeof error));
-    PP_CHECK(error[0] != '\0');
-    PP_CHECK(!exists(target));
+    char error[512] = "";
+    for (size_t index = 0; index < PP_WAY_COUNT; index++) {
+        start_round(&k_ways[index]);
+        error[0] = '\0';
+        PP_CHECK(!k_ways[index].copy(source, root, error, sizeof error));
+        PP_CHECK(strstr(error, "cannot make") != NULL);
+        error[0] = '\0';
+        PP_CHECK(!k_ways[index].copy(missing, target, error, sizeof error));
+        PP_CHECK(error[0] != '\0');
+        PP_CHECK(!exists(target));
+    }
     PP_CHECK(pp_prefix_remove(root, error, sizeof error));
 }
 

@@ -248,11 +248,12 @@ static void count_line_wait(void) {
 // returned before the event's post lies there, so it arrives before the event, and lines
 // posted later do not hold the event back. A slot below lines_end that a producer claimed but
 // has not published yet holds the event back for at most PP_LINE_WAIT_NANOSECONDS. A producer
-// is inside a push for a few instructions, unless it is preempted there, or is a guest thread
-// that is suspended there, which can last any time; so past the wait the event goes first,
-// before the slot's line and every line behind it, since the log queue delivers its lines in the
-// order of their positions: lines that other producers posted, and whose posts returned, before
-// the event's post follow it too. The same slot does not hold another event.
+// is inside a push for a few instructions, unless the system preempts it there, which can last
+// any time (thread control never holds a guest thread there, single-process-wine.md section 7);
+// so past the wait the event goes first, before the slot's line and every line behind it, since
+// the log queue delivers its lines in the order of their positions: lines that other producers
+// posted, and whose posts returned, before the event's post follow it too. The same slot does not
+// hold another event.
 static void deliver_lines_before(uint64_t lines_end) {
     pp_log_entry_t entry;
     bool waiting = false;

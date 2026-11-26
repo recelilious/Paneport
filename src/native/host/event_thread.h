@@ -5,11 +5,11 @@
 // section 1). Two bounded queues feed it, one for events and one for log lines, so that a
 // flood of log lines never fills the events' queue. Each event arrives after the lines whose
 // posts returned before its post, and lines posted after it do not hold it back. The one
-// exception is a producer that stays inside its push of a line for more than 100 ms, such as a
-// suspended guest thread: the event then goes before that line and every line behind it, lines
-// that other producers posted before the event among them. docs/design/native-host.md section 5
-// describes how it sleeps, wakes, orders lines and events, buffers early log lines and reports
-// overflow.
+// exception is a producer that stays inside its push of a line for more than 100 ms, such as one
+// that the system preempts there: the event then goes before that line and every line behind it,
+// lines that other producers posted before the event among them. docs/design/native-host.md
+// section 5 describes how it sleeps, wakes, orders lines and events, buffers early log lines and
+// reports overflow.
 
 #ifndef PANEPORT_HOST_EVENT_THREAD_H
 #define PANEPORT_HOST_EVENT_THREAD_H

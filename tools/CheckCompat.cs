@@ -794,11 +794,12 @@ internal readonly record struct ExactNumber(int Sign, string Digits, long Point)
     }
 }
 
-// A JSON value as a text that two values share exactly where JSON Schema counts them equal: a number by its exact
-// value, as ExactNumber reads it; true, false and null by their kind; a text by its UTF-16 units; a list by the
-// keys of its items, in order; and an object by its members, in the ordinal order of their names, each name with
-// its value's key. Each part ends where its length or its kind says, so that no two values run together into one
-// key. uniqueItems puts every item through one set of these keys, and a const or an enum compares by them.
+// A JSON value as a text that two values share where JSON Schema counts them equal: a number by its exact value,
+// as ExactNumber reads it, so that two numbers of the same digits beyond its limit of the exponent share one too;
+// true, false and null by their kind; a text by its UTF-16 units; a list by the keys of its items, in order; and an
+// object by its members, in the ordinal order of their names, each name with its value's key. Each part ends where
+// its length or its kind says, so that no two values run together into one key. uniqueItems puts every item
+// through one set of these keys, and a const or an enum compares by them.
 internal static class ValueKey
 {
     public static string Of(JsonElement value)

@@ -178,12 +178,16 @@ PP_EXPORT pp_status_t pp_session_start(const pp_session_config_t *config);
 /**
  * Stops the session: terminates its processes, stops its wineserver, and waits for the threads
  * that the host created for it to end. It waits up to 30 s for the runtime's report of the
- * process's end and for the end of the process's output, and then counts a process whose end was
- * not reported as ended with exit code 1. The session-ended event follows unless the session had
- * already ended. Once it returns, no thread of the session runs Windows code again.
+ * process's end, for the end of the process's output and for a pp_process_launch that is still
+ * inside the runtime, which holds the process-exited event while it runs, and then counts a
+ * process whose end was not reported as ended with exit code 1. The session-ended event follows
+ * unless the session had already ended; when a launch is still inside the runtime after the
+ * wait, both events follow once it returns. Once it returns, no thread of the session runs
+ * Windows code again.
  *
- * pp_shutdown refuses with PP_E_BUSY while a session is starting, running or stopping, so the
- * caller stops the session first; after a session that ended by itself, this call still joins
+ * pp_shutdown refuses with PP_E_BUSY while a session is starting, running or stopping, and while
+ * a pp_process_launch is still inside the runtime, so the caller stops the session first and
+ * lets the launch return; after a session that ended by itself, this call still joins
  * the threads that the host created for it and waits for the reader of the process's output, and
  * pp_shutdown does the same when the caller did not call this.
  *

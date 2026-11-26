@@ -41,12 +41,17 @@
 //                  the host stops its session
 //   never_started  the process never reports its start, and waits until it is terminated or the
 //                  session stops
+//   launch_hold_reported
+//                  as launch_refuse_reported, but the launch returns only once the test opened
+//                  the fake's gate, as a launch thread that the system deschedules after the
+//                  server's report would
 //
 // fake_fork_bridge_ok reports whether the bridge it received is complete,
 // fake_fork_server_stack_kib the stack of the server's thread, fake_fork_launches how often the
 // host called its launch, and fake_fork_late_thread_status what the bridge's start_thread
-// returned during the stop of the mode late_thread, 1 until then. Its terminate refuses a process
-// that is not running.
+// returned during the stop of the mode late_thread, 1 until then. fake_fork_reached_gate waits up
+// to a minute until the fake waits at its gate, and fake_fork_open_gate opens the gate. Its
+// terminate refuses a process that is not running.
 
 #include <pthread.h>
 #include <signal.h>
@@ -88,6 +93,10 @@ static struct {
     size_t server_stack;
     // What start_thread returned during the stop in the mode late_thread, 1 until then.
     int32_t late_thread_status;
+    // The gate of the modes launch_hold_reported and late_sigsegv: whether the fake waits at it,
+    // and whether the test opened it.
+    bool at_gate;
+    bool gate_open;
 } s_fake = {
     .mutex = PTHREAD_MUTEX_INITIALIZER,
     .changed = PTHREAD_COND_INITIALIZER,
@@ -145,6 +154,22 @@ static void wait_for_stop(void) {
     (void)pthread_mutex_lock(&s_fake.mutex);
     while (!s_fake.stop_server) {
         (void)pthread_cond_wait(&s_fake.changed, &s_fake.mutex);
+    }
+    (void)pthread_mutex_unlock(&s_fake.mutex);
+}
+
+// Waits at the gate until the test opens it, for up to a minute.
+static void wait_at_gate(void) {
+    struct timespec until;
+    (void)clock_gettime(CLOCK_REALTIME, &until);
+    until.tv_sec += 60;
+    (void)pthread_mutex_lock(&s_fake.mutex);
+    s_fake.at_gate = true;
+    (void)pthread_cond_broadcast(&s_fake.changed);
+    while (!s_fake.gate_open) {
+        if (pthread_cond_timedwait(&s_fake.changed, &s_fake.mutex, &until) != 0) {
+            break;
+        }
     }
     (void)pthread_mutex_unlock(&s_fake.mutex);
 }
@@ -362,6 +387,16 @@ FAKE_EXPORT int32_t __wine_paneport_process_launch(const struct wine_paneport_la
         s_fake.bridge->process_exited(launch->process, 0U);
         return PP_WINE_E_SYSTEM;
     }
+    if (mode_is("launch_hold_reported")) {
+        // As launch_refuse_reported, once the test opened the gate.
+        (void)pthread_mutex_lock(&s_fake.mutex);
+        s_fake.process = launch->process;
+        (void)pthread_mutex_unlock(&s_fake.mutex);
+        record_state(WINE_PANEPORT_PROCESS_EXITED, 0U);
+        s_fake.bridge->process_exited(launch->process, 0U);
+        wait_at_gate();
+        return PP_WINE_E_SYSTEM;
+    }
     // The host closes its copies of the descriptors once the launch returns.
     s_fake.output_fd = launch->stdout_fd >= 0 ? dup(launch->stdout_fd) : -1;
     s_fake.errors_fd = launch->stderr_fd >= 0 ? dup(launch->stderr_fd) : -1;
@@ -447,6 +482,29 @@ FAKE_EXPORT int fake_fork_late_thread_status(void) {
     const int32_t status = s_fake.late_thread_status;
     (void)pthread_mutex_unlock(&s_fake.mutex);
     return (int)status;
+}
+
+FAKE_EXPORT int fake_fork_reached_gate(void) {
+    struct timespec until;
+    (void)clock_gettime(CLOCK_REALTIME, &until);
+    until.tv_sec += 60;
+    (void)pthread_mutex_lock(&s_fake.mutex);
+    while (!s_fake.at_gate) {
+        if (pthread_cond_timedwait(&s_fake.changed, &s_fake.mutex, &until) != 0) {
+            break;
+        }
+    }
+    const bool reached = s_fake.at_gate;
+    (void)pthread_mutex_unlock(&s_fake.mutex);
+    return reached ? 1 : 0;
+}
+
+FAKE_EXPORT int fake_fork_open_gate(void) {
+    (void)pthread_mutex_lock(&s_fake.mutex);
+    s_fake.gate_open = true;
+    (void)pthread_cond_broadcast(&s_fake.changed);
+    (void)pthread_mutex_unlock(&s_fake.mutex);
+    return 1;
 }
 
 FAKE_EXPORT int fake_fork_bridge_ok(void) {

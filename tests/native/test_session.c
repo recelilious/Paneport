@@ -584,11 +584,13 @@ static void stop_ends_a_running_process(void) {
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
 }
 
-// What a launch that the launch hook holds returned, and whether the stop has returned.
+// A launch on a thread of its own, with or without the capture of the output: what it returned,
+// and for a launch that the launch hook holds, whether the stop has returned.
 typedef struct held_launch_t {
     _Atomic(bool) in_hook;
     _Atomic(bool) stopped;
     _Atomic(int) status;
+    uint8_t capture_output;
     uint64_t process;
 } held_launch_t;
 
@@ -600,7 +602,7 @@ static void hold_launch(void *argument) {
 
 static void *launch_held(void *argument) {
     held_launch_t *held = argument;
-    const pp_process_config_t config = process_config(1U);
+    const pp_process_config_t config = process_config(held->capture_output);
     atomic_store(&held->status, pp_process_launch(&config, &held->process));
     return NULL;
 }
@@ -614,7 +616,7 @@ static void stop_during_a_launch(void) {
     make_fixture(&fixture);
     start_host();
     start_session(&fixture, "FAKE_FORK_MODE=wait\0");
-    held_launch_t held = {.process = 0U};
+    held_launch_t held = {.capture_output = 1U, .process = 0U};
     atomic_init(&held.in_hook, false);
     atomic_init(&held.stopped, false);
     atomic_init(&held.status, 1);
@@ -742,6 +744,86 @@ static void refusal_overrides_a_reported_exit(void) { check_reported_refusal(0U)
 
 // The same with the capture of the output, whose reader ends once the launch returned.
 static void refusal_overrides_a_reported_exit_captured(void) { check_reported_refusal(1U); }
+
+// Starts a launch, on a thread of its own, that the runtime keeps inside its launch after it
+// reported the process's end with exit code 0 (the fake's mode launch_hold_reported), and waits
+// until the runtime's launch holds it there.
+static pthread_t start_held_launch(const fixture_t *fixture, held_launch_t *held,
+                                   uint8_t capture_output) {
+    held->capture_output = capture_output;
+    held->process = 0U;
+    atomic_init(&held->in_hook, false);
+    atomic_init(&held->stopped, false);
+    atomic_init(&held->status, 1);
+    const pthread_t thread = pp_start_thread(launch_held, held);
+    PP_CHECK_EQUAL(call_fake(fixture, "fake_fork_reached_gate"), 1);
+    return thread;
+}
+
+// A launch thread that the system deschedules inside the runtime's launch, after the runtime's
+// report of the process's end, holds the exit event until the launch returns. pp_session_stop
+// waits for it a while and returns, and pp_shutdown refuses with PP_E_BUSY until the launch has
+// returned: then the process-exited event, with exit code 1 for the refused launch, and the
+// session-ended event still arrive, and pp_shutdown stops the host.
+static void shutdown_refused_while_a_launch_runs(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=launch_hold_reported\0");
+    held_launch_t held;
+    const pthread_t thread = start_held_launch(&fixture, &held, 1U);
+    pp_session_set_stop_wait(200U);
+    PP_CHECK_EQUAL(pp_session_stop(), PP_OK);
+    settle();
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.event_count, 0U);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_E_BUSY);
+    PP_CHECK(strstr(pp_last_error(), "pp_process_launch") != NULL);
+    PP_CHECK_EQUAL(call_fake(&fixture, "fake_fork_open_gate"), 1);
+    pp_join_thread(thread);
+    PP_CHECK_EQUAL(atomic_load(&held.status), PP_E_SYSTEM);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_PROCESS_EXITED).code, 1);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_SESSION_ENDED).code, PP_OK);
+    check_state(held.process, PP_PROCESS_EXITED, 1U);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
+// Opens the fake's gate 100 ms after it starts, while pp_session_stop waits.
+static void *open_gate_later(void *argument) {
+    const fixture_t *fixture = argument;
+    pp_sleep_milliseconds(100);
+    (void)call_fake(fixture, "fake_fork_open_gate");
+    return NULL;
+}
+
+// The same launch, whose runtime's launch returns while pp_session_stop waits, here without the
+// capture of the output, whose reader the stop would wait for too: the stop waits for the launch,
+// so the process-exited event, with exit code 1, and the session-ended event come before the stop
+// returns.
+static void stop_waits_for_a_launch_in_the_runtime(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=launch_hold_reported\0");
+    held_launch_t held;
+    const pthread_t thread = start_held_launch(&fixture, &held, 0U);
+    const pthread_t opener = pp_start_thread(open_gate_later, &fixture);
+    PP_CHECK_EQUAL(pp_session_stop(), PP_OK);
+    settle();
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.event_count, 2U);
+    PP_CHECK_EQUAL(s_seen.events[0].kind, PP_EVENT_PROCESS_EXITED);
+    PP_CHECK_EQUAL(s_seen.events[0].code, 1);
+    PP_CHECK_EQUAL(s_seen.events[1].kind, PP_EVENT_SESSION_ENDED);
+    PP_CHECK_EQUAL(s_seen.events[1].code, PP_OK);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    pp_join_thread(opener);
+    pp_join_thread(thread);
+    PP_CHECK_EQUAL(atomic_load(&held.status), PP_E_SYSTEM);
+    check_state(held.process, PP_PROCESS_EXITED, 1U);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
 
 // A program that starts and ends before the launch looks at it still started: the launch
 // succeeds, and both events and the exit code arrive. This is the launch race, in which the
@@ -1045,6 +1127,8 @@ int main(int argc, char **argv) {
         {"launch_refusal_is_reported", launch_refusal_is_reported},
         {"refusal_overrides_a_reported_exit", refusal_overrides_a_reported_exit},
         {"refusal_overrides_a_reported_exit_captured", refusal_overrides_a_reported_exit_captured},
+        {"shutdown_refused_while_a_launch_runs", shutdown_refused_while_a_launch_runs},
+        {"stop_waits_for_a_launch_in_the_runtime", stop_waits_for_a_launch_in_the_runtime},
         {"quick_program_still_started", quick_program_still_started},
         {"a_flood_of_lines_loses_none", a_flood_of_lines_loses_none},
         {"exit_waits_for_the_last_line", exit_waits_for_the_last_line},

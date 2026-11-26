@@ -171,6 +171,8 @@ PP_EXPORT pp_status_t pp_init(const pp_init_config_t *config);
  * and clears both callbacks. Once it returns, no callback runs again. It refuses while a Wine
  * session is starting, running or stopping (paneport/session.h), whose threads and Windows
  * process would outlive the event thread: the caller stops the session with pp_session_stop
+ * first. It also refuses while a pp_process_launch is still inside the Wine runtime, which posts
+ * the process-exited and session-ended events once it returns: the caller lets the launch return
  * first. After a session that ended by itself, it first does what pp_session_stop would: it joins
  * the session's threads and waits up to 30 s for the reader of the process's captured output,
  * which it then stops, so that the program's last lines, the process-exited event and the
@@ -179,7 +181,8 @@ PP_EXPORT pp_status_t pp_init(const pp_init_config_t *config);
  * Thread rule: [main]. Memory: none.
  *
  * @return PP_OK; PP_E_NOT_INITIALIZED when the host is not running; PP_E_WRONG_THREAD; PP_E_BUSY
- *         while a session is starting, running or stopping, with nothing stopped.
+ *         while a session is starting, running or stopping, or a launch is still inside the
+ *         runtime, with nothing stopped.
  */
 PP_EXPORT pp_status_t pp_shutdown(void);
 

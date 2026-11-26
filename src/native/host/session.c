@@ -670,7 +670,13 @@ PP_EXPORT pp_status_t pp_session_start(const pp_session_config_t *config) {
 bool pp_session_is_active(void) {
     (void)pthread_mutex_lock(&s_session.mutex);
     const int state = s_session.state;
+    // A launch still inside the runtime posts the process's end and the session's once it
+    // returns, also after the session's stop.
+    const bool launching = s_session.process.launching;
     (void)pthread_mutex_unlock(&s_session.mutex);
+    if (launching) {
+        return true;
+    }
     switch (state) {
     case PP_SESSION_STARTING:
     case PP_SESSION_RUNNING:
@@ -682,9 +688,11 @@ bool pp_session_is_active(void) {
 }
 
 // Ends a session that its stop ended or that ended by itself: joins the threads that the host
-// created for it, waits a while for the runtime's report of the process's end and for the end of
-// the process's output, stops a reader whose pipes stay open, and reports the ends that were still
-// to come. output is the process's reader, which the caller took, or NULL. The main thread.
+// created for it, waits a while for the runtime's report of the process's end, for the end of
+// the process's output and for a launch still inside the runtime, stops a reader whose pipes stay
+// open, and reports the ends that were still to come; a launch that is still inside the runtime
+// once the wait is over reports them when it returns. output is the process's reader, which the
+// caller took, or NULL. The main thread.
 static void finish_session(pp_guest_output_t *output) {
     join_session_threads();
 
@@ -693,10 +701,11 @@ static void finish_session(pp_guest_output_t *output) {
     session_process_t *process = &s_session.process;
     // The runtime reports the end of the process that the stop terminated, and the reader of its
     // output ends once the runtime closed its copies of the pipes' write ends, with the process;
-    // wait a while for both.
+    // a launch still inside the runtime holds the exit event until it returns. Wait a while for
+    // all three.
     const struct timespec until = deadline_after(stop_wait_milliseconds());
-    while (process->handle != 0U &&
-           (process->state != PP_PROCESS_EXITED || (output != NULL && !process->output_done))) {
+    while (process->handle != 0U && (process->state != PP_PROCESS_EXITED || process->launching ||
+                                     (output != NULL && !process->output_done))) {
         if (pthread_cond_timedwait(&s_session.changed, &s_session.mutex, &until) == ETIMEDOUT) {
             break;
         }

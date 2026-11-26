@@ -34,4 +34,11 @@ int fake_fork_launches(void);
 // late_thread, or 1 while the stop has not run.
 int fake_fork_late_thread_status(void);
 
+// Waits up to a minute until the fake waits at the gate of the modes launch_hold_reported and
+// late_sigsegv; 1 when it does, else 0.
+int fake_fork_reached_gate(void);
+
+// Opens the fake's gate, and returns 1.
+int fake_fork_open_gate(void);
+
 #endif // PANEPORT_TESTS_FAKE_WINE_FORK_EXPORTS_H

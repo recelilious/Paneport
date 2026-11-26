@@ -17,8 +17,9 @@
 // entry points.
 #define PP_WINE_LIBRARY_PATH "lib/wine/aarch64-unix/ntdll.so"
 
-// Returns whether the launch's session is starting, running or stopping, so that pp_shutdown
-// refuses to stop the host under it. Any thread.
+// Returns whether the launch's session is starting, running or stopping, or a pp_process_launch
+// is still inside the runtime, which posts the process's end once it returns, so that
+// pp_shutdown refuses to stop the host under either. Any thread.
 bool pp_session_is_active(void);
 
 // Collects a session that ended by itself as pp_session_stop does, unless pp_session_stop did:

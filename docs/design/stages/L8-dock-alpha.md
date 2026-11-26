@@ -27,11 +27,11 @@ Back to the [development plan](../development-plan.md).
 | S8.2.5 | Cache cleanup | Small | Planned | | |
 | S8.2.6 | Steam service coordination | Small | Planned | | |
 | S8.2.7 | CEG preparation | Small | Planned | | |
-| M8.3 | Compatibility checks and reports | Medium | In progress: the merge waits for recelilious's review of the contract draft that records D8 and adds `tests/compat/` to C-0004's tree | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
-| S8.3.1 | Validator | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
-| S8.3.2 | Rule checks | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
-| S8.3.3 | Rating computation | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
-| S8.3.4 | Failing fixtures | Small | Blocked: `tests/compat/` waits for C-0004 1.3, in the contract draft that recelilious reviews | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
+| M8.3 | Compatibility checks and reports | Medium | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-26 |
+| S8.3.1 | Validator | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-26 |
+| S8.3.2 | Rule checks | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-26 |
+| S8.3.3 | Rating computation | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-26 |
+| S8.3.4 | Failing fixtures | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-26 |
 | S8.3.5 | First entries | Small | Done: no title has been tested on the device yet, so there is no entry; M6.6 and S7.0.3 add the first ones | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
 | M8.4 | AAA performance and launcher-service titles | Medium | Planned | | |
 | S8.4.1 | MetalFX spatial upscaling and render scale | Small | Planned | | |
@@ -227,21 +227,21 @@ _No sessions yet._
 | Depends on | M6.4; D8 |
 | Size | M |
 | Branch | `feat/m8-3-compatibility-checks` |
-| Decisions needed | D8 (whether the JsonSchema.Net license terms are acceptable; if not, another validator is chosen, C-0011 section 5) |
+| Decisions needed | D8 (whether the JsonSchema.Net license terms are acceptable; if not, another validator is chosen, C-0011 section 5). D8, decided 2026-11-23: a validator of our own; C-0003 1.10 and C-0011 1.5 record it ([#49](https://github.com/recelilious/Paneport/pull/49)) |
 | Design documents | None new; extends the compatibility database core from M6.4 |
 
 **Goal.** Add the CI compatibility check that enforces C-0008 and the reports that link evidence records, so that every title file in `compat/titles/` is validated and the launch, allow-list and rating rules hold before a change merges (C-0008 section 5, C-0011 section 1).
 
 **Scope.**
 
-- In: the validator, built on JsonSchema.Net or an alternative chosen under D8 (C-0011 section 5), that validates every `compat/titles/*.json` against the title schema; the rule checks of C-0008 section 5 (file names match the `id`, and the launch and allow-list rules); the rating computation of C-0008 section 3 using `targetDevices`; failing fixtures that each break exactly one rule; reports that link evidence records; adding the check to the `checks` CI job; and the first title entries for the titles tested so far.
+- In: the validator, built on JsonSchema.Net or an alternative chosen under D8 (C-0011 section 5; D8 chose a validator of our own, in `tools/CheckCompat.cs`), that validates every `compat/titles/*.json` against the title schema; the rule checks of C-0008 section 5 (file names match the `id`, and the launch and allow-list rules); the rating computation of C-0008 section 3 using `targetDevices`; failing fixtures that each break exactly one rule; reports that link evidence records; adding the check to the `checks` CI job; and the first title entries for the titles tested so far.
 - Out: changing the title schema or adding fields (that belongs with M6.4 or a schema change under C-0008 section 5); device testing of titles (that is the L8 gate and M8.4); the `ios-builds.json` schema check (M6.4 and C-0006 section 6).
 
 **Read first.**
 
 - C-0008 section 2 (the fields), section 3 (ratings and the `targetDevices` computation) and section 5 (the launch, allow-list, file-name and CI rules).
-- C-0011 section 1 (the compatibility-data test level), section 4 (the `checks` job on Ubuntu) and section 5 (JsonSchema.Net registered as under review until D8).
-- C-0003 section 6 (the register entry for JsonSchema.Net and its license terms).
+- C-0011 section 1 (the compatibility-data test level), section 4 (the `checks` job on Ubuntu) and section 5 (JsonSchema.Net registered as under review until D8). Since C-0011 1.5 ([#49](https://github.com/recelilious/Paneport/pull/49)), section 5 says that the compatibility check uses no schema library.
+- C-0003 section 6 (the register entry for JsonSchema.Net and its license terms). C-0003 1.10 ([#49](https://github.com/recelilious/Paneport/pull/49)) dropped that entry, since Paneport does not use the package.
 - C-0007 section 5 (the classification the `drm` and `launch` fields record).
 - Research: none specific; the schema and loader from M6.4 are the basis.
 
@@ -266,7 +266,7 @@ _No sessions yet._
 
 **Done when.** The validator and fixtures are merged, the `checks` job runs the compatibility check and passes on the valid set and fails on every fixture, D8 is recorded (and the chosen validator's license is registered under C-0003), and the change meets the definition of done in C-0012 section 1.
 
-**Risks and fallbacks.** D8 may rule the JsonSchema.Net NuGet terms unacceptable; then the validator uses a library whose package is under an allowed license, chosen under C-0011 section 5, and C-0003 is updated (plan section 8). The rating rule in C-0008 section 3 is precise about ties (the lower rating wins when target devices disagree on the highest release); the fixtures must cover that case.
+**Risks and fallbacks.** D8 may rule the JsonSchema.Net NuGet terms unacceptable; then the validator uses a library whose package is under an allowed license, chosen under C-0011 section 5, and C-0003 is updated (plan section 8). D8 chose a validator of our own instead, on 2026-11-23, and C-0003 1.10 and C-0011 1.5 record it ([#49](https://github.com/recelilious/Paneport/pull/49)). The rating rule in C-0008 section 3 is precise about ties (the lower rating wins when target devices disagree on the highest release); the fixtures must cover that case.
 
 **Hands over to.** The L8 integration session (the first title entries back the gate) and every later title entry and report.
 
@@ -335,8 +335,36 @@ _No sessions yet._
     - The 25 and 12 mutants of session 1 were not kept, so they are not listed.
   - **Decisions.** The coordinator decided fix round 1:
     - The rating counts the four devices, as the contract does, so how devices count is no longer a question for recelilious.
-    - The reading that a device's latest report on the release replaces its earlier ones goes to her, with the recommendation to accept it.
+    - The reading that a device's latest report on the release replaces its earlier ones goes to recelilious, with the recommendation to accept it.
   - **Left.** The contract draft of session 1 and the latest-report reading wait for recelilious.
+- **2026-11-26 (session 4).** Fix round 2 of [#44](https://github.com/recelilious/Paneport/pull/44), after the fix check of round 1, which found no medium or high defect and 18 low ones. Rebased from `301471e` onto main `bb29223`, which adds [#38](https://github.com/recelilious/Paneport/pull/38), [#45](https://github.com/recelilious/Paneport/pull/45), [#46](https://github.com/recelilious/Paneport/pull/46), [#47](https://github.com/recelilious/Paneport/pull/47), [#49](https://github.com/recelilious/Paneport/pull/49), [#50](https://github.com/recelilious/Paneport/pull/50) and [#39](https://github.com/recelilious/Paneport/pull/39).
+  - **Done.**
+    - recelilious approved the contract draft on 2026-11-26; it merged as [#49](https://github.com/recelilious/Paneport/pull/49) (`17aec4d`), so C-0003 1.10, C-0004 1.3 and C-0011 1.5 are in force. recelilious accepted the reading on 2026-11-26: on the highest release, a device's newer report replaces its older ones ([compat-db.md](../compat-db.md) section 2.2).
+    - The rebase conflicted only in `.github/workflows/README.md`, which keeps #39's rows of `native`, `ios` and `runtime` and this pull request's row of `checks`. [repository-checks.md](../repository-checks.md) section 6 still matches the `checks` job step by step.
+    - The validator:
+      - `uniqueItems`, `const` and `enum` compare through a key of each value. A nested number whose exponent is beyond an int no longer crashes the check, and a 1 MiB list of 128,841 distinct one-item lists takes 1.5 s instead of 327 s.
+      - A schema of `true` or `false` loads again.
+      - A pattern that times out below `not`, `anyOf`, `oneOf` or `if` names the value's pointer and its place in the schema.
+      - Half of a surrogate pair in a schema names its place in full.
+      - `\-` outside a class is refused, as the `u` flag refuses it.
+    - The launch rule also tests the type of `executable`.
+    - Fixtures: three invalid Direct titles, with `ceg` `unknown`, without `steamApi` and without `steamStub`; and four valid titles: Dock titles with `ceg` `yes` and without `ceg`, a local title with `ceg` `unknown` and no `launch`, and a Direct title with `steamAppIdFile` true. The app's reader loads the four and rejects each of the three with `Launch` alone.
+    - More cases:
+      - cycles through `anyOf`, `oneOf`, `if`, `then` and `else`, and definitions shared without a cycle;
+      - a timeout below each applicator, and a problem found before a timeout;
+      - `true` and `false`, numbers by their exact value, and nested values under `uniqueItems`;
+      - an escaped hyphen inside a class, and the year 0000;
+      - each type test of the rules in code;
+      - a walk of both schemas that finds none of the validator's stricter readings below `not`, in an `if` or in a `oneOf` branch, and finds those planted in a copy of each.
+    - The documents: [compat-db.md](../compat-db.md) sections 2.2, 8.1 and 9, [repository-checks.md](../repository-checks.md) section 9, [jit.md](../jit.md) section 9, the READMEs of `tools/` and `tests/compat/`, and M8.3's section of this brief, which #49 made stale.
+    - S8.3.4 and M8.3 are Done: only the merge is left.
+  - **Verification.** On the workstation:
+    - The self-test passes 621 cases, and the check of the repository passes.
+    - `dotnet format whitespace tools`, the personal-data scan and the license check are clean.
+    - Every mutant of fix rounds 1 and 2, 98 in all, was run in a copy that keeps `Directory.Build.props` and `.editorconfig`, so that each builds as CI builds the tool. 96 fail a case and 2 crash the self-test; none survives or fails to build. 11 of round 1's 63 were written again for the same fault, because this round changed their code or because they did not build so. The pull request lists them.
+    - The runs of CI on the final head are in [#44](https://github.com/recelilious/Paneport/pull/44).
+  - **Decisions.** The coordinator decided fix round 2, taking each skeptic's fix of the fix check.
+  - **Left.** The merge.
 
 ## M8.4 AAA performance and launcher-service titles
 

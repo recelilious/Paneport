@@ -113,7 +113,8 @@ target_link_libraries(fake_wine_fork PRIVATE Threads::Threads)
 paneport_native_test(test_session CASES
     start_needs_host_and_jit fork_receives_the_bridge events_arrive_on_event_thread
     output_lines_arrive_before_the_exit second_session_refused replaced_handler_fails_session
-    launch_check_fails_the_session started_hook_runs_before_check runtime_refusal_fails_session
+    launch_check_fails_the_session launch_check_fails_a_quick_program
+    started_hook_runs_before_check runtime_refusal_fails_session
     launch_needs_a_session terminate_sets_the_exit_code get_state_asks_the_fork
     stop_ends_a_running_process stop_during_a_launch stop_counts_an_unreported_end
     stop_wakes_a_reader_without_an_end failed_start_is_reported launch_refusal_is_reported

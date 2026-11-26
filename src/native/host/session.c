@@ -84,13 +84,17 @@ typedef struct session_thread_t {
 // The session's process. Its handle is 0 until pp_process_launch starts one. started says that
 // the runtime reported its start, which a quick program may follow with its end before the
 // launch looks. Its exit event waits until the reader of its output queued the last line
-// (output_done), so that the lines arrive before it (paneport/session.h).
+// (output_done), so that the lines arrive before it (paneport/session.h). start_check_failed
+// says that the check of the test builds found a handler of the dispatcher replaced when the
+// runtime reported the start, and replaced_signal names the first such signal.
 typedef struct session_process_t {
     uint64_t handle;
     uint32_t state;
     uint32_t exit_code;
     pp_guest_output_t *output;
+    int32_t replaced_signal;
     bool started;
+    bool start_check_failed;
     bool output_done;
     bool exit_posted;
 } session_process_t;
@@ -319,9 +323,32 @@ static bool names_the_process(uint64_t process) {
     return process == s_session.process.handle;
 }
 
+// Checks in test builds that the dispatcher still holds its six signals, and returns whether it
+// does; replaced receives the first signal whose handler was replaced, or 0. Always true in the
+// shipped builds.
+static bool dispatcher_kept(int32_t *replaced) {
+    *replaced = 0;
+#ifdef PANEPORT_TEST_BUILD
+    return pp_signals_check_installed(replaced) == PP_OK;
+#else
+    return true;
+#endif
+}
+
 static void bridge_process_started(uint64_t process) {
+    // In single mode ntdll sets up Wine's signal handling on the process's first thread, which
+    // reports the start here, so test builds check the dispatcher again here (C-0005 section 4).
+    // A failure is recorded before the start is reported, while the process cannot have ended,
+    // so that the session's end carries it.
+    int32_t replaced = 0;
+    const bool kept = dispatcher_kept(&replaced);
     (void)pthread_mutex_lock(&s_session.mutex);
     if (names_the_process(process) && s_session.process.state == PP_PROCESS_STARTING) {
+        if (!kept) {
+            s_session.failure = PP_E_SYSTEM;
+            s_session.process.start_check_failed = true;
+            s_session.process.replaced_signal = replaced;
+        }
         s_session.process.state = PP_PROCESS_RUNNING;
         s_session.process.started = true;
         post_event(PP_EVENT_PROCESS_STARTED, process, 0);
@@ -798,29 +825,18 @@ static bool keep_reader(pp_guest_output_t *output) {
     return running;
 }
 
-// The start of a process set up Wine's signal handling: in single mode ntdll does it on the
-// process's first thread, inside the launch, so test builds check the dispatcher again there
-// (C-0005 section 4). A replaced handler terminates the process and fails the session. Nothing in
-// the shipped builds.
-static pp_status_t check_dispatcher_after_start(uint64_t handle) {
-#ifdef PANEPORT_TEST_BUILD
-    int32_t replaced = 0;
-    if (pp_signals_check_installed(&replaced) != PP_OK) {
-        (void)pp_log(PP_LOG_ERROR,
-                     "The Windows process failed the check of the signal dispatcher.");
-        (void)pthread_mutex_lock(&s_session.mutex);
-        s_session.failure = PP_E_SYSTEM;
-        (void)pthread_mutex_unlock(&s_session.mutex);
-        (void)pp_process_terminate(handle, 1U);
-        return pp_error_set(PP_E_SYSTEM,
-                            "The process's start replaced the handler of %s of the signal "
-                            "dispatcher, so the process was terminated and the session fails.",
-                            pp_signals_name(replaced));
-    }
-#else
-    (void)handle;
-#endif
-    return PP_OK;
+// Fails a launch whose process's start replaced a handler of the dispatcher, which the check of
+// the test builds found when the runtime reported the start and which failed the session then:
+// the process ends with exit code 1, unless it had already ended with its own.
+static pp_status_t fail_start_check(uint64_t handle, int32_t replaced) {
+    (void)pp_log(PP_LOG_ERROR, "The Windows process failed the check of the signal dispatcher.");
+    // A process that has already ended is not terminated again (pp_process_terminate).
+    (void)pp_process_terminate(handle, 1U);
+    return pp_error_set(PP_E_SYSTEM,
+                        "The process's start replaced the handler of %s of the signal dispatcher, "
+                        "so the session fails; the process ends with exit code 1, unless it had "
+                        "already ended with its own.",
+                        pp_signals_name(replaced));
 }
 
 PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint64_t *process) {
@@ -870,7 +886,9 @@ PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint6
     s_session.process.handle = handle;
     s_session.process.state = PP_PROCESS_STARTING;
     s_session.process.exit_code = 0U;
+    s_session.process.replaced_signal = 0;
     s_session.process.started = false;
+    s_session.process.start_check_failed = false;
     // Without a reader there is no output to wait for before the exit event.
     s_session.process.output_done = config->capture_output == 0U;
     s_session.process.exit_posted = false;
@@ -926,6 +944,8 @@ PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint6
     const uint32_t state = s_session.process.state;
     const bool started = s_session.process.started;
     const uint32_t exit_code = s_session.process.exit_code;
+    const bool start_check_failed = s_session.process.start_check_failed;
+    const int32_t replaced = s_session.process.replaced_signal;
     (void)pthread_mutex_unlock(&s_session.mutex);
     if (state == PP_PROCESS_STARTING) {
         return pp_error_set(PP_E_SYSTEM, "The program did not finish its start within %d s.",
@@ -938,7 +958,10 @@ PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint6
                             "0x%x.",
                             (unsigned)exit_code);
     }
-    return check_dispatcher_after_start(handle);
+    if (start_check_failed) {
+        return fail_start_check(handle, replaced);
+    }
+    return PP_OK;
 }
 
 PP_EXPORT pp_status_t pp_process_get_state(uint64_t process, pp_process_state_t *state) {

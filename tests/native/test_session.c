@@ -412,6 +412,30 @@ static void launch_check_fails_the_session(void) {
     stop_host();
 }
 
+// The check runs when the runtime reports the process's start, before the process can end, so it
+// fails the session also for a program that ends before the launch looks at it: the launch fails
+// and names the signal, the program keeps its own exit code, since it ended before the launch
+// could terminate it, and the session's end carries PP_E_SYSTEM.
+static void launch_check_fails_a_quick_program(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=quick_sigsegv\0");
+    const uint64_t process = launch(0U, PP_E_SYSTEM);
+    PP_CHECK(process != 0U);
+    PP_CHECK(strstr(pp_last_error(), "SIGSEGV") != NULL);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_SESSION_ENDED).code, PP_E_SYSTEM);
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.event_count, 3U);
+    PP_CHECK_EQUAL(s_seen.events[0].kind, PP_EVENT_PROCESS_STARTED);
+    PP_CHECK_EQUAL(s_seen.events[1].kind, PP_EVENT_PROCESS_EXITED);
+    PP_CHECK_EQUAL(s_seen.events[1].code, FAKE_FORK_EXIT_CODE);
+    PP_CHECK_EQUAL(s_seen.events[2].kind, PP_EVENT_SESSION_ENDED);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    check_state(process, PP_PROCESS_EXITED, FAKE_FORK_EXIT_CODE);
+    stop_host();
+}
+
 static void plant_sigbus_handler(void *argument) {
     (void)argument;
     struct sigaction action;
@@ -903,6 +927,7 @@ int main(int argc, char **argv) {
         {"second_session_refused", second_session_refused},
         {"replaced_handler_fails_session", replaced_handler_fails_session},
         {"launch_check_fails_the_session", launch_check_fails_the_session},
+        {"launch_check_fails_a_quick_program", launch_check_fails_a_quick_program},
         {"started_hook_runs_before_check", started_hook_runs_before_check},
         {"runtime_refusal_fails_session", runtime_refusal_fails_session},
         {"launch_needs_a_session", launch_needs_a_session},

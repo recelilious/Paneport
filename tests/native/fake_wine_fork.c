@@ -24,6 +24,8 @@
 //                  the launch keeps copies of the pipes' write ends and fails, so that the
 //                  host's reader of the output never sees their end
 //   quick          as normal, but the launch returns only once the process started and ended
+//   quick_sigsegv  as quick, but the process's start installs a SIGSEGV handler of its own, as in
+//                  launch_sigsegv
 //   flood          as normal, but the process writes FAKE_FORK_FLOOD_LINES lines and the runtime
 //                  logs as many, faster than the host's log callback takes them
 //   late_output    the process reports its end, then writes FAKE_FORK_LATE_LINE and closes its
@@ -208,7 +210,7 @@ static void *run_process(void *argument) {
         exit_code = FAKE_FORK_START_FAILURE;
     } else {
         bridge->log(PP_WINE_LOG_INFO, "fake runtime: process started\nsecond runtime line");
-        if (mode_is("launch_sigsegv")) {
+        if (mode_is("launch_sigsegv") || mode_is("quick_sigsegv")) {
             install_segv_handler();
         }
         record_state(WINE_PANEPORT_PROCESS_RUNNING, 0U);
@@ -323,7 +325,7 @@ FAKE_EXPORT int32_t __wine_paneport_process_launch(const struct wine_paneport_la
     if (pthread_create(&thread, NULL, run_process, NULL) != 0) {
         return PP_WINE_E_SYSTEM;
     }
-    if (mode_is("quick")) {
+    if (mode_is("quick") || mode_is("quick_sigsegv")) {
         // The process starts and ends before the host looks at it.
         (void)pthread_join(thread, NULL);
         return PP_WINE_OK;

@@ -230,6 +230,20 @@ static uint64_t monotonic_nanoseconds(void) {
     return ((uint64_t)now.tv_sec * UINT64_C(1000000000)) + (uint64_t)now.tv_nsec;
 }
 
+#ifdef PANEPORT_TEST_BUILD
+// How many waits for an unpublished line the drain began, which the test builds report.
+static _Atomic(uint64_t) s_line_waits;
+
+uint64_t pp_event_thread_line_waits(void) { return atomic_load(&s_line_waits); }
+#endif
+
+// Counts a wait of the drain for the test builds. Nothing in the shipped builds.
+static void count_line_wait(void) {
+#ifdef PANEPORT_TEST_BUILD
+    (void)atomic_fetch_add(&s_line_waits, 1U);
+#endif
+}
+
 // Delivers the log lines below lines_end, which an event carries: every line whose post
 // returned before the event's post lies there, so it arrives before the event, and lines
 // posted later do not hold the event back. A slot below lines_end that a producer claimed but
@@ -255,6 +269,7 @@ static void deliver_lines_before(uint64_t lines_end) {
         if (!waiting) {
             waiting = true;
             deadline = now + PP_LINE_WAIT_NANOSECONDS;
+            count_line_wait();
         } else if (now >= deadline) {
             s_thread.line_wait_ended = true;
             s_thread.line_wait_position = position;

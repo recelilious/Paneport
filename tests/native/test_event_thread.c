@@ -435,6 +435,28 @@ static void lines_before_an_event_arrive_first(void) {
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
 }
 
+// In a quiet host an event that follows a line, as a process's exit follows its last line, does
+// not wait: the line lies below the log queue's tail that the event's post read, and no slot
+// below it is claimed and unpublished, so the drain delivers the line and then the event, and its
+// bounded wait for an unpublished line never begins, which the count of the test builds shows.
+static void event_after_a_line_does_not_wait(void) {
+    ordered_t ordered;
+    atomic_init(&ordered.lines, 0U);
+    atomic_init(&ordered.lines_at_event, 0U);
+    atomic_init(&ordered.events, 0U);
+    pp_start_host(NULL);
+    PP_CHECK_EQUAL(pp_set_log_callback(count_ordered_line, &ordered), PP_OK);
+    PP_CHECK_EQUAL(pp_set_event_callback(count_ordered_event, &ordered), PP_OK);
+    for (uint64_t round = 1U; round <= 20U; round++) {
+        PP_CHECK_EQUAL(pp_test_log(PP_LOG_INFO, "ordered line"), PP_OK);
+        PP_CHECK_EQUAL(pp_test_post_event(9U, (int64_t)round), PP_OK);
+        pp_wait_for_count(&ordered.events, round);
+        PP_CHECK_EQUAL(atomic_load(&ordered.lines_at_event), round);
+        PP_CHECK_EQUAL(pp_event_thread_line_waits(), 0U);
+    }
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
 static uint64_t now_milliseconds(void) {
     struct timespec now;
     (void)clock_gettime(CLOCK_MONOTONIC, &now);
@@ -675,6 +697,7 @@ static void held_producer_holds_an_event_once(void) {
 int main(int argc, char **argv) {
     static const pp_test_case_t cases[] = {
         {"lines_before_an_event_arrive_first", lines_before_an_event_arrive_first},
+        {"event_after_a_line_does_not_wait", event_after_a_line_does_not_wait},
         {"event_during_a_flood_arrives_soon", event_during_a_flood_arrives_soon},
         {"no_event_dropped_during_a_flood", no_event_dropped_during_a_flood},
         {"held_producer_keeps_the_order", held_producer_keeps_the_order},

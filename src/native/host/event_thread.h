@@ -74,6 +74,11 @@ typedef void (*pp_post_hook_t)(void *argument);
 // Test builds only: makes every later post call hook with argument there, or no hook for NULL,
 // so that a test can hold a post while the host stops (tests/native/test_event_thread.c).
 void pp_event_thread_set_post_hook(pp_post_hook_t hook, void *argument);
+
+// Test builds only: how many times the thread began to wait for a line that a producer claimed
+// below an event's lines_end and had not published yet, which no event needs while no producer
+// is inside a push (tests/native/test_event_thread.c). Any thread.
+uint64_t pp_event_thread_line_waits(void);
 #endif
 
 #endif // PANEPORT_HOST_EVENT_THREAD_H

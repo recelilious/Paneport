@@ -28,6 +28,7 @@
 #include "paneport/jit.h"
 #include "paneport/session.h"
 #include "paneport/testing.h"
+#include "paneport/wine_bridge.h"
 #include "pp_check.h"
 #include "test_support.h"
 #include "wine_session.h"
@@ -816,6 +817,44 @@ static void four_threads_at_most(void) {
     stop_host();
 }
 
+// A session that stops gets no more threads: the fake's stop asks the bridge for one, as a fork
+// might while the host stops its session, and start_thread refuses it with PP_WINE_E_SYSTEM.
+static void stopping_session_gets_no_thread(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=late_thread\0");
+    PP_CHECK_EQUAL(call_fake(&fixture, "fake_fork_late_thread_status"), 1);
+    PP_CHECK_EQUAL(pp_session_stop(), PP_OK);
+    PP_CHECK_EQUAL(call_fake(&fixture, "fake_fork_late_thread_status"), PP_WINE_E_SYSTEM);
+    (void)wait_for_event(PP_EVENT_SESSION_ENDED);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
+// A program that never finishes its start fails the launch once the launch's wait for the start
+// is over, 120 s, which the test builds shorten: the process is still starting, without an exit
+// code, and its exit event follows once the runtime reports its end.
+static void unfinished_start_fails_the_launch(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=never_started\0");
+    pp_session_set_launch_wait(200U);
+    const uint64_t process = launch(0U, PP_E_SYSTEM);
+    PP_CHECK(process != 0U);
+    PP_CHECK(strstr(pp_last_error(), "did not finish its start") != NULL);
+    check_state(process, PP_PROCESS_STARTING, 0U);
+    PP_CHECK_EQUAL(pp_process_terminate(process, 5U), PP_OK);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_PROCESS_EXITED).code, 5);
+    (void)wait_for_event(PP_EVENT_SESSION_ENDED);
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.event_count, 2U);
+    PP_CHECK_EQUAL(s_seen.events[0].kind, PP_EVENT_PROCESS_EXITED);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    check_state(process, PP_PROCESS_EXITED, 5U);
+    stop_host();
+}
+
 // Reads the JIT state until it is the one given, for up to a minute.
 static void wait_for_jit_state(pp_jit_state_t expected) {
     pp_jit_status_t status = {.struct_size = (uint32_t)sizeof(pp_jit_status_t)};
@@ -971,6 +1010,8 @@ int main(int argc, char **argv) {
         {"a_flood_of_lines_loses_none", a_flood_of_lines_loses_none},
         {"exit_waits_for_the_last_line", exit_waits_for_the_last_line},
         {"four_threads_at_most", four_threads_at_most},
+        {"stopping_session_gets_no_thread", stopping_session_gets_no_thread},
+        {"unfinished_start_fails_the_launch", unfinished_start_fails_the_launch},
         {"start_accepts_the_providers_ready_state", start_accepts_the_providers_ready_state},
         {"shutdown_refused_while_a_session_runs", shutdown_refused_while_a_session_runs},
         {"load_failure_counts_as_run", load_failure_counts_as_run},

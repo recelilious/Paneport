@@ -35,10 +35,16 @@
 //   late_output    the process reports its end, then writes FAKE_FORK_LATE_LINE and closes its
 //                  handles, as a process that the fork's server terminates may
 //   five_threads   the session start has the host create four threads, and a fifth refused
+//   late_thread    the session's stop asks the bridge for one more thread, as a fork might while
+//                  the host stops its session
+//   never_started  the process never reports its start, and waits until it is terminated or the
+//                  session stops
 //
 // fake_fork_bridge_ok reports whether the bridge it received is complete,
-// fake_fork_server_stack_kib the stack of the server's thread, and fake_fork_launches how often
-// the host called its launch. Its terminate refuses a process that is not running.
+// fake_fork_server_stack_kib the stack of the server's thread, fake_fork_launches how often the
+// host called its launch, and fake_fork_late_thread_status what the bridge's start_thread
+// returned during the stop of the mode late_thread, 1 until then. Its terminate refuses a process
+// that is not running.
 
 #include <pthread.h>
 #include <signal.h>
@@ -76,11 +82,14 @@ static struct {
     int launches;
     // The stack size of the server's thread, as the thread itself reads it.
     size_t server_stack;
+    // What start_thread returned during the stop in the mode late_thread, 1 until then.
+    int32_t late_thread_status;
 } s_fake = {
     .mutex = PTHREAD_MUTEX_INITIALIZER,
     .changed = PTHREAD_COND_INITIALIZER,
     .output_fd = -1,
     .errors_fd = -1,
+    .late_thread_status = 1,
 };
 
 static void read_mode(const char *environment) {
@@ -205,6 +214,21 @@ static void close_handles(void) {
     }
 }
 
+// Waits until the process is terminated or the session stops, and returns the exit code that the
+// process then gets.
+static uint32_t wait_until_ended(void) {
+    (void)pthread_mutex_lock(&s_fake.mutex);
+    while (!s_fake.terminate && !s_fake.stop_server) {
+        (void)pthread_cond_wait(&s_fake.changed, &s_fake.mutex);
+    }
+    uint32_t exit_code = FAKE_FORK_STOPPED_EXIT_CODE;
+    if (s_fake.terminate) {
+        exit_code = s_fake.exit_code;
+    }
+    (void)pthread_mutex_unlock(&s_fake.mutex);
+    return exit_code;
+}
+
 static void *run_process(void *argument) {
     (void)argument;
     const pp_wine_bridge_t *bridge = s_fake.bridge;
@@ -212,6 +236,9 @@ static void *run_process(void *argument) {
     uint32_t exit_code = FAKE_FORK_EXIT_CODE;
     if (mode_is("fail_start")) {
         exit_code = FAKE_FORK_START_FAILURE;
+    } else if (mode_is("never_started")) {
+        // The start never ends, and the process is never reported as started.
+        exit_code = wait_until_ended();
     } else {
         bridge->log(PP_WINE_LOG_INFO, "fake runtime: process started\nsecond runtime line");
         if (mode_is("launch_sigsegv") || mode_is("quick_sigsegv")) {
@@ -220,15 +247,7 @@ static void *run_process(void *argument) {
         record_state(WINE_PANEPORT_PROCESS_RUNNING, 0U);
         bridge->process_started(s_fake.process);
         if (process_waits()) {
-            (void)pthread_mutex_lock(&s_fake.mutex);
-            while (!s_fake.terminate && !s_fake.stop_server) {
-                (void)pthread_cond_wait(&s_fake.changed, &s_fake.mutex);
-            }
-            exit_code = FAKE_FORK_STOPPED_EXIT_CODE;
-            if (s_fake.terminate) {
-                exit_code = s_fake.exit_code;
-            }
-            (void)pthread_mutex_unlock(&s_fake.mutex);
+            exit_code = wait_until_ended();
         } else {
             write_output(bridge);
         }
@@ -293,6 +312,13 @@ FAKE_EXPORT int32_t __wine_paneport_session_start(const pp_wine_bridge_t *bridge
 }
 
 FAKE_EXPORT int32_t __wine_paneport_session_stop(void) {
+    if (mode_is("late_thread")) {
+        // The host has begun to stop the session, which takes no more threads.
+        const int32_t status = s_fake.bridge->start_thread("fake.late", run_helper, NULL);
+        (void)pthread_mutex_lock(&s_fake.mutex);
+        s_fake.late_thread_status = status;
+        (void)pthread_mutex_unlock(&s_fake.mutex);
+    }
     (void)pthread_mutex_lock(&s_fake.mutex);
     s_fake.stop_server = true;
     (void)pthread_cond_broadcast(&s_fake.changed);
@@ -405,6 +431,13 @@ FAKE_EXPORT int fake_fork_launches(void) {
     const int launches = s_fake.launches;
     (void)pthread_mutex_unlock(&s_fake.mutex);
     return launches;
+}
+
+FAKE_EXPORT int fake_fork_late_thread_status(void) {
+    (void)pthread_mutex_lock(&s_fake.mutex);
+    const int32_t status = s_fake.late_thread_status;
+    (void)pthread_mutex_unlock(&s_fake.mutex);
+    return (int)status;
 }
 
 FAKE_EXPORT int fake_fork_bridge_ok(void) {

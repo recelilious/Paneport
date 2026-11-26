@@ -127,12 +127,13 @@ static struct {
 };
 
 #ifdef PANEPORT_TEST_BUILD
-// The hooks and the stop's wait of the test builds, guarded by the session's mutex.
+// The hooks and the waits of the test builds, guarded by the session's mutex.
 static pp_session_hook_t s_started_hook;
 static void *s_started_hook_argument;
 static pp_session_hook_t s_launch_hook;
 static void *s_launch_hook_argument;
 static uint32_t s_stop_wait_milliseconds;
+static uint32_t s_launch_wait_milliseconds;
 
 void pp_session_set_started_hook(pp_session_hook_t hook, void *argument) {
     (void)pthread_mutex_lock(&s_session.mutex);
@@ -153,16 +154,38 @@ void pp_session_set_stop_wait(uint32_t milliseconds) {
     s_stop_wait_milliseconds = milliseconds;
     (void)pthread_mutex_unlock(&s_session.mutex);
 }
+
+void pp_session_set_launch_wait(uint32_t milliseconds) {
+    (void)pthread_mutex_lock(&s_session.mutex);
+    s_launch_wait_milliseconds = milliseconds;
+    (void)pthread_mutex_unlock(&s_session.mutex);
+}
 #endif
 
-// Returns when pp_session_stop's wait ends. The caller holds the mutex.
-static struct timespec stop_deadline(void) {
-    uint64_t milliseconds = (uint64_t)PP_STOP_WAIT_SECONDS * 1000U;
+// Returns how long pp_session_stop waits, in milliseconds. The caller holds the mutex.
+static uint64_t stop_wait_milliseconds(void) {
 #ifdef PANEPORT_TEST_BUILD
     if (s_stop_wait_milliseconds != 0U) {
-        milliseconds = s_stop_wait_milliseconds;
+        return s_stop_wait_milliseconds;
     }
 #endif
+    return (uint64_t)PP_STOP_WAIT_SECONDS * 1000U;
+}
+
+// Returns how long pp_process_launch waits for the process's start, in milliseconds. The caller
+// holds the mutex.
+static uint64_t launch_wait_milliseconds(void) {
+#ifdef PANEPORT_TEST_BUILD
+    if (s_launch_wait_milliseconds != 0U) {
+        return s_launch_wait_milliseconds;
+    }
+#endif
+    return (uint64_t)PP_LAUNCH_WAIT_SECONDS * 1000U;
+}
+
+// Returns when a wait of the given milliseconds that starts now ends, for
+// pthread_cond_timedwait.
+static struct timespec deadline_after(uint64_t milliseconds) {
     struct timespec until;
     (void)clock_gettime(CLOCK_REALTIME, &until);
     const uint64_t nanoseconds = (uint64_t)until.tv_nsec + ((milliseconds % 1000U) * 1000000U);
@@ -688,7 +711,7 @@ PP_EXPORT pp_status_t pp_session_stop(void) {
     // The runtime reports the end of the process that the stop terminated, and the reader of its
     // output ends once the runtime closed its copies of the pipes' write ends, with the process;
     // wait a while for both.
-    const struct timespec until = stop_deadline();
+    const struct timespec until = deadline_after(stop_wait_milliseconds());
     while (process->handle != 0U &&
            (process->state != PP_PROCESS_EXITED || (output != NULL && !process->output_done))) {
         if (pthread_cond_timedwait(&s_session.changed, &s_session.mutex, &until) == ETIMEDOUT) {
@@ -754,9 +777,7 @@ static void close_if_open(int fd) {
 
 // Waits until the process left its start, or until the wait ends. The caller holds the mutex.
 static void wait_for_start(void) {
-    struct timespec until;
-    (void)clock_gettime(CLOCK_REALTIME, &until);
-    until.tv_sec += PP_LAUNCH_WAIT_SECONDS;
+    const struct timespec until = deadline_after(launch_wait_milliseconds());
     while (s_session.process.state == PP_PROCESS_STARTING) {
         if (pthread_cond_timedwait(&s_session.changed, &s_session.mutex, &until) == ETIMEDOUT) {
             break;
@@ -959,6 +980,7 @@ PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint6
 
     (void)pthread_mutex_lock(&s_session.mutex);
     wait_for_start();
+    const uint64_t waited = launch_wait_milliseconds();
     const uint32_t state = s_session.process.state;
     const bool started = s_session.process.started;
     const uint32_t exit_code = s_session.process.exit_code;
@@ -966,8 +988,8 @@ PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint6
     const int32_t replaced = s_session.process.replaced_signal;
     (void)pthread_mutex_unlock(&s_session.mutex);
     if (state == PP_PROCESS_STARTING) {
-        return pp_error_set(PP_E_SYSTEM, "The program did not finish its start within %d s.",
-                            PP_LAUNCH_WAIT_SECONDS);
+        return pp_error_set(PP_E_SYSTEM, "The program did not finish its start within %llu ms.",
+                            (unsigned long long)waited);
     }
     // A program that started may have ended already; only one that never started failed.
     if (!started) {

@@ -30,4 +30,8 @@ int fake_fork_server_stack_kib(void);
 // How often the host called the fake's launch.
 int fake_fork_launches(void);
 
+// What the bridge's start_thread returned when the fake's stop asked for a thread in the mode
+// late_thread, or 1 while the stop has not run.
+int fake_fork_late_thread_status(void);
+
 #endif // PANEPORT_TESTS_FAKE_WINE_FORK_EXPORTS_H

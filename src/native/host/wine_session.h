@@ -39,6 +39,11 @@ void pp_session_set_launch_hook(pp_session_hook_t hook, void *argument);
 // of the reader of its output, in milliseconds, instead of 30 s, or 30 s again for 0, so that a
 // test of a runtime that never reports them ends quickly. Any thread, before pp_session_stop.
 void pp_session_set_stop_wait(uint32_t milliseconds);
+
+// Test builds only: sets how long pp_process_launch waits for the process to finish its start,
+// in milliseconds, instead of 120 s, or 120 s again for 0, so that a test of a program that never
+// finishes its start ends quickly. Any thread, before pp_process_launch.
+void pp_session_set_launch_wait(uint32_t milliseconds);
 #endif
 
 #endif // PANEPORT_HOST_WINE_SESSION_H

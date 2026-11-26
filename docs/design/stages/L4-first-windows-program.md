@@ -658,6 +658,26 @@ Out: a second Windows process, `CreateProcess` from a guest and helper programs 
       - the fork's order of its signal setup and its report of the start, which only the fork holds.
   - **Verification.** The pull request records CI on the branch's last commit. The harness's new cases first passed on macOS in run [45794203211](https://github.com/recelilious/Paneport/actions/runs/45794203211) on `51fa54c`, whose `checks` job failed only in lychee, on patchew.org's 502 and a timeout of gnu.org.
   - **Left.** The coordinator's check of round 2 and the merge, then the fast-forwards of both forks' `paneport/integration`, Wine to `7911818` and FEX to `ab5a40b`, and the deletion of both `paneport/M4.3` branches ([forks.md](../forks.md) section 4.2). A note for M4.4 on the crash of the set-back.
+- **2026-11-26 (UTC), fix round 3 of #39.** The coordinator's fix check of round 2 (workflow `wf_058e1354-289`, on `6a3f3ab`) found most fixes holding, no medium or high finding, and twelve new lows: R39C2H-1 to R39C2H-3, R39C2HV-1, R39C2HV-2, R39C2R-1, R39C2R-2, R39C2F-1 to R39C2F-4 and R39C2FV-1, several of them one defect seen from two parts. The coordinator decided to fix all of them, and that threads.exe's check reads the context only again. `main` moved to `a0ea186` with contracts only, so this branch was not rebased.
+  - **Done.**
+    - threads.exe's check of the syscall loop reads the context only again, as on `main`, and its comment and the programs' README say why (`d3226da`). Single mode prints M4.2's lines again.
+    - The host:
+      - `pp_session_stop` also waits, within its bounded wait, for a launch that is still inside the fork, whose hold of the process-exited event round 2 added, and `pp_shutdown` answers `PP_E_BUSY` until the launch returns, so that both events still arrive (R39C2H-2, `3f69ac5`);
+      - a start that the fork reports after the launch's wait, and that fails the launch check, has the report itself log the error, naming the signal, and ask the fork to terminate the process with exit code 1. The report blocks SIGUSR2 while it holds the session's mutex, posts and asks (R39C2HV-1, `73b3ce0`, and two findings of clang-tidy in `eb8f584`);
+      - the fake fork's modes `launch_hold_reported` and `late_sigsegv`, the cases `shutdown_refused_while_a_launch_runs`, `stop_waits_for_a_launch_in_the_runtime` and `late_start_check_ends_the_process`, and a check in both launch-check cases that the report logs no error of its own while a launch waits;
+      - the host's documents (`0829452`): the example of the 100 ms exception (R39C2HV-2), and the stop's wait, `pp_shutdown`'s refusal and the late start in native-host.md, signals.md and the READMEs.
+    - The documents (`9035350` and this entry's commit):
+      - the reasons of "The bridge's log" in [single-process-wine.md](../single-process-wine.md) section 7 (R39C2H-1, R39C2F-2);
+      - the time range in runtime-macos-harness.md section 9 (R39C2R-2, R39C2F-3);
+      - the record of the set-back's crash: one crash in 57 runs, its own signature, its uncertain cause, the check that reads only, and M4.2's two notes amended (R39C2H-3, R39C2R-1, R39C2F-1, R39C2FV-1);
+      - the note for M4.4 moved from round 2's entry into M4.4's section (R39C2F-4).
+  - **Found.**
+    - The report of a process's start runs on the process's first thread once the server knows it. Before this round it held the session's mutex and posted its event with SIGUSR2 unblocked, so a stop's termination that came at that moment could have ended the thread with the mutex held or inside the event's push. The SIGUSR2 block that R39C2HV-1's termination needs closes that too.
+    - Not caught by any case:
+      - the SIGUSR2 block in the report, which needs the fork's thread control and an interruption that lands inside the report;
+      - the report's error line when the fork refuses the termination, since the fake refuses only a process that is not running and the report ends only a running one.
+  - **Verification.** Local stand-in runs in WSL of the host's three programs, under ASan with UBSan and under TSan: 35 of the 36 session cases, without the one that needs the macOS backend, 13 of the event thread and 7 of the output, on the final code and on `3f69ac5` alone. Each of the round's six mutants fails its case. The pull request records CI on the branch's last commit.
+  - **Left.** The coordinator's check of round 3 and the merge, then the fast-forwards of both forks' `paneport/integration`, Wine to `7911818` and FEX to `ab5a40b`, and the deletion of both `paneport/M4.3` branches ([forks.md](../forks.md) section 4.2). M4.4 takes up the set-back together with the race.
 
 ## M4.4 Runtime on iOS
 

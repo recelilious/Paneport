@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // The prefixes of single mode: a copy of the template keeps its folders, files, permissions and
-// symbolic links, whatever the umask, and is made from a folder only, both as a run makes it and
-// without clones, as a file system that cannot clone takes it; and the removal of a run's prefix
-// takes all of it, a folder that its owner cannot write and a dangling link among it, or fails
-// and names what it could not read.
+// symbolic links, whatever the umask, is made from a folder only, and fails and names what it
+// cannot read or copy, both as a run makes it and without clones, as a file system that cannot
+// clone takes it; and the removal of a run's prefix takes all of it, a folder that its owner
+// cannot write and a dangling link among it, or fails and names what it could not read.
 
 #include <errno.h>
 #include <fcntl.h>
@@ -260,6 +260,74 @@ static void copy_needs_a_new_target(void) {
     PP_CHECK(pp_prefix_remove(root, error, sizeof error));
 }
 
+// Leaves the process no descriptor with which the walk could open a folder, whoever runs the
+// test: its lowest free descriptor becomes its limit. saved gets the limit to put back.
+static void take_every_descriptor(struct rlimit *saved) {
+    const int lowest = open("/dev/null", O_RDONLY | O_CLOEXEC);
+    PP_CHECK(lowest >= 0);
+    PP_CHECK_EQUAL(close(lowest), 0);
+    PP_CHECK_EQUAL(getrlimit(RLIMIT_NOFILE, saved), 0);
+    struct rlimit limit = *saved;
+    limit.rlim_cur = (rlim_t)lowest;
+    PP_CHECK_EQUAL(setrlimit(RLIMIT_NOFILE, &limit), 0);
+}
+
+// Checks that a failed copy's error starts with the text expected.
+static void check_error_start(const char *error, const char *expected) {
+    if (strncmp(error, expected, strlen(expected)) != 0) {
+        (void)fprintf(stderr, "\"%s\" does not start with \"%s\"\n", error, expected);
+        PP_CHECK(false);
+    }
+}
+
+// Checks that a failed copy's error is the text expected.
+static void check_error(const char *error, const char *expected) {
+    if (strcmp(error, expected) != 0) {
+        (void)fprintf(stderr, "\"%s\", not \"%s\"\n", error, expected);
+        PP_CHECK(false);
+    }
+}
+
+// What the walk cannot read or copy fails the copy, which names it, rather than leave it out of
+// every run's prefix: a folder that the walk cannot open, here the template itself, since the
+// process has no descriptor left, and a FIFO, which is not a folder, a file or a symbolic link.
+static void copy_names_what_it_cannot_read(void) {
+    char root[PATH_MAX];
+    make_temporary(root, sizeof root);
+    char source[PATH_MAX];
+    path_of(source, sizeof source, root, "template");
+    make_template(source);
+    char target[PATH_MAX];
+    path_of(target, sizeof target, root, "copy");
+    char expected[PATH_MAX + 128];
+    (void)snprintf(expected, sizeof expected, "cannot read %s: ", source);
+    char error[512] = "";
+    for (size_t index = 0; index < PP_WAY_COUNT; index++) {
+        start_round(&k_ways[index]);
+        struct rlimit saved;
+        take_every_descriptor(&saved);
+        error[0] = '\0';
+        const bool copied = k_ways[index].copy(source, target, error, sizeof error);
+        PP_CHECK_EQUAL(setrlimit(RLIMIT_NOFILE, &saved), 0);
+        PP_CHECK(!copied);
+        check_error_start(error, expected);
+        PP_CHECK(pp_prefix_remove(target, error, sizeof error));
+    }
+    char fifo[PATH_MAX];
+    path_of(fifo, sizeof fifo, source, "drive_c/fifo");
+    PP_CHECK_EQUAL(mkfifo(fifo, 0644), 0);
+    (void)snprintf(expected, sizeof expected,
+                   "cannot copy %s, which is not a folder, a file or a symbolic link", fifo);
+    for (size_t index = 0; index < PP_WAY_COUNT; index++) {
+        start_round(&k_ways[index]);
+        error[0] = '\0';
+        PP_CHECK(!k_ways[index].copy(source, target, error, sizeof error));
+        check_error(error, expected);
+        PP_CHECK(pp_prefix_remove(target, error, sizeof error));
+    }
+    PP_CHECK(pp_prefix_remove(root, error, sizeof error));
+}
+
 static void remove_takes_everything(void) {
     char root[PATH_MAX];
     make_temporary(root, sizeof root);
@@ -297,8 +365,7 @@ static void remove_takes_links_and_missing_folders(void) {
 
 // A folder that the walk cannot read fails the removal, which names it, and what it holds stays:
 // a removal that passed over the folder would report success with the prefix still there. The
-// process has no descriptor left with which the walk could open the folder: its lowest free
-// descriptor becomes the limit for the removal.
+// process has no descriptor left with which the walk could open the folder.
 static void remove_names_what_it_cannot_read(void) {
     char root[PATH_MAX];
     make_temporary(root, sizeof root);
@@ -306,14 +373,8 @@ static void remove_names_what_it_cannot_read(void) {
     write_text(root, "unread/file.txt", "kept\n", 0644);
     char folder[PATH_MAX];
     path_of(folder, sizeof folder, root, "unread");
-    const int lowest = open("/dev/null", O_RDONLY | O_CLOEXEC);
-    PP_CHECK(lowest >= 0);
-    PP_CHECK_EQUAL(close(lowest), 0);
     struct rlimit saved;
-    PP_CHECK_EQUAL(getrlimit(RLIMIT_NOFILE, &saved), 0);
-    struct rlimit limit = saved;
-    limit.rlim_cur = (rlim_t)lowest;
-    PP_CHECK_EQUAL(setrlimit(RLIMIT_NOFILE, &limit), 0);
+    take_every_descriptor(&saved);
     char error[512] = "";
     const bool removed = pp_prefix_remove(folder, error, sizeof error);
     PP_CHECK_EQUAL(setrlimit(RLIMIT_NOFILE, &saved), 0);
@@ -332,6 +393,7 @@ int main(int argc, char **argv) {
         {"copy_ignores_the_umask", copy_ignores_the_umask},
         {"copy_needs_a_folder", copy_needs_a_folder},
         {"copy_needs_a_new_target", copy_needs_a_new_target},
+        {"copy_names_what_it_cannot_read", copy_names_what_it_cannot_read},
         {"remove_takes_everything", remove_takes_everything},
         {"remove_takes_links_and_missing_folders", remove_takes_links_and_missing_folders},
         {"remove_names_what_it_cannot_read", remove_names_what_it_cannot_read},

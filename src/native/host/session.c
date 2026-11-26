@@ -681,28 +681,11 @@ bool pp_session_is_active(void) {
     }
 }
 
-PP_EXPORT pp_status_t pp_session_stop(void) {
-    pp_error_clear();
-    const pp_status_t status = pp_host_check_main_call("pp_session_stop");
-    if (status != PP_OK) {
-        return status;
-    }
-    (void)pthread_mutex_lock(&s_session.mutex);
-    const int state = s_session.state;
-    if (state == PP_SESSION_RUNNING) {
-        s_session.state = PP_SESSION_STOPPING;
-    }
-    const wine_paneport_session_stop_t stop = s_session.stop;
-    pp_guest_output_t *const output = s_session.process.output;
-    s_session.process.output = NULL;
-    (void)pthread_mutex_unlock(&s_session.mutex);
-    if (state == PP_SESSION_NONE) {
-        return pp_error_set(PP_E_NO_SESSION, "pp_session_stop needs a session that started.");
-    }
-
-    if (state == PP_SESSION_RUNNING && stop != NULL && stop() != PP_WINE_OK) {
-        (void)pp_log(PP_LOG_WARNING, "The Wine runtime reported a problem while it stopped.");
-    }
+// Ends a session that its stop ended or that ended by itself: joins the threads that the host
+// created for it, waits a while for the runtime's report of the process's end and for the end of
+// the process's output, stops a reader whose pipes stay open, and reports the ends that were still
+// to come. output is the process's reader, which the caller took, or NULL. The main thread.
+static void finish_session(pp_guest_output_t *output) {
     join_session_threads();
 
     (void)pthread_mutex_lock(&s_session.mutex);
@@ -734,8 +717,8 @@ PP_EXPORT pp_status_t pp_session_stop(void) {
 
     (void)pthread_mutex_lock(&s_session.mutex);
     if (process->handle != 0U && !process->exit_posted) {
-        // The reader has ended; a process that the runtime never reported as ended counts as
-        // terminated by the stop.
+        // The reader has ended; a process that the runtime never reported as ended counts as one
+        // that the stop terminated.
         process->output_done = true;
         if (process->state != PP_PROCESS_EXITED) {
             (void)pp_log(PP_LOG_WARNING, "The Wine runtime stopped without reporting the end of "
@@ -748,10 +731,50 @@ PP_EXPORT pp_status_t pp_session_stop(void) {
     report_session_ended(PP_OK);
     (void)pthread_cond_broadcast(&s_session.changed);
     (void)pthread_mutex_unlock(&s_session.mutex);
+}
+
+PP_EXPORT pp_status_t pp_session_stop(void) {
+    pp_error_clear();
+    const pp_status_t status = pp_host_check_main_call("pp_session_stop");
+    if (status != PP_OK) {
+        return status;
+    }
+    (void)pthread_mutex_lock(&s_session.mutex);
+    const int state = s_session.state;
+    if (state == PP_SESSION_RUNNING) {
+        s_session.state = PP_SESSION_STOPPING;
+    }
+    const wine_paneport_session_stop_t stop = s_session.stop;
+    pp_guest_output_t *const output = s_session.process.output;
+    s_session.process.output = NULL;
+    (void)pthread_mutex_unlock(&s_session.mutex);
+    if (state == PP_SESSION_NONE) {
+        return pp_error_set(PP_E_NO_SESSION, "pp_session_stop needs a session that started.");
+    }
+
+    if (state == PP_SESSION_RUNNING && stop != NULL && stop() != PP_WINE_OK) {
+        (void)pp_log(PP_LOG_WARNING, "The Wine runtime reported a problem while it stopped.");
+    }
+    finish_session(output);
     if (state == PP_SESSION_RUNNING) {
         (void)pp_log(PP_LOG_INFO, "The Wine session stopped.");
     }
     return PP_OK;
+}
+
+void pp_session_collect(void) {
+    (void)pthread_mutex_lock(&s_session.mutex);
+    const bool ended = s_session.state == PP_SESSION_ENDED;
+    pp_guest_output_t *output = NULL;
+    if (ended) {
+        output = s_session.process.output;
+        s_session.process.output = NULL;
+    }
+    (void)pthread_mutex_unlock(&s_session.mutex);
+    // After pp_session_stop, nothing is left to do here.
+    if (ended) {
+        finish_session(output);
+    }
 }
 
 // --- The process ------------------------------------------------------------------------------

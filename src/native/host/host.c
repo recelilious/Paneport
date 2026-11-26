@@ -132,6 +132,9 @@ PP_EXPORT pp_status_t pp_shutdown(void) {
         return pp_error_set(
             PP_E_BUSY, "pp_shutdown needs the Wine session stopped: call pp_session_stop first.");
     }
+    // A session that ended by itself may still owe its process's last lines, its process's end
+    // and its own, and have threads to join: they come while the event thread still delivers.
+    pp_session_collect();
 
     (void)pp_log(PP_LOG_INFO, "The native host is stopping.");
     // The JIT provider's last events still reach the callback, before the event thread stops.

@@ -21,6 +21,13 @@
 // refuses to stop the host under it. Any thread.
 bool pp_session_is_active(void);
 
+// Collects a session that ended by itself as pp_session_stop does, unless pp_session_stop did:
+// joins the threads that the host created for it, waits up to 30 s for the reader of its
+// process's output, stops a reader whose pipes stay open, and posts the process's lines and end
+// and the session's end that were still to come. Nothing when no session ended. The main thread;
+// the caller is pp_shutdown, before it stops the event thread.
+void pp_session_collect(void);
+
 #ifdef PANEPORT_TEST_BUILD
 // A function of a test that the session runs at a point of its own, with its argument.
 typedef void (*pp_session_hook_t)(void *argument);

@@ -177,7 +177,8 @@ PP_EXPORT pp_status_t pp_session_start(const pp_session_config_t *config);
  *
  * pp_shutdown refuses with PP_E_BUSY while a session is starting, running or stopping, so the
  * caller stops the session first; after a session that ended by itself, this call still joins
- * the threads that the host created for it.
+ * the threads that the host created for it and waits for the reader of the process's output, and
+ * pp_shutdown does the same when the caller did not call this.
  *
  * Thread rule: [main]. Memory: none.
  *

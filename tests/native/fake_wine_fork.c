@@ -34,6 +34,8 @@
 //                  logs as many, faster than the host's log callback takes them
 //   late_output    the process reports its end, then writes FAKE_FORK_LATE_LINE and closes its
 //                  handles, as a process that the fork's server terminates may
+//   kept_output    as normal, but a copy of the output's write end stays open after the process
+//                  ended, so that the host's reader of the output never sees its end
 //   five_threads   the session start has the host create four threads, and a fifth refused
 //   late_thread    the session's stop asks the bridge for one more thread, as a fork might while
 //                  the host stops its session
@@ -75,6 +77,8 @@ static struct {
     uint64_t process;
     int output_fd;
     int errors_fd;
+    // The copy of the output's write end that the mode kept_output never closes.
+    int kept_fd;
     // What the query reports: 0 before a launch, then a WINE_PANEPORT_PROCESS_ state, and the
     // exit code that the bridge reported.
     uint32_t query_state;
@@ -89,6 +93,7 @@ static struct {
     .changed = PTHREAD_COND_INITIALIZER,
     .output_fd = -1,
     .errors_fd = -1,
+    .kept_fd = -1,
     .late_thread_status = 1,
 };
 
@@ -251,6 +256,10 @@ static void *run_process(void *argument) {
         } else {
             write_output(bridge);
         }
+    }
+    if (mode_is("kept_output") && s_fake.output_fd >= 0) {
+        // The copy stays open for the rest of the process.
+        s_fake.kept_fd = dup(s_fake.output_fd);
     }
     // The process's handles go before it reports its end, as the fork closes them, except in the
     // mode late_output: the fork's server reports the end of a process that it terminates before

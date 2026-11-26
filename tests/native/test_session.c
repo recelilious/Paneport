@@ -903,6 +903,44 @@ static void shutdown_refused_while_a_session_runs(void) {
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
 }
 
+// pp_shutdown after a session that ended by itself first collects it, as pp_session_stop would.
+// Here the runtime keeps a copy of the output's write end, so the reader of the output never sees
+// its end, and pp_shutdown stops it once the stop's wait is over: the program's lines, the last
+// one without a line feed too, its exit event and the session's end all arrive before
+// pp_shutdown returns.
+static void shutdown_collects_a_session_that_ended(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=kept_output\0");
+    const uint64_t process = launch(1U, PP_OK);
+    // The fake's server ends after its process, and the session ends with it.
+    for (int round = 0; round < 60000 && pp_session_is_active(); round++) {
+        pp_sleep_milliseconds(1);
+    }
+    PP_CHECK(!pp_session_is_active());
+    pp_session_set_stop_wait(200U);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.event_count, 3U);
+    PP_CHECK_EQUAL(s_seen.events[1].kind, PP_EVENT_PROCESS_EXITED);
+    PP_CHECK_EQUAL(s_seen.events[1].code, FAKE_FORK_EXIT_CODE);
+    PP_CHECK_EQUAL(s_seen.events[2].kind, PP_EVENT_SESSION_ENDED);
+    PP_CHECK_EQUAL(s_seen.events[2].code, PP_OK);
+    // Six lines of output, one of errors and two of the runtime, all before the exit event.
+    PP_CHECK_EQUAL(s_seen.line_count, 9U);
+    PP_CHECK_EQUAL(s_seen.lines_before[1], s_seen.line_count);
+    bool last_line = false;
+    for (uint32_t index = 0U; index < s_seen.line_count; index++) {
+        if (strcmp(s_seen.lines[index], "last line") == 0) {
+            last_line = true;
+        }
+    }
+    PP_CHECK(last_line);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    check_state(process, PP_PROCESS_EXITED, FAKE_FORK_EXIT_CODE);
+}
+
 // A start whose runtime cannot be loaded counts as a session that ran: its end is reported with
 // PP_E_IO, and a start with a runtime that loads is refused afterwards.
 static void load_failure_counts_as_run(void) {
@@ -1014,6 +1052,7 @@ int main(int argc, char **argv) {
         {"unfinished_start_fails_the_launch", unfinished_start_fails_the_launch},
         {"start_accepts_the_providers_ready_state", start_accepts_the_providers_ready_state},
         {"shutdown_refused_while_a_session_runs", shutdown_refused_while_a_session_runs},
+        {"shutdown_collects_a_session_that_ended", shutdown_collects_a_session_that_ended},
         {"load_failure_counts_as_run", load_failure_counts_as_run},
         {"configuration_checks", configuration_checks},
         {"wrong_thread", wrong_thread},

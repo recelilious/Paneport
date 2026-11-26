@@ -23,6 +23,10 @@
 //   launch_refuse_keep
 //                  the launch keeps copies of the pipes' write ends and fails, so that the
 //                  host's reader of the output never sees their end
+//   launch_refuse_reported
+//                  the launch reports the end of the process with exit code 0 and then fails, as
+//                  the fork's server may report the end of a process whose first thread could not
+//                  be created before the launch returns
 //   quick          as normal, but the launch returns only once the process started and ended
 //   quick_sigsegv  as quick, but the process's start installs a SIGSEGV handler of its own, as in
 //                  launch_sigsegv
@@ -311,6 +315,16 @@ FAKE_EXPORT int32_t __wine_paneport_process_launch(const struct wine_paneport_la
         // The copies stay open for the rest of the process.
         s_fake.output_fd = launch->stdout_fd >= 0 ? dup(launch->stdout_fd) : -1;
         s_fake.errors_fd = launch->stderr_fd >= 0 ? dup(launch->stderr_fd) : -1;
+        return PP_WINE_E_SYSTEM;
+    }
+    if (mode_is("launch_refuse_reported")) {
+        // The server knew the process and reports its end, with an exit code of its own, before
+        // the launch returns, as the fork's server may on its own thread.
+        (void)pthread_mutex_lock(&s_fake.mutex);
+        s_fake.process = launch->process;
+        (void)pthread_mutex_unlock(&s_fake.mutex);
+        record_state(WINE_PANEPORT_PROCESS_EXITED, 0U);
+        s_fake.bridge->process_exited(launch->process, 0U);
         return PP_WINE_E_SYSTEM;
     }
     // The host closes its copies of the descriptors once the launch returns.

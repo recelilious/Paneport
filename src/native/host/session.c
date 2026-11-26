@@ -84,7 +84,8 @@ typedef struct session_thread_t {
 // The session's process. Its handle is 0 until pp_process_launch starts one. started says that
 // the runtime reported its start, which a quick program may follow with its end before the
 // launch looks. Its exit event waits until the reader of its output queued the last line
-// (output_done), so that the lines arrive before it (paneport/session.h). start_check_failed
+// (output_done), so that the lines arrive before it (paneport/session.h), and while the runtime's
+// launch runs (launching), so that a refused launch decides its exit code. start_check_failed
 // says that the check of the test builds found a handler of the dispatcher replaced when the
 // runtime reported the start, and replaced_signal names the first such signal.
 typedef struct session_process_t {
@@ -95,6 +96,7 @@ typedef struct session_process_t {
     int32_t replaced_signal;
     bool started;
     bool start_check_failed;
+    bool launching;
     bool output_done;
     bool exit_posted;
 } session_process_t;
@@ -202,12 +204,12 @@ static void report_session_ended(pp_status_t status) {
     post_event(PP_EVENT_SESSION_ENDED, 0U, status);
 }
 
-// Reports the process's exit once it ended and its output reader queued its last line, then a
-// session end that waited for it. The caller holds the mutex.
+// Reports the process's exit once it ended, its output reader queued its last line and the
+// runtime's launch returned, then a session end that waited for it. The caller holds the mutex.
 static void report_exit_when_ready(void) {
     session_process_t *process = &s_session.process;
-    if (process->handle == 0U || process->exit_posted || process->state != PP_PROCESS_EXITED ||
-        !process->output_done) {
+    if (process->handle == 0U || process->exit_posted || process->launching ||
+        process->state != PP_PROCESS_EXITED || !process->output_done) {
         return;
     }
     process->exit_posted = true;
@@ -889,6 +891,7 @@ PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint6
     s_session.process.replaced_signal = 0;
     s_session.process.started = false;
     s_session.process.start_check_failed = false;
+    s_session.process.launching = false;
     // Without a reader there is no output to wait for before the exit event.
     s_session.process.output_done = config->capture_output == 0U;
     s_session.process.exit_posted = false;
@@ -926,13 +929,28 @@ PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint6
         .program = config->program,
         .arguments = config->arguments,
     };
+    // The exit event waits while the runtime's launch runs. A runtime that refuses the launch may
+    // report an end of the process first, with an exit code of its own, as the fork's server does
+    // when the process's first thread could not be created; the refused process counts as ended
+    // with exit code 1 whatever it reported (paneport/session.h).
+    (void)pthread_mutex_lock(&s_session.mutex);
+    s_session.process.launching = true;
+    (void)pthread_mutex_unlock(&s_session.mutex);
     const int32_t launched = launch(&request);
     // The runtime duplicated what it keeps; the reader sees the end once the process closes them.
     close_if_open(output_pipe[1]);
     close_if_open(errors_pipe[1]);
+    (void)pthread_mutex_lock(&s_session.mutex);
+    s_session.process.launching = false;
+    if (launched != PP_WINE_OK) {
+        s_session.process.state = PP_PROCESS_EXITED;
+        s_session.process.exit_code = 1U;
+    }
+    report_exit_when_ready();
+    (void)pthread_cond_broadcast(&s_session.changed);
+    (void)pthread_mutex_unlock(&s_session.mutex);
     if (launched != PP_WINE_OK) {
         // The reader, if any, sees the end of both pipes now and ends by itself.
-        refuse_process(handle, false);
         return pp_error_set(launched < 0 ? launched : PP_E_SYSTEM,
                             "The Wine runtime refused to launch the program (%d); its log says "
                             "why.",

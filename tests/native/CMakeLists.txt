@@ -118,6 +118,7 @@ paneport_native_test(test_session CASES
     launch_needs_a_session terminate_sets_the_exit_code get_state_asks_the_fork
     stop_ends_a_running_process stop_during_a_launch stop_counts_an_unreported_end
     stop_wakes_a_reader_without_an_end failed_start_is_reported launch_refusal_is_reported
+    refusal_overrides_a_reported_exit refusal_overrides_a_reported_exit_captured
     quick_program_still_started a_flood_of_lines_loses_none exit_waits_for_the_last_line
     four_threads_at_most start_accepts_the_providers_ready_state
     shutdown_refused_while_a_session_runs load_failure_counts_as_run configuration_checks

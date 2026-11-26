@@ -211,12 +211,14 @@ PP_EXPORT pp_status_t pp_session_stop(void);
  *         when the host cannot set up the capture of the output, and, when the runtime refuses
  *         the launch, its own negative status, a PP_WINE_E_ code of paneport/wine_bridge.h such
  *         as PP_E_OUT_OF_MEMORY or PP_E_IO, or PP_E_SYSTEM for any other answer; the process
- *         then counts as ended with exit code 1. PP_E_SYSTEM when the program ended before it
- *         finished its start, so that pp_process_get_state reports its exit code. PP_E_SYSTEM
- *         when the program did not finish its start within 120 s: the process is then still
- *         PP_PROCESS_STARTING, without an exit code, and its process-started or process-exited
- *         event follows once the runtime reports it. In test builds PP_E_SYSTEM when its start
- *         replaced a handler of the signal dispatcher.
+ *         then counts as ended with exit code 1, also when the runtime reported an end of the
+ *         process with a code of its own during the refused launch, since the host holds the
+ *         process-exited event while the runtime's launch runs. PP_E_SYSTEM when the program
+ *         ended before it finished its start, so that pp_process_get_state reports its exit
+ *         code. PP_E_SYSTEM when the program did not finish its start within 120 s: the process
+ *         is then still PP_PROCESS_STARTING, without an exit code, and its process-started or
+ *         process-exited event follows once the runtime reports it. In test builds PP_E_SYSTEM
+ *         when its start replaced a handler of the signal dispatcher.
  */
 PP_EXPORT pp_status_t pp_process_launch(const pp_process_config_t *config, uint64_t *process);
 

@@ -716,6 +716,32 @@ static void launch_refusal_is_reported(void) {
     stop_host();
 }
 
+// A runtime may report the end of a process whose launch it then refuses, with an exit code of
+// its own, here 0, as the fork's server may for a process whose first thread could not be
+// created. The host holds the exit event while the runtime's launch runs, and the refused process
+// counts as ended with exit code 1 whatever the runtime reported.
+static void check_reported_refusal(uint8_t capture_output) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=launch_refuse_reported\0");
+    const uint64_t process = launch(capture_output, PP_E_SYSTEM);
+    PP_CHECK(process != 0U);
+    PP_CHECK(strstr(pp_last_error(), "refused to launch") != NULL);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_PROCESS_EXITED).code, 1);
+    check_state(process, PP_PROCESS_EXITED, 1U);
+    settle();
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.event_count, 1U);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    stop_host();
+}
+
+static void refusal_overrides_a_reported_exit(void) { check_reported_refusal(0U); }
+
+// The same with the capture of the output, whose reader ends once the launch returned.
+static void refusal_overrides_a_reported_exit_captured(void) { check_reported_refusal(1U); }
+
 // A program that starts and ends before the launch looks at it still started: the launch
 // succeeds, and both events and the exit code arrive (the race that commit 20cad6b fixed).
 static void quick_program_still_started(void) {
@@ -939,6 +965,8 @@ int main(int argc, char **argv) {
         {"stop_wakes_a_reader_without_an_end", stop_wakes_a_reader_without_an_end},
         {"failed_start_is_reported", failed_start_is_reported},
         {"launch_refusal_is_reported", launch_refusal_is_reported},
+        {"refusal_overrides_a_reported_exit", refusal_overrides_a_reported_exit},
+        {"refusal_overrides_a_reported_exit_captured", refusal_overrides_a_reported_exit_captured},
         {"quick_program_still_started", quick_program_still_started},
         {"a_flood_of_lines_loses_none", a_flood_of_lines_loses_none},
         {"exit_waits_for_the_last_line", exit_waits_for_the_last_line},

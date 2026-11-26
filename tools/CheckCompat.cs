@@ -2394,7 +2394,7 @@ internal static class SelfTest
             .Validate(earlier.RootElement, "case", kept);
         tally.Expect(
             kept is [{ Rule: "type", Pointer: "/a" }, { Rule: "pattern", Pointer: "/b" }],
-            "keyword, a problem kept before a pattern that times out",
+            "keyword, a problem found before a pattern that times out",
             string.Join(", ", kept));
     }
 

@@ -771,7 +771,7 @@ void pp_session_collect(void) {
         s_session.process.output = NULL;
     }
     (void)pthread_mutex_unlock(&s_session.mutex);
-    // After pp_session_stop, nothing is left to do here.
+    // After pp_session_stop, finish_session finds nothing left to do.
     if (ended) {
         finish_session(output);
     }

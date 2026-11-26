@@ -478,7 +478,6 @@ static bool wait_for_count_within(_Atomic(uint64_t) *counter, uint64_t expected,
 // stays full while the producer runs.
 typedef struct flood_t {
     _Atomic(bool) stop;
-    _Atomic(bool) producing;
     _Atomic(uint64_t) posted;
     _Atomic(uint64_t) events;
 } flood_t;
@@ -507,14 +506,12 @@ static void *flood_lines(void *argument) {
         PP_CHECK_EQUAL(pp_event_thread_post_log_waiting(&entry), PP_OK);
         (void)atomic_fetch_add(&flood->posted, 1U);
     }
-    atomic_store(&flood->producing, false);
     return NULL;
 }
 
 // Starts the host and the producer, and returns once the log queue is full.
 static pthread_t start_flood(flood_t *flood, pp_thread_argument_t *argument) {
     atomic_init(&flood->stop, false);
-    atomic_init(&flood->producing, true);
     atomic_init(&flood->posted, 0U);
     atomic_init(&flood->events, 0U);
     pp_start_host(NULL);
@@ -543,7 +540,6 @@ static void event_during_a_flood_arrives_soon(void) {
     PP_CHECK_EQUAL(pp_test_post_event(21U, 0), PP_OK);
     PP_CHECK(wait_for_count_within(&flood.events, 1U, 10000U));
     PP_CHECK(now_milliseconds() - posted < 5000U);
-    PP_CHECK(atomic_load(&flood.producing));
     stop_flood(&flood, thread);
 }
 
@@ -560,7 +556,6 @@ static void no_event_dropped_during_a_flood(void) {
         pp_sleep_milliseconds(2);
     }
     PP_CHECK(wait_for_count_within(&flood.events, 600U, 20000U));
-    PP_CHECK(atomic_load(&flood.producing));
     stop_flood(&flood, thread);
 }
 

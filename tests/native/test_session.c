@@ -744,7 +744,8 @@ static void refusal_overrides_a_reported_exit(void) { check_reported_refusal(0U)
 static void refusal_overrides_a_reported_exit_captured(void) { check_reported_refusal(1U); }
 
 // A program that starts and ends before the launch looks at it still started: the launch
-// succeeds, and both events and the exit code arrive (the race that commit 20cad6b fixed).
+// succeeds, and both events and the exit code arrive. This is the launch race, in which the
+// process started and ended before the launch saw its start.
 static void quick_program_still_started(void) {
     fixture_t fixture;
     make_fixture(&fixture);

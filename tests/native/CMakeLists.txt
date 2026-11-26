@@ -123,7 +123,7 @@ paneport_native_test(test_session CASES
     shutdown_refused_while_a_launch_runs stop_waits_for_a_launch_in_the_runtime
     quick_program_still_started a_flood_of_lines_loses_none exit_waits_for_the_last_line
     four_threads_at_most stopping_session_gets_no_thread unfinished_start_fails_the_launch
-    start_accepts_the_providers_ready_state
+    late_start_check_ends_the_process start_accepts_the_providers_ready_state
     shutdown_refused_while_a_session_runs shutdown_collects_a_session_that_ended
     load_failure_counts_as_run configuration_checks
     wrong_thread)

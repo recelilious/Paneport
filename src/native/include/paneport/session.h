@@ -206,7 +206,9 @@ PP_EXPORT pp_status_t pp_session_stop(void);
  * signal dispatcher holds its six signals (C-0005 section 4). A replaced handler fails the
  * session, whose session-ended event then carries PP_E_SYSTEM, and the launch, with PP_E_SYSTEM.
  * The launch terminates the process with exit code 1 if it still runs; a process that has already
- * ended keeps its own exit code.
+ * ended keeps its own exit code. A start that the runtime reports only after the launch's wait
+ * for it ended, when the launch has already failed, still fails the session, and the host then
+ * logs the error, naming the signal, and terminates the process with exit code 1.
  *
  * Thread rule: [any]. Memory: the host copies what it keeps; the caller keeps ownership of
  * config.

@@ -44,7 +44,8 @@ enum { MAX_EVENTS = 16, MAX_LINES = 64, LINE_SIZE = 512 };
 
 // What the callbacks saw. lines_before[i] counts the runtime and guest lines that had arrived
 // when event i arrived; the marker events are only counted. The lines of the mode flood are
-// counted by source, and slow_lines makes the log callback take 20 us a line.
+// counted by source, and slow_lines makes the log callback take 20 us a line. sigsegv_errors
+// counts the host's error lines that name SIGSEGV.
 static struct {
     pthread_mutex_t mutex;
     pthread_cond_t changed;
@@ -62,6 +63,7 @@ static struct {
     uint32_t flood_output;
     uint32_t flood_runtime;
     uint32_t flood_output_at_exit;
+    uint32_t sigsegv_errors;
 } s_seen = {
     .mutex = PTHREAD_MUTEX_INITIALIZER,
     .changed = PTHREAD_COND_INITIALIZER,
@@ -93,6 +95,10 @@ static void record_line(const pp_log_line_t *line, void *user_data) {
     (void)pthread_mutex_lock(&s_seen.mutex);
     if (!pp_event_thread_is_current()) {
         s_seen.line_off_thread = true;
+    }
+    if (line->source == PP_LOG_SOURCE_HOST && line->level == PP_LOG_ERROR &&
+        strstr(line->text, "SIGSEGV") != NULL) {
+        s_seen.sigsegv_errors++;
     }
     if (strcmp(line->text, FAKE_FORK_FLOOD_TEXT) == 0) {
         if (line->source == PP_LOG_SOURCE_GUEST_OUTPUT) {
@@ -398,7 +404,8 @@ static void replaced_handler_fails_session(void) {
 // In single mode Wine sets up its signal handling when a process starts, inside the launch, so
 // test builds check the dispatcher again then: a process whose start installs a SIGSEGV handler
 // of its own fails the launch, is terminated with exit code 1, and its session ends with
-// PP_E_SYSTEM (C-0005 section 4).
+// PP_E_SYSTEM (C-0005 section 4). The launch, which waited for the start, names the signal; the
+// report of the start leaves the process to it and logs no error of its own.
 static void launch_check_fails_the_session(void) {
     fixture_t fixture;
     make_fixture(&fixture);
@@ -410,6 +417,10 @@ static void launch_check_fails_the_session(void) {
     PP_CHECK_EQUAL(wait_for_event(PP_EVENT_PROCESS_EXITED).code, 1);
     PP_CHECK_EQUAL(wait_for_event(PP_EVENT_SESSION_ENDED).code, PP_E_SYSTEM);
     check_state(process, PP_PROCESS_EXITED, 1U);
+    settle();
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.sigsegv_errors, 0U);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
     stop_host();
 }
 
@@ -434,6 +445,10 @@ static void launch_check_fails_a_quick_program(void) {
     PP_CHECK_EQUAL(s_seen.events[2].kind, PP_EVENT_SESSION_ENDED);
     (void)pthread_mutex_unlock(&s_seen.mutex);
     check_state(process, PP_PROCESS_EXITED, FAKE_FORK_EXIT_CODE);
+    settle();
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.sigsegv_errors, 0U);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
     stop_host();
 }
 
@@ -938,6 +953,33 @@ static void unfinished_start_fails_the_launch(void) {
     stop_host();
 }
 
+// A start that the runtime reports after the launch's wait for it ended still fails the session
+// when it replaced a handler of the dispatcher. No launch is left to fail for it, so the report
+// itself logs an error that names the signal and terminates the process with exit code 1.
+static void late_start_check_ends_the_process(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, "FAKE_FORK_MODE=late_sigsegv\0");
+    pp_session_set_launch_wait(200U);
+    const uint64_t process = launch(0U, PP_E_SYSTEM);
+    PP_CHECK(strstr(pp_last_error(), "did not finish its start") != NULL);
+    check_state(process, PP_PROCESS_STARTING, 0U);
+    PP_CHECK_EQUAL(call_fake(&fixture, "fake_fork_open_gate"), 1);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_PROCESS_EXITED).code, 1);
+    PP_CHECK_EQUAL(wait_for_event(PP_EVENT_SESSION_ENDED).code, PP_E_SYSTEM);
+    settle();
+    (void)pthread_mutex_lock(&s_seen.mutex);
+    PP_CHECK_EQUAL(s_seen.event_count, 3U);
+    PP_CHECK_EQUAL(s_seen.events[0].kind, PP_EVENT_PROCESS_STARTED);
+    PP_CHECK_EQUAL(s_seen.events[1].kind, PP_EVENT_PROCESS_EXITED);
+    PP_CHECK_EQUAL(s_seen.events[2].kind, PP_EVENT_SESSION_ENDED);
+    PP_CHECK_EQUAL(s_seen.sigsegv_errors, 1U);
+    (void)pthread_mutex_unlock(&s_seen.mutex);
+    check_state(process, PP_PROCESS_EXITED, 1U);
+    stop_host();
+}
+
 // Reads the JIT state until it is the one given, for up to a minute.
 static void wait_for_jit_state(pp_jit_state_t expected) {
     pp_jit_status_t status = {.struct_size = (uint32_t)sizeof(pp_jit_status_t)};
@@ -1135,6 +1177,7 @@ int main(int argc, char **argv) {
         {"four_threads_at_most", four_threads_at_most},
         {"stopping_session_gets_no_thread", stopping_session_gets_no_thread},
         {"unfinished_start_fails_the_launch", unfinished_start_fails_the_launch},
+        {"late_start_check_ends_the_process", late_start_check_ends_the_process},
         {"start_accepts_the_providers_ready_state", start_accepts_the_providers_ready_state},
         {"shutdown_refused_while_a_session_runs", shutdown_refused_while_a_session_runs},
         {"shutdown_collects_a_session_that_ended", shutdown_collects_a_session_that_ended},

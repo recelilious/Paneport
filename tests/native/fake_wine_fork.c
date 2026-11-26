@@ -45,6 +45,9 @@
 //                  as launch_refuse_reported, but the launch returns only once the test opened
 //                  the fake's gate, as a launch thread that the system deschedules after the
 //                  server's report would
+//   late_sigsegv   the process reports its start only once the test opened the fake's gate, and
+//                  then as in launch_sigsegv: its start installs a SIGSEGV handler of its own, and
+//                  it waits until it is terminated or the session stops
 //
 // fake_fork_bridge_ok reports whether the bridge it received is complete,
 // fake_fork_server_stack_kib the stack of the server's thread, fake_fork_launches how often the
@@ -126,7 +129,8 @@ static bool mode_is(const char *mode) { return strcmp(s_fake.mode, mode) == 0; }
 
 // Whether the process waits until it is terminated or the session stops.
 static bool process_waits(void) {
-    if (mode_is("wait") || mode_is("silent_exit") || mode_is("launch_sigsegv")) {
+    if (mode_is("wait") || mode_is("silent_exit") || mode_is("launch_sigsegv") ||
+        mode_is("late_sigsegv")) {
         return true;
     }
     return mode_is("query_exited");
@@ -270,8 +274,12 @@ static void *run_process(void *argument) {
         // The start never ends, and the process is never reported as started.
         exit_code = wait_until_ended();
     } else {
+        if (mode_is("late_sigsegv")) {
+            // The start takes until the test opens the gate.
+            wait_at_gate();
+        }
         bridge->log(PP_WINE_LOG_INFO, "fake runtime: process started\nsecond runtime line");
-        if (mode_is("launch_sigsegv") || mode_is("quick_sigsegv")) {
+        if (mode_is("launch_sigsegv") || mode_is("quick_sigsegv") || mode_is("late_sigsegv")) {
             install_segv_handler();
         }
         record_state(WINE_PANEPORT_PROCESS_RUNNING, 0U);

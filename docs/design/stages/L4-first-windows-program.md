@@ -665,7 +665,7 @@ Out: a second Windows process, `CreateProcess` from a guest and helper programs 
       - `pp_session_stop` also waits, within its bounded wait, for a launch that is still inside the fork, whose hold of the process-exited event round 2 added, and `pp_shutdown` answers `PP_E_BUSY` until the launch returns, so that both events still arrive (R39C2H-2, `3f69ac5`);
       - a start that the fork reports after the launch's wait, and that fails the launch check, has the report itself log the error, naming the signal, and ask the fork to terminate the process with exit code 1. The report blocks SIGUSR2 while it holds the session's mutex, posts and asks (R39C2HV-1, `73b3ce0`, and two findings of clang-tidy in `eb8f584`);
       - the fake fork's modes `launch_hold_reported` and `late_sigsegv`, the cases `shutdown_refused_while_a_launch_runs`, `stop_waits_for_a_launch_in_the_runtime` and `late_start_check_ends_the_process`, and a check in both launch-check cases that the report logs no error of its own while a launch waits;
-      - the host's documents (`0829452`): the example of the 100 ms exception (R39C2HV-2), and the stop's wait, `pp_shutdown`'s refusal and the late start in native-host.md, signals.md and the READMEs.
+      - the host's documents (`0829452` and this entry's commit): the example of the 100 ms exception (R39C2HV-2), and the stop's wait, `pp_shutdown`'s refusal and the late start in native-host.md, signals.md, the READMEs and `NativeHost.Shutdown`'s documentation.
     - The documents (`9035350` and this entry's commit):
       - the reasons of "The bridge's log" in [single-process-wine.md](../single-process-wine.md) section 7 (R39C2H-1, R39C2F-2);
       - the time range in runtime-macos-harness.md section 9 (R39C2R-2, R39C2F-3);

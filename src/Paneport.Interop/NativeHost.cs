@@ -80,7 +80,7 @@ public static unsafe class NativeHost
     /// <summary>
     /// Stops the host (<c>pp_shutdown</c>). Once it returns, no handler runs again. Main thread only.
     /// </summary>
-    /// <exception cref="HostException">The host is not running, or this is not the main thread, or a Wine session is starting, running or stopping (<see cref="HostStatus.Busy"/>): stop it first.</exception>
+    /// <exception cref="HostException">The host is not running, or this is not the main thread, or a Wine session is starting, running or stopping, or a process launch is still inside the Wine runtime (<see cref="HostStatus.Busy"/>): stop the session first and let the launch return.</exception>
     public static void Shutdown()
     {
         HostCalls.Check(NativeMethods.Shutdown());

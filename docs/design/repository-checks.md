@@ -320,10 +320,13 @@ Each check is shown to fail once, on a draft pull request from a scratch branch 
 | An unsigned JSON Web Token with `"alg":"none"` and a made-up subject, a format that gitleaks' default rules detect | gitleaks |
 | A misformatted line in a `.cs` file | Format check in `dotnet` |
 | A reflection call in Paneport.Core that the trimming analyzers reject | Build in `dotnet` |
+| A changed comment in `src/native/include/paneport/wine_bridge.h`, with `bridge_sha256` in `eng/mac/build-wine.sh` left as it was | Compute the cache keys, in `runtime`, before any restore |
 
 A run passes when each planted change fails its step and that step's output names the file. The planted build error also fails the test step and the trimmed publish, which need the build. The forbidden-file rule is checked by its self-test only. The pull request of the stage links the run.
 
 The rechecks of the online lychee run were planted on 2026-11-23, on a scratch branch that ran only the `checks` job and was then deleted. It added a missing relative file and a missing github.com `blob` page to `.github/workflows/README.md`. In run 45093191669, the first lychee run also met 503s from github.com for five other `blob` pages; the recheck 30 seconds later passed those five and failed only the two planted links, and the second recheck, 60 seconds after that, failed the same two, so the step failed with exit code 2 after 104 seconds. Each recheck took half a second.
+
+The bridge check of the `runtime` job was planted on 2026-11-26, from draft pull request [#48](https://github.com/recelilious/Paneport/pull/48), on a scratch branch whose `ci.yml` kept only that job, up to the step that computes the cache keys, and which was then deleted. In run [45788528217](https://github.com/recelilious/Paneport/actions/runs/45788528217), that step failed with an error that named `wine_bridge.h` and its new SHA-256, after the steps before it had passed and before anything was restored; the job took 13 seconds.
 
 The `runtime` job plants its own failures on every run as well: after the cases, it runs the two planted cases of `tests/runtime/planted`, each with one wrong expectation, and passes only if that run fails and prints exactly their two expected lines (section 6).
 

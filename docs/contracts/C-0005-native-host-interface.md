@@ -77,6 +77,14 @@ Rules for these groups:
 - A test in `tests/native` compiles every public header as C17 and as C++20.
 - In test builds the host exports a table of struct sizes and member offsets. `tests/Paneport.Interop.Tests` compares it with the C# definitions in the macOS CI job (C-0011 section 4) and on the device.
 
+## Proposed changes for 1.1
+
+**Not yet accepted.** Version 1.0 above stays binding until recelilious approves these changes, which are accepted together with C-0010 1.3. They come from stage M2.4 and from recelilious's decision of 2026-11-26. recelilious was asked how to schedule a record of managed exceptions that holds only the exception's type and method names, never its message. recelilious chose to make it a stage of its own: it is added to the plan after the pull requests then open, its contract changes are drafted first for approval, and then it is implemented. The review of #42 had found that an unhandled .NET exception ends the app with no record of the exception. The host's crash record of the abort that follows says only "A fault that the runtime did not handle.", so on Diagnostics a managed exception looks like a native fault. Section 2 describes the host's crash record and does not name a managed one, so the managed record needs this change before it is built. The host's interface does not change, because managed code writes the managed record; `docs/design/managed-exception-record.md` holds its design.
+
+1. **Section 2, the paragraph on events.** After "The host writes it to a crash record in `Library/Caches/Paneport/`, and the app reads that record on its next launch.", add: "An unhandled .NET exception ends the app as well. Before the app ends, Paneport's managed code writes a managed exception record of its own in the same folder, apart from the host's crash record, so that a record that the host writes afterwards never replaces it. The app reads both records on its next launch and shows them together. C-0010 section 2 fixes what the managed record may hold."
+
+2. **Change log.** On acceptance, add a row for 1.1, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0010 1.3. Comes from stage M2.4 and from recelilious's decision of 2026-11-26 that the managed exception record is a stage of its own. Section 2 says that an unhandled .NET exception leaves a managed exception record of its own beside the host's crash record, and that the app reads both on its next launch. The host's interface does not change."
+
 ## Change log
 
 | Version | Date | Notes |

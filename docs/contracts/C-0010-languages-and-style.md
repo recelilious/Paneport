@@ -96,6 +96,25 @@ SPDX-License-Identifier: MIT
 - C# files, including file-based tools, use `PascalCase` names. C, C++ and Objective-C files use `snake_case`. Bash scripts and new documentation files use `kebab-case`.
 - Exceptions: conventional files keep their usual names (`README.md`, `CONTRIBUTING.md`, `CLAUDE.md`, `THIRD_PARTY_NOTICES.md`, license files); contracts are named `C-NNNN-<title>.md`; a Chinese copy adds the `_zh_CN` suffix (C-0002 section 7); and the research notes already published in `docs/research/` keep their names.
 
+## Proposed changes for 1.3
+
+**Not yet accepted.** Version 1.2 above stays binding until recelilious approves these changes, which are accepted together with C-0005 1.1. They come from stage M2.4 and from recelilious's decision of 2026-11-26, which the proposed changes for C-0005 1.1 describe. The question that recelilious answered described a record that holds only the exception's type and method names, never its message.
+
+Two things are missing today:
+
+- Section 2 says that no crash record holds personal data, but not what the managed record may hold.
+- Nothing in this contract keeps code from going on after an unhandled exception.
+
+The review of #42 showed, on Avalonia 12.1.4, why the second matters. After a layout exception that a handler marked as handled, queued layout stops, and with the shell's single top level the screen freezes. After a render exception that a handler marked as handled, nothing renders again.
+
+The second of the new items also says which exceptions are unhandled. A faulted task, and a timer tick whose exception the dispatcher keeps, are not, and the app goes on after them today.
+
+1. **Section 2, after the item on managed logging.** After "Managed logging goes through a logging interface defined in Paneport.Core. No log message, metric or crash record contains a password, token or other personal data.", add two items:
+   - "The managed exception record of C-0005 section 2 holds the exception's type, and the type and method names of its stack frames, and the same for its inner exceptions. It also holds when and where the exception went unhandled, and the build. It never holds an exception's message or data, a file name, a line number or an argument value, because those can hold paths, account names or other personal data. A file name and a line number here mean the source-file information that debug symbols give for a frame."
+   - "An unhandled exception is one that leaves a dispatcher operation, a callback into native code, or a thread, with nothing catching it. A faulted task is not one, and neither is a timer tick whose exception the dispatcher keeps. An unhandled exception ends the app. Code that observes one, such as the code that writes the managed exception record, never marks it as handled and never lets the app go on after it, because Avalonia's layout and rendering do not recover from one."
+
+2. **Change log.** On acceptance, add a row for 1.3, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0005 1.1. Comes from stage M2.4 and from recelilious's decision of 2026-11-26 that the managed exception record is a stage of its own. Section 2 says what that record may hold: the type and method names of the exception and of its frames, but never its message. It also says what an unhandled exception is, and that nothing goes on after one."
+
 ## Change log
 
 | Version | Date | Notes |

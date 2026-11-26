@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.4 |
-| Date | 2026-11-25 |
+| Version | 1.5 |
+| Date | 2026-11-26 |
 | Owner | recelilious |
 
 This contract defines how Paneport is tested, which tools check it, how changes are reviewed, and what continuous integration runs.
@@ -90,19 +90,9 @@ These are registered in C-0003 section 6 (version 1.1), together with CMake, Mes
 | lychee | MIT OR Apache-2.0 | Link checks, CI only |
 | clang-format, clang-tidy | Apache-2.0 WITH LLVM-exception | Native style and analysis, CI only |
 
-Registered as under review, and not used until recelilious decides:
-
-- **JsonSchema.Net.** The source is MIT, but its NuGet packages ship under the json-everything Open Source Maintenance Fee agreement. If that is not acceptable, the compatibility check uses a validator whose package is under an allowed license.
+The compatibility check of section 1 uses no schema library. Its validator is our own, in `tools/CheckCompat.cs`: it implements the JSON Schema keywords (draft 2020-12) that the schemas in `compat/schema/` use, and it refuses a schema with any other keyword (decision D8 of 2026-11-23). JsonSchema.Net, whose NuGet packages ship under the json-everything Open Source Maintenance Fee agreement, is not used.
 
 Not allowed: FluentAssertions 8 and later. They are under Xceed's proprietary Community License, which is free only for non-commercial use (it counts open-source development as non-commercial) and needs a paid license for any commercial use. That makes it a non-commercial-only license, which C-0003 section 5 forbids.
-
-## Proposed changes for 1.5
-
-**Not yet accepted.** Version 1.4 above stays binding until recelilious approves these changes, which are accepted together with C-0003 1.10 and C-0004 1.3. They come from stage M8.3 and from recelilious's decision D8 of 2026-11-23: asked "For D8, use our own small JSON Schema validator instead of JsonSchema.Net?", recelilious answered "Use our own".
-
-1. **Section 5, after the table.** Replace the paragraph "Registered as under review, and not used until recelilious decides:" and its item on JsonSchema.Net with: "The compatibility check of section 1 uses no schema library. Its validator is our own, in `tools/CheckCompat.cs`: it implements the JSON Schema keywords (draft 2020-12) that the schemas in `compat/schema/` use, and it refuses a schema with any other keyword (decision D8 of 2026-11-23). JsonSchema.Net, whose NuGet packages ship under the json-everything Open Source Maintenance Fee agreement, is not used."
-
-2. **Change log.** On acceptance, add a row for 1.5, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0003 1.10 and C-0004 1.3. Comes from stage M8.3 and from recelilious's decision D8 of 2026-11-23 that the compatibility check validates with a small JSON Schema validator of our own instead of JsonSchema.Net. Section 5 says so in place of the paragraph that registered JsonSchema.Net as under review."
 
 ## Change log
 
@@ -114,3 +104,4 @@ Not allowed: FluentAssertions 8 and later. They are under Xceed's proprietary Co
 | 1.2 | 2026-11-17 | Accepted by recelilious. Comes from the review of stage M1.3 after its merge. Section 4 narrows the scan of the `ios` job until M9.1 to what it looks for now: provisioning profiles, and team identifiers and application-identifier prefixes in property lists and code signatures, with no upload on a finding. From M9.1 on, the job runs the whole scan of C-0009 section 6 on both flavors of the app, with the same allow list as releases. Section 4 also records decision D7: the `ios` job runs for every pull request and every push to `main`. |
 | 1.3 | 2026-11-17 | Accepted by recelilious. Comes from stage M4.2, which builds the Wine and FEX forks for arm64 macOS and runs our own Win32 test programs on them through a harness, the way the Medium stages from M4.2 to M8.1 are verified by script. Section 1 adds the runtime tests, and names the parts of their harness among the native unit tests, so that the harness's own unit tests run in the `native` job. Section 4 adds the `runtime` job, which restores the build tools and each fork's build from caches whose keys name what shapes them, saves each build as soon as it is built, builds and analyzes the Win32 test programs, and runs the harness's cases and its planted cases. It runs for every pull request and every push to `main` (plan decision D14), and section 3 adds it to the jobs that a merge needs. |
 | 1.4 | 2026-11-25 | Accepted by recelilious. Comes from stage M4.5 and from recelilious's answer of 2026-11-25 to the questions of #38, which accepted a CI step for the FEX fork's test of its decoder of the guest loads of the shared user data. Section 1 adds the fork unit tests, of which that test is the first, and section 4 has the `runtime` job run them. |
+| 1.5 | 2026-11-26 | Accepted by recelilious, together with C-0003 1.10 and C-0004 1.3. Comes from stage M8.3 and from recelilious's decision D8 of 2026-11-23 that the compatibility check validates with a small JSON Schema validator of our own instead of JsonSchema.Net. Section 5 says so in place of the paragraph that registered JsonSchema.Net as under review. |

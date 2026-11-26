@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.9 |
-| Date | 2026-11-23 |
+| Version | 1.10 |
+| Date | 2026-11-26 |
 | Owner | recelilious |
 
 These are engineering rules for managing licenses, not legal advice. Before a formal public release, have a professional review them if possible. That review must cover the provenance of the AI-written code in the forks (section 10).
@@ -110,7 +110,6 @@ Checked on 2026-10-28, on 2026-10-29 for the rows that version 1.2 added, on 202
 | Microsoft.Testing.Platform | Runs the xunit.v3 tests under `dotnet test`, with its MSBuild, report and telemetry extensions; not shipped | MIT | Allowed |
 | Application Insights SDK (Microsoft.ApplicationInsights) | Sends the test platform's telemetry; not shipped; CI turns it off | MIT | Allowed |
 | CommunityToolkit.Mvvm | MVVM source generators | MIT | Allowed |
-| JsonSchema.Net | Schema validation, CI only | MIT source; NuGet packages under the json-everything Open Source Maintenance Fee agreement | Under review; not used until recelilious decides |
 | llvm-mingw | Windows-side toolchain | ISC for its build scripts and wrappers. The toolchain it assembles is LLVM, under Apache-2.0 WITH LLVM-exception, with mingw-w64's headers and tools; the runtime libraries it links into binaries have their own rows. | Tool |
 | CMake | Native build configuration | BSD-3-Clause | Tool |
 | Meson, Ninja | Build systems the forks need | Apache-2.0 | Tool |
@@ -257,14 +256,6 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 - LGPL-2.1, whose section 0 defines a library's complete source: <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html>
 - SteamKit2's NetHook2 headers at 4.0.0-Beta.2: <https://github.com/SteamRE/SteamKit/tree/4.0.0-Beta.2/Resources/NetHook2/NetHook2/steam>
 
-## Proposed changes for 1.10
-
-**Not yet accepted.** Version 1.9 above stays binding until recelilious approves these changes, which are accepted together with C-0004 1.3 and C-0011 1.5. They come from stage M8.3 and from recelilious's decision D8 of 2026-11-23, in the words "Use our own", that the compatibility check validates with a small JSON Schema validator of our own instead of JsonSchema.Net (C-0011 1.5, section 5).
-
-1. **Section 6, the register.** Remove the row "| JsonSchema.Net | Schema validation, CI only | MIT source; NuGet packages under the json-everything Open Source Maintenance Fee agreement | Under review; not used until recelilious decides |". Paneport does not use the package. The validator is Paneport's own code in `tools/CheckCompat.cs`, under MIT (section 1), so it needs no row.
-
-2. **Change log.** On acceptance, add a row for 1.10, dated the day of acceptance, with the notes "Accepted by recelilious, together with C-0004 1.3 and C-0011 1.5. Comes from stage M8.3 and from recelilious's decision D8 of 2026-11-23 that the compatibility check validates with a small JSON Schema validator of our own. Section 6 drops the row of JsonSchema.Net, which was under review for the check and is not used."
-
 ## Change log
 
 | Version | Date | Notes |
@@ -280,3 +271,4 @@ If an explicit patent grant becomes necessary, our own code can move to `MIT OR 
 | 1.7 | 2026-11-21 | Accepted by recelilious. Comes from stage M2.3, which builds the Steam service on SteamKit2, and from recelilious's decision D13 of 2026-11-21 on how the sign-in QR code is drawn. Section 6 registers ZstdSharp (ZstdSharp.Port), whose ported Zstandard code is used under BSD-3-Clause with Zstandard's notice kept, and the QR code generator Net.Codecrete.QrCodeGenerator, which keeps Project Nayuki's notice beside its own; the row of protobuf-net names protobuf-net.Core and the build-time code generator and analyzers of its package, and the row of SteamKit2 records the part of the LZMA SDK that it carries, which is in the public domain. Section 12 adds the sources of these licenses. |
 | 1.8 | 2026-11-23 | Accepted by recelilious, together with C-0009 1.2. Comes from stage M2.3 and from recelilious's decision of 2026-11-22 on how the app offers the source of SteamKit2. Section 3 has each release and the public artifacts of the `ios` CI job carry the exact corresponding source of every LGPL component that is neither this repository nor a fork, today SteamKit2: the library's complete source as LGPL-2.1 section 0 defines it, without the upstream's other programs, samples and tests. Section 12 adds two sources: the text of LGPL-2.1 and the headers of SteamKit2's NetHook2 tool. |
 | 1.9 | 2026-11-23 | Accepted by recelilious, together with C-0004 1.2, C-0006 1.1, C-0009 1.3 and C-0010 1.2. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 9 says that Paneport names StikDebug's script in the URL, which links, embeds and copies nothing. |
+| 1.10 | 2026-11-26 | Accepted by recelilious, together with C-0004 1.3 and C-0011 1.5. Comes from stage M8.3 and from recelilious's decision D8 of 2026-11-23 that the compatibility check validates with a small JSON Schema validator of our own. Section 6 drops the row of JsonSchema.Net, which was under review for the check and is not used. |

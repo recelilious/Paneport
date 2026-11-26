@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.1 |
-| Date | 2026-11-01 |
+| Version | 1.2 |
+| Date | 2026-11-26 |
 | Owner | recelilious |
 
 This contract defines how Paneport signs in to Steam, shows the user's library, downloads and updates games and launches them, and where the compliance boundary lies. The research behind it is in [steam_integration.md](../research/steam_integration.md) and [steam_launch_single_process.md](../research/steam_launch_single_process.md).
@@ -34,7 +34,7 @@ This contract defines how Paneport signs in to Steam, shows the user's library, 
 - **Default:** account name and password, confirmed by approving the sign-in in the Steam mobile app, which works on the same phone. Entering a Steam Guard code from the authenticator or from email is the fallback.
 - **QR code** sign-in is offered for users whose Steam mobile app runs on another device, since a phone cannot scan its own screen.
 - Sign-in requests a refresh token for the platform type that Valve's client accepts, so the Dock host can use the same token.
-- The refresh token is the only secret kept, in the keychain (C-0004 section 4). Passwords are never stored.
+- The refresh token is the only secret kept, in the keychain (C-0004 section 4). Passwords are never stored. The keychain also keeps a random identity of the installation, from which the machine identity and the login ID that each logon sends to Steam are derived. It is no sign-in value and holds no personal data: it comes from a random number generator, never from the device. Signing out keeps it, so that Steam sees the same device at the next sign-in. Deleting the app does not necessarily remove it, since iOS may keep an app's keychain items after the app is deleted.
 - The Dock host receives the token from the native host in memory, through `pp_steam_set_token` and the Wine bridge (C-0005). Paneport's own code, including the Dock host, never writes the token to the Wine prefix or any other file.
 - Valve's client may cache its own login state in its folder inside the prefix. Paneport deletes that state at every app launch before any session starts, when a Dock session ends, and when the user signs out. The Dock host design document lists those files, and the phase 4 gate confirms the list (C-0012).
 - That cache is a sign-in token outside the keychain. It is the bounded exception that C-0001 section 7 item 3 records.
@@ -107,3 +107,4 @@ recelilious accepted the first two tiers below on 2026-10-28. This section recor
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious |
 | 1.1 | 2026-11-01 | Accepted by recelilious. Section 5: a value set in the reviewed repository entry wins over the computed one only while the device runs the program that the entry was reviewed for, together with C-0008 1.1, from stage M6.4. |
+| 1.2 | 2026-11-26 | Accepted by recelilious. Comes from stage M2.3 and from recelilious's decision of 2026-11-23. Section 3: the keychain also keeps a random identity of the installation, which is no sign-in value, holds no personal data and survives sign-out. |

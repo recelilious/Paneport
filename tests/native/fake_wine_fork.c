@@ -502,9 +502,12 @@ FAKE_EXPORT int fake_fork_reached_gate(void) {
             break;
         }
     }
-    const bool reached = s_fake.at_gate;
+    int reached = 0;
+    if (s_fake.at_gate) {
+        reached = 1;
+    }
     (void)pthread_mutex_unlock(&s_fake.mutex);
-    return reached ? 1 : 0;
+    return reached;
 }
 
 FAKE_EXPORT int fake_fork_open_gate(void) {

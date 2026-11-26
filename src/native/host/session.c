@@ -407,7 +407,9 @@ static void bridge_process_started(uint64_t process) {
             s_session.failure = PP_E_SYSTEM;
             s_session.process.start_check_failed = true;
             s_session.process.replaced_signal = replaced;
-            end_here = !s_session.process.start_awaited;
+            if (!s_session.process.start_awaited) {
+                end_here = true;
+            }
         }
         s_session.process.state = PP_PROCESS_RUNNING;
         s_session.process.started = true;

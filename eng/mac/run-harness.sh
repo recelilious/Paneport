@@ -191,8 +191,15 @@ if [ "$mode" = single ]; then
     # Single mode runs no wineboot and no wineserver of its own. The fork publishes the drive
     # letters itself, C: from dosdevices/c:, and no drive maps the host's root (S4.3.7); a
     # .update-timestamp that says disable keeps any later wineboot from updating the prefix.
+    # Every run copies the template, so the scrub is checked, not assumed.
     rm -f "$template/dosdevices/z:"
     printf 'disable\n' > "$template/.update-timestamp"
+    if [ -e "$template/dosdevices/z:" ] || [ -L "$template/dosdevices/z:" ]; then
+        fail "the template prefix still has dosdevices/z:, which maps the host's root."
+    fi
+    if [ "$(cat "$template/.update-timestamp")" != disable ]; then
+        fail "the template prefix's .update-timestamp does not say disable."
+    fi
 fi
 say "template prefix ready in $(($(date +%s) - started)) s"
 

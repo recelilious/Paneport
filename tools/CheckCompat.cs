@@ -98,8 +98,9 @@ internal static class JsonPointer
 // integer is written without a fraction or an exponent, a number is finite, a number above an exclusive minimum
 // is above it also as the double that the reader reads, a number at the top of a const or an enum matches it
 // only as the same text, and format date is asserted. Numbers nested in a list or an object of a const or an
-// enum compare by value, as JSON Schema compares them; and below not, where a match fails the value, comparing
-// numbers as text is looser than JSON Schema. No schema has a number in either place.
+// enum compare by value, as JSON Schema compares them. Below not, each of these stricter readings is looser than
+// JSON Schema, and in an if condition or a oneOf branch, each can go either way. No schema has one in those
+// places, which the self-test checks.
 internal sealed class SchemaValidator
 {
     private const string DefinitionPrefix = "#/$defs/";
@@ -185,11 +186,12 @@ internal sealed class SchemaValidator
         }
     }
 
-    // Half of a surrogate pair in a member name or a text of a schema, found as JsonText finds it in the data.
+    // Half of a surrogate pair in a member name or a text of a schema, found as JsonText finds it in the data. The
+    // refusal names its place in full, since a name of a schema is our own.
     private static InvalidDataException? HalfPairIn(JsonElement root, string name)
     {
         var found = new List<Problem>();
-        JsonText.Scan(root, "", name, found);
+        JsonText.Scan(root, "", name, found, JsonPointer.Escape);
         return found is [var half, ..]
             ? new InvalidDataException($"{name}: {(half.Pointer.Length == 0 ? "/" : half.Pointer)}: {half.Detail}.")
             : null;
@@ -359,7 +361,8 @@ internal sealed class SchemaValidator
     // the check refuses it.
     private void CheckReferences()
     {
-        if (!_root.TryGetProperty("$defs", out var definitions))
+        // A schema of true or false refers to nothing.
+        if (_root.ValueKind != JsonValueKind.Object || !_root.TryGetProperty("$defs", out var definitions))
         {
             return;
         }
@@ -466,11 +469,12 @@ internal sealed class SchemaValidator
     }
 
     // Whether the instance matches the schema, for the subschemas of anyOf, oneOf, not and if, whose own
-    // problems are never reported.
-    private bool Passes(JsonElement schema, JsonElement instance)
+    // problems are never reported. They are found at the value's own pointer and the subschema's location, so
+    // that a pattern that times out there names its place.
+    private bool Passes(JsonElement schema, JsonElement instance, string pointer, string location)
     {
         var problems = new List<Problem>();
-        Validate(schema, instance, "", "", "", problems);
+        Validate(schema, instance, pointer, location, "", problems);
         return problems.Count == 0;
     }
 
@@ -584,24 +588,13 @@ internal sealed class SchemaValidator
         }
         if (schema.TryGetProperty("uniqueItems", out var unique) && unique.ValueKind == JsonValueKind.True)
         {
-            // Texts, which every list of unique items in the schemas holds, are compared through a set, and so are
-            // numbers, by their exact value, so that 1, 1.0 and 1e0 meet as JSON Schema has them meet, and true,
-            // false and null, by their kind. Only an object or a list is compared with each earlier item, so that a
-            // long list of other items takes no quadratic time.
-            var texts = new HashSet<string>(StringComparer.Ordinal);
-            var numbers = new HashSet<ExactNumber>();
-            var kinds = new HashSet<JsonValueKind>();
+            // Every item goes through one set of keys, which two items share where JSON Schema counts them equal,
+            // so that 1, 1.0 and 1e0 meet, and so do two objects of the same members in another order. A long list
+            // takes no quadratic time.
+            var keys = new HashSet<string>(StringComparer.Ordinal);
             for (var index = 0; index < items.Count; index++)
             {
-                var item = items[index];
-                var repeats = item.ValueKind switch
-                {
-                    JsonValueKind.String => !texts.Add(item.GetString()!),
-                    JsonValueKind.Number => !numbers.Add(ExactNumber.Parse(item.GetRawText())),
-                    JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null => !kinds.Add(item.ValueKind),
-                    _ => items.Take(index).Any(earlier => JsonElement.DeepEquals(earlier, item)),
-                };
-                if (repeats)
+                if (!keys.Add(ValueKey.Of(items[index])))
                 {
                     problems.Add(new Problem(
                         file, $"{pointer}/{index}", "uniqueItems", "the item repeats an earlier one")
@@ -687,20 +680,22 @@ internal sealed class SchemaValidator
             }
         }
         if (schema.TryGetProperty("anyOf", out var anyOf)
-            && !anyOf.EnumerateArray().Any(branch => Passes(branch, instance)))
+            && !anyOf.EnumerateArray().Select((branch, index) => (branch, index))
+                .Any(part => Passes(part.branch, instance, pointer, $"{location}/anyOf/{part.index}")))
         {
             add("anyOf", "the value has none of the forms that the schema allows here");
         }
         if (schema.TryGetProperty("oneOf", out var oneOf))
         {
-            var matches = oneOf.EnumerateArray().Count(branch => Passes(branch, instance));
+            var matches = oneOf.EnumerateArray().Select((branch, index) => (branch, index))
+                .Count(part => Passes(part.branch, instance, pointer, $"{location}/oneOf/{part.index}"));
             if (matches != 1)
             {
                 add("oneOf", "the value must have exactly one of the forms that the schema lists here, "
                     + $"and has {matches}");
             }
         }
-        if (schema.TryGetProperty("not", out var not) && Passes(not, instance))
+        if (schema.TryGetProperty("not", out var not) && Passes(not, instance, pointer, $"{location}/not"))
         {
             var why = not.ValueKind == JsonValueKind.Object && not.TryGetProperty("$comment", out var comment)
                 ? $": {comment.GetString()}"
@@ -709,7 +704,7 @@ internal sealed class SchemaValidator
         }
         if (schema.TryGetProperty("if", out var condition))
         {
-            var branch = Passes(condition, instance) ? "then" : "else";
+            var branch = Passes(condition, instance, pointer, $"{location}/if") ? "then" : "else";
             if (schema.TryGetProperty(branch, out var consequence))
             {
                 Validate(consequence, instance, pointer, $"{location}/{branch}", file, problems);
@@ -737,7 +732,7 @@ internal sealed class SchemaValidator
     private static bool Same(JsonElement value, JsonElement expected) =>
         value.ValueKind == JsonValueKind.Number && expected.ValueKind == JsonValueKind.Number
             ? value.GetRawText() == expected.GetRawText()
-            : JsonElement.DeepEquals(value, expected);
+            : ValueKey.Of(value) == ValueKey.Of(expected);
 
     // Numbers compare exactly, from their text, as JSON Schema compares them.
     private static int Compare(JsonElement value, JsonElement limit) =>
@@ -799,14 +794,72 @@ internal readonly record struct ExactNumber(int Sign, string Digits, long Point)
     }
 }
 
+// A JSON value as a text that two values share exactly where JSON Schema counts them equal: a number by its exact
+// value, as ExactNumber reads it; true, false and null by their kind; a text by its UTF-16 units; a list by the
+// keys of its items, in order; and an object by its members, in the ordinal order of their names, each name with
+// its value's key. Each part ends where its length or its kind says, so that no two values run together into one
+// key. uniqueItems puts every item through one set of these keys, and a const or an enum compares by them.
+internal static class ValueKey
+{
+    public static string Of(JsonElement value)
+    {
+        var key = new StringBuilder();
+        Append(value, key);
+        return key.ToString();
+    }
+
+    private static void Append(JsonElement value, StringBuilder key)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var members = value.EnumerateObject().OrderBy(member => member.Name, StringComparer.Ordinal).ToList();
+                key.Append('{').Append(members.Count.ToString(CultureInfo.InvariantCulture)).Append(':');
+                foreach (var member in members)
+                {
+                    AppendText(member.Name, key);
+                    Append(member.Value, key);
+                }
+                break;
+            case JsonValueKind.Array:
+                key.Append('[').Append(value.GetArrayLength().ToString(CultureInfo.InvariantCulture)).Append(':');
+                foreach (var item in value.EnumerateArray())
+                {
+                    Append(item, key);
+                }
+                break;
+            case JsonValueKind.String:
+                AppendText(value.GetString()!, key);
+                break;
+            case JsonValueKind.Number:
+                var number = ExactNumber.Parse(value.GetRawText());
+                key.Append('n').Append(number.Sign switch { < 0 => '-', 0 => '0', _ => '+' }).Append(number.Digits)
+                    .Append('e').Append(number.Point.ToString(CultureInfo.InvariantCulture)).Append(';');
+                break;
+            case JsonValueKind.True:
+                key.Append('t');
+                break;
+            case JsonValueKind.False:
+                key.Append('f');
+                break;
+            default:
+                key.Append('z');
+                break;
+        }
+    }
+
+    private static void AppendText(string text, StringBuilder key) =>
+        key.Append('s').Append(text.Length.ToString(CultureInfo.InvariantCulture)).Append(':').Append(text);
+}
+
 // JSON Schema's patterns are ECMA-262 regular expressions, which .NET reads differently in places: its $ also
 // matches before a final line break, its . also matches a carriage return and the line and paragraph
 // separators, its \s, \d and \w take in other characters than ECMA-262's, and in a class it reads \- as a
 // character that cannot start a range. The translation gives each construct its ECMA-262 meaning, and refuses
 // a construct whose meaning differs and that the schemas do not use: a word boundary, an escape other than
-// those below, a group other than (?:, (?= and (?!, an empty class, a [ inside a class, which .NET reads as a
-// subtraction, \S, \D or \W inside a class, and a range in a class with \s, \d or \w at one end, which .NET
-// reads as a range from or to the shorthand's last character.
+// those below, \- outside a class, a group other than (?:, (?= and (?!, an empty class, a [ inside a class,
+// which .NET reads as a subtraction, \S, \D or \W inside a class, and a range in a class with \s, \d or \w at
+// one end, which .NET reads as a range from or to the shorthand's last character.
 //
 // The meaning is that of ECMA-262 without the u flag, which JSON Schema 2020-12 recommends but does not
 // require: a pattern matches by UTF-16 code units, as .NET and the app's reader match, so . or a negated
@@ -935,12 +988,12 @@ internal static class EcmaPattern
                 index += 4;
                 return $"\\u{pattern.Substring(index - 3, 4)}";
             case '-' when inClass:
-                // A hyphen that may start a range, as in ECMA-262.
+                // A hyphen that may start a range, as in ECMA-262. Outside a class, the u flag refuses \-, so the
+                // translation refuses it there too.
                 return Escape('-');
             case 't' or 'n' or 'r' or 'f' or 'v':
                 return $"\\{letter}";
-            case '^' or '$' or '\\' or '.' or '*' or '+' or '?' or '(' or ')' or '[' or ']' or '{' or '}' or '|' or '/'
-                or '-':
+            case '^' or '$' or '\\' or '.' or '*' or '+' or '?' or '(' or ')' or '[' or ']' or '{' or '}' or '|' or '/':
                 return $"\\{letter}";
             default:
                 throw new ArgumentException($"the escape \\{letter}");
@@ -1007,9 +1060,12 @@ internal static class JsonText
     }
 
     // Finds a member twice, and half of a surrogate pair in a member name or a text, which the loader of the
-    // schemas refuses too.
-    public static void Scan(JsonElement element, string pointer, string file, List<Problem> problems)
+    // schemas refuses too. The pointer's segment of a member name is made as the data's are, unless the caller
+    // gives another rule, as the loader of the schemas does.
+    public static void Scan(
+        JsonElement element, string pointer, string file, List<Problem> problems, Func<string, string>? segment = null)
     {
+        segment ??= JsonPointer.Segment;
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
@@ -1027,19 +1083,19 @@ internal static class JsonText
                             file, pointer, "json", "a member name escapes half of a surrogate pair"));
                         continue;
                     }
-                    var at = $"{pointer}/{JsonPointer.Segment(name)}";
+                    var at = $"{pointer}/{segment(name)}";
                     if (!names.Add(name))
                     {
                         problems.Add(new Problem(file, at, "json", "the member appears twice in one object"));
                     }
-                    Scan(member.Value, at, file, problems);
+                    Scan(member.Value, at, file, problems, segment);
                 }
                 break;
             case JsonValueKind.Array:
                 var index = 0;
                 foreach (var item in element.EnumerateArray())
                 {
-                    Scan(item, $"{pointer}/{index++}", file, problems);
+                    Scan(item, $"{pointer}/{index++}", file, problems, segment);
                 }
                 break;
             case JsonValueKind.String:
@@ -1387,6 +1443,7 @@ internal static class Titles
             ("/drm/steamStub", Member(drm, "steamStub"), [JsonValueKind.True, JsonValueKind.False]),
             ("/drm/ceg", Member(drm, "ceg"), [JsonValueKind.String]),
             ("/launch", Member(root, "launch"), [JsonValueKind.String]),
+            ("/executable", Member(root, "executable"), [JsonValueKind.Object]),
         };
         foreach (var (pointer, value, kinds) in read)
         {
@@ -1787,6 +1844,9 @@ internal static class SelfTest
     private const string Record = "docs/evidence/2026-12-01-l3-jit.md";
     private const string GateRecord = "docs/evidence/2026-12-20-phase-1-gate.md";
 
+    // How a reference names a definition, as the validator reads it.
+    private const string DefinitionPrefix = "#/$defs/";
+
     private const string Entry =
         """{ "iosVersion": "26.1", "iosBuild": "23B85", "deviceModel": "iPhone18,1", "evidence": ["docs/evidence/2026-12-01-l3-jit.md"] }""";
 
@@ -1941,7 +2001,10 @@ internal static class SelfTest
         ("file-name-app-id-with-leading-zero", "file-name"),
         ("launch-direct-with-steam-api", "launch"),
         ("launch-direct-with-steam-stub", "launch"),
+        ("launch-direct-with-ceg-unknown", "launch"),
         ("launch-direct-without-ceg", "launch"),
+        ("launch-direct-without-steam-api", "launch"),
+        ("launch-direct-without-steam-stub", "launch"),
         ("launch-direct-without-executable", "launch"),
         ("launch-dock-where-direct-is-open", "launch"),
         ("launch-local-with-steam-api", "launch"),
@@ -1972,6 +2035,41 @@ internal static class SelfTest
         { "$ref": "#/$defs/node",
           "$defs": { "node": { "properties": { "child": { "$ref": "#/$defs/node" } }, "additionalProperties": false } } }
         """;
+
+    // A text that the pattern ^(a+)+$ cannot finish matching within its timeout of 1 s.
+    private static readonly string s_slowText = $"\"{new string('a', 40)}!\"";
+
+    // Patterns that time out below an applicator: the problem names the value's own pointer and the pattern's
+    // place in the schema, as it does where the pattern is reached directly.
+    private static readonly (string Name, string Schema, string Instance, string Pointer, string Location)[]
+        s_timeoutPlaces =
+    [
+        ("below not, in a property", """{ "properties": { "a": { "not": { "pattern": "^(a+)+$" } } } }""",
+            $$"""{ "a": {{s_slowText}} }""", "/a", "/properties/a/not/pattern"),
+        ("in an item below anyOf", """{ "properties": { "list": { "anyOf": [{ "items": { "pattern": "^(a+)+$" } }] } } }""",
+            $$"""{ "list": ["x", {{s_slowText}}] }""", "/list/1", "/properties/list/anyOf/0/items/pattern"),
+        ("in a oneOf branch", """{ "properties": { "a": { "oneOf": [{ "pattern": "^(a+)+$" }, { "type": "number" }] } } }""",
+            $$"""{ "a": {{s_slowText}} }""", "/a", "/properties/a/oneOf/0/pattern"),
+        ("in an if condition", """{ "properties": { "a": { "if": { "pattern": "^(a+)+$" }, "then": true } } }""",
+            $$"""{ "a": {{s_slowText}} }""", "/a", "/properties/a/if/pattern"),
+    ];
+
+    // Schemas that the validator must load with everything that it implements: a schema of true or false, and
+    // references that reach one definition twice in place without a cycle.
+    private static readonly (string Name, string Schema)[] s_loadedSchemas =
+    [
+        ("a schema of true", "true"),
+        ("a schema of false", "false"),
+        ("two definitions that share a third in place", """
+            { "$defs": { "a": { "$ref": "#/$defs/c" }, "b": { "allOf": [{ "$ref": "#/$defs/c" }] }, "c": { "type": "string" } } }
+            """),
+        ("a diamond of references in place", """
+            { "$ref": "#/$defs/top",
+              "$defs": { "top": { "anyOf": [{ "$ref": "#/$defs/left" }, { "$ref": "#/$defs/right" }] },
+                "left": { "$ref": "#/$defs/bottom" }, "right": { "not": { "$ref": "#/$defs/bottom" } },
+                "bottom": { "minimum": 0 } } }
+            """),
+    ];
 
     // Cases of the validator's keywords: a schema, a value, and the rule it must find, or none.
     private static readonly (string Name, string Schema, string Instance, string? Rule)[] s_keywordCases =
@@ -2023,6 +2121,8 @@ internal static class SelfTest
         ("a leap day", """{ "format": "date" }""", "\"2024-02-29\"", null),
         ("the 30th of February", """{ "format": "date" }""", "\"2026-02-30\"", "format"),
         ("a month of one digit", """{ "format": "date" }""", "\"2026-2-01\"", "format"),
+        ("the year 0000, which the reader rejects", """{ "format": "date" }""", "\"0000-01-01\"", "format"),
+        ("the year 0001", """{ "format": "date" }""", "\"0001-01-01\"", null),
         ("a text before a final line break, against $", """{ "pattern": "^a$" }""", "\"a\\n\"", "pattern"),
         ("a text before a final line break, against $ in an alternative", """{ "pattern": "^a$|^b$" }""",
             "\"b\\n\"", "pattern"),
@@ -2038,13 +2138,35 @@ internal static class SelfTest
         ("an escaped hyphen that starts a range in a class", """{ "pattern": "^[\\--/]$" }""", "\".\"", null),
         ("U+1F600, against . by UTF-16 units", """{ "pattern": "^.$" }""", $"\"{char.ConvertFromUtf32(0x1F600)}\"",
             "pattern"),
-        ("a pattern that does not finish within its timeout", """{ "pattern": "^(a+)+$" }""",
-            $"\"{new string('a', 40)}!\"", "pattern"),
+        ("a pattern that does not finish within its timeout", """{ "pattern": "^(a+)+$" }""", s_slowText, "pattern"),
+        ("a pattern that does not finish within its timeout, below not", """{ "not": { "pattern": "^(a+)+$" } }""",
+            s_slowText, "pattern"),
+        ("an escaped hyphen between two characters of a class, against a letter between them",
+            """{ "pattern": "^[a\\-z]$" }""", "\"m\"", "pattern"),
+        ("an escaped hyphen between two characters of a class, against a hyphen", """{ "pattern": "^[a\\-z]$" }""",
+            "\"-\"", null),
         ("an item twice", """{ "uniqueItems": true }""", "[\"a\", \"a\"]", "uniqueItems"),
         ("a number twice, a text between", """{ "uniqueItems": true }""", "[1, \"1\", 1]", "uniqueItems"),
         ("a number twice, written two ways", """{ "uniqueItems": true }""", "[1, 1.0]", "uniqueItems"),
         ("true twice", """{ "uniqueItems": true }""", "[true, false, true]", "uniqueItems"),
+        ("true and false", """{ "uniqueItems": true }""", "[true, false]", null),
+        ("two numbers of one double", """{ "uniqueItems": true }""", "[0.1, 0.10000000000000001]", null),
+        ("two numbers too large for a double", """{ "uniqueItems": true }""", "[1e400, 1e401]", null),
         ("an object twice", """{ "uniqueItems": true }""", """[{ "a": 1 }, { "a": 1 }]""", "uniqueItems"),
+        ("an object twice, its members in another order", """{ "uniqueItems": true }""",
+            """[{ "a": 1, "b": 2 }, { "b": 2, "a": 1 }]""", "uniqueItems"),
+        ("a list twice, its number written two ways", """{ "uniqueItems": true }""", "[[1], [1.0]]", "uniqueItems"),
+        ("two lists of the same items in another order", """{ "uniqueItems": true }""", "[[1, 2], [2, 1]]", null),
+        ("two objects whose names and texts would run together alike", """{ "uniqueItems": true }""",
+            """[{ "a": "bsc" }, { "asb": "c" }]""", null),
+        ("lists of zero and of a number past every limit", """{ "uniqueItems": true }""",
+            "[[0], [1e99999999999999999999]]", null),
+        ("objects of a number next to zero and of zero", """{ "uniqueItems": true }""",
+            """[{ "a": 1e-99999999999999999999 }, { "a": 0 }]""", null),
+        ("a const list of a number past every limit, against itself", """{ "const": [1e99999999999999999999] }""",
+            "[1e99999999999999999999]", null),
+        ("a const list of a number past every limit, against a list of zero",
+            """{ "const": [1e99999999999999999999] }""", "[0]", "const"),
         ("two texts that differ in letter case", """{ "uniqueItems": true }""", "[\"a\", \"A\"]", null),
         ("a - after \\w at the end of a class", """{ "pattern": "^[\\w-]$" }""", "\"-\"", null),
         ("a missing member", """{ "required": ["a"] }""", "{}", "required"),
@@ -2097,6 +2219,20 @@ internal static class SelfTest
         ("references that lead back through allOf and not",
             """{ "$defs": { "a": { "allOf": [{ "$ref": "#/$defs/b" }] }, "b": { "not": { "$ref": "#/$defs/a" } } } }""",
             "/$defs/b/not/$ref"),
+        ("a reference that leads back through anyOf", """{ "$defs": { "a": { "anyOf": [{ "$ref": "#/$defs/a" }] } } }""",
+            "/$defs/a/anyOf/0/$ref"),
+        ("a reference that leads back through oneOf", """{ "$defs": { "a": { "oneOf": [{ "$ref": "#/$defs/a" }] } } }""",
+            "/$defs/a/oneOf/0/$ref"),
+        ("a reference that leads back through if", """{ "$defs": { "a": { "if": { "$ref": "#/$defs/a" } } } }""",
+            "/$defs/a/if/$ref"),
+        ("a reference that leads back through then",
+            """{ "$defs": { "a": { "if": true, "then": { "$ref": "#/$defs/a" } } } }""", "/$defs/a/then/$ref"),
+        ("a reference that leads back through else",
+            """{ "$defs": { "a": { "if": false, "else": { "$ref": "#/$defs/a" } } } }""", "/$defs/a/else/$ref"),
+        ("half a surrogate pair in a pattern of a definition", $$"""{ "$defs": { "a": { "pattern": "{{HalfPair}}" } } }""",
+            "/$defs/a/pattern"),
+        ("an escaped hyphen outside a class in a pattern, which the u flag refuses", """{ "pattern": "^a\\-b$" }""",
+            "/pattern"),
         ("a named group in a pattern", """{ "pattern": "(?<n>a)" }""", "/pattern"),
         ("an atomic group in a pattern", """{ "pattern": "(?>a)" }""", "/pattern"),
         ("a back-reference in a pattern", """{ "pattern": "(a)\\1" }""", "/pattern"),
@@ -2137,6 +2273,7 @@ internal static class SelfTest
             "the environment allow-list of the title schema",
             "a Steam variable");
         CheckVocabularies(root, schema, tally);
+        CheckStricterReadings(root, tally);
         CheckTargetDevices(root, schema, tally);
         CheckTitleFixtures(root, schema, tally);
         CheckFolderLayout(schema, tally);
@@ -2227,6 +2364,167 @@ internal static class SelfTest
                 $"refused schema, {name}",
                 found ?? "the schema was taken");
         }
+
+        foreach (var (name, schemaText) in s_loadedSchemas)
+        {
+            var refusal = Refusal(() => SchemaValidator.LoadSchema(schemaText, "loaded schema", SchemaValidator.Everything));
+            tally.Expect(refusal is null, $"loaded schema, {name}", refusal ?? "");
+        }
+
+        foreach (var (name, schemaText, instanceText, pointer, location) in s_timeoutPlaces)
+        {
+            using var instance = JsonDocument.Parse(instanceText);
+            var problems = new List<Problem>();
+            SchemaValidator.LoadSchema(schemaText, "keyword case", SchemaValidator.Everything)
+                .Validate(instance.RootElement, "case", problems);
+            tally.Expect(
+                problems is [{ Rule: "pattern", Pointer: var at, Location: var where }] && at == pointer && where == location,
+                $"keyword, a pattern that times out {name}",
+                $"expected pattern at {pointer}, from {location}, found "
+                + string.Join(", ", problems.Select(problem => $"{problem}, from {problem.Location}")));
+        }
+
+        // A problem found before a pattern times out stays, beside the timeout's own.
+        using var earlier = JsonDocument.Parse($$"""{ "a": 1, "b": {{s_slowText}} }""");
+        var kept = new List<Problem>();
+        SchemaValidator.LoadSchema(
+                """{ "properties": { "a": { "type": "string" }, "b": { "pattern": "^(a+)+$" } } }""", "keyword case",
+                SchemaValidator.Everything)
+            .Validate(earlier.RootElement, "case", kept);
+        tally.Expect(
+            kept is [{ Rule: "type", Pointer: "/a" }, { Rule: "pattern", Pointer: "/b" }],
+            "keyword, a problem kept before a pattern that times out",
+            string.Join(", ", kept));
+    }
+
+    // The validator's stricter readings: a type of integer or number, exclusiveMinimum, format, and a number at the
+    // top of a const or an enum (SchemaValidator's comment). Below not, in an if condition and in a oneOf branch, a
+    // match of the subschema fails the value or picks the branch, so there each would be looser than JSON Schema or
+    // could go either way. No schema has one there: both schemas are walked, with the definitions that a reference
+    // there leads to, and so is a copy of each with such readings planted, which the walk must find.
+    private static void CheckStricterReadings(string root, Tally tally)
+    {
+        var schemas = new (string Path, Action<JsonObject> Plant, string[] Planted)[]
+        {
+            (TitleSchema.SchemaPath, schema =>
+            {
+                var definitions = schema["$defs"]!;
+                definitions["report"]!["if"]!["properties"]!["date"] = new JsonObject { ["format"] = "date" };
+                definitions["id"]!["oneOf"]![0]!["properties"] =
+                    new JsonObject { ["steamAppId"] = new JsonObject { ["type"] = "integer" } };
+                definitions["relativePath"]!["allOf"]![1]!["not"]!["$ref"] = "#/$defs/planted";
+                definitions["planted"] = new JsonObject { ["exclusiveMinimum"] = 0 };
+            },
+            [
+                "/$defs/report/if/properties/date/format", "/$defs/id/oneOf/0/properties/steamAppId/type",
+                "/$defs/planted/exclusiveMinimum",
+            ]),
+            (IosBuilds.SchemaPath, schema => schema["not"] = new JsonObject
+            {
+                ["properties"] = new JsonObject
+                {
+                    ["schemaVersion"] = new JsonObject { ["const"] = 2 },
+                    ["builds"] = new JsonObject
+                    {
+                        ["items"] = new JsonObject
+                        {
+                            ["properties"] = new JsonObject
+                            {
+                                ["iosVersion"] = new JsonObject { ["type"] = "number" },
+                                ["deviceModel"] = new JsonObject { ["enum"] = new JsonArray("iPhone18,1", 18) },
+                            },
+                        },
+                    },
+                },
+            },
+            [
+                "/not/properties/schemaVersion/const", "/not/properties/builds/items/properties/iosVersion/type",
+                "/not/properties/builds/items/properties/deviceModel/enum",
+            ]),
+        };
+        foreach (var (path, plant, planted) in schemas)
+        {
+            var text = File.ReadAllText(Path.Combine(root, path));
+            using var schema = JsonDocument.Parse(text);
+            var found = StricterReadingsInBranches(schema.RootElement);
+            tally.Expect(found.Count == 0, $"stricter readings, none in a branch of {path}", string.Join(", ", found));
+            var copy = JsonNode.Parse(text)!.AsObject();
+            plant(copy);
+            using var plantedSchema = JsonDocument.Parse(copy.ToJsonString());
+            var foundPlanted = StricterReadingsInBranches(plantedSchema.RootElement);
+            tally.Expect(
+                foundPlanted.Order(StringComparer.Ordinal).SequenceEqual(planted.Order(StringComparer.Ordinal)),
+                $"stricter readings, those planted in a branch of {path}",
+                $"found {string.Join(", ", foundPlanted)}");
+        }
+    }
+
+    // The places below not, in an if condition and in a oneOf branch where one of the validator's stricter
+    // readings sits, also in a definition that a reference there leads to.
+    private static List<string> StricterReadingsInBranches(JsonElement root)
+    {
+        var found = new List<string>();
+        var followed = new HashSet<string>(StringComparer.Ordinal);
+        void walk(JsonElement schema, string pointer, bool inBranch)
+        {
+            if (schema.ValueKind != JsonValueKind.Object)
+            {
+                return;
+            }
+            foreach (var keyword in schema.EnumerateObject())
+            {
+                var at = $"{pointer}/{JsonPointer.Escape(keyword.Name)}";
+                var value = keyword.Value;
+                var stricter = keyword.Name switch
+                {
+                    "type" => value.ValueKind == JsonValueKind.String && value.GetString() is "integer" or "number",
+                    "exclusiveMinimum" or "format" => true,
+                    "const" => value.ValueKind == JsonValueKind.Number,
+                    "enum" => value.ValueKind == JsonValueKind.Array
+                        && value.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.Number),
+                    _ => false,
+                };
+                if (inBranch && stricter)
+                {
+                    found.Add(at);
+                }
+                switch (keyword.Name)
+                {
+                    case "properties" or "$defs" when value.ValueKind == JsonValueKind.Object:
+                        foreach (var child in value.EnumerateObject())
+                        {
+                            walk(child.Value, $"{at}/{JsonPointer.Escape(child.Name)}", inBranch);
+                        }
+                        break;
+                    case "items" or "additionalProperties" or "then" or "else":
+                        walk(value, at, inBranch);
+                        break;
+                    case "not" or "if":
+                        walk(value, at, true);
+                        break;
+                    case "allOf" or "anyOf" or "oneOf" when value.ValueKind == JsonValueKind.Array:
+                        var index = 0;
+                        foreach (var branch in value.EnumerateArray())
+                        {
+                            walk(branch, $"{at}/{index++}", inBranch || keyword.Name == "oneOf");
+                        }
+                        break;
+                    case "$ref" when inBranch
+                        && value.ValueKind == JsonValueKind.String
+                        && value.GetString()!.StartsWith(DefinitionPrefix, StringComparison.Ordinal):
+                        var name = value.GetString()![DefinitionPrefix.Length..];
+                        if (followed.Add(name)
+                            && root.TryGetProperty("$defs", out var definitions)
+                            && definitions.TryGetProperty(name, out var target))
+                        {
+                            walk(target, $"/$defs/{JsonPointer.Escape(name)}", true);
+                        }
+                        break;
+                }
+            }
+        }
+        walk(root, "", false);
+        return found;
     }
 
     // Each schema uses exactly its vocabulary, and the validator implements exactly what the vocabularies hold,
@@ -2582,18 +2880,28 @@ internal static class SelfTest
     }
 
     // Without the schema's launch conditions and with the types of the members that the rules in code read
-    // dropped, a member of another type fails the rule that reads it, and nothing throws.
+    // dropped, a member of another type fails the rule that reads it, and nothing throws. Each case states only
+    // what makes the member's type the one problem, so that no other rule fails it.
     private static void CheckUntyped(string schemaText, Tally tally)
     {
         var untyped = JsonNode.Parse(schemaText)!.AsObject();
         untyped.Remove("allOf");
-        untyped["$defs"]!["drm"]!["properties"]!["steamApi"] = new JsonObject();
+        var definitions = untyped["$defs"]!;
+        definitions["drm"]!.AsObject().Remove("type");
+        definitions["drm"]!["properties"]!["steamApi"] = new JsonObject();
+        definitions["drm"]!["properties"]!["steamStub"]!.AsObject().Remove("type");
+        definitions["drm"]!["properties"]!["ceg"]!.AsObject().Remove("enum");
+        definitions["executable"]!.AsObject().Remove("type");
         untyped["properties"]!["launch"] = new JsonObject();
         untyped["properties"]!["environment"]!.AsObject().Remove("type");
         untyped["properties"]!["rating"] = new JsonObject();
         untyped["properties"]!["reports"]!.AsObject().Remove("type");
-        untyped["$defs"]!["report"]!["properties"]!["rating"] = new JsonObject();
-        untyped["$defs"]!["report"]!["properties"]!["evidence"] = new JsonObject();
+        foreach (var member in new[] { "date", "device", "paneportVersion" })
+        {
+            definitions["report"]!["properties"]![member]!.AsObject().Remove("type");
+        }
+        definitions["report"]!["properties"]!["rating"] = new JsonObject();
+        definitions["report"]!["properties"]!["evidence"] = new JsonObject();
         var schema = new TitleSchema(untyped.ToJsonString());
 
         const string Title = """
@@ -2603,18 +2911,37 @@ internal static class SelfTest
             "date": "2026-12-01", "device": "iPhone18,1", "iosVersion": "27.2 (24B119)", "paneportVersion": "v0.3.0",
             "gameBuild": "20261201"
             """;
+        const string Evidence = "docs/evidence/2026-12-01-fixture-first-run.md";
+        var dateNumber = Report.Replace("\"date\": \"2026-12-01\"", "\"date\": 5", StringComparison.Ordinal);
+        var deviceNumber = Report.Replace("\"device\": \"iPhone18,1\"", "\"device\": 5", StringComparison.Ordinal);
+        var versionNumber =
+            Report.Replace("\"paneportVersion\": \"v0.3.0\"", "\"paneportVersion\": 5", StringComparison.Ordinal);
         var cases = new (string Name, string Members, string Rule)[]
         {
-            ("a drm marker that is a text",
-                """ "executable": { "path": "Untyped.exe" }, "drm": { "steamApi": "yes", "steamStub": false, "ceg": "no" } """
-                + """, "launch": "direct" """,
+            ("a drm marker that is a text", """ "drm": { "steamApi": "yes" } """, "launch"),
+            ("a drm that is a list", """ "drm": [false] """, "launch"),
+            ("a steamStub that is a text", """ "drm": { "steamStub": "no" } """, "launch"),
+            ("a ceg that is a number", """ "drm": { "ceg": 0 } """, "launch"),
+            ("an executable that is a number",
+                """ "executable": 5, "drm": { "steamApi": false, "steamStub": false, "ceg": "no" }, "launch": "direct" """,
                 "launch"),
             ("a launch that is a number", """ "launch": 5 """, "launch"),
             ("an environment that is a text", """ "environment": "x" """, "allow-list"),
             ("a rating that is a number", """ "rating": 5 """, "rating"),
             ("reports that are a text", """ "reports": "x" """, "rating"),
             ("a report whose rating is a number",
-                $$""" "reports": [{ {{Report}}, "rating": 5, "evidence": "docs/evidence/2026-12-01-fixture-first-run.md" }] """,
+                $$""" "reports": [{ {{Report}}, "rating": 5, "evidence": "{{Evidence}}" }] """,
+                "rating"),
+            // The file states the rating that the report would give if it counted, so that a rule that counted it
+            // would find no problem.
+            ("a report whose date is a number",
+                $$""" "rating": "boots", "reports": [{ {{dateNumber}}, "rating": "boots", "evidence": "{{Evidence}}" }] """,
+                "rating"),
+            ("a report whose device is a number",
+                $$""" "reports": [{ {{deviceNumber}}, "rating": "boots", "evidence": "{{Evidence}}" }] """,
+                "rating"),
+            ("a report whose paneportVersion is a number",
+                $$""" "reports": [{ {{versionNumber}}, "rating": "boots", "evidence": "{{Evidence}}" }] """,
                 "rating"),
             ("a report whose evidence is a number",
                 $$""" "rating": "boots", "reports": [{ {{Report}}, "rating": "boots", "evidence": 5 }] """,
@@ -2629,7 +2956,8 @@ internal static class SelfTest
                     "case", "steam-4100000702.json", Encoding.UTF8.GetBytes($"{{ {Title}, {members} }}"), schema,
                     s_fixtureRecords.Contains);
             }
-            catch (Exception exception) when (exception is InvalidOperationException or KeyNotFoundException)
+            catch (Exception exception) when (
+                exception is InvalidOperationException or KeyNotFoundException or ArgumentException)
             {
                 tally.Expect(false, $"drift, {name}", $"a crash: {exception.Message}");
                 continue;

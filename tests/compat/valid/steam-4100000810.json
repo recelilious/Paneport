@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000810,
+    "slug": "fixture-dock-ceg-yes"
+  },
+  "name": "Fixture Dock Ceg Yes",
+  "drm": {
+    "ceg": "yes"
+  },
+  "launch": "dock"
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000636,
+    "slug": "fixture-direct-ceg-unknown"
+  },
+  "name": "Fixture Direct Ceg Unknown",
+  "executable": {
+    "path": "DirectCegUnknown.exe"
+  },
+  "drm": {
+    "steamApi": false,
+    "steamStub": false,
+    "ceg": "unknown"
+  },
+  "launch": "direct"
+}

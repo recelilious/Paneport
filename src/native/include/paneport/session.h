@@ -23,6 +23,13 @@
  * handle, at the level PP_LOG_INFO, without its line break; a line longer than a log line holds
  * arrives as several. The runtime's own diagnostics arrive with the source
  * PP_LOG_SOURCE_RUNTIME.
+ *
+ * Order: a program's lines arrive before its process-exited event. The host posts the event once
+ * the reader of the output queued the process's last line, and the host event thread delivers
+ * each event after the lines whose posts returned before its post. The one exception is a thread
+ * that stays inside its post of a line for more than 100 ms, such as a guest thread suspended
+ * while it logs through the bridge: the event then goes before that thread's line and every line
+ * queued behind it, the program's among them (docs/design/native-host.md section 5).
  */
 
 #ifndef PP_SESSION_H

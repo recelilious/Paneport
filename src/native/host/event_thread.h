@@ -4,9 +4,12 @@
 // The host event thread: the only thread that runs the .NET side's callbacks (C-0005
 // section 1). Two bounded queues feed it, one for events and one for log lines, so that a
 // flood of log lines never fills the events' queue. Each event arrives after the lines whose
-// posts returned before its post, and lines posted after it do not hold it back.
-// docs/design/native-host.md section 5 describes how it sleeps, wakes, orders lines and events,
-// buffers early log lines and reports overflow.
+// posts returned before its post, and lines posted after it do not hold it back. The one
+// exception is a producer that stays inside its push of a line for more than 100 ms, such as a
+// suspended guest thread: the event then goes before that line and every line behind it, lines
+// that other producers posted before the event among them. docs/design/native-host.md section 5
+// describes how it sleeps, wakes, orders lines and events, buffers early log lines and reports
+// overflow.
 
 #ifndef PANEPORT_HOST_EVENT_THREAD_H
 #define PANEPORT_HOST_EVENT_THREAD_H
@@ -44,9 +47,11 @@ pp_status_t pp_event_thread_start(void);
 void pp_event_thread_stop(void);
 
 // Queues an event, with the log queue's tail, so that the lines whose posts returned before this
-// call arrive before the event. Any thread. Returns PP_OK, PP_E_NOT_INITIALIZED when the thread
-// is not running, or PP_E_BUSY when the queue is full. Not async-signal-safe: waking the thread
-// may take a lock.
+// call arrive before the event. The exception: when a producer stays inside its push of a line
+// below that tail for more than 100 ms, the event goes before that line and every line behind
+// it, also lines whose posts returned before this call. Any thread. Returns PP_OK,
+// PP_E_NOT_INITIALIZED when the thread is not running, or PP_E_BUSY when the queue is full. Not
+// async-signal-safe: waking the thread may take a lock.
 pp_status_t pp_event_thread_post_event(const pp_event_t *event);
 
 // Queues a log line. Any thread. The same results and rule as pp_event_thread_post_event.

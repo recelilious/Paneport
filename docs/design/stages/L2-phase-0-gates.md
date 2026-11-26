@@ -42,14 +42,14 @@ Back to the [development plan](../development-plan.md).
 | S2.3.10 | QR code rendering | Small | Planned | | |
 | S2.3.11 | Secret-free logging | Small | Planned | | |
 | S2.3.12 | Steam service design document | Small | Planned | | |
-| M2.4 | Managed exception record | Medium | In progress | | 2026-11-26 |
+| M2.4 | Managed exception record | Medium | Blocked: the contract drafts, C-0005 1.1 and C-0010 1.3, wait for recelilious's review, and the implementation for the pull requests of M4.3, M8.3 and M2.3 | [#51](https://github.com/recelilious/Paneport/pull/51), [#52](https://github.com/recelilious/Paneport/pull/52) | 2026-11-26 |
 | S2.4.1 | The record, its writer and its store | Small | Planned | | |
 | S2.4.2 | Dispatcher and thread entry points | Small | Planned | | |
 | S2.4.3 | Entry point at the native boundary, and startup | Small | Planned | | |
 | S2.4.4 | The host's record of an abort | Small | Planned | | |
 | S2.4.5 | The record on Diagnostics | Small | Planned | | |
 | S2.4.6 | Developer page of exception probes | Small | Planned | | |
-| S2.4.7 | Managed exception record design document | Small | In progress | | 2026-11-26 |
+| S2.4.7 | Managed exception record design document | Small | Blocked: the design waits for recelilious's answers to the review of the drafts | [#52](https://github.com/recelilious/Paneport/pull/52) | 2026-11-26 |
 
 ## L2 Phase 0 gates
 
@@ -644,4 +644,29 @@ Out:
 
 **Session log.**
 
-- **2026-11-26 (UTC), first session (phase A), in progress.** The stage's plan, its design and its contract drafts. Both dependencies, M2.2 (#27) and M1.3 (#21), are Done.
+- **2026-11-26 (UTC), first session (phase A).** The session wrote the stage's plan, its design and its contract drafts. Both dependencies, M2.2 (#27) and M1.3 (#21), are Done.
+  - **Where the work is.**
+    - This plan change: branch `docs/m2-4-managed-exception-record`, pull request [#51](https://github.com/recelilious/Paneport/pull/51).
+    - The design: `docs/m2-4-managed-exception-design`, pull request [#52](https://github.com/recelilious/Paneport/pull/52).
+    - The contract drafts: the local branch `contract/m2-4-managed-exception-record`, not pushed (C-0012 section 2).
+  - **The parent.** L2, as the coordinating session proposed, because its signal gate must tell a native crash from a managed abort. The session found no stronger reason for another parent: L1's pull request was open with its scope set, and no other Large stage needs the record first.
+  - **The design** is `managed-exception-record.md`, in #52.
+    - Four entry points: Avalonia's dispatcher filter, `MarshalManagedException`, `AppDomain.UnhandledException`, and `UnobservedTaskException` for a log line only.
+    - One recorder, which writes each exception once.
+    - The record's own file, `managed-exception.json`, beside `crash-record.bin`. It was chosen over a host function with a flag, because it survives whatever the signal chain does, and leaves the host's interface and record as they are.
+    - Type and method names only, through `DiagnosticMethodInfo`.
+    - In the host, a message of its own for a SIGABRT, whose record is written first.
+    - At the next launch, the two records pair when the host's comes within 10 seconds after the managed one.
+  - **The contract drafts.**
+    - C-0005 1.1, section 2: an unhandled .NET exception leaves a managed exception record of its own beside the host's crash record, and the app reads both at the next launch.
+    - C-0010 1.3, section 2: what that record may hold, and that nothing goes on after an unhandled exception.
+    - C-0004, C-0011 and C-0012 need no change. The record is a crash record in the folder that C-0004 section 4 names. Its tests fit the levels of C-0011 section 1. The signal gate's criteria stay as they are, and its evidence tells a managed abort from a native crash.
+    - The build keeps the default `MarshalManagedExceptionMode`, so C-0009 section 3 does not change either.
+  - **Checked.**
+    - The personal-data scan found nothing.
+    - Microsoft's guide to exception marshaling confirms the default mode, `ThrowObjectiveCException`, and that a handler may change the mode. This design does not change it.
+    - The rest of the native boundary stays unverified until the device check (the design's section 12).
+  - **Left.**
+    - recelilious reviews the drafts and chooses the layout on Diagnostics (the design's section 9), through the coordinating session.
+    - Then the drafts are accepted and pushed, and the design takes in the answers.
+    - Phase B, the implementation, starts once the pull requests of M4.3, M8.3 and M2.3 have merged.

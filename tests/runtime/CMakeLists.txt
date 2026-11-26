@@ -86,6 +86,17 @@ if(PANEPORT_TESTS)
         round_trip exit_codes texts_stay_on_their_lines failed_write_changes_nothing
         exit_code_compared_whole missing_file_named malformed_files_refused)
 
+    # The parent role of single mode, main.c, end to end: the harness built with a fake of its
+    # child role, which needs neither the host nor Wine and reports the exit code that its
+    # case's argument names, also one above 255, which no Win32 test program can exit with.
+    # test_single_parent runs it by the path that PP_FAKE_CHILD_HARNESS names.
+    add_executable(paneport_harness_fake_child harness/main.c unit/fake_single_child.c)
+    target_link_libraries(paneport_harness_fake_child PRIVATE paneport_harness_core)
+    paneport_harness_test(test_single_parent CASES whole_exit_code_judged)
+    target_compile_definitions(test_single_parent PRIVATE
+        "PP_FAKE_CHILD_HARNESS=\"$<TARGET_FILE:paneport_harness_fake_child>\"")
+    add_dependencies(test_single_parent paneport_harness_fake_child)
+
     # S4.3.9: the trap, in a process that holds no sanitizer runtime, as the harness's does not.
     paneport_harness_test(test_trap LIBRARY paneport_trap CASES
         armed_spawn_is_refused disarmed_spawn_runs armed_exec_is_refused disarmed_exec_forwards

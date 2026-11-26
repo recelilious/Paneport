@@ -14,7 +14,7 @@ The runtime harness: our own C17 code under MIT that runs the Win32 test program
 | [cases/](cases/) | One JSON file per case |
 | [expected/](expected/) | The expected outputs that the cases name |
 | [planted/](planted/) | Two cases that must fail, one with a wrong expected line and one with a wrong exit code |
-| [unit/](unit/) | The CTest cases of the harness's own parts |
+| [unit/](unit/) | The CTest cases of the harness's own parts, and `fake_single_child.c`, a fake of single mode's child role, with which one of them runs the harness's parent role |
 
 ## Cases
 
@@ -61,4 +61,11 @@ It copies the program into the prefix at `C:\paneport-tests` and runs it there w
 
 ## Tests of the harness
 
-The CTest presets `asan-ubsan` and `tsan` of `src/native` build the harness and run the cases of `unit/` with the native host's tests: the case reader, the comparison, the child process with its timeout, the copy and removal of single mode's prefixes, the copy both as a run makes it, cloning each file on macOS, and without clones, as a file system that cannot clone takes it and the runner's APFS never does, and its refusal of a folder that it cannot read and of an entry that is not a folder, a file or a symbolic link, its result file, a check that every case and expected output here parses and names a program and an expected output that exist, with every kind of session case there, and the trap (S4.3.9). The trap and its test are built without the sanitizers, whose runtimes interpose some of the same calls.
+The CTest presets `asan-ubsan` and `tsan` of `src/native` build the harness and run the cases of `unit/` with the native host's tests:
+
+- the case reader, the comparison, and the child process with its timeout;
+- the copy and removal of single mode's prefixes. The copy runs both as a run makes it, cloning each file on macOS, and without clones, as a file system that cannot clone takes it and the runner's APFS never does, and it must refuse a folder that it cannot read and an entry that is not a folder, a file or a symbolic link;
+- single mode's result file;
+- the parent's judgement of a run of single mode, which compares the program's whole exit code, against `fake_single_child.c`, a fake of the child role that reports the exit code that its case's argument names, above 255 too, as no Win32 test program can;
+- a check that every case and expected output here parses and names a program and an expected output that exist, with every kind of session case there;
+- the trap (S4.3.9). The trap and its test are built without the sanitizers, whose runtimes interpose some of the same calls.

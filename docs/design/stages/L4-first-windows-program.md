@@ -13,7 +13,7 @@ Back to the [development plan](../development-plan.md).
 | L4 | First Windows program on the iPhone | Large | Planned | | |
 | M4.1 | Forks, submodules and toolchains | Medium | Done | [#17](https://github.com/recelilious/Paneport/pull/17) | 2026-11-11 |
 | M4.2 | ARM64EC Wine with FEX on macOS | Medium | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
-| M4.3 | Single-process Wine on macOS | Medium | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-25 |
+| M4.3 | Single-process Wine on macOS | Medium | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-26 |
 | M4.4 | Runtime on iOS | Medium | Planned | | |
 | M4.5 | Shared user data for x86-64 guests | Medium | Done | [#38](https://github.com/recelilious/Paneport/pull/38) | 2026-11-24 |
 | S4.0.1 | In-app console and the Run sample program action | Small | Planned | | |
@@ -28,15 +28,15 @@ Back to the [development plan](../development-plan.md).
 | S4.2.4 | Win32 test programs | Small | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
 | S4.2.5 | Harness, runner and expected outputs | Small | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
 | S4.2.6 | Runtime CI job, layout proposal and build caching | Small | Done | [#22](https://github.com/recelilious/Paneport/pull/22) | 2026-11-22 |
-| S4.3.1 | Single-process design document | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-25 |
-| S4.3.2 | wineserver thread and in-process connections | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-25 |
-| S4.3.3 | In-process start of the first process | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-25 |
-| S4.3.4 | Signal integration through the bridge | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-25 |
-| S4.3.5 | Mach thread control in the fork | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-25 |
-| S4.3.6 | Teardown and exit semantics | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-25 |
-| S4.3.7 | Prefix bootstrap and drive letters | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-25 |
-| S4.3.8 | Bridge header and the host session API | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-25 |
-| S4.3.9 | Fork and exec trap | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-25 |
+| S4.3.1 | Single-process design document | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-26 |
+| S4.3.2 | wineserver thread and in-process connections | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-26 |
+| S4.3.3 | In-process start of the first process | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-26 |
+| S4.3.4 | Signal integration through the bridge | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-26 |
+| S4.3.5 | Mach thread control in the fork | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-26 |
+| S4.3.6 | Teardown and exit semantics | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-26 |
+| S4.3.7 | Prefix bootstrap and drive letters | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-26 |
+| S4.3.8 | Bridge header and the host session API | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-26 |
+| S4.3.9 | Fork and exec trap | Small | Done | [#39](https://github.com/recelilious/Paneport/pull/39) | 2026-11-26 |
 | S4.4.1 | iOS cross-build | Small | Planned | | |
 | S4.4.2 | Framework packaging and loader paths | Small | Planned | | |
 | S4.4.3 | FEX pool allocator hook | Small | Planned | | |
@@ -630,6 +630,34 @@ Out: a second Windows process, `CreateProcess` from a guest and helper programs 
   - **Found.** Every `exit` call that single mode reaches could take `paneport_fatal`, because the debug channels read `WINEDEBUG` lazily, after the session's start has set the bridge. Not caught by any case: the bridge's `start_thread` refusing a stopping session, which today's fork never reaches, the 120 s launch timeout, and, in the harness, fts errors that only an allocation failure gives, `O_EXCL` on a name that the copy just made, and the copy's fallback from cloning, which APFS never takes on the runner.
   - **Verification.** Run [45556411980](https://github.com/recelilious/Paneport/actions/runs/45556411980) on `f11badd`, now `cf6a084`, with Wine `7911818` built cold and FEX `ab5a40b`: every job that ran passed, and in single mode all 15 cases passed, M4.5's `shared_data` among them; its `ios` job gave way to a newer push. The pull request records CI on the branch's last commit.
   - **Left.** The coordinator's fix check and the merge. After the merge the coordinator fast-forwards both forks' `paneport/integration`, Wine to `7911818` and FEX to `ab5a40b`, and deletes both `paneport/M4.3` branches ([forks.md](../forks.md) section 4.2).
+- **2026-11-26 (UTC), fix round 2 of #39.** The coordinator's fix check of round 1 (workflow `wf_23f7ad0e-98b`, on `4216893`, now `900a88f`) found every fix holding or holding partly, and sixteen new lows: R39CH-1 to R39CH-5, R39CHV-1, R39CHV-2, R39CR-1, R39CR-2, R39CRV-1, R39CF-1 to R39CF-4, R39CFV-1 and R39CFV-2, with four open questions. The coordinator decided to fix all of them and to answer the questions.
+  - **Done.**
+    - The rebase onto `main` `53c36ae` (#45, #46 with C-0011 1.4, and #47), which met no conflict and keeps #47's step of the FEX fork's unit tests and #45's notes. `481f18f`, which was `f1dd106`, now hedges the x23 cause, and `c1c0445`, which was `e0ffeb9`, names the launch race without a commit ID. The documents cite the new IDs (`ce17173`).
+    - The host, `8ba5998` to `734a259`:
+      - the launch check in the bridge's `process_started`, which records the session's failure before the start is reported, so that a program that ends at once still fails the session (R39CH-1);
+      - a launch that the fork refuses gives its process exit code 1 even when the fork reported an end of its own during the call, since the exit event waits while the launch runs (the check's question 2);
+      - `pp_shutdown` collects a session that ended by itself, as `pp_session_stop` does (question 3);
+      - the woken reader's limit of 64 KiB per stream made exact (R39CHV-1);
+      - a test hook for the launch's wait for the start, and cases for `start_thread` during a stop, the launch's timeout, an event after a line (R39CHV-2), the exact limit and the refused launch;
+      - the order of lines and events past the line wait, in session.h, event_thread.h, event_thread.c and native-host.md (R39CH-2, question 4), the race named in words (R39CH-3), two checks that could not fail removed (R39CH-4), and `NativeHost.Shutdown`'s busy refusal (R39CH-5).
+    - The harness and CI, `e19f945` to `51fa54c`:
+      - every copy case of `test_prefix` also runs through `pp_prefix_copy_without_clones`, so the runner tests the copy of a file's data;
+      - `copy_names_what_it_cannot_read` (R39CRV-1);
+      - `test_single_parent`, which runs `main.c` against a fake of the child role and pins the comparison of the whole exit code end to end;
+      - `run-harness.sh` fails when the template keeps `z:` or lacks `disable` after the scrub;
+      - repository-checks.md's bridge check (R39CR-1), the workflows README (R39CR-2), and the include path that `bridge_sha256` covers.
+    - The check's questions 1 and 2, by reading the Wine fork at `7911818`. No thread ends inside a call of the bridge's `log`, since the fork calls it only where thread control cannot reach the caller. On the fork's failed `pthread_create`, the server reports the process's end itself, with exit code 1 on macOS. No fork commit was needed: Wine stays at `7911818` and FEX at `ab5a40b`.
+    - The planted run of the bridge check, from the scratch draft pull request [#48](https://github.com/recelilious/Paneport/pull/48), closed without merging and its branch deleted: run [45788528217](https://github.com/recelilious/Paneport/actions/runs/45788528217) failed in the step that computes the cache keys, before any restore (repository-checks.md section 9).
+    - The documents (`05d826d` and this entry's commit): [single-process-wine.md](../single-process-wine.md)'s exit calls (R39CF-4), sources (R39CFV-1), case times, bridge's log, launch check, reports, refused launch, `pp_shutdown` and reader's limit; the race's new crash in runtime-macos-harness.md section 11; the counts of native-host.md; and this log (R39CF-2).
+  - **Found.**
+    - The check of the syscall loop, which sets the context back, crashed again. In run [45787039425](https://github.com/recelilious/Paneport/actions/runs/45787039425) on `ce17173`, whose code is that of the runs that passed before it, run 2 of 5 of `threads_multiblock_off` ended the harness child with SIGILL. That is one crash in the 40 runs of single mode with the FEX change, so the change did not remove every cause of M4.2's race, which is still unknown (runtime-macos-harness.md section 11).
+    - Not caught by any case:
+      - fts errors that only an allocation failure gives, and a failing `close`, which need fault injection;
+      - `O_EXCL` and `O_NOFOLLOW` on a name that the copy just made;
+      - the default waits of 120 s and 30 s, which the cases shorten through their hooks;
+      - the fork's order of its signal setup and its report of the start, which only the fork holds.
+  - **Verification.** The pull request records CI on the branch's last commit. The harness's new cases first passed on macOS in run [45794203211](https://github.com/recelilious/Paneport/actions/runs/45794203211) on `51fa54c`, whose `checks` job failed only on patchew.org's 502.
+  - **Left.** The coordinator's check of round 2 and the merge, then the fast-forwards of both forks' `paneport/integration`, Wine to `7911818` and FEX to `ab5a40b`, and the deletion of both `paneport/M4.3` branches ([forks.md](../forks.md) section 4.2). For M4.4: the race's crash comes about once in 40 runs of the check, so a device run of threads.exe can meet it too.
 
 ## M4.4 Runtime on iOS
 

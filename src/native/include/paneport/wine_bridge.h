@@ -17,6 +17,8 @@
  *
  * Thread rules: every member runs on any thread, but never in a signal handler, except where a
  * member says otherwise. A guest fault handler runs only in a signal handler.
+ *
+ * Planted for the run of the bridge check (repository-checks.md section 9); never merged.
  */
 
 #ifndef PP_WINE_BRIDGE_H

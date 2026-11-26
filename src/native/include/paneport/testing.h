@@ -140,6 +140,24 @@ PP_EXPORT pp_status_t pp_test_post_event(uint32_t kind, int64_t code);
 PP_EXPORT pp_status_t pp_test_log(int32_t level, const char *text);
 
 /**
+ * Logs a line from the calling thread through the host's log pipeline with a source and the
+ * handle of a Windows process, as the reader of a program's output and the runtime queue theirs,
+ * so that a binding test can read the members that version 1.4 appended to pp_log_line_t.
+ * Version 1.4 added it.
+ *
+ * Thread rule: [any]. Memory: the caller keeps ownership of text.
+ *
+ * @param level One of the PP_LOG_ values.
+ * @param source One of the PP_LOG_SOURCE_ values.
+ * @param process The handle of the process that the line names, or 0.
+ * @param text The line, UTF-8 and NUL-terminated; a line too long for the pipeline is cut.
+ * @return PP_OK; PP_E_INVALID_ARGUMENT for NULL, an unknown level or an unknown source;
+ *         PP_E_NOT_INITIALIZED; PP_E_BUSY when the log queue is full, which the queue counts.
+ */
+PP_EXPORT pp_status_t pp_test_log_with_source(int32_t level, uint32_t source, uint64_t process,
+                                              const char *text);
+
+/**
  * Copies a text into host memory, so that a caller can test pp_free().
  *
  * Thread rule: [any]. Memory: the caller frees *copy with pp_free().
@@ -244,6 +262,19 @@ PP_EXPORT pp_status_t pp_test_signal_harness_stop(void);
  * @return PP_OK; PP_E_INVALID_ARGUMENT for NULL or a struct_size below 4.
  */
 PP_EXPORT pp_status_t pp_test_signal_harness_read(pp_test_signal_counters_t *counters);
+
+/**
+ * Sets whether the JIT state counts as ready for pp_session_start (C-0005 section 2) besides the
+ * JIT provider's own state, which the macOS harness needs: there, FEX maps its code with MAP_JIT
+ * and no pool exists. Until it is called, the provider's state alone answers. Version 1.4 added
+ * it.
+ *
+ * Thread rule: [any]. Memory: none.
+ *
+ * @param ready 1 for ready, 0 for not ready.
+ * @return PP_OK; PP_E_INVALID_ARGUMENT for another value.
+ */
+PP_EXPORT pp_status_t pp_test_jit_set_ready(uint8_t ready);
 
 PP_EXTERN_C_END
 

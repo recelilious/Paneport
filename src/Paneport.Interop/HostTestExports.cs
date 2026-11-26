@@ -101,6 +101,21 @@ public static unsafe class HostTestExports
     }
 
     /// <summary>
+    /// Logs a line through the host's log pipeline with a source and a process's handle, as the
+    /// reader of a Windows program's output and the runtime queue theirs, from the calling thread
+    /// (<c>pp_test_log_with_source</c>, version 1.4).
+    /// </summary>
+    /// <param name="level">How important the line is.</param>
+    /// <param name="source">Where the line comes from.</param>
+    /// <param name="process">The handle of the process that the line names, or 0.</param>
+    /// <param name="text">The line; the host cuts a line that is too long.</param>
+    public static void LogWithSource(HostLogLevel level, HostLogSource source, ulong process, string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        HostCalls.Check(NativeMethods.TestLogWithSource((int)level, (uint)source, process, text));
+    }
+
+    /// <summary>
     /// Copies a text into host memory and back, freeing the host's copy with <c>pp_free</c>
     /// (<c>pp_test_duplicate_text</c>).
     /// </summary>
@@ -185,4 +200,12 @@ public static unsafe class HostTestExports
             counters.UnexpectedFaults,
             counters.RuntimeFaults);
     }
+
+    /// <summary>
+    /// Sets whether the JIT state counts as ready for a session to start besides the JIT
+    /// provider's own state, which the macOS harness needs, where no pool exists
+    /// (<c>pp_test_jit_set_ready</c>, version 1.4). Any thread.
+    /// </summary>
+    /// <param name="ready">True for ready.</param>
+    public static void SetJitReady(bool ready) => HostCalls.Check(NativeMethods.TestJitSetReady(ready ? (byte)1 : (byte)0));
 }

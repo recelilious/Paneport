@@ -14,5 +14,6 @@
 #include "paneport/host.h"
 #include "paneport/jit.h"
 #include "paneport/memory.h"
+#include "paneport/session.h"
 
 #endif /* PP_PANEPORT_H */

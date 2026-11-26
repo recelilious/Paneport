@@ -42,11 +42,12 @@
     {
       "name": "macos-harness",
       "displayName": "macOS runtime harness",
-      "description": "paneport_harness of tests/runtime, which eng/mac/run-harness.sh runs.",
+      "description": "paneport_harness of tests/runtime, which eng/mac/run-harness.sh runs, with the host's test build that its single mode links.",
       "inherits": ["paneport-macos"],
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "PANEPORT_HOST_FORM": "static",
+        "PANEPORT_TEST_BUILD": "ON",
         "PANEPORT_HARNESS": "ON"
       }
     },

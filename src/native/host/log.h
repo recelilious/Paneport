@@ -25,6 +25,13 @@ pp_status_t pp_log(int32_t level, const char *format, ...) __attribute__((format
 void pp_log_format(pp_log_entry_t *entry, int32_t level, const char *format, va_list arguments)
     __attribute__((format(printf, 3, 0)));
 
+// Fills a queue entry with a text that is already formatted, such as a line of the runtime or of
+// a Windows program: the level, the PP_LOG_SOURCE_ source, the calling thread and the process's
+// handle, and the first length bytes of text, which need no NUL. A text that does not fit is cut
+// at a character boundary and ends with "...".
+void pp_log_text(pp_log_entry_t *entry, int32_t level, uint32_t source, uint64_t process,
+                 const char *text, size_t length);
+
 // Returns the longest length up to length at which text can be cut without splitting a UTF-8
 // character. Async-signal-safe.
 size_t pp_utf8_cut(const char *text, size_t length);

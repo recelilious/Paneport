@@ -64,6 +64,19 @@ say "Wine $wine_version, commit $(git -C "$source" rev-parse --short=12 HEAD)"
 say "the PE side: $(aarch64-w64-mingw32-clang --version | head -n 1)"
 say "$(bison --version | head -n 1); $(flex --version)"
 
+# The fork's single-process mode includes the bridge header paneport/wine_bridge.h from this
+# repository's src/native/include on its Unix side, which builds with CFLAGS, not with the PE
+# side's CROSSCFLAGS (C-0005 section 3). The header's SHA-256 is written here, so that the
+# runtime job's cache key, which covers this script, follows the header.
+bridge_header="$repo/src/native/include/paneport/wine_bridge.h"
+bridge_sha256=a596fa9b01753dc863e6a847f411957c2a3fba683506b1b431e5416bf8700c52
+[ "$(shasum -a 256 "$bridge_header" | cut -d ' ' -f 1)" = "$bridge_sha256" ] \
+    || fail "src/native/include/paneport/wine_bridge.h has changed: write its new SHA-256 into \
+bridge_sha256 in this script, so that the cache of the Wine build follows it."
+case $repo in
+    *[[:space:]]*) fail "the repository's path holds a space, which Wine's CFLAGS cannot carry." ;;
+esac
+
 rm -rf "$work" "$install"
 mkdir -p "$work"
 cd "$work"
@@ -74,7 +87,7 @@ cd "$work"
 started=$(date +%s)
 say "configuring"
 if ! "$source/configure" --prefix="$install" --enable-archs=arm64ec,aarch64,i386 \
-    --with-mingw=clang --disable-tests \
+    --with-mingw=clang --disable-tests CFLAGS="-g -O2 -I$repo/src/native/include" \
     --without-alsa --without-capi --without-cups --without-dbus --without-ffmpeg \
     --without-fontconfig --without-freetype --without-gettext --without-gettextpo \
     --without-gphoto --without-gnutls --without-gssapi --without-gstreamer --without-hwloc \
@@ -122,6 +135,16 @@ for program in bin/wine lib/wine/aarch64-unix/wine; do
         || fail "the installed $program reports \"$version\", not wine-$wine_version."
     say "$program reports $version"
 done
+
+# S4.3.2: single-process mode loads the wineserver as a library from Wine's bin folder, and
+# finds its entry points by name.
+server_library="$install/bin/wineserver.so"
+[ -f "$server_library" ] || fail "bin/wineserver.so is missing."
+for entry in init run connect stop terminate; do
+    nm -gU "$server_library" | grep -q " ___wine_paneport_server_$entry\$" \
+        || fail "bin/wineserver.so does not export __wine_paneport_server_$entry."
+done
+say "bin/wineserver.so exports the five entry points of single-process mode"
 
 # bin/wine is Wine's launcher, which execs the loader in lib/wine/aarch64-unix as the program's
 # process. macOS kills an arm64 executable whose segments are not aligned to its 16 KiB pages,

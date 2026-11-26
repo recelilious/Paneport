@@ -3,8 +3,13 @@
 
 // The host event thread: the only thread that runs the .NET side's callbacks (C-0005
 // section 1). Two bounded queues feed it, one for events and one for log lines, so that a
-// flood of log lines never pushes out an event. docs/design/native-host.md section 5
-// describes how it sleeps, wakes, buffers early log lines and reports overflow.
+// flood of log lines never fills the events' queue. Each event arrives after the lines whose
+// posts returned before its post, and lines posted after it do not hold it back. The one
+// exception is a producer that stays inside its push of a line for more than 100 ms, such as one
+// that the system preempts there: the event then goes before that line and every line behind it,
+// lines that other producers posted before the event among them. docs/design/native-host.md
+// section 5 describes how it sleeps, wakes, orders lines and events, buffers early log lines and
+// reports overflow.
 
 #ifndef PANEPORT_HOST_EVENT_THREAD_H
 #define PANEPORT_HOST_EVENT_THREAD_H
@@ -23,10 +28,13 @@
 // The size of a log line's text, including its NUL. A longer line is cut (log.c).
 #define PP_LOG_TEXT_SIZE 512U
 
-// A log line as it waits in the queue.
+// A log line as it waits in the queue: its PP_LOG_ level, its PP_LOG_SOURCE_ source, the thread
+// that logged it, and the handle of the Windows process that wrote it, or 0 (paneport/host.h).
 typedef struct pp_log_entry_t {
     int32_t level;
+    uint32_t source;
     uint64_t thread_id;
+    uint64_t process;
     char text[PP_LOG_TEXT_SIZE];
 } pp_log_entry_t;
 
@@ -38,13 +46,22 @@ pp_status_t pp_event_thread_start(void);
 // pp_shutdown.
 void pp_event_thread_stop(void);
 
-// Queues an event. Any thread. Returns PP_OK, PP_E_NOT_INITIALIZED when the thread is not
-// running, or PP_E_BUSY when the queue is full. Not async-signal-safe: waking the thread may
-// take a lock.
+// Queues an event, with the log queue's tail, so that the lines whose posts returned before this
+// call arrive before the event. The exception: when a producer stays inside its push of a line
+// below that tail for more than 100 ms, the event goes before that line and every line behind
+// it, also lines whose posts returned before this call. Any thread. Returns PP_OK,
+// PP_E_NOT_INITIALIZED when the thread is not running, or PP_E_BUSY when the queue is full. Not
+// async-signal-safe: waking the thread may take a lock.
 pp_status_t pp_event_thread_post_event(const pp_event_t *event);
 
 // Queues a log line. Any thread. The same results and rule as pp_event_thread_post_event.
 pp_status_t pp_event_thread_post_log(const pp_log_entry_t *entry);
+
+// Queues a log line as pp_event_thread_post_log does, but waits for room while the queue is
+// full instead of refusing the line, so that a reader of a Windows program's output slows the
+// program down instead of losing lines (guest_output.h). Any thread except the event thread
+// itself. Returns PP_OK or PP_E_NOT_INITIALIZED when the thread does not run or stops.
+pp_status_t pp_event_thread_post_log_waiting(const pp_log_entry_t *entry);
 
 // Replace a callback. Once they return, the previous callback is not running and is never
 // called again. The main thread.
@@ -62,6 +79,11 @@ typedef void (*pp_post_hook_t)(void *argument);
 // Test builds only: makes every later post call hook with argument there, or no hook for NULL,
 // so that a test can hold a post while the host stops (tests/native/test_event_thread.c).
 void pp_event_thread_set_post_hook(pp_post_hook_t hook, void *argument);
+
+// Test builds only: how many times the thread began to wait for a line that a producer claimed
+// below an event's lines_end and had not published yet, which no event needs while no producer
+// is inside a push (tests/native/test_event_thread.c). Any thread.
+uint64_t pp_event_thread_line_waits(void);
 #endif
 
 #endif // PANEPORT_HOST_EVENT_THREAD_H

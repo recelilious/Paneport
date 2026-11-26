@@ -1,0 +1,1 @@
+{"program": "console.exe", "runs": 20, "timeout_seconds": 300, "exit_code": 0, "expected": "console.txt"}

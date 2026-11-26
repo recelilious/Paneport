@@ -268,11 +268,22 @@ jobs:
       # A pin that no fork build uses, such as gitleaks', is in no key, so that moving it
       # rebuilds nothing. A key names its fork's commit in full; the rest is a SHA-256 prefix.
       # The build steps only fetch a fork and call its script, with no option or environment of
-      # their own: every option that shapes a build lives in the keyed scripts.
+      # their own: every option that shapes a build lives in the keyed scripts. Wine's build
+      # also includes src/native/include/paneport/wine_bridge.h, which its key follows through
+      # the header's SHA-256 in build-wine.sh. The script checks it only when it builds, so it is
+      # checked here on every run, before any restore: a stale value would keep the key, and the
+      # job would restore a Wine built against the old header.
       - name: Compute the cache keys
         id: keys
         run: |
           set -o pipefail
+          bridge=$(shasum -a 256 src/native/include/paneport/wine_bridge.h | cut -d ' ' -f 1)
+          if ! grep -qxF "bridge_sha256=$bridge" eng/mac/build-wine.sh; then
+            echo "::error title=Cache keys::src/native/include/paneport/wine_bridge.h has" \
+              "changed: update bridge_sha256 in eng/mac/build-wine.sh to its SHA-256, $bridge," \
+              "so that Wine's cache key follows it." >&2
+            exit 1
+          fi
           pins() {
             for tool in "$@"; do
               printf '%s ' "$tool"
@@ -395,6 +406,13 @@ jobs:
           PATH="$LLVM_MINGW/bin:$PATH" dotnet run tools/CheckToolchain.cs -- --llvm
           PATH="$LLVM_MINGW/bin:$PATH" eng/mac/check-native-style.sh tidy build/win32/x86_64
 
+      # The Wine fork's entry header include/wine/paneport.h, the only header of Wine that the
+      # host includes (C-0005 section 3), at the commit that this repository records for the fork,
+      # for the builds of the host below that do not check out the fork.
+      - name: Fetch the Wine fork's entry header (eng/fetch-wine-header.sh)
+        if: ${{ !cancelled() }}
+        run: eng/fetch-wine-header.sh
+
       - name: Build the harness (CMake preset macos-harness)
         id: harness
         if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
@@ -405,10 +423,10 @@ jobs:
 
       # S4.2.5: every case passes. The runner makes a template prefix with wineboot, runs each
       # case in a fresh harness process with a fresh copy of it, and writes a summary.
-      - name: Run the harness's cases (eng/mac/run-harness.sh --mode multi)
+      - name: Run the harness's cases (eng/mac/run-harness.sh --mode single)
         id: cases
         if: ${{ !cancelled() && (steps.wine-cache.outputs.cache-hit == 'true' || steps.wine.outcome == 'success') && (steps.fex-cache.outputs.cache-hit == 'true' || steps.fex.outcome == 'success') && steps.win32.outcome == 'success' && steps.harness.outcome == 'success' }}
-        run: eng/mac/run-harness.sh --mode multi --no-build
+        run: eng/mac/run-harness.sh --mode single --no-build
 
       # Each run of the runner replaces its logs, so the cases' logs are kept before the next.
       - name: Keep the logs of the cases
@@ -420,13 +438,14 @@ jobs:
           fi
 
       # S4.2.5: each planted case has one wrong expectation, so the run must fail and name both.
-      # The job's summary keeps the table of the real cases only.
+      # The job's summary keeps the table of the real cases only. It runs in the mode of the cases
+      # above, which name it, since the runner's default became single mode in M4.3.
       - name: Run the planted cases, which must fail and be named
         id: planted
         if: ${{ !cancelled() && steps.cases.outcome != 'skipped' }}
         run: |
           status=0
-          output=$(GITHUB_STEP_SUMMARY= eng/mac/run-harness.sh --planted --no-build 2>&1) || status=$?
+          output=$(GITHUB_STEP_SUMMARY= eng/mac/run-harness.sh --planted --mode single --no-build 2>&1) || status=$?
           echo "$output"
           if [ "$status" -eq 0 ]; then
             echo "::error title=Planted cases::The planted cases passed."
@@ -506,6 +525,13 @@ jobs:
           cmake --version | head -n 1
           clang-format --version
           clang-tidy --version
+
+      # The Wine fork's entry header include/wine/paneport.h, the only header of Wine that the
+      # host includes (C-0005 section 3), at the commit that this repository records for the fork,
+      # for the builds of the host below that do not check out the fork.
+      - name: Fetch the Wine fork's entry header (eng/fetch-wine-header.sh)
+        if: ${{ !cancelled() }}
+        run: eng/fetch-wine-header.sh
 
       - name: Check the format of the native code (clang-format)
         if: ${{ !cancelled() }}
@@ -720,6 +746,13 @@ jobs:
             exit 1
           fi
           echo "--fork-tools exited with $status and named both, as expected."
+
+      # The Wine fork's entry header include/wine/paneport.h, the only header of Wine that the
+      # host includes (C-0005 section 3), at the commit that this repository records for the fork,
+      # for the builds of the host below that do not check out the fork.
+      - name: Fetch the Wine fork's entry header (eng/fetch-wine-header.sh)
+        if: ${{ !cancelled() }}
+        run: eng/fetch-wine-header.sh
 
       # S1.2.10: paneport_host.framework from both iOS presets, the one that the main app embeds
       # and the one with the test exports that the device test flavor embeds (M1.3).

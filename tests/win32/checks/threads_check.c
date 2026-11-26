@@ -478,7 +478,9 @@ static bool wait_for_call(const struct syscall_loop_state *state, LONG at_least)
 // step succeeded. Under Wine the suspension itself has the thread build its syscall frame from
 // the signal context when it is inside a dispatcher, and the thread applies its context again on
 // resume, so a frame built wrongly breaks it although the check sets nothing. Setting the context
-// too met a separate race, an open item in section 11 of docs/design/runtime-macos-harness.md.
+// back as well crashed in M4.2, and once more in M4.3's single mode after the FEX fork's change
+// (run 45787039425), so the check only reads it: M4.4 takes the set-back up, together with the
+// race in section 11 of docs/design/runtime-macos-harness.md.
 static bool suspend_in_syscall_loop(HANDLE thread) {
     if (SuspendThread(thread) != 0U) {
         return false;

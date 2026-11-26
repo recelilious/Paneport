@@ -63,6 +63,21 @@ enum {
     PP_LOG_ERROR = 3,
 };
 
+/**
+ * Where a log line comes from. Version 1.4 of the interface added the source to
+ * pp_log_line_t; a line of an older host comes from the host itself.
+ */
+enum {
+    /** The native host's own line. It names no path. */
+    PP_LOG_SOURCE_HOST = 0,
+    /** A line of the runtime's diagnostics: the Wine fork, its wineserver and the translator. */
+    PP_LOG_SOURCE_RUNTIME = 1,
+    /** A line that a Windows program wrote to its standard output (paneport/session.h). */
+    PP_LOG_SOURCE_GUEST_OUTPUT = 2,
+    /** A line that a Windows program wrote to its standard error (paneport/session.h). */
+    PP_LOG_SOURCE_GUEST_ERRORS = 3,
+};
+
 /** A log line of the host. */
 typedef struct pp_log_line_t {
     /** sizeof(pp_log_line_t) in the host that sent it. */
@@ -72,10 +87,18 @@ typedef struct pp_log_line_t {
     /** The system's identifier of the thread that logged the line. */
     uint64_t thread_id;
     /**
-     * The text, UTF-8 and NUL-terminated, without a line break at the end. It holds no
-     * password, token or other secret (C-0010 section 2). Valid until the callback returns.
+     * The text, UTF-8 and NUL-terminated, without a line break at the end. A line of the host
+     * holds no password, token or other secret (C-0010 section 2); a line of the runtime or of
+     * a Windows program holds whatever they wrote. Valid until the callback returns.
      */
     const char *text;
+    /** One of the PP_LOG_SOURCE_ values. Version 1.4 appended it. */
+    uint32_t source;
+    /**
+     * The handle of the Windows process that wrote the line, for the guest sources, or 0.
+     * Version 1.4 appended it.
+     */
+    uint64_t process;
 } pp_log_line_t;
 
 /**
@@ -145,11 +168,21 @@ PP_EXPORT pp_status_t pp_init(const pp_init_config_t *config);
 
 /**
  * Stops the host. It delivers what the event thread has already queued, stops the thread
- * and clears both callbacks. Once it returns, no callback runs again.
+ * and clears both callbacks. Once it returns, no callback runs again. It refuses while a Wine
+ * session is starting, running or stopping (paneport/session.h), whose threads and Windows
+ * process would outlive the event thread: the caller stops the session with pp_session_stop
+ * first. It also refuses while a pp_process_launch is still inside the Wine runtime, which posts
+ * the process-exited and session-ended events once it returns: the caller lets the launch return
+ * first. After a session that ended by itself, it first does what pp_session_stop would: it joins
+ * the session's threads and waits up to 30 s for the reader of the process's captured output,
+ * which it then stops, so that the program's last lines, the process-exited event and the
+ * session-ended event, when they were still to come, arrive before it returns.
  *
  * Thread rule: [main]. Memory: none.
  *
- * @return PP_OK; PP_E_NOT_INITIALIZED when the host is not running; PP_E_WRONG_THREAD.
+ * @return PP_OK; PP_E_NOT_INITIALIZED when the host is not running; PP_E_WRONG_THREAD; PP_E_BUSY
+ *         while a session is starting, running or stopping, or a launch is still inside the
+ *         runtime, with nothing stopped.
  */
 PP_EXPORT pp_status_t pp_shutdown(void);
 

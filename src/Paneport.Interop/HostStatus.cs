@@ -5,7 +5,9 @@ namespace Paneport.Interop;
 
 /// <summary>
 /// The status codes of the host interface (<c>pp_status_t</c>, C-0005 section 1), as
-/// <c>paneport/common.h</c> defines them in version 1.0. Later function groups add codes.
+/// <c>paneport/common.h</c> defines them in version 1.0, the code of the JIT group that
+/// <c>paneport/jit.h</c> adds in version 1.3, and the codes of the session group that
+/// <c>paneport/session.h</c> adds in version 1.4.
 /// </summary>
 public enum HostStatus
 {
@@ -41,4 +43,12 @@ public enum HostStatus
 
     /// <summary>The JIT state does not allow the call (<c>PP_E_JIT_STATE</c>), which version 1.3 added.</summary>
     JitState = -10,
+    /// <summary>A session needs the JIT state ready (<c>PP_E_JIT_NOT_READY</c>, C-0006 section 5).</summary>
+    JitNotReady = -11,
+
+    /// <summary>A session has already run in this launch; another needs a relaunch (<c>PP_E_SESSION_EXISTS</c>).</summary>
+    SessionExists = -12,
+
+    /// <summary>The call needs a running session (<c>PP_E_NO_SESSION</c>).</summary>
+    NoSession = -13,
 }

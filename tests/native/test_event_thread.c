@@ -1,15 +1,19 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
-// S1.2.3: the event thread, the callbacks, pp_init and pp_shutdown.
+// S1.2.3: the event thread, the callbacks, pp_init and pp_shutdown; and for M4.3 the order of
+// lines and events, during a flood of lines and with a producer held inside a push.
 
 #include <pthread.h>
 #include <sched.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 
+#include "event_queue.h"
 #include "event_thread.h"
+#include "log.h"
 #include "paneport/host.h"
 #include "paneport/testing.h"
 #include "pp_check.h"
@@ -382,8 +386,317 @@ static void replaced_callback_finished(void) {
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
 }
 
+// What the callbacks of lines_before_an_event_arrive_first saw.
+typedef struct ordered_t {
+    _Atomic(uint64_t) lines;
+    _Atomic(uint64_t) lines_at_event;
+    _Atomic(uint64_t) events;
+} ordered_t;
+
+static void count_ordered_line(const pp_log_line_t *line, void *user_data) {
+    ordered_t *ordered = user_data;
+    if (strncmp(line->text, "ordered ", 8U) == 0) {
+        (void)atomic_fetch_add(&ordered->lines, 1U);
+    }
+}
+
+static void count_ordered_event(const pp_event_t *event, void *user_data) {
+    ordered_t *ordered = user_data;
+    if (event->kind == 9U) {
+        atomic_store(&ordered->lines_at_event, atomic_load(&ordered->lines));
+        (void)atomic_fetch_add(&ordered->events, 1U);
+    }
+}
+
+// Lines posted before an event arrive before it, also while the event thread is busy: a Windows
+// program's output comes before its process-exited event (paneport/session.h). Each round
+// posts its lines and its event from one thread, and the event must find them all delivered.
+static void lines_before_an_event_arrive_first(void) {
+    ordered_t ordered;
+    atomic_init(&ordered.lines, 0U);
+    atomic_init(&ordered.lines_at_event, 0U);
+    atomic_init(&ordered.events, 0U);
+    pp_start_host(NULL);
+    PP_CHECK_EQUAL(pp_set_log_callback(count_ordered_line, &ordered), PP_OK);
+    PP_CHECK_EQUAL(pp_set_event_callback(count_ordered_event, &ordered), PP_OK);
+    for (uint64_t round = 1U; round <= 200U; round++) {
+        for (uint32_t line = 0U; line < 10U; line++) {
+            pp_status_t status = pp_test_log(PP_LOG_INFO, "ordered line");
+            while (status == PP_E_BUSY) {
+                (void)sched_yield();
+                status = pp_test_log(PP_LOG_INFO, "ordered line");
+            }
+            PP_CHECK_EQUAL(status, PP_OK);
+        }
+        post_event(9U, (int64_t)round);
+        pp_wait_for_count(&ordered.events, round);
+        PP_CHECK_EQUAL(atomic_load(&ordered.lines_at_event), round * 10U);
+    }
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
+// In a quiet host an event that follows a line, as a process's exit follows its last line, does
+// not wait: the line lies below the log queue's tail that the event's post read, and no slot
+// below it is claimed and unpublished, so the drain delivers the line and then the event, and its
+// bounded wait for an unpublished line never begins, which the count of the test builds shows.
+static void event_after_a_line_does_not_wait(void) {
+    ordered_t ordered;
+    atomic_init(&ordered.lines, 0U);
+    atomic_init(&ordered.lines_at_event, 0U);
+    atomic_init(&ordered.events, 0U);
+    pp_start_host(NULL);
+    PP_CHECK_EQUAL(pp_set_log_callback(count_ordered_line, &ordered), PP_OK);
+    PP_CHECK_EQUAL(pp_set_event_callback(count_ordered_event, &ordered), PP_OK);
+    for (uint64_t round = 1U; round <= 20U; round++) {
+        PP_CHECK_EQUAL(pp_test_log(PP_LOG_INFO, "ordered line"), PP_OK);
+        PP_CHECK_EQUAL(pp_test_post_event(9U, (int64_t)round), PP_OK);
+        pp_wait_for_count(&ordered.events, round);
+        PP_CHECK_EQUAL(atomic_load(&ordered.lines_at_event), round);
+        PP_CHECK_EQUAL(pp_event_thread_line_waits(), 0U);
+    }
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
+static uint64_t now_milliseconds(void) {
+    struct timespec now;
+    (void)clock_gettime(CLOCK_MONOTONIC, &now);
+    return ((uint64_t)now.tv_sec * 1000U) + ((uint64_t)now.tv_nsec / 1000000U);
+}
+
+// Waits up to milliseconds for a counter to reach a value, and returns whether it did.
+static bool wait_for_count_within(_Atomic(uint64_t) *counter, uint64_t expected,
+                                  uint64_t milliseconds) {
+    const uint64_t until = now_milliseconds() + milliseconds;
+    while (atomic_load(counter) < expected && now_milliseconds() < until) {
+        pp_sleep_milliseconds(1);
+    }
+    return atomic_load(counter) >= expected;
+}
+
+// What the flood cases watch. A producer posts lines as the reader of a program's output does,
+// waiting for room, until stop is set, and the log callback takes 20 us a line, so the log queue
+// stays full while the producer runs.
+typedef struct flood_t {
+    _Atomic(bool) stop;
+    _Atomic(uint64_t) posted;
+    _Atomic(uint64_t) events;
+} flood_t;
+
+static void slow_line(const pp_log_line_t *line, void *user_data) {
+    (void)line;
+    (void)user_data;
+    const struct timespec pause = {.tv_sec = 0, .tv_nsec = 20000L};
+    (void)nanosleep(&pause, NULL);
+}
+
+static void count_flood_event(const pp_event_t *event, void *user_data) {
+    flood_t *flood = user_data;
+    if (event->kind == 21U) {
+        (void)atomic_fetch_add(&flood->events, 1U);
+    }
+}
+
+static void *flood_lines(void *argument) {
+    const pp_thread_argument_t *thread = argument;
+    flood_t *flood = thread->context;
+    static const char k_text[] = "a line of the flood";
+    pp_log_entry_t entry;
+    pp_log_text(&entry, PP_LOG_INFO, PP_LOG_SOURCE_GUEST_OUTPUT, 1U, k_text, sizeof k_text - 1U);
+    while (!atomic_load(&flood->stop)) {
+        PP_CHECK_EQUAL(pp_event_thread_post_log_waiting(&entry), PP_OK);
+        (void)atomic_fetch_add(&flood->posted, 1U);
+    }
+    return NULL;
+}
+
+// Starts the host and the producer, and returns once the log queue is full.
+static pthread_t start_flood(flood_t *flood, pp_thread_argument_t *argument) {
+    atomic_init(&flood->stop, false);
+    atomic_init(&flood->posted, 0U);
+    atomic_init(&flood->events, 0U);
+    pp_start_host(NULL);
+    PP_CHECK_EQUAL(pp_set_log_callback(slow_line, NULL), PP_OK);
+    PP_CHECK_EQUAL(pp_set_event_callback(count_flood_event, flood), PP_OK);
+    pthread_t thread;
+    pp_start_threads(&thread, argument, 1U, flood_lines, flood);
+    // The queue holds 512 lines, which the callback takes about 10 ms for.
+    PP_CHECK(wait_for_count_within(&flood->posted, 2000U, 60000U));
+    return thread;
+}
+
+static void stop_flood(flood_t *flood, pthread_t thread) {
+    atomic_store(&flood->stop, true);
+    pp_join_thread(thread);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
+// An event posted while a producer floods the log queue arrives while the flood goes on, once
+// the lines posted before it have: the lines posted after it do not hold it back.
+static void event_during_a_flood_arrives_soon(void) {
+    flood_t flood;
+    pp_thread_argument_t argument;
+    const pthread_t thread = start_flood(&flood, &argument);
+    const uint64_t posted = now_milliseconds();
+    PP_CHECK_EQUAL(pp_test_post_event(21U, 0), PP_OK);
+    PP_CHECK(wait_for_count_within(&flood.events, 1U, 10000U));
+    PP_CHECK(now_milliseconds() - posted < 5000U);
+    stop_flood(&flood, thread);
+}
+
+// Events posted every 2 ms during a flood, five times as fast as the 512 lines of a full queue
+// arrive, are all taken and all arrive while the flood goes on: none waits for the lines posted
+// after it, so the event queue never fills. An event that waited for a full queue each would
+// fill it within the 600.
+static void no_event_dropped_during_a_flood(void) {
+    flood_t flood;
+    pp_thread_argument_t argument;
+    const pthread_t thread = start_flood(&flood, &argument);
+    for (int64_t index = 0; index < 600; index++) {
+        PP_CHECK_EQUAL(pp_test_post_event(21U, index), PP_OK);
+        pp_sleep_milliseconds(2);
+    }
+    PP_CHECK(wait_for_count_within(&flood.events, 600U, 20000U));
+    stop_flood(&flood, thread);
+}
+
+// What the cases of a held producer watch. The push hook holds the first push after armed is
+// set between its claim and its publication, for hold_milliseconds, or until release when that
+// is 0. The callbacks number the held line, the later line and the first event of kind 31 in
+// the order they arrive.
+typedef struct held_push_t {
+    _Atomic(bool) armed;
+    _Atomic(bool) in_hook;
+    _Atomic(bool) release;
+    long hold_milliseconds;
+    _Atomic(int) held_status;
+    _Atomic(uint64_t) arrivals;
+    _Atomic(uint64_t) held_line;
+    _Atomic(uint64_t) later_line;
+    _Atomic(uint64_t) first_event;
+    _Atomic(uint64_t) events;
+} held_push_t;
+
+static void hold_armed_push(void *argument) {
+    held_push_t *held = argument;
+    if (!atomic_exchange(&held->armed, false)) {
+        return;
+    }
+    atomic_store(&held->in_hook, true);
+    if (held->hold_milliseconds > 0) {
+        pp_sleep_milliseconds(held->hold_milliseconds);
+    } else {
+        pp_wait_for_flag(&held->release);
+    }
+}
+
+static void number_held_line(const pp_log_line_t *line, void *user_data) {
+    held_push_t *held = user_data;
+    if (strcmp(line->text, "held line") == 0) {
+        atomic_store(&held->held_line, atomic_fetch_add(&held->arrivals, 1U) + 1U);
+    } else if (strcmp(line->text, "later line") == 0) {
+        atomic_store(&held->later_line, atomic_fetch_add(&held->arrivals, 1U) + 1U);
+    }
+}
+
+static void number_held_event(const pp_event_t *event, void *user_data) {
+    held_push_t *held = user_data;
+    if (event->kind == 31U) {
+        if (atomic_fetch_add(&held->events, 1U) == 0U) {
+            atomic_store(&held->first_event, atomic_fetch_add(&held->arrivals, 1U) + 1U);
+        }
+    }
+}
+
+static void *post_held_line(void *argument) {
+    const pp_thread_argument_t *thread = argument;
+    held_push_t *held = thread->context;
+    atomic_store(&held->held_status, pp_test_log(PP_LOG_INFO, "held line"));
+    return NULL;
+}
+
+// Starts the host and a producer whose line the hook holds inside its push, then posts a later
+// line and an event from this thread, both behind the held slot.
+static pthread_t start_held_push(held_push_t *held, pp_thread_argument_t *argument,
+                                 long hold_milliseconds) {
+    atomic_init(&held->armed, false);
+    atomic_init(&held->in_hook, false);
+    atomic_init(&held->release, false);
+    held->hold_milliseconds = hold_milliseconds;
+    atomic_init(&held->held_status, 1);
+    atomic_init(&held->arrivals, 0U);
+    atomic_init(&held->held_line, 0U);
+    atomic_init(&held->later_line, 0U);
+    atomic_init(&held->first_event, 0U);
+    atomic_init(&held->events, 0U);
+    pp_start_host(NULL);
+    PP_CHECK_EQUAL(pp_set_log_callback(number_held_line, held), PP_OK);
+    PP_CHECK_EQUAL(pp_set_event_callback(number_held_event, held), PP_OK);
+    pp_queue_set_push_hook(hold_armed_push, held);
+    atomic_store(&held->armed, true);
+    pthread_t thread;
+    pp_start_threads(&thread, argument, 1U, post_held_line, held);
+    pp_wait_for_flag(&held->in_hook);
+    PP_CHECK_EQUAL(pp_test_log(PP_LOG_INFO, "later line"), PP_OK);
+    PP_CHECK_EQUAL(pp_test_post_event(31U, 0), PP_OK);
+    return thread;
+}
+
+static void finish_held_push(held_push_t *held, pthread_t thread) {
+    pp_join_thread(thread);
+    PP_CHECK_EQUAL(atomic_load(&held->held_status), PP_OK);
+    pp_queue_set_push_hook(NULL, NULL);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
+// A producer held for a moment between its claim and its publication, as a preempted one is,
+// holds the event back: its line, and a line posted after it but before the event, both arrive
+// before the event.
+static void held_producer_keeps_the_order(void) {
+    held_push_t held;
+    pp_thread_argument_t argument;
+    const pthread_t thread = start_held_push(&held, &argument, 10);
+    pp_wait_for_count(&held.events, 1U);
+    PP_CHECK_EQUAL(atomic_load(&held.held_line), 1U);
+    PP_CHECK_EQUAL(atomic_load(&held.later_line), 2U);
+    PP_CHECK_EQUAL(atomic_load(&held.first_event), 3U);
+    finish_held_push(&held, thread);
+}
+
+// A producer that stays inside its push, as a suspended guest thread can, holds the event back
+// for a bounded time only, and the same slot never holds a later event: 20 more events arrive
+// within a second, where a wait for each would take two. Once the producer goes on, both lines
+// arrive, in their order.
+static void held_producer_holds_an_event_once(void) {
+    held_push_t held;
+    pp_thread_argument_t argument;
+    const pthread_t thread = start_held_push(&held, &argument, 0);
+    PP_CHECK(wait_for_count_within(&held.events, 1U, 10000U));
+    PP_CHECK_EQUAL(atomic_load(&held.first_event), 1U);
+    PP_CHECK_EQUAL(atomic_load(&held.held_line), 0U);
+    PP_CHECK_EQUAL(atomic_load(&held.later_line), 0U);
+    const uint64_t posted = now_milliseconds();
+    for (int64_t index = 1; index <= 20; index++) {
+        PP_CHECK_EQUAL(pp_test_post_event(31U, index), PP_OK);
+    }
+    PP_CHECK(wait_for_count_within(&held.events, 21U, 10000U));
+    PP_CHECK(now_milliseconds() - posted < 1000U);
+    PP_CHECK_EQUAL(atomic_load(&held.held_line), 0U);
+
+    atomic_store(&held.release, true);
+    pp_wait_for_count(&held.arrivals, 3U);
+    PP_CHECK_EQUAL(atomic_load(&held.held_line), 2U);
+    PP_CHECK_EQUAL(atomic_load(&held.later_line), 3U);
+    finish_held_push(&held, thread);
+}
+
 int main(int argc, char **argv) {
     static const pp_test_case_t cases[] = {
+        {"lines_before_an_event_arrive_first", lines_before_an_event_arrive_first},
+        {"event_after_a_line_does_not_wait", event_after_a_line_does_not_wait},
+        {"event_during_a_flood_arrives_soon", event_during_a_flood_arrives_soon},
+        {"no_event_dropped_during_a_flood", no_event_dropped_during_a_flood},
+        {"held_producer_keeps_the_order", held_producer_keeps_the_order},
+        {"held_producer_holds_an_event_once", held_producer_holds_an_event_once},
         {"events_reach_event_thread", events_reach_event_thread},
         {"none_after_shutdown", none_after_shutdown},
         {"post_in_progress_is_delivered", post_in_progress_is_delivered},

@@ -36,7 +36,9 @@ size_t pp_utf8_cut(const char *text, size_t length) {
 
 void pp_log_format(pp_log_entry_t *entry, int32_t level, const char *format, va_list arguments) {
     entry->level = level;
+    entry->source = PP_LOG_SOURCE_HOST;
     entry->thread_id = pp_platform_thread_id();
+    entry->process = 0U;
 
     const int written = vsnprintf(entry->text, sizeof entry->text, format, arguments);
     if (written < 0) {
@@ -51,6 +53,25 @@ void pp_log_format(pp_log_entry_t *entry, int32_t level, const char *format, va_
     // The line did not fit: keep whole characters only, and end it with the marker.
     const size_t room = sizeof entry->text - sizeof k_cut_marker;
     const size_t kept = pp_utf8_cut(entry->text, room);
+    memcpy(entry->text + kept, k_cut_marker, sizeof k_cut_marker);
+}
+
+void pp_log_text(pp_log_entry_t *entry, int32_t level, uint32_t source, uint64_t process,
+                 const char *text, size_t length) {
+    entry->level = level;
+    entry->source = source;
+    entry->thread_id = pp_platform_thread_id();
+    entry->process = process;
+
+    if (length < sizeof entry->text) {
+        memcpy(entry->text, text, length);
+        entry->text[length] = '\0';
+        return;
+    }
+    // Keep whole characters only, and end the line with the marker.
+    const size_t room = sizeof entry->text - sizeof k_cut_marker;
+    const size_t kept = pp_utf8_cut(text, room);
+    memcpy(entry->text, text, kept);
     memcpy(entry->text + kept, k_cut_marker, sizeof k_cut_marker);
 }
 

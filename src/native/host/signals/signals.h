@@ -9,7 +9,8 @@
 // dispatcher, which is the .NET runtime's. docs/design/signals.md describes it.
 //
 // The registration functions follow the conventions of C-0005 section 1, so that the Wine
-// bridge (paneport/wine_bridge.h, M4.3) can offer them unchanged. They run on any thread,
+// bridge (paneport/wine_bridge.h) offers them unchanged; the thread marks, the routes, the
+// fault and the guest fault handler's type are declared there. They run on any thread,
 // outside signal context: no signal handler, guest fault handler or probe handler may call
 // them. Their writers serialize on a mutex, and the dispatcher reads what they publish without
 // a lock and without allocating.
@@ -21,6 +22,7 @@
 #include <stdint.h>
 
 #include "paneport/common.h"
+#include "paneport/wine_bridge.h"
 
 // The number of signals that the dispatcher owns.
 #define PP_SIGNAL_COUNT 6
@@ -31,50 +33,13 @@
 #define PP_SIGNAL_POOL_RANGES 64U
 #define PP_SIGNAL_RESERVATIONS 256U
 
-// The marks of a thread whose faults take the guest path.
-enum {
-    PP_THREAD_MARK_NONE = 0,
-    PP_THREAD_MARK_GUEST = 1,
-    PP_THREAD_MARK_TRANSLATOR = 2,
-};
-
-// The routes of a fault. A guest fault handler sees the three guest routes, and the probe
-// handler the probe route; the runtime route is counted only.
-enum {
-    PP_FAULT_ROUTE_RUNTIME = 0,
-    PP_FAULT_ROUTE_THREAD_MARK = 1,
-    PP_FAULT_ROUTE_JIT_POOL = 2,
-    PP_FAULT_ROUTE_RESERVATION = 3,
-    PP_FAULT_ROUTE_JIT_PROBE = 4,
-};
-
-// What a guest fault handler or the probe handler returns.
-enum {
-    PP_GUEST_FAULT_DECLINED = 0,
-    PP_GUEST_FAULT_HANDLED = 1,
-};
-
-// A fault on its way to a guest fault handler or to the probe handler. It lives on the stack of
-// the signal handler and is valid only until the handler returns.
-typedef struct pp_guest_fault_t {
-    uint32_t struct_size;     // sizeof(pp_guest_fault_t).
-    uint32_t route;           // A PP_FAULT_ROUTE_ value.
-    uint32_t thread_mark;     // The faulting thread's PP_THREAD_MARK_ value.
-    int32_t signal;           // The signal number.
-    int32_t code;             // The signal's si_code.
-    uint64_t fault_address;   // si_addr.
-    uint64_t program_counter; // The program counter of the context.
-    void *signal_info;        // The kernel's siginfo_t.
-    void *context;            // The kernel's ucontext_t, which a handler may change.
-} pp_guest_fault_t;
-
-// Handles a fault of the guest path in the faulting thread's signal context, so it may call
-// only async-signal-safe functions and must return. It returns PP_GUEST_FAULT_HANDLED when the
-// thread may go on with the context as the handler left it, or PP_GUEST_FAULT_DECLINED, which
-// ends the app with a crash record; a handler that declines leaves the context unchanged. The
-// signal stays unblocked while it runs: a fault inside the handler on a marked thread ends the
-// app with a record of its own, and on another thread is routed again like any fault.
-typedef uint32_t (*pp_guest_fault_handler_t)(pp_guest_fault_t *fault, void *user_data);
+// The marks of a thread (PP_THREAD_MARK_), the routes of a fault (PP_FAULT_ROUTE_), what a
+// handler returns (PP_GUEST_FAULT_), the fault (pp_guest_fault_t) and the type of the guest fault
+// handler and of the probe handler (pp_guest_fault_handler_t) are those of
+// paneport/wine_bridge.h. A guest fault handler sees the three guest routes and the probe
+// handler the probe route; the runtime route is counted only. The signal stays unblocked while a
+// handler runs: a fault inside the handler on a marked thread ends the app with a record of its
+// own, and on another thread is routed again like any fault.
 
 // How many faults the dispatcher has sent each way since the process started.
 typedef struct pp_signal_counters_t {

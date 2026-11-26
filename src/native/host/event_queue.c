@@ -60,7 +60,28 @@ void pp_queue_destroy(pp_queue_t *queue) {
     queue->entry_size = 0U;
 }
 
-bool pp_queue_push(pp_queue_t *queue, const void *entry) {
+#ifdef PANEPORT_TEST_BUILD
+// The hook of the test builds, and its argument: set by a test before the pushes it holds.
+static _Atomic(pp_queue_push_hook_t) s_push_hook;
+static _Atomic(void *) s_push_hook_argument;
+
+void pp_queue_set_push_hook(pp_queue_push_hook_t hook, void *argument) {
+    atomic_store(&s_push_hook_argument, argument);
+    atomic_store(&s_push_hook, hook);
+}
+#endif
+
+// Lets a test hold a push between its claim and its publication. Nothing in the shipped builds.
+static void run_push_hook(void) {
+#ifdef PANEPORT_TEST_BUILD
+    const pp_queue_push_hook_t hook = atomic_load(&s_push_hook);
+    if (hook != NULL) {
+        hook(atomic_load(&s_push_hook_argument));
+    }
+#endif
+}
+
+static bool push(pp_queue_t *queue, const void *entry, bool count_refusal) {
     uint64_t position = atomic_load_explicit(&queue->tail, memory_order_relaxed);
     for (;;) {
         const uint64_t sequence =
@@ -75,17 +96,24 @@ bool pp_queue_push(pp_queue_t *queue, const void *entry) {
                 break;
             }
         } else if (difference < 0) {
-            (void)atomic_fetch_add_explicit(&queue->overflow, 1U, memory_order_relaxed);
+            if (count_refusal) {
+                (void)atomic_fetch_add_explicit(&queue->overflow, 1U, memory_order_relaxed);
+            }
             return false;
         } else {
             position = atomic_load_explicit(&queue->tail, memory_order_relaxed);
         }
     }
 
+    run_push_hook();
     memcpy(entry_at(queue, position), entry, queue->entry_size);
     atomic_store_explicit(sequence_at(queue, position), position + 1U, memory_order_release);
     return true;
 }
+
+bool pp_queue_push(pp_queue_t *queue, const void *entry) { return push(queue, entry, true); }
+
+bool pp_queue_try_push(pp_queue_t *queue, const void *entry) { return push(queue, entry, false); }
 
 bool pp_queue_pop(pp_queue_t *queue, void *entry) {
     const uint64_t position = queue->head;
@@ -110,3 +138,11 @@ bool pp_queue_is_empty(const pp_queue_t *queue) {
 uint64_t pp_queue_overflow_count(const pp_queue_t *queue) {
     return atomic_load_explicit(&queue->overflow, memory_order_relaxed);
 }
+
+uint64_t pp_queue_tail(const pp_queue_t *queue) {
+    // A claim that happens before this call is seen, by the coherence of the tail's modification
+    // order, though the claims are relaxed.
+    return atomic_load_explicit(&queue->tail, memory_order_relaxed);
+}
+
+uint64_t pp_queue_head(const pp_queue_t *queue) { return queue->head; }

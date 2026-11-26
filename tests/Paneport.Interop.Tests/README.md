@@ -18,6 +18,7 @@ Tests of [Paneport.Interop](../../src/Paneport.Interop/README.md), which run on 
 | `BindingTests.cs` | Every binding against the library: the memory budget, errors with their status and message, the main-thread rule, events and log lines on the event thread, not on the test's thread or the stand-in main thread, an exception in a handler caught and reported, host memory freed with `pp_free`, and a test crash record |
 | `JitBindingTests.cs` | The JIT group against the macOS backend's simulated broker: one test drives the whole request of the process to `ready` with its events, and another reads the planted statuses of `pp_test_jit_plant_status`, which tell every member of the status apart |
 | `SignalBindingTests.cs` | The signal dispatcher's bindings: the dispatcher holds all six signals in the test host, and the stress harness starts, reports its counters, refuses a second start and a bad configuration, and stops, without threads; the CTest suite plants the faults |
+| `SessionBindingTests.cs` | The session and process groups of version 1.4 without a session, which the host test library never runs: the five bindings answer `PP_E_NO_SESSION`, `PP_E_INVALID_ARGUMENT` or `PP_E_JIT_NOT_READY`, the JIT stand-in crosses, and a line's source and process reach the log handler |
 
 Run them on a Mac from the repository root, once the library is built:
 

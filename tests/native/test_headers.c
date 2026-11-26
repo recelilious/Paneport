@@ -11,7 +11,9 @@
 #include "paneport/host.h"
 #include "paneport/memory.h"
 #include "paneport/paneport.h"
+#include "paneport/session.h"
 #include "paneport/testing.h"
+#include "paneport/wine_bridge.h"
 
 // From test_headers_linkage.cpp: 0 when the calls from C++ worked.
 int paneport_header_linkage(void);

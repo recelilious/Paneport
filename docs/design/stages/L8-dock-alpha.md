@@ -139,6 +139,10 @@ _No sessions yet._
 
 **Hands over to.** M8.2 (the Dock host runs as a pseudo-process and starts the game as another), M8.4 (launcher-service titles run a launcher and the game as pseudo-processes under the helper policy), and the L8 integration session.
 
+**Notes from earlier stages.**
+
+- M4.3 ([L4 brief](L4-first-windows-program.md), session logs of 2026-11-24 and 2026-11-25): [single-process-wine.md](../single-process-wine.md) section 11 lists the process-wide state of ntdll's Unix side, of the fork's `paneport.c`, which holds one launch, and what Wine sets in the host's process, among it the current folder, which each listing of a folder changes, and the scheduling policies of the guest's threads. `NtCreateUserProcess` still forks, which the harness's trap refuses and names, as in `fork from ntdll.so!spawn_process+0xd4`; the wineserver's own descriptors, those that it opens and those that it receives from clients, lack close-on-exec, while the copies that ntdll receives have it; each guest thread keeps a send right on its own Mach port for the life of the app; and a process runs one wineserver and one session (sections 4, 10 and 11).
+
 **Session log.**
 
 _No sessions yet._

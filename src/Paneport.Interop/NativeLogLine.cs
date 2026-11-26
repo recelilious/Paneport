@@ -13,4 +13,8 @@ internal struct NativeLogLine
     public int Level;
     public ulong ThreadId;
     public nint Text;
+
+    // Version 1.4 appended these; a line of an older host ends before them.
+    public uint Source;
+    public ulong Process;
 }

@@ -13,11 +13,13 @@
 #include "event_thread.h"
 #include "host_state.h"
 #include "jit/jit_provider.h"
+#include "jit_state.h"
 #include "log.h"
 #include "memory_budget.h"
 #include "paneport/host.h"
 #include "paneport/jit.h"
 #include "paneport/memory.h"
+#include "paneport/session.h"
 #include "paneport/testing.h"
 #include "signals/signals.h"
 #include "thread_role.h"
@@ -41,10 +43,27 @@ static const pp_test_layout_member_t k_event_members[] = {
 };
 
 static const pp_test_layout_member_t k_log_line_members[] = {
-    PP_MEMBER(pp_log_line_t, struct_size),
-    PP_MEMBER(pp_log_line_t, level),
-    PP_MEMBER(pp_log_line_t, thread_id),
-    PP_MEMBER(pp_log_line_t, text),
+    PP_MEMBER(pp_log_line_t, struct_size), PP_MEMBER(pp_log_line_t, level),
+    PP_MEMBER(pp_log_line_t, thread_id),   PP_MEMBER(pp_log_line_t, text),
+    PP_MEMBER(pp_log_line_t, source),      PP_MEMBER(pp_log_line_t, process),
+};
+
+static const pp_test_layout_member_t k_session_config_members[] = {
+    PP_MEMBER(pp_session_config_t, struct_size),   PP_MEMBER(pp_session_config_t, architecture),
+    PP_MEMBER(pp_session_config_t, prefix_folder), PP_MEMBER(pp_session_config_t, runtime_folder),
+    PP_MEMBER(pp_session_config_t, environment),
+};
+
+static const pp_test_layout_member_t k_process_config_members[] = {
+    PP_MEMBER(pp_process_config_t, struct_size),    PP_MEMBER(pp_process_config_t, capture_output),
+    PP_MEMBER(pp_process_config_t, program_folder), PP_MEMBER(pp_process_config_t, program),
+    PP_MEMBER(pp_process_config_t, arguments),
+};
+
+static const pp_test_layout_member_t k_process_state_members[] = {
+    PP_MEMBER(pp_process_state_t, struct_size),
+    PP_MEMBER(pp_process_state_t, state),
+    PP_MEMBER(pp_process_state_t, exit_code),
 };
 
 static const pp_test_layout_member_t k_memory_budget_members[] = {
@@ -116,6 +135,9 @@ static const pp_test_layout_struct_t k_layout_table[] = {
     PP_STRUCT(pp_log_line_t, k_log_line_members),
     PP_STRUCT(pp_memory_budget_t, k_memory_budget_members),
     PP_STRUCT(pp_jit_status_t, k_jit_status_members),
+    PP_STRUCT(pp_session_config_t, k_session_config_members),
+    PP_STRUCT(pp_process_config_t, k_process_config_members),
+    PP_STRUCT(pp_process_state_t, k_process_state_members),
     PP_STRUCT(pp_test_layout_member_t, k_layout_member_members),
     PP_STRUCT(pp_test_layout_struct_t, k_layout_struct_members),
     PP_STRUCT(pp_test_signal_harness_config_t, k_harness_config_members),
@@ -256,6 +278,19 @@ PP_EXPORT pp_status_t pp_test_log(int32_t level, const char *text) {
     return posted(pp_log(level, "%s", text), "log");
 }
 
+PP_EXPORT pp_status_t pp_test_log_with_source(int32_t level, uint32_t source, uint64_t process,
+                                              const char *text) {
+    pp_error_clear();
+    if (text == NULL || level < PP_LOG_DEBUG || level > PP_LOG_ERROR ||
+        source > PP_LOG_SOURCE_GUEST_ERRORS) {
+        return pp_error_set(PP_E_INVALID_ARGUMENT, "pp_test_log_with_source needs a text, a known "
+                                                   "level and a known source.");
+    }
+    pp_log_entry_t entry;
+    pp_log_text(&entry, level, source, process, text, strlen(text));
+    return posted(pp_event_thread_post_log(&entry), "log");
+}
+
 PP_EXPORT pp_status_t pp_test_duplicate_text(const char *text, char **copy) {
     pp_error_clear();
     if (text == NULL || copy == NULL) {
@@ -275,4 +310,13 @@ PP_EXPORT pp_status_t pp_test_duplicate_text(const char *text, char **copy) {
 PP_EXPORT pp_status_t pp_test_signals_check_installed(int32_t *replaced_signal) {
     pp_error_clear();
     return pp_signals_check_installed(replaced_signal);
+}
+
+PP_EXPORT pp_status_t pp_test_jit_set_ready(uint8_t ready) {
+    pp_error_clear();
+    if (ready > 1U) {
+        return pp_error_set(PP_E_INVALID_ARGUMENT, "pp_test_jit_set_ready needs 0 or 1.");
+    }
+    pp_jit_state_set_ready_for_tests(ready == 1U);
+    return PP_OK;
 }

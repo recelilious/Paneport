@@ -27,11 +27,11 @@ Back to the [development plan](../development-plan.md).
 | S8.2.5 | Cache cleanup | Small | Planned | | |
 | S8.2.6 | Steam service coordination | Small | Planned | | |
 | S8.2.7 | CEG preparation | Small | Planned | | |
-| M8.3 | Compatibility checks and reports | Medium | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-26 |
-| S8.3.1 | Validator | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-26 |
-| S8.3.2 | Rule checks | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-26 |
-| S8.3.3 | Rating computation | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-26 |
-| S8.3.4 | Failing fixtures | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-26 |
+| M8.3 | Compatibility checks and reports | Medium | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-27 |
+| S8.3.1 | Validator | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-27 |
+| S8.3.2 | Rule checks | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-27 |
+| S8.3.3 | Rating computation | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-27 |
+| S8.3.4 | Failing fixtures | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-27 |
 | S8.3.5 | First entries | Small | Done: no title has been tested on the device yet, so there is no entry; M6.6 and S7.0.3 add the first ones | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
 | M8.4 | AAA performance and launcher-service titles | Medium | Planned | | |
 | S8.4.1 | MetalFX spatial upscaling and render scale | Small | Planned | | |
@@ -351,7 +351,7 @@ _No sessions yet._
     - Fixtures: three invalid Direct titles, with `ceg` `unknown`, without `steamApi` and without `steamStub`; and four valid titles: Dock titles with `ceg` `yes` and without `ceg`, a local title with `ceg` `unknown` and no `launch`, and a Direct title with `steamAppIdFile` true. The app's reader loads the four and rejects each of the three with `Launch` alone.
     - More cases:
       - cycles through `anyOf`, `oneOf`, `if`, `then` and `else`, and definitions shared without a cycle;
-      - a timeout below each applicator, and a problem found before a timeout;
+      - a timeout below `not`, `anyOf`, `oneOf` and `if`, in `properties` and `items`, and a problem found before a timeout;
       - `true` and `false`, numbers by their exact value, and nested values under `uniqueItems`;
       - an escaped hyphen inside a class, and the year 0000;
       - each type test of the rules in code;
@@ -364,6 +364,26 @@ _No sessions yet._
     - Every mutant of fix rounds 1 and 2, 98 in all, was run in a copy that keeps `Directory.Build.props` and `.editorconfig`, so that each builds as CI builds the tool. 96 fail a case and 2 crash the self-test; none survives or fails to build. 11 of round 1's 63 were written again for the same fault, because this round changed their code or because they did not build so. The pull request lists them.
     - The runs of CI on the final head are in [#44](https://github.com/recelilious/Paneport/pull/44).
   - **Decisions.** The coordinator decided fix round 2, taking each skeptic's fix of the fix check.
+  - **Left.** The merge.
+- **2026-11-27 (session 5).** Fix round 3 of [#44](https://github.com/recelilious/Paneport/pull/44), after the fix check of round 2, which found no medium or high defect and 12 low ones, and one item of round 2 that held only in part. Main is still `bb29223`, so there was no rebase.
+  - **Done.**
+    - The pattern translation refuses what the `u` flag refuses and ECMA-262 takes without it: a `]` outside a class, a `{` or `}` that is no part of a quantifier, and a quantifier after a lookahead. It also refuses a quantifier after `^` or `$`, which .NET takes and ECMA-262 refuses. [compat-db.md](../compat-db.md) section 9's sentence on the `u` flag and the validator's comment then hold as written. Neither schema has such a pattern: both load in the self-test.
+    - More cases:
+      - each part of a value's key under `uniqueItems`: the count of a list's items and of an object's members, the letter case of a member name, a number's sign, `null` apart from `false`, and the ordinal sort of the members;
+      - the walk of the stricter readings through `additionalProperties`, `then`, `else`, `allOf` and `anyOf`, planted in the title schema's copy;
+      - the segment rule of `JsonText.Scan`: half a pair in a `$comment` below `properties` and below `allOf`, named in full, and a member twice whose name is not plain, read as the data is, named `/<name not shown>`;
+      - a timeout below `allOf`, `then` and `else`, so that the cases place it directly, in `properties` and `items`, and below `not`, `anyOf`, `oneOf`, `allOf`, `if`, `then` and `else`;
+      - a report whose date is a number, in a title without a rating;
+      - each refusal of the translation, the quantifiers `{n,}` and `{n,m}`, and an empty class before another class, which only the refusal of an empty class now refuses.
+    - A valid local title, `local-fixture-shoal`, whose `drm` has no `ceg` and sets `steamAppIdFile` true, with no `launch`. The app's reader loads it, and without its `executable` rejects it.
+    - The documents: [compat-db.md](../compat-db.md) section 8.1, [repository-checks.md](../repository-checks.md) section 9, the README of `tests/compat/`, and session 4's entry above, whose timeout cases it names exactly.
+  - **Verification.** On the workstation:
+    - The self-test passes 647 cases, and the check of the repository passes.
+    - `dotnet format whitespace tools`, the personal-data scan and the license check are clean.
+    - A fuzz of the translation against node 24.19.0: of 150,000 random patterns, each that the translation takes compiles with the `u` flag, matches as node matches it without the flag on 60 texts, and on those without half of a surrogate pair matches alike with it.
+    - Every mutant of fix rounds 1 to 3, 137 in all, was run in a copy that keeps `Directory.Build.props` and `.editorconfig`, so that each builds as CI builds the tool. 132 fail a case, 2 crash the self-test, and 3 stop it with exit 2 at a pattern that they refuse wrongly; none survives or fails to build. Round 1's mutant that drops the refusal of an empty class survived the first run, since the refusal of a `]` outside a class now refuses its cases too; the case `[][a]` kills it. The pull request lists them.
+    - The runs of CI on the final head are in [#44](https://github.com/recelilious/Paneport/pull/44).
+  - **Decisions.** The coordinator decided fix round 3, refusing the patterns that the `u` flag refuses, as round 2 refused `\-`. The refusal of a quantifier after `^` or `$`, which the fuzz found, goes beyond the decisions, and the coordinator checks it with the round.
   - **Left.** The merge.
 
 ## M8.4 AAA performance and launcher-service titles

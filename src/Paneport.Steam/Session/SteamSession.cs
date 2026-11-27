@@ -109,6 +109,11 @@ internal sealed class SteamSession : IConnectionListener
                 return;
             }
 
+            if (_connected)
+            {
+                _log.Write(LogLevel.Information, LogSource, "The client is no longer connected, so the sign-in waits for the next connection.");
+            }
+
             _connectWaiters.Add(waiter);
             if (_goal == Goal.None)
             {
@@ -368,6 +373,14 @@ internal sealed class SteamSession : IConnectionListener
             }
 
             _signOffWaiters.Clear();
+
+            // A sign-in or a code round that began during the sign-off, once SteamKit2 had dropped
+            // the client, waits for a connection that the sign-off held back; it gets one now.
+            if (_goal != Goal.None && _connectWaiters.Count > 0)
+            {
+                ConnectIfIdle();
+            }
+
             Publish();
             return;
         }

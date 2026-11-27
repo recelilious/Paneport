@@ -99,6 +99,10 @@ internal sealed class SteamTestKit : IDisposable
     public Task UntilRequested(string request, int count) =>
         Until(() => Connection.Count(request) >= count, $"{count} requests to {request}");
 
+    // Waits until the service has written a line to the app's log.
+    public Task UntilLogged(string message) =>
+        Until(() => AppLog.Lines.Any(line => line.Message == message), $"the line \"{message}\"");
+
     public void Dispose()
     {
         Service.Dispose();

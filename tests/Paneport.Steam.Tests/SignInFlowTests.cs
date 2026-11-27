@@ -14,6 +14,9 @@ namespace Paneport.Steam.Tests;
 // (steam-service.md section 5).
 public sealed class SignInFlowTests : IDisposable
 {
+    // What the session logs when a sign-in asks for a connection that SteamKit2 has already dropped.
+    private const string WaitsForTheNextConnection = "The client is no longer connected, so the sign-in waits for the next connection.";
+
     private readonly SteamTestKit _kit = new();
 
     public void Dispose() => _kit.Dispose();
@@ -399,7 +402,7 @@ public sealed class SignInFlowTests : IDisposable
 
         _kit.Connection.IsConnected = false;
         _kit.Authenticator.DeclineApproval(SteamResult.NoConnection);
-        await Task.Delay(100, token);
+        await _kit.UntilLogged(WaitsForTheNextConnection);
         _kit.Connection.Listener.OnDisconnected(userInitiated: false);
         await SteamTestKit.Until(() => _kit.Delays.Pending.Count == 1, "the wait before connecting again");
         _kit.Delays.Release(TimeSpan.FromSeconds(1));
@@ -407,6 +410,54 @@ public sealed class SignInFlowTests : IDisposable
         _kit.Connection.IsConnected = true;
         _kit.Connection.Listener.OnConnected();
 
+        await SteamTestKit.UntilStage(attempt, SignInStage.WaitingForCode);
+        Assert.Equal(2, _kit.Authenticator.CredentialSessions);
+        attempt.Cancel();
+        await attempt.Completion.WaitAsync(SteamTestKit.Patience, token);
+    }
+
+    // A sign-in that starts while the session signs off, after SteamKit2 has dropped the client and
+    // before the session heard of it, waits for a connection that the sign-off holds back; the
+    // session connects for it once the sign-off has ended.
+    [Fact]
+    public async Task ASignInDuringTheSignOffConnectsOnceTheSignOffEnds()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var signOut = await SignOutUntilTheLogOffIsConfirmedAsync();
+        _kit.Connection.IsConnected = false;
+
+        var attempt = _kit.Service.StartQrSignIn();
+        await _kit.UntilLogged(WaitsForTheNextConnection);
+        _kit.Connection.Listener.OnDisconnected(userInitiated: true);
+        await signOut.WaitAsync(SteamTestKit.Patience, token);
+
+        await _kit.UntilRequested(FakeConnection.Connect, 2);
+        _kit.Connection.IsConnected = true;
+        _kit.Connection.Listener.OnConnected();
+        await SteamTestKit.UntilStage(attempt, SignInStage.ShowingQrCode);
+        attempt.Cancel();
+        await attempt.Completion.WaitAsync(SteamTestKit.Patience, token);
+    }
+
+    // The same for the code round of a sign-in that began during the sign-off on the connection that
+    // the sign-off then ends, which also ends the wait for the approval.
+    [Fact]
+    public async Task ACodeRoundDuringTheSignOffConnectsOnceTheSignOffEnds()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var signOut = await SignOutUntilTheLogOffIsConfirmedAsync();
+        var attempt = _kit.Service.StartPasswordSignIn(_kit.Samples.AccountName, _kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        await SteamTestKit.UntilStage(attempt, SignInStage.WaitingForApproval);
+
+        _kit.Connection.IsConnected = false;
+        _kit.Authenticator.DeclineApproval(SteamResult.NoConnection);
+        await _kit.UntilLogged(WaitsForTheNextConnection);
+        _kit.Connection.Listener.OnDisconnected(userInitiated: true);
+        await signOut.WaitAsync(SteamTestKit.Patience, token);
+
+        await _kit.UntilRequested(FakeConnection.Connect, 2);
+        _kit.Connection.IsConnected = true;
+        _kit.Connection.Listener.OnConnected();
         await SteamTestKit.UntilStage(attempt, SignInStage.WaitingForCode);
         Assert.Equal(2, _kit.Authenticator.CredentialSessions);
         attempt.Cancel();
@@ -487,5 +538,18 @@ public sealed class SignInFlowTests : IDisposable
 
         Assert.False(_kit.Log.Holds(_kit.Samples.Password));
         Assert.True(_kit.Log.Holds(_kit.Samples.AccountName));
+    }
+
+    // Logs on, then signs out until Steam has confirmed the logoff and the session has asked to
+    // disconnect: the sign-off then waits for the end of the connection.
+    private async Task<Task> SignOutUntilTheLogOffIsConfirmedAsync()
+    {
+        await _kit.LogOnAsync();
+        var signOut = _kit.Service.SignOutAsync(TestContext.Current.CancellationToken);
+        await _kit.UntilRequested(FakeConnection.LogOff, 1);
+        _kit.Connection.Listener.OnLoggedOff(SteamResult.OK);
+        await _kit.UntilRequested(FakeConnection.Disconnect, 1);
+        Assert.Equal(SteamSessionState.SigningOut, _kit.Service.Status.State);
+        return signOut;
     }
 }

@@ -230,6 +230,7 @@ public sealed class RedactingLogTests
         kit.Log.Write(LogLevel.Debug, "Test", $"a line with {password} in it");
 
         Assert.True(kit.Log.Holds(password));
+        Assert.True(kit.Log.Holds(kit.Samples.AccountName));
         Assert.Equal($"a line with {Secret.Redacted} in it", Assert.Single(kit.AppLog.Lines, line => line.Source == "Test").Message);
         second.Cancel();
         await second.Completion.WaitAsync(SteamTestKit.Patience, Token);

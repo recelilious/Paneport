@@ -2414,6 +2414,9 @@ internal static class SelfTest
         ("a branch quantified {0} in a counted group in a pattern", """{ "pattern": "^(?:a+|b{0}){2}$" }""",
             "/pattern"),
         ("an empty capturing group in a pattern", """{ "pattern": "(?!()+? *?)a" }""", "/pattern"),
+        // The refusal of a lazy quantifier refuses the one before too.
+        ("an empty capturing group as a branch of a counted group in a pattern",
+            """{ "pattern": "^(?:a+|()){2}$" }""", "/pattern"),
         ("a | at the start of a pattern", """{ "pattern": "|a" }""", "/pattern"),
         ("a | at the end of a pattern", """{ "pattern": "a|" }""", "/pattern"),
         ("a | at the start of a group in a pattern", """{ "pattern": "^(?:|a+){2}$" }""", "/pattern"),

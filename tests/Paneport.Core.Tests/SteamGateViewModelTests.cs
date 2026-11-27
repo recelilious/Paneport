@@ -8,8 +8,9 @@ using Xunit;
 
 namespace Paneport.Core.Tests;
 
-// S2.3.9: the Steam gate page shows every state of L2 steps 16 to 28 from the services, posts the
-// services' updates through the dispatcher, drops the password at once, and shows no secret.
+// S2.3.9: the Steam gate page shows the expected state of each of L2 steps 16 to 28 from the
+// services, posts the services' updates through the dispatcher, drops the password at once, and
+// shows no secret.
 public sealed class SteamGateViewModelTests
 {
     private const string Password = "pw-not-a-real-password";

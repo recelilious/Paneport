@@ -17,12 +17,14 @@ using Xunit;
 
 namespace Paneport.UI.Tests;
 
-// S2.3.9 and S2.3.10: the Steam gate page, rendered headless over a fake service, shows every
-// state of L2 steps 16 to 28, and no token, key, code or password appears in its text; the sign-in
+// S2.3.9 and S2.3.10: the Steam gate page, rendered headless over a fake service, shows the
+// expected state of each of L2 steps 16 to 28, and no token, key, code or password appears in its
+// text; the states that only a step's fallback reaches are not shown here. The sign-in
 // boxes ask for a keyboard without suggestions, the password box for a secure one, and it masks
 // what it shows; what the QR code draws has the modules of its latest text, also after its
 // challenge changes. That a frame is drawn again after a change (AffectsRender) is not checked
-// headless; L2 step 20 shows it on the device.
+// headless; L2 step 20 shows it on the device when Steam changes the challenge while the code is
+// shown.
 public sealed class SteamGatePageTests
 {
     private const string Password = "pw-typed-into-the-box";

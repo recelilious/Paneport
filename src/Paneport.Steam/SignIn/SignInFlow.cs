@@ -241,11 +241,6 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
         var started = _time.GetTimestamp();
         var token = _cancel.Token;
         SavedSignIn? loggingOnWith = null;
-
-        // Whether the session holds a logon with the attempt's tokens that no saved sign-in covers,
-        // as when the save failed: the tokens then keep the attempt's registration with the log
-        // filter, which is otherwise taken out when the attempt ends.
-        var keepTokens = false;
         try
         {
             SetProgress(new SignInProgress(SignInStage.Connecting));
@@ -272,12 +267,11 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
 
             // A cancellation, such as a sign-out, can land just after the logon. The save waits for
             // the store with the attempt's token, so a cancelled attempt never writes its token
-            // after the sign-out deleted the saved sign-in.
-            keepTokens = true;
+            // after the sign-out deleted the saved sign-in. The store registers the sign-in with the
+            // log filter before it writes it, also when the write then fails, and keeps that
+            // registration until it deletes the sign-in, as at sign-out; the attempt's own goes when
+            // it ends.
             await _tokens.SaveAsync(signIn, token).ConfigureAwait(false);
-
-            // The saved sign-in has the store's own registration from now on.
-            keepTokens = false;
             _session.SetSignInSaved(true);
             return End(started, SignInStage.LoggedOn, problem: null);
         }
@@ -289,7 +283,6 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
                 _session.AbandonLogOn(loggingOnWith);
             }
 
-            keepTokens = false;
             return End(started, SignInStage.Cancelled, problem: null);
         }
         catch (SteamAuthException exception)
@@ -308,11 +301,7 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
         finally
         {
             DropPassword();
-            if (!keepTokens)
-            {
-                DropTokens();
-            }
-
+            DropTokens();
             _session.EndSignIn();
         }
     }
@@ -450,7 +439,8 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
         Volatile.Write(ref _registeredTokens, tokens);
     }
 
-    // Takes the tokens' registration out when the attempt ends: a saved sign-in has the store's.
+    // Takes the tokens' registration out when the attempt ends, whatever its end: a sign-in that the
+    // store was given has the store's.
     private void DropTokens()
     {
         if (Interlocked.Exchange(ref _registeredTokens, null) is { } tokens)

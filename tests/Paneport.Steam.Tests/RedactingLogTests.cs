@@ -264,6 +264,35 @@ public sealed class RedactingLogTests
         Assert.False(kit.Log.Holds(kit.Samples.RefreshToken));
     }
 
+    // A save that fails leaves the logon up without a saved sign-in. The store registered the
+    // sign-in before the write, so its account name and token stay out of the log while the logon
+    // lasts, and they leave the filter with the delete at sign-out.
+    [Fact]
+    public async Task ASignInWhoseSaveFailedLeavesTheFilterAtSignOut()
+    {
+        using var kit = new SteamTestKit();
+        kit.Store.WriteFailure = new IOException("The keychain refused the write.");
+        kit.Authenticator.Guard = AccountGuard.None;
+        var attempt = kit.Service.StartPasswordSignIn(kit.Samples.AccountName, kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        await kit.UntilRequested(FakeConnection.Connect, 1);
+        kit.Connection.Listener.OnConnected();
+        await kit.UntilRequested(FakeConnection.LogOn, 1);
+        kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
+        Assert.Equal(SignInOutcome.Failed, (await attempt.Completion.WaitAsync(SteamTestKit.Patience, Token)).Outcome);
+        Assert.Equal(SteamSessionState.LoggedOn, kit.Service.Status.State);
+        Assert.True(kit.Log.Holds(kit.Samples.AccountName));
+        Assert.True(kit.Log.Holds(kit.Samples.RefreshToken));
+
+        var signOut = kit.Service.SignOutAsync(Token);
+        await SteamTestKit.Until(() => kit.Service.Status.State == SteamSessionState.SigningOut, "the sign-off");
+        kit.Connection.Listener.OnLoggedOff(SteamResult.OK);
+        kit.Connection.Listener.OnDisconnected(userInitiated: true);
+        await signOut.WaitAsync(SteamTestKit.Patience, Token);
+
+        Assert.False(kit.Log.Holds(kit.Samples.AccountName));
+        Assert.False(kit.Log.Holds(kit.Samples.RefreshToken));
+    }
+
     [Fact]
     public async Task ATokenThatSteamRefusesLeavesTheFilterWithTheSavedSignIn()
     {

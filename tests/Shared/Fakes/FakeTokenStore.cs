@@ -59,6 +59,9 @@ internal sealed class FakeTokenStore : ITokenStore
     // Holds each read until a test completes it, so that a test can keep the store busy.
     public TaskCompletionSource? ReadGate { get; set; }
 
+    // When set, each write fails with it and keeps nothing, as a keychain that refuses a write.
+    public Exception? WriteFailure { get; set; }
+
     public async Task<SavedSignIn?> ReadAsync(CancellationToken cancellationToken)
     {
         lock (_lock)
@@ -82,6 +85,11 @@ internal sealed class FakeTokenStore : ITokenStore
         lock (_lock)
         {
             _calls.Add("write");
+            if (WriteFailure is { } failure)
+            {
+                return Task.FromException(failure);
+            }
+
             _writes.Add(signIn);
             _signIn = signIn;
         }

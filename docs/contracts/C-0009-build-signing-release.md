@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.3 |
-| Date | 2026-11-23 |
+| Version | 1.4 |
+| Date | 2026-11-27 |
 | Owner | recelilious |
 
 This contract defines the environments, the pinned toolchain, the build stages, the app bundle, signing and installation, and what a release contains.
@@ -58,10 +58,13 @@ Development builds may come from a local Mac. Release builds always come from th
 |---|---|
 | `Frameworks/` | The native host and the Mach-O sides of the Wine and DXMT forks, as dynamic frameworks that a user can replace (C-0003 section 3). |
 | `wine/aarch64-windows/`, `wine/arm64ec-windows/`, `wine/i386-windows/` | The PE modules of Wine, FEX and DXMT, as plain files that Wine's loader maps. A user can replace them in the same way. |
+| `wine/prefix-template/` | The template prefix: a folder tree that CI generates on the macOS harness for the same Wine revision as the bundled PE modules, with a fixed generic user name and no host name or absolute host path, and a version marker. The app copies it into `Library/Application Support/Paneport/prefixes/` (C-0004 section 4) on first launch, and again in part when a newer template ships. |
+| `test-programs/` | Only in the device test flavor: the Windows test programs of `tests/win32/` and a list of their SHA-256 hashes. The main app holds none. |
 | `dockhost/` | The Dock host. |
 | `compat/` | The snapshot of the compatibility database (C-0008). |
 
 - Every embedded framework is signed with the same identity as the app.
+- `tools/CheckBundle.cs` checks each built app against `eng/bundle-layout.json`: every framework and PE module in its folder with its architecture, nothing missing or misplaced, test programs only in the device test flavor, and a template prefix free of host names and absolute host paths.
 - The .NET bindings import the native host as `@rpath/paneport_host.framework/paneport_host`, and the framework is embedded with a `NativeReference` of kind `Framework`. The phase 1 gate checks on a device that this resolves under Mono; if it does not, the bindings use `__Internal`.
 - Neither the bundle nor a release contains anything listed in C-0003 section 8 (Microsoft's Windows runtimes, Valve's client components, Wine Mono, Wine Gecko, game files), or anything C-0003 section 5 marks as under review, such as Apple's Metal Shader Converter, until its review is recorded. The MIT-licensed .NET runtime and .NET for iOS assemblies are part of the app and are listed in `THIRD_PARTY_NOTICES.md`.
 
@@ -109,16 +112,6 @@ The bundle identifier is chosen by recelilious.
 - The `ios` CI job uploads the same archives as artifacts of the run that builds the apps, kept as long as the apps, so that every build of the app that CI makes public offers the source of these components from the same place.
 - Release acceptance follows C-0012 section 5.
 
-## Proposed changes for 1.4
-
-**Not yet accepted.** Version 1.3 above stays binding until recelilious approves these changes. They come from stage M4.4, which ships the first Wine prefix and the first Windows test programs in an app bundle. Section 4 has no location for either.
-
-1. **Section 4, the bundle table.** Add two rows after the row of `wine/aarch64-windows/`, `wine/arm64ec-windows/` and `wine/i386-windows/`:
-   - `wine/prefix-template/`: "The template prefix: a folder tree that CI generates on the macOS harness for the same Wine revision as the bundled PE modules, with a fixed generic user name and no host name or absolute host path, and a version marker. The app copies it into `Library/Application Support/Paneport/prefixes/` (C-0004 section 4) on first launch, and again in part when a newer template ships."
-   - `test-programs/`: "Only in the device test flavor: the Windows test programs of `tests/win32/` and a list of their SHA-256 hashes. The main app holds none."
-2. **Section 4, the list under the table.** Add after the item on the signing identity: "`tools/CheckBundle.cs` checks each built app against `eng/bundle-layout.json`: every framework and PE module in its folder with its architecture, nothing missing or misplaced, test programs only in the device test flavor, and a template prefix free of host names and absolute host paths."
-3. **Change log.** On acceptance, add a row for 1.4, dated the day of acceptance, with the notes "Accepted by recelilious. Comes from stage M4.4. Section 4 adds the bundle locations of the template prefix, `wine/prefix-template/`, and of the device test flavor's test programs, `test-programs/`, and the bundle check."
-
 ## Change log
 
 | Version | Date | Notes |
@@ -128,3 +121,4 @@ The bundle identifier is chosen by recelilious.
 | 1.1 | 2026-10-31 | Accepted by recelilious. Section 2 pins the iOS workload set in `eng/toolchain.json` instead of `global.json`, because `sdk.workloadVersion` in `global.json` makes every build fail on a machine without that workload set, even for projects that use no workload, as stage M1.1 found. |
 | 1.2 | 2026-11-23 | Accepted by recelilious, together with C-0003 1.8. Comes from stage M2.3 and from recelilious's decision of 2026-11-22 on how the app offers the source of SteamKit2. Section 6 adds to each release an archive of the exact corresponding source of every LGPL component that is neither this repository nor a fork, which CI makes itself with `git archive` at the commit that the build used, for a package the commit of the upstream's release tag, pinned in the repository and checked against the commit that the package names. The `ios` CI job uploads the same archives beside its apps. |
 | 1.3 | 2026-11-23 | Accepted by recelilious, together with C-0003 1.9, C-0004 1.2, C-0006 1.1 and C-0010 1.2. Comes from stage M3.1 and from recelilious's decision of 2026-11-23 that Paneport names StikDebug's built-in `universal.js` in its JIT request and writes no broker script of its own (C-0006 1.1). Section 4 drops `jit-broker/` from the app bundle. |
+| 1.4 | 2026-11-27 | Accepted by recelilious. Comes from stage M4.4. Section 4 adds the bundle locations of the template prefix, `wine/prefix-template/`, and of the device test flavor's test programs, `test-programs/`, and the bundle check. |

@@ -22,12 +22,10 @@ Contracts are the binding documents of this project. Contracts come first; imple
 | [C-0006](C-0006-jit-request-protocol.md) | JIT request protocol | Accepted | 1.1 | 2026-11-23 |
 | [C-0007](C-0007-steam-integration.md) | Steam integration | Accepted | 1.2 | 2026-11-26 |
 | [C-0008](C-0008-compatibility-database.md) | Compatibility database | Accepted | 1.1 | 2026-11-01 |
-| [C-0009](C-0009-build-signing-release.md) | Build, signing and release | Accepted | 1.3 | 2026-11-23 |
+| [C-0009](C-0009-build-signing-release.md) | Build, signing and release | Accepted | 1.4 | 2026-11-27 |
 | [C-0010](C-0010-languages-and-style.md) | Languages and code style | Accepted | 1.2 | 2026-11-23 |
 | [C-0011](C-0011-testing-review-quality.md) | Testing, review and quality tools | Accepted | 1.5 | 2026-11-26 |
 | [C-0012](C-0012-acceptance-process.md) | Acceptance process | Accepted | 1.0 | 2026-10-28 |
-
-C-0009 also carries proposed changes for version 1.4, in a section of its own. They are not binding until recelilious approves them.
 
 ## Planned contracts
 

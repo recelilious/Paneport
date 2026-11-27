@@ -18,8 +18,11 @@ using Xunit;
 namespace Paneport.UI.Tests;
 
 // S2.3.9 and S2.3.10: the Steam gate page, rendered headless over a fake service, shows every
-// state of L2 steps 16 to 28, and no token, key, code or password appears in its text; the QR code
-// is drawn, and drawn again when its challenge changes.
+// state of L2 steps 16 to 28, and no token, key, code or password appears in its text; the sign-in
+// boxes ask for a keyboard without suggestions, the password box for a secure one, and it masks
+// what it shows; what the QR code draws has the modules of its latest text, also after its
+// challenge changes. That a frame is drawn again after a change (AffectsRender) is not checked
+// headless; L2 step 20 shows it on the device.
 public sealed class SteamGatePageTests
 {
     private const string Password = "pw-typed-into-the-box";
@@ -97,7 +100,8 @@ public sealed class SteamGatePageTests
         Settle(window, dispatcher);
         Assert.Equal("Logged on with a code: total 30.0 s, waiting for you 25.0 s.", Text(view, "SignInTimes"));
 
-        // Step 20: sign in with a QR code, which is drawn again when the challenge changes.
+        // Step 20: sign in with a QR code; after the challenge changes, what the control draws is
+        // the new challenge's code.
         signIn = page.SignInWithQrCodeCommand.ExecuteAsync(null);
         attempt = fakes.Steam.LastAttempt!;
         attempt.Show(new SignInProgress(SignInStage.ShowingQrCode, QrChallenge: FirstChallenge));
@@ -178,6 +182,11 @@ public sealed class SteamGatePageTests
         var password = view.FindControl<TextBox>("Password")!;
         Assert.Equal(TextInputContentType.Password, TextInputOptions.GetContentType(password));
         Assert.True(TextInputOptions.GetIsSensitive(password));
+
+        // Avalonia draws the box itself, also on iOS, and masks it only through its password
+        // character; the secure field changes only the keyboard.
+        Assert.Equal('*', password.PasswordChar);
+        Assert.False(password.RevealPassword);
         foreach (var name in new[] { "AccountName", "Password", "Code" })
         {
             Assert.False(TextInputOptions.GetShowSuggestions(view.FindControl<TextBox>(name)!));

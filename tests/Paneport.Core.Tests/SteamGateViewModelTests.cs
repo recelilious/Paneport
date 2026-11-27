@@ -71,6 +71,22 @@ public sealed class SteamGateViewModelTests
         Assert.DoesNotContain("total 0.0 s", page.Summary, StringComparison.Ordinal);
     }
 
+    // A session that gave up reconnecting is Offline with its sign-in still saved; opening the page
+    // again resumes then, as it does while signed out.
+    [Fact]
+    public async Task OpeningThePageAgainWhileOfflineResumes()
+    {
+        var page = CreatePage();
+        await page.LoadAsync(Token);
+        _services.Steam.Status = new SteamSessionStatus(SteamSessionState.Offline, true, SteamTransport.WebSocket, null);
+        _services.Steam.ResumeResult = new SignInResult(SignInOutcome.LoggedOn, TimeSpan.FromSeconds(4.5), TimeSpan.Zero, null);
+
+        await page.LoadAsync(Token);
+
+        Assert.Equal(2, _services.Steam.ResumeCalls);
+        Assert.Equal("Logged on with the saved sign-in: total 4.5 s, waiting for you 0.0 s.", page.SignInTimesText);
+    }
+
     [Fact]
     public async Task OpeningThePageAgainDuringASignInDoesNotResume()
     {

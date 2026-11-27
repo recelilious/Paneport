@@ -151,7 +151,7 @@ public sealed class SteamKitChunkTests
             Server server = new IPEndPoint(IPAddress.Loopback, ((IPEndPoint)listener.LocalEndpoint).Port);
 
             var failure = await Record.ExceptionAsync(() => content
-                .DownloadChunkAsync(4_100_000_101, entry, new ContentServer("127.0.0.1", server), new byte[32], new byte[2000], null, TestContext.Current.CancellationToken)
+                .DownloadChunkAsync(4_100_000_101, entry, new ContentServer(IPAddress.Loopback.ToString(), server), new byte[32], new byte[2000], null, TestContext.Current.CancellationToken)
                 .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
 
             Assert.IsType(rejected ? typeof(ChunkRejectedException) : typeof(ContentDownloadException), failure);

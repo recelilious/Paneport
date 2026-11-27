@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | Accepted |
-| Version | 1.0 |
-| Date | 2026-10-28 |
+| Version | 1.1 |
+| Date | 2026-11-27 |
 | Owner | recelilious |
 
 This contract defines the C interface between the .NET side (`Paneport.Interop`) and the native host (`src/native/host`), the bridge between the native host and the Wine fork, and how signals are owned in the process. It fixes conventions and the initial function groups. Exact parameter lists are settled in the headers, and changing them follows the versioning rules in section 1.
@@ -49,7 +49,7 @@ Rules for these groups:
 - **Session start.** `pp_session_start` takes a session configuration. From the title's compatibility entry (C-0008) come the architecture, translator options, environment variables, blocked helper programs and graphics settings. The prefix path is derived from the entry's `prefix` value and the title's identifier, and the locale comes from the app settings. The physical memory size reported to Windows is derived by the host from the memory limit. It fails with `PP_E_JIT_NOT_READY` unless the JIT state is `ready` (C-0006), and with `PP_E_SESSION_EXISTS` if a session has already run in this process (C-0004 section 1).
 - **Steam token.** The host keeps the token only in memory, hands it to the Dock host through the bridge (section 3), and overwrites its copy with zeros once the Dock host has read it or the session ends. The token never travels as a command-line argument, an environment variable, a registry value or a log line.
 
-**Events** reach .NET through the event callback: a process started or exited (with its exit code); a guest process ended by an unhandled Windows exception (exception code, address and module name); the session ended; memory pressure (with a level); a thermal state change; and a JIT state change. A fatal fault outside the guest path ends the whole app, so it is never delivered as an event. The host writes it to a crash record in `Library/Caches/Paneport/`, and the app reads that record on its next launch.
+**Events** reach .NET through the event callback: a process started or exited (with its exit code); a guest process ended by an unhandled Windows exception (exception code, address and module name); the session ended; memory pressure (with a level); a thermal state change; and a JIT state change. A fatal fault outside the guest path ends the whole app, so it is never delivered as an event. The host writes it to a crash record in `Library/Caches/Paneport/`, and the app reads that record on its next launch. An unhandled .NET exception ends the app as well. Before the app ends, Paneport's managed code writes a managed exception record of its own in the same folder, apart from the host's crash record, so that a record that the host writes afterwards never replaces it. The app reads both records on its next launch and shows them together. C-0010 section 2 fixes what the managed record may hold.
 
 ## 3. Bridge between the host and the Wine fork
 
@@ -83,3 +83,4 @@ Rules for these groups:
 |---|---|---|
 | 0.1 | 2026-10-28 | First draft |
 | 1.0 | 2026-10-28 | Accepted by recelilious |
+| 1.1 | 2026-11-27 | Accepted by recelilious, together with C-0010 1.3. Comes from stage M2.4 and from recelilious's decision of 2026-11-26 that the managed exception record is a stage of its own. Section 2 says that an unhandled .NET exception leaves a managed exception record of its own beside the host's crash record, and that the app reads both on its next launch. The host's interface does not change. |

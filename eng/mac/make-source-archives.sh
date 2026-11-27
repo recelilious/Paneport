@@ -435,9 +435,10 @@ self_test() {
 
     # The settings go to git through assignments before a function call, as make_all is called
     # below. Without them the case would pass whatever the guards do, so it first asserts that git
-    # sees them, also in the Bash 3.2 of macOS.
+    # sees them, also in the Bash 3.2 of macOS, with the system configuration left out: that of Git
+    # for Windows sets core.autocrlf itself, which would make the check pass in vain.
     plant() {
-        GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=true \
+        GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=true \
             GIT_CONFIG_KEY_1=filter.upper.smudge GIT_CONFIG_VALUE_1='tr a-z A-Z' "$@"
     }
     sees_plant() {

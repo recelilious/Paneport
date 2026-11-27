@@ -62,6 +62,16 @@ case $build_dir in
 esac
 work="$build_dir/fex/build"
 install="$build_dir/fex/install"
+
+# The checks of the module below are a script of their own, which build-wine.sh runs too. Its
+# SHA-256 is written here, so that the runtime job's cache key, which covers this script,
+# follows it: a build that passed an older check must not be restored from the cache.
+pe_check="$repo/eng/mac/check-pe-modules.sh"
+pe_check_sha256=22cb98cb633109352e152e002c94fd3aa3530550431ed0e8497cfc69e9da1598
+[ "$(shasum -a 256 "$pe_check" | cut -d ' ' -f 1)" = "$pe_check_sha256" ] \
+    || fail "eng/mac/check-pe-modules.sh has changed: write its new SHA-256 into pe_check_sha256 \
+in this script and in eng/mac/build-wine.sh, so that the caches of the fork builds follow it."
+
 rm -rf "$work" "$install"
 mkdir -p "$work" "$install"
 
@@ -142,4 +152,14 @@ if [ -n "$runtime" ]; then
     fail "the link took objects of mingw-w64's runtime, which the review of docs/design/forks.md section 9 does not cover for this module."
 fi
 say "no object of mingw-w64's runtime"
+
+# S4.4.5: the module's code does not name x18 and the module has no TLS directory, since iOS
+# zeroes x18 and FEX takes the TEB from the thread's TSD and from its own thread state
+# (docs/design/runtime-ios.md section 6). The two functions that are allowed belong to the
+# libc++abi that llvm-mingw ships built: they hold the state of a thrown C++ exception in a
+# thread_local variable, and run only when code throws. The module gives that variable no TLS
+# directory on any system, so a throw ends the process with or without x18.
+"$pe_check" --allow 'libarm64ecfex.dll:__cxa_get_globals' \
+    --allow 'libarm64ecfex.dll:__cxa_get_globals_fast' "$install/libarm64ecfex.dll" \
+    || fail "libarm64ecfex.dll failed the checks of eng/mac/check-pe-modules.sh; see above."
 say "ready"

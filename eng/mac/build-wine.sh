@@ -77,6 +77,15 @@ case $repo in
     *[[:space:]]*) fail "the repository's path holds a space, which Wine's CFLAGS cannot carry." ;;
 esac
 
+# The checks of the PE modules below are a script of their own, which build-fex.sh runs too. Its
+# SHA-256 is written here for the same reason as the bridge header's: a build that passed an
+# older check must not be restored from the cache.
+pe_check="$repo/eng/mac/check-pe-modules.sh"
+pe_check_sha256=22cb98cb633109352e152e002c94fd3aa3530550431ed0e8497cfc69e9da1598
+[ "$(shasum -a 256 "$pe_check" | cut -d ' ' -f 1)" = "$pe_check_sha256" ] \
+    || fail "eng/mac/check-pe-modules.sh has changed: write its new SHA-256 into pe_check_sha256 \
+in this script and in eng/mac/build-fex.sh, so that the caches of the fork builds follow it."
+
 rm -rf "$work" "$install"
 mkdir -p "$work"
 cd "$work"
@@ -147,9 +156,11 @@ done
 say "bin/wineserver.so exports the five entry points of single-process mode"
 
 # bin/wine is Wine's launcher, which execs the loader in lib/wine/aarch64-unix as the program's
-# process. macOS kills an arm64 executable whose segments are not aligned to its 16 KiB pages,
-# and keeps x18, which holds the Windows TEB, only for a main executable that names the macOS 12
-# SDK or an older one (docs/design/runtime-macos-harness.md section 2.1).
+# process. macOS kills an arm64 executable whose segments are not aligned to its 16 KiB pages.
+# It zeroes x18 on every return to user mode, as iOS does, unless the main executable names the
+# macOS 12 SDK or an older one. The loader must not name such an SDK: the fork keeps the TEB
+# pointer in the thread's TSD, and the cases of multi mode must run under the rule of the device,
+# so that a use of x18 that is left in a PE module shows (docs/design/runtime-ios.md section 6).
 for loader in "$install/bin/wine" "$install/lib/wine/aarch64-unix/wine"; do
     [ -f "$loader" ] || fail "${loader#"$install/"} is missing."
     name=${loader#"$install/"}
@@ -166,8 +177,11 @@ for loader in "$install/bin/wine" "$install/lib/wine/aarch64-unix/wine"; do
     say "$name: SDK version ${sdk:-unknown}, $misaligned segments not aligned to 16 KiB"
     [ "$misaligned" -eq 0 ] || fail "$name has segments that macOS will not map."
 done
-[ -n "$sdk" ] && [ "${sdk%%.*}" -le 12 ] \
-    || fail "lib/wine/aarch64-unix/wine names SDK ${sdk:-unknown}, so macOS will not keep x18."
+case ${sdk%%.*} in
+    '' | *[!0-9]*) fail "vtool shows no SDK version of lib/wine/aarch64-unix/wine." ;;
+esac
+[ "${sdk%%.*}" -ge 13 ] \
+    || fail "lib/wine/aarch64-unix/wine names SDK $sdk, so macOS would keep x18 for it, which iOS never does."
 
 # S4.2.2: every module that the build made for a PE architecture is installed in that
 # architecture's folder, and a sample of modules has the machine type of its folder. The folders
@@ -233,4 +247,15 @@ for arch in aarch64-windows i386-windows; do
     done
 done
 [ "$problems" -eq 0 ] || fail "the installed PE modules are incomplete or of the wrong machine type; see above."
+
+# S4.4.5: no native PE module names x18 or has a TLS directory, since iOS zeroes x18 and the
+# fork keeps the TEB pointer in the thread's TSD (docs/design/runtime-ios.md section 6). The one
+# function that is allowed saves x18 with the other registers of a context. And no object,
+# archive or module holds the symbol of FFmpeg's crc.S for ARM64, which is under the GPL and
+# which the fork leaves out (docs/design/runtime-macos-harness.md section 10).
+checked=$(date +%s)
+"$pe_check" --allow 'ntdll.dll:RtlCaptureContext' \
+    --forbid-symbol ff_crc32_aarch64 --objects "$work" "$install/lib/wine/aarch64-windows" \
+    || fail "the PE modules failed the checks of eng/mac/check-pe-modules.sh; see above."
+say "checked the native PE modules in $(($(date +%s) - checked)) s"
 say "ready"

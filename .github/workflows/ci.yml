@@ -280,7 +280,9 @@ jobs:
       # also includes src/native/include/paneport/wine_bridge.h, which its key follows through
       # the header's SHA-256 in build-wine.sh. The script checks it only when it builds, so it is
       # checked here on every run, before any restore: a stale value would keep the key, and the
-      # job would restore a Wine built against the old header.
+      # job would restore a Wine built against the old header. Both build scripts run
+      # eng/mac/check-pe-modules.sh on what they built and hold its SHA-256 in the same way, so
+      # that a build which passed an older check is not restored either.
       - name: Compute the cache keys
         id: keys
         run: |
@@ -292,6 +294,15 @@ jobs:
               "so that Wine's cache key follows it." >&2
             exit 1
           fi
+          pe_check=$(shasum -a 256 eng/mac/check-pe-modules.sh | cut -d ' ' -f 1)
+          for script in eng/mac/build-wine.sh eng/mac/build-fex.sh; do
+            if ! grep -qxF "pe_check_sha256=$pe_check" "$script"; then
+              echo "::error title=Cache keys::eng/mac/check-pe-modules.sh has changed: update" \
+                "pe_check_sha256 in $script to its SHA-256, $pe_check, so that the cache key of" \
+                "that fork's build follows it." >&2
+              exit 1
+            fi
+          done
           pins() {
             for tool in "$@"; do
               printf '%s ' "$tool"
@@ -335,6 +346,15 @@ jobs:
         with:
           path: ~/Library/Caches/paneport-tools
           key: ${{ steps.keys.outputs.tools }}
+
+      # S4.4.5: the checks that the build scripts run on the native PE modules of the forks, for
+      # uses of x18, TLS directories and the symbol of FFmpeg's crc.S. Its self-test builds small
+      # modules with the pinned llvm-mingw and passes only if the checks fail on each planted
+      # one, with its name, and pass on a clean one. It runs on every run, because the builds
+      # themselves, and so their checks, come from the cache on most.
+      - name: Check that the PE module checks fail on planted modules (eng/mac/check-pe-modules.sh --self-test)
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: eng/mac/check-pe-modules.sh --self-test
 
       - name: Restore Wine's build from the cache
         id: wine-cache

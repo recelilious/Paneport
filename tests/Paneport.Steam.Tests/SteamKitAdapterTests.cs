@@ -331,6 +331,24 @@ public sealed class SteamKitAdapterTests
         Assert.False(reached);
     }
 
+    // A sign-in cancelled before its begin never reaches SteamKit2, whose begin takes no token.
+    [Fact]
+    public async Task ABeginWithACancelledTokenNeverReachesSteamKit2()
+    {
+        var reached = false;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => SteamKitAuthenticator.BeginAsync(
+            () =>
+            {
+                reached = true;
+                return Task.FromResult(0);
+            },
+            () => true,
+            new CancellationToken(canceled: true)));
+
+        Assert.False(reached);
+    }
+
     // The connection can end between the adapter's check and SteamKit2's own. SteamKit2's refusal
     // to begin then means NoConnection, and only then.
     [Fact]

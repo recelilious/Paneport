@@ -60,6 +60,9 @@ internal sealed class SteamKitAuthenticator(SteamClient client, string deviceNam
         return TranslateAsync(
             async () =>
             {
+                // A sign-in cancelled before its begin never reaches SteamKit2, whose begin takes no
+                // token.
+                cancellationToken.ThrowIfCancellationRequested();
                 if (!connected())
                 {
                     throw new SteamAuthException(SteamResult.NoConnection);
@@ -86,9 +89,10 @@ internal sealed class SteamKitAuthenticator(SteamClient client, string deviceNam
     // wait or a code that the user submits, fails at once with AsyncJobFailedException. And Steam
     // itself can fail a job while the connection is up, with the same exception, which is then a
     // failure of Steam's: Fail, which the page explains in plain words. Whether the client is
-    // connected tells the last two apart: the session connects again only after it has seen the
-    // drop and waited at least a second (ReconnectPolicy), so the client cannot be connected again
-    // by the time the failure arrives here.
+    // connected tells the last two apart: such a job fails at once, while SteamKit2 still marks the
+    // client as not connected, and the client is connected again only once a new connection is up,
+    // which takes a round trip to a server even when the session connects again at once, as after a
+    // return to the foreground. So the client is not connected again by the time the failure arrives.
     internal static async Task<T> TranslateAsync<T>(Func<Task<T>> call, Func<bool> connected, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(call);

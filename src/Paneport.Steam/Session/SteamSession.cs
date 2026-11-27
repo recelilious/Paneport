@@ -252,7 +252,10 @@ internal sealed class SteamSession : IConnectionListener
         _signIns--;
         if (_signIns == 0 && _goal == Goal.Connected)
         {
+            // No sign-in needs the connection any more, so a wait to connect again waits for
+            // nobody; left, it would hold off a sign-in that starts during it for up to 16 s.
             _goal = Goal.None;
+            CancelWait();
         }
 
         Publish();
@@ -281,13 +284,11 @@ internal sealed class SteamSession : IConnectionListener
             _goal = _signIns > 0 ? Goal.Connected : Goal.None;
             _reconnecting = false;
             _offline = false;
-            if (_goal == Goal.None)
-            {
-                // A wait to connect again stays while a sign-in needs the connection, such as one
-                // that replaced this one: its own connect returned early because the wait was there.
-                CancelWait();
-            }
 
+            // A wait to connect again stays: the abandoning attempt still counts in _signIns until
+            // its EndSignIn, and a sign-in that replaced it may need the wait, since its own connect
+            // returned early because the wait was there. A pending wait connects only while a goal
+            // remains, and EndSignIn cancels it once no sign-in is left.
             CompleteLogOns(SteamResult.Cancelled);
             if (_loggedOn && !_signingOut)
             {

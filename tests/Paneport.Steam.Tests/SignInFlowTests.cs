@@ -359,6 +359,31 @@ public sealed class SignInFlowTests : IDisposable
         Assert.DoesNotContain("write", _kit.Store.Calls);
     }
 
+    // Without a replacement, the wait to connect again goes when the cancelled attempt ends:
+    // nothing connects, and a sign-in that starts right after connects at once.
+    [Fact]
+    public async Task ASignInCancelledWhileWaitingToReconnectLeavesNoWaitBehind()
+    {
+        var token = TestContext.Current.CancellationToken;
+        _kit.Authenticator.Guard = AccountGuard.None;
+        var first = _kit.Service.StartPasswordSignIn(_kit.Samples.AccountName, _kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        await _kit.UntilRequested(FakeConnection.Connect, 1);
+        _kit.Connection.Listener.OnConnected();
+        await _kit.UntilRequested(FakeConnection.LogOn, 1);
+        _kit.Connection.Listener.OnDisconnected(userInitiated: false);
+        await SteamTestKit.Until(() => _kit.Delays.Pending.Count == 1, "the wait to connect again");
+
+        first.Cancel();
+        Assert.Equal(SignInOutcome.Cancelled, (await first.Completion.WaitAsync(SteamTestKit.Patience, token)).Outcome);
+        await SteamTestKit.Until(() => _kit.Delays.Pending.Count == 0, "the wait to go");
+        Assert.Equal(1, _kit.Connection.Count(FakeConnection.Connect));
+
+        var second = _kit.Service.StartQrSignIn();
+        await _kit.UntilRequested(FakeConnection.Connect, 2);
+        second.Cancel();
+        await second.Completion.WaitAsync(SteamTestKit.Patience, token);
+    }
+
     // A logon that a sign-out cancels is no refusal by Steam either.
     [Fact]
     public async Task AResumeThatASignOutCancelsSaysSo()

@@ -156,6 +156,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/ScanPackage.cs -- --self-test
 
+      # Its fixtures, built in a temporary folder from headers that the test writes, break one rule
+      # of the bundle layout each, and each must fail naming the file; the clean bundles must pass
+      # (S4.4.8). This job makes the links that the cases of the template prefix need.
+      - name: Self-test the bundle layout check
+        if: ${{ !cancelled() }}
+        run: dotnet run tools/CheckBundle.cs -- --self-test
+
       # Its fixtures, in the tool and in tests/compat, break one rule each, and each must fail
       # naming that rule; its valid fixtures must pass (M3.1, M8.3).
       - name: Self-test the compatibility check
@@ -866,6 +873,17 @@ jobs:
             exit 1
           fi
 
+      # S4.4.8: the device test flavor bundles the x86-64 Win32 test programs of tests/win32 as
+      # test-programs/ with their SHA-256 list (C-0009 section 4). The script of the runtime job
+      # builds them here too, with the llvm-mingw that the bootstrap named in LLVM_MINGW, and the
+      # staging script copies the programs and writes the list. The flavor's project then bundles
+      # them and fails the build without them; the main app never does.
+      - name: Build and stage the Win32 test programs (eng/mac/build-win32-tests.sh, eng/mac/stage-test-programs.sh)
+        if: ${{ !cancelled() }}
+        run: |
+          eng/mac/build-win32-tests.sh x86_64
+          eng/mac/stage-test-programs.sh
+
       # Release with full ahead-of-time compilation and the interpreter off (C-0009 section 3),
       # without signing. The build stamp gets the pull request's head commit, because the job
       # checks out the merge commit, and the run number as the build number; a push names its
@@ -1013,6 +1031,26 @@ jobs:
           fi
           if [ -n "$TEST_APP" ]; then
             eng/mac/check-app.sh "$TEST_APP" test || status=1
+          fi
+          exit "$status"
+
+      # S4.4.8: each app against eng/bundle-layout.json, which holds only what the bundle holds so
+      # far and gets stricter as the runtime lands: architectures and folders of frameworks and PE
+      # modules, nothing that C-0009 section 4 excludes, test programs only in the device test
+      # flavor, and a clean template prefix. The size report of each app goes to the job summary.
+      # It goes on with the other flavor after a failure, as the steps above do.
+      - name: Check the layout and size of both apps (tools/CheckBundle.cs)
+        if: ${{ !cancelled() && (steps.apps.outputs.main != '' || steps.apps.outputs.test != '') }}
+        env:
+          MAIN_APP: ${{ steps.apps.outputs.main }}
+          TEST_APP: ${{ steps.apps.outputs.test }}
+        run: |
+          status=0
+          if [ -n "$MAIN_APP" ]; then
+            dotnet run tools/CheckBundle.cs -- --app "$MAIN_APP" --flavor main --summary "$GITHUB_STEP_SUMMARY" || status=1
+          fi
+          if [ -n "$TEST_APP" ]; then
+            dotnet run tools/CheckBundle.cs -- --app "$TEST_APP" --flavor test --summary "$GITHUB_STEP_SUMMARY" || status=1
           fi
           exit "$status"
 

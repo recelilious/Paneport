@@ -31,6 +31,11 @@
       "note": "The native host (C-0009 section 4)."
     },
     {
+      "path": "test-programs/**",
+      "components": ["Paneport"],
+      "note": "Only in the device test flavor: the Win32 test programs of tests/win32, our own C code under the MIT license, and the list of their SHA-256 hashes (C-0009 section 4). llvm-mingw links the start-up code of the mingw-w64 runtime into each program, whose notice (ZPL-2.1, docs/design/forks.md section 9) the coverage review of M9.1 adds as a component of its own."
+    },
+    {
       "path": "Avalonia.*",
       "components": ["Avalonia"],
       "note": "The assemblies of Avalonia's packages and their ahead-of-time data."

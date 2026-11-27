@@ -17,6 +17,7 @@ The domain model, the view models, the settings, the compatibility database read
 | `Security/` | The secret value type, whose text form is redacted, the saved sign-in, the token store interface, and the token store over a secure-item interface that the keychain implements on the device |
 | `Logging/` | The logging interface, and the log file of the device |
 | `Storage/` | The on-device storage layout of C-0004 section 4, its bootstrap with the backup marks, and the file-system interface with its System.IO implementation |
+| `Prefixes/` | The prefix installer: the template's version marker, the file operations behind an interface with a System.IO implementation, and the installer that copies the bundled template prefix on first launch and replaces part of it when a newer one ships |
 | `Diagnostics/` | What the Diagnostics page reads: the memory timeline, the crash record reader and store, the entitlement readers for the code signature and the profile, the build stamp, the device facts with the reading of the model identifier, and what became of the call that turns off Mono's crash chaining |
 | `Gates/` | The verdict of the signal gate, with the criteria of L2 step 13, the hang threshold and the heartbeat |
 | `Jit/` | The request with which the app asks StikDebug for JIT: the URL that names StikDebug's built-in script with the app's bundle identifier and process identifier (C-0006 section 3 step 2) |

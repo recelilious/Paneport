@@ -87,11 +87,31 @@ internal sealed class SteamKitConnection : ISteamConnection, IDisposable
     {
         lock (_lock)
         {
-            // By endpoint only: SteamKit2 gives the pick with the chosen protocol alone, and its list
-            // the same server with all of its protocols.
-            if (_server is { } server && !_avoided.Contains(server.EndPoint))
+            if (_server is { } server)
             {
-                _avoided.Add(server.EndPoint);
+                AvoidUnderLock(server.EndPoint);
+            }
+        }
+    }
+
+    // Avoids a server in the next picks, until Steam accepts a logon.
+    internal void Avoid(EndPoint endPoint)
+    {
+        ArgumentNullException.ThrowIfNull(endPoint);
+        lock (_lock)
+        {
+            AvoidUnderLock(endPoint);
+        }
+    }
+
+    // How many servers the next picks avoid; for the tests.
+    internal int AvoidedServers
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _avoided.Count;
             }
         }
     }
@@ -203,6 +223,16 @@ internal sealed class SteamKitConnection : ISteamConnection, IDisposable
         }
 
         Listener?.OnLoggedOn(Convert(callback.Result));
+    }
+
+    // By endpoint only: SteamKit2 gives the pick with the chosen protocol alone, and its list the
+    // same server with all of its protocols. Called under the lock.
+    private void AvoidUnderLock(EndPoint endPoint)
+    {
+        if (!_avoided.Contains(endPoint))
+        {
+            _avoided.Add(endPoint);
+        }
     }
 
     // Registers the account's Steam ID with the log filter in the forms a line could hold it: the

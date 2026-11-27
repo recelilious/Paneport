@@ -357,12 +357,59 @@ public sealed class SteamSessionTests : IDisposable
         Assert.Equal(SteamResult.Cancelled, await firstLogOn.WaitAsync(SteamTestKit.Patience, token));
         Assert.Equal(1, _kit.Connection.Count(FakeConnection.Disconnect));
         _kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
+
+        // The session runs its posts in order, so once a later post shows in the status, it has
+        // seen the answer on the connection that it ends, and ignored it.
+        _kit.Session.SetSignInSaved(true);
+        await SteamTestKit.Until(() => _kit.Service.Status.SignInSaved == true, "the session to see the answer");
+        Assert.NotEqual(SteamSessionState.LoggedOn, _kit.Service.Status.State);
         Assert.False(secondLogOn.IsCompleted);
         _kit.Connection.Listener.OnDisconnected(userInitiated: true);
         _kit.Connection.Listener.OnConnected();
         Assert.Equal((second.AccountName, second.RefreshToken.Reveal()), _kit.Connection.LastLogOn);
         _kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
         Assert.Equal(SteamResult.OK, await secondLogOn.WaitAsync(SteamTestKit.Patience, token));
+    }
+
+    // A return to the foreground while the adapter still picks the first server: the logon still
+    // completes on the connection that comes, and a later drop waits the backoff's first second.
+    [Fact]
+    public async Task AForegroundReturnWhileConnectingStillLogsOnAndKeepsTheBackoff()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var logOn = _kit.Session.LogOnAsync(_kit.SampleSignIn(), token);
+        _kit.Session.OnForegroundReturned();
+        _kit.Connection.Listener.OnConnected();
+        await _kit.UntilRequested(FakeConnection.LogOn, 1);
+        _kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
+        Assert.Equal(SteamResult.OK, await logOn.WaitAsync(SteamTestKit.Patience, token));
+
+        _kit.Connection.Listener.OnDisconnected(userInitiated: false);
+
+        await SteamTestKit.Until(() => _kit.Delays.Pending.Count == 1, "the wait to connect again");
+        Assert.Equal(TimeSpan.FromSeconds(1), _kit.Delays.Pending[0]);
+        Assert.Equal(1, _kit.Connection.Count(FakeConnection.Connect));
+    }
+
+    // A logon that Steam accepts after failures starts the count again, so a later drop waits the
+    // backoff's first second.
+    [Fact]
+    public async Task AnAcceptedLogonAfterFailuresStartsTheBackoffAgain()
+    {
+        await _kit.LogOnAsync();
+        _kit.Connection.Listener.OnDisconnected(userInitiated: false);
+        await SteamTestKit.Until(() => _kit.Delays.Pending.Count == 1, "the first wait");
+        _kit.Delays.Release(TimeSpan.FromSeconds(1));
+        await _kit.UntilRequested(FakeConnection.Connect, 2);
+        _kit.Connection.Listener.OnConnected();
+        await _kit.UntilRequested(FakeConnection.LogOn, 2);
+        _kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
+        await SteamTestKit.Until(() => _kit.Service.Status.State == SteamSessionState.LoggedOn, "the logon after the failure");
+
+        _kit.Connection.Listener.OnDisconnected(userInitiated: false);
+
+        await SteamTestKit.Until(() => _kit.Delays.Pending.Count == 1, "the wait after the second drop");
+        Assert.Equal(TimeSpan.FromSeconds(1), _kit.Delays.Pending[0]);
     }
 
     // The same sign-in read from the store again is a new object: no second connection.

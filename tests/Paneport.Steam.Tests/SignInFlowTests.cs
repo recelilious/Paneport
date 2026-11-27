@@ -333,6 +333,32 @@ public sealed class SignInFlowTests : IDisposable
         await second.Completion.WaitAsync(SteamTestKit.Patience, token);
     }
 
+    // A sign-in cancelled once its logon is there, while its save waits for the store, gives the
+    // logon up: the session logs off, and nothing is saved.
+    [Fact]
+    public async Task ACancelWhileTheSaveWaitsLogsTheSessionOff()
+    {
+        var token = TestContext.Current.CancellationToken;
+        _kit.Authenticator.Guard = AccountGuard.None;
+        var attempt = _kit.Service.StartPasswordSignIn(_kit.Samples.AccountName, _kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        await _kit.UntilRequested(FakeConnection.Connect, 1);
+        _kit.Connection.Listener.OnConnected();
+        await _kit.UntilRequested(FakeConnection.LogOn, 1);
+        _kit.Store.ReadGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = _kit.Service.ResumeAsync(token);
+        await SteamTestKit.Until(() => _kit.Store.Calls.Count == 1, "the resume to read the store");
+        _kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
+        await SteamTestKit.Until(() => _kit.Service.Status.State == SteamSessionState.LoggedOn, "the logon");
+
+        attempt.Cancel();
+
+        Assert.Equal(SignInOutcome.Cancelled, (await attempt.Completion.WaitAsync(SteamTestKit.Patience, token)).Outcome);
+        await _kit.UntilRequested(FakeConnection.LogOff, 1);
+        _kit.Store.ReadGate.SetResult();
+        await resume.WaitAsync(SteamTestKit.Patience, token);
+        Assert.DoesNotContain("write", _kit.Store.Calls);
+    }
+
     // A logon that a sign-out cancels is no refusal by Steam either.
     [Fact]
     public async Task AResumeThatASignOutCancelsSaysSo()

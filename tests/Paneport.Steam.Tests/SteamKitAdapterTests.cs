@@ -71,6 +71,20 @@ public sealed class SteamKitAdapterTests
         Assert.NotEqual(0u, InstallIdentityMachineInfo.RandomLoginId());
     }
 
+    // A known answer, computed apart from this code: the first four bytes, little-endian, of
+    // HMAC-SHA256 under the identity 0, 1, ..., 31 of the ASCII text "login-id".
+    [Fact]
+    public void TheLoginIdOfAFixedIdentityIsTheKnownAnswer()
+    {
+        var identity = new byte[MachineIdentity.Length];
+        for (var i = 0; i < identity.Length; i++)
+        {
+            identity[i] = (byte)i;
+        }
+
+        Assert.Equal(3_172_526_703u, new InstallIdentityMachineInfo(identity).LoginId());
+    }
+
     [Fact]
     public void TheServicesUseTheInstallIdentityForTheMachineAndTheLoginId()
     {
@@ -109,6 +123,24 @@ public sealed class SteamKitAdapterTests
         }
     }
 
+    // The adapter's answer to an accepted logon, reached through SteamKit2's own callback queue on a
+    // client that never connects: it registers the account's Steam ID with the log filter, and
+    // forgets the servers that Steam asked to leave.
+    [Fact]
+    public async Task AnAcceptedLogonRegistersTheSteamIdAndForgetsTheServersToAvoid()
+    {
+        var samples = new SteamSamples();
+        var log = new RedactingLog(new RecordingLog());
+        using var connection = new SteamKitConnection(SteamConfiguration.Create(builder => builder.WithDirectoryFetch(false)), DeviceName, 41_000_123, log);
+        connection.Avoid(ServerRecord.CreateWebSocketServer("cm1.example.invalid:443").EndPoint);
+        Assert.Equal(1, connection.AvoidedServers);
+
+        connection.Client.PostCallback(LoggedOn(EResult.OK, samples.SteamId));
+
+        await SteamTestKit.Until(() => connection.AvoidedServers == 0 && log.Holds(samples.SteamId64), "the logon's callback");
+        Assert.True(log.Holds(samples.AccountNumberText));
+    }
+
     // SteamKit2 gives its pick with the chosen protocol alone and its list with all of a server's
     // protocols, so the server to avoid is found by its endpoint.
     [Fact]
@@ -131,6 +163,10 @@ public sealed class SteamKitAdapterTests
 
         Assert.Same(candidate, SteamKitConnection.PickAvoiding(candidate, [first, candidate], [first.EndPoint], ProtocolTypes.WebSocket));
         Assert.Same(candidate, SteamKitConnection.PickAvoiding(candidate, [first, candidate], [], ProtocolTypes.WebSocket));
+
+        // Also when the list has another server before it that is not to be avoided either.
+        var other = ServerRecord.CreateWebSocketServer("cm2.example.invalid:443");
+        Assert.Same(candidate, SteamKitConnection.PickAvoiding(candidate, [first, other, candidate], [first.EndPoint], ProtocolTypes.WebSocket));
     }
 
     // SteamKit2 cancels every pending job when the connection ends, which also ends a wait for an
@@ -349,6 +385,17 @@ public sealed class SteamKitAdapterTests
 
         Assert.Equal(SignInOutcome.Cancelled, (await attempt.Completion.WaitAsync(SteamTestKit.Patience, token)).Outcome);
         Assert.Null(kit.Store.SignIn);
+    }
+
+    // SteamKit2's callback for a logon answer, built from a result through its non-public
+    // constructor, with the account's Steam ID as Steam's answer would carry it.
+    private static SteamUser.LoggedOnCallback LoggedOn(EResult result, SteamID steamId)
+    {
+        var constructor = typeof(SteamUser.LoggedOnCallback).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, [typeof(EResult)])
+            ?? throw new InvalidOperationException("SteamKit2's LoggedOnCallback has no constructor from a result.");
+        var callback = (SteamUser.LoggedOnCallback)constructor.Invoke([result]);
+        typeof(SteamUser.LoggedOnCallback).GetProperty(nameof(SteamUser.LoggedOnCallback.ClientSteamID))!.SetValue(callback, steamId);
+        return callback;
     }
 
     private static SteamClient ClientThatNeverConnects() =>

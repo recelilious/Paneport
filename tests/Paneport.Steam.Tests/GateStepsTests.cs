@@ -278,6 +278,28 @@ public sealed class GateStepsTests : IDisposable
         Assert.True(_kit.Log.Holds(Convert.ToHexString(other)));
     }
 
+    // A step works on its own copy of the depot key and wipes it when it ends; the key itself
+    // stays for the next step.
+    [Fact]
+    public async Task AStepWipesItsCopyOfTheKeyWhenItEnds()
+    {
+        var chunks = await DownloadManifestAsync();
+        _kit.Content.Chunks[chunks[0].Entry.IdText] = chunks[0].Content;
+        byte[]? copy = null;
+        _kit.Content.BeforeChunk = key =>
+        {
+            copy = key;
+            return Task.CompletedTask;
+        };
+
+        await _kit.Gate.DownloadChunksAsync(1, Token);
+
+        Assert.NotNull(copy);
+        Assert.NotSame(_kit.Samples.DepotKey, copy);
+        Assert.All(copy, b => Assert.Equal(0, b));
+        Assert.Contains(_kit.Samples.DepotKey, b => b != 0);
+    }
+
     private async Task ReadAppInfoAsync()
     {
         await _kit.LogOnAsync();

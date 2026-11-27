@@ -7,8 +7,9 @@ using Paneport.Core.Security;
 namespace Paneport.Steam;
 
 /// <summary>
-/// The installation's random identity, from which the machine identity that SteamKit2 sends with
-/// each logon is derived, so that nothing about the device reaches Steam (<c>docs/design/steam-service.md</c>).
+/// The installation's random identity, from which the machine identity and the login ID that each
+/// logon sends to Steam are derived, so that nothing about the device reaches Steam (C-0007 section 3,
+/// <c>docs/design/steam-service.md</c>).
 /// </summary>
 /// <remarks>
 /// It is kept as one item of the secure item store, the keychain on the device, beside the saved

@@ -632,6 +632,15 @@ internal sealed class SchemaValidator
             {
                 throw new PatternTimeout(pointer, $"{location}/pattern");
             }
+            // Any other fault of .NET's regular expressions while they match stops the check, as a pattern that it
+            // cannot read does: (?!()+? *?)a raised an IndexOutOfRangeException before empty groups were refused.
+            catch (Exception exception) when (exception is not InvalidDataException)
+            {
+                throw Refuse(
+                    $"{location}/pattern",
+                    $".NET's regular expressions failed on the pattern {pattern.GetString()} with "
+                    + $"{exception.GetType().Name}.");
+            }
             if (!matches)
             {
                 add("pattern", $"the text must match {pattern.GetString()}");
@@ -858,11 +867,18 @@ internal static class ValueKey
 // separators, its \s, \d and \w take in other characters than ECMA-262's, and in a class it reads \- as a
 // character that cannot start a range. The translation gives each construct its ECMA-262 meaning, and refuses
 // a construct whose meaning differs and that the schemas do not use: a word boundary, an escape other than
-// those below, a group other than (?:, (?= and (?!, an empty class, a [ inside a class, which .NET reads as a
-// subtraction, \S, \D or \W inside a class, and a range in a class with \s, \d or \w at one end, which .NET
-// reads as a range from or to the shorthand's last character. It also refuses a quantifier after ^ or $, which
-// .NET takes and ECMA-262 refuses, and what ECMA-262 takes only without the u flag: \- outside a class, a ]
-// outside a class, a { or } that is no part of a quantifier, and a quantifier after a lookahead.
+// those below, a group other than (?:, (?= and (?!, an empty class, a [ after a - that is not the first part
+// of a class, which .NET reads as a subtraction, \S, \D or \W inside a class, and a range in a class with \s,
+// \d or \w at one end, which .NET reads as a range from or to the shorthand's last character. It also refuses
+// a quantifier after ^ or $, which .NET takes and ECMA-262 refuses, and what ECMA-262 takes only without the u
+// flag: \- outside a class, a ] outside a class, a { or } that is no part of a quantifier, and a quantifier
+// after a lookahead.
+//
+// It also refuses an empty branch: a | at the start or end of the pattern or of a group, or next to another |,
+// an empty group, (), (?:), (?=) or (?!), and a quantifier {0} or {0,0}. .NET reads such a branch otherwise only
+// in a counted group: it fails "a" with ^(?:a+|){2}$, which ECMA-262 matches. The refusal is broader on
+// purpose, since such branches have no use in a schema, and a rule for counted groups alone is harder to get
+// right.
 //
 // The meaning is that of ECMA-262 without the u flag, which JSON Schema 2020-12 recommends but does not
 // require: a pattern matches by UTF-16 code units, as .NET and the app's reader match, so . or a negated
@@ -881,19 +897,27 @@ internal static class EcmaPattern
     // A quantifier in braces, {n}, {n,} or {n,m}, where the match starts.
     private static readonly Regex s_braces = new("\\G\\{[0-9]+(?:,[0-9]*)?\\}", RegexOptions.CultureInvariant);
 
+    // A quantifier in braces of at most zero, {0} or {0,0}, where the match starts.
+    private static readonly Regex s_zero = new("\\G\\{0+(?:,0+)?\\}", RegexOptions.CultureInvariant);
+
     private const string Digit = "0-9";
     private const string Word = "A-Za-z0-9_";
+    private const string EmptyBranch = "an empty branch, which .NET reads otherwise in a counted group";
 
     public static string Translate(string pattern)
     {
         var text = new StringBuilder(pattern.Length + 16);
         var inClass = false;
         var classStart = false;
-        // In a class: whether the last part was \s, \d or \w, and whether the last part was a - that makes a range.
+        // In a class: whether the last part was \s, \d or \w, whether it was a - that makes a range, and whether it
+        // was a - after the first part, which .NET reads before a [ as the start of a subtraction.
         var shorthand = false;
         var range = false;
-        // Whether each group that is open is a lookahead.
+        var hyphen = false;
+        // Whether each group that is open is a lookahead, and whether a branch starts here: at the start of the
+        // pattern or of a group, or after a |.
         var lookaheads = new Stack<bool>();
+        var branchStart = true;
         for (var index = 0; index < pattern.Length; index++)
         {
             var current = pattern[index];
@@ -912,6 +936,8 @@ internal static class EcmaPattern
                 classStart = false;
                 shorthand = isShorthand;
                 range = false;
+                hyphen = false;
+                branchStart = false;
                 continue;
             }
             if (inClass)
@@ -920,9 +946,10 @@ internal static class EcmaPattern
                 {
                     throw new ArgumentException("an empty class, which .NET reads otherwise");
                 }
-                if (current == '[')
+                // A subtraction ends in ]], so the refusal of a ] outside a class refuses it too; this one names it.
+                if (current == '[' && hyphen)
                 {
-                    throw new ArgumentException("a [ inside a class, which .NET reads as a subtraction");
+                    throw new ArgumentException("a [ after a - inside a class, which .NET reads as a subtraction");
                 }
                 var isRange = current == '-' && !classStart && index + 1 < pattern.Length && pattern[index + 1] != ']';
                 if (isRange && shorthand)
@@ -930,12 +957,14 @@ internal static class EcmaPattern
                     throw new ArgumentException("a range in a class that starts at \\s, \\d or \\w");
                 }
                 inClass = current != ']';
+                hyphen = current == '-' && !classStart;
                 classStart = false;
                 shorthand = false;
                 range = isRange;
                 text.Append(current);
                 continue;
             }
+            var opens = false;
             switch (current)
             {
                 case '[':
@@ -962,8 +991,23 @@ internal static class EcmaPattern
                 case '(':
                     lookaheads.Push(
                         index + 2 < pattern.Length && pattern[index + 1] == '?' && pattern[index + 2] is '=' or '!');
-                    text.Append('(');
+                    // (?:, (?= and (?! go as a whole, so that a branch starts after them.
+                    var opening = index + 1 < pattern.Length && pattern[index + 1] == '?' ? 3 : 1;
+                    text.Append(pattern, index, opening);
+                    index += opening - 1;
+                    opens = true;
                     break;
+                case '|' when branchStart:
+                    throw new ArgumentException(EmptyBranch);
+                case '|':
+                    text.Append('|');
+                    opens = true;
+                    break;
+                case ')' when branchStart && index > 0:
+                    throw new ArgumentException(
+                        pattern[index - 1] == '|'
+                            ? EmptyBranch
+                            : "an empty group, which .NET reads otherwise in a counted group");
                 case ')':
                     if (lookaheads.TryPop(out var lookahead) && lookahead && QuantifierAt(pattern, index + 1))
                     {
@@ -977,6 +1021,11 @@ internal static class EcmaPattern
                     {
                         throw new ArgumentException("a { that starts no quantifier, which the u flag refuses");
                     }
+                    if (s_zero.IsMatch(pattern, index))
+                    {
+                        throw new ArgumentException(
+                            "a quantifier {0} or {0,0}, which .NET reads otherwise in a counted group");
+                    }
                     text.Append(braces.Value);
                     index += braces.Length - 1;
                     break;
@@ -988,10 +1037,15 @@ internal static class EcmaPattern
                     text.Append(current);
                     break;
             }
+            branchStart = opens;
         }
         if (inClass)
         {
             throw new ArgumentException("a class that is not closed");
+        }
+        if (branchStart && pattern.Length > 0)
+        {
+            throw new ArgumentException(EmptyBranch);
         }
         return text.ToString();
     }
@@ -2219,12 +2273,22 @@ internal static class SelfTest
             """[{ "a": 1 }, { "A": 1 }]""", null),
         ("a number and its negative", """{ "uniqueItems": true }""", "[1, -1]", null),
         ("false and null", """{ "uniqueItems": true }""", "[false, null]", null),
+        ("true and null", """{ "uniqueItems": true }""", "[true, null]", null),
         ("an object twice, its names differing in letter case and in another order", """{ "uniqueItems": true }""",
             """[{ "a": 1, "A": 2 }, { "A": 2, "a": 1 }]""", "uniqueItems"),
         ("a - after \\w at the end of a class", """{ "pattern": "^[\\w-]$" }""", "\"-\"", null),
         ("a quantifier of at least two, in braces", """{ "pattern": "^a{2,}$" }""", "\"aaa\"", null),
         ("a quantifier of one or two, in braces, against three", """{ "pattern": "^a{1,2}$" }""", "\"aaa\"",
             "pattern"),
+        ("a quantified group that holds a lookahead", """{ "pattern": "^((?=a)a)*$" }""", "\"aa\"", null),
+        ("a counted group of two branches", """{ "pattern": "^(?:a|b){2}$" }""", "\"ba\"", null),
+        ("an empty pattern", """{ "pattern": "" }""", "\"a\"", null),
+        // Inside a class, a [ that does not follow a - is a character in both readings.
+        ("a [ alone in a class", """{ "pattern": "^[[]$" }""", "\"[\"", null),
+        ("a [ after a character in a class, against the character", """{ "pattern": "^[a[]$" }""", "\"a\"", null),
+        ("a [ after a character in a class, against the [", """{ "pattern": "^[a[]$" }""", "\"[\"", null),
+        ("a [ after a - that is the first part of a class", """{ "pattern": "^[-[a]$" }""", "\"[\"", null),
+        ("a [ after a range that ends in an escaped -", """{ "pattern": "^[!-\\-[]$" }""", "\"[\"", null),
         ("a missing member", """{ "required": ["a"] }""", "{}", "required"),
         ("a number for type null", """{ "type": "null" }""", "1", "type"),
         ("null for type null", """{ "type": "null" }""", "null", null),
@@ -2301,6 +2365,7 @@ internal static class SelfTest
         // Given to .NET, these would be one class of ], [ and a; ECMA-262 reads an empty class, which matches nothing,
         // and then a class.
         ("an empty class before another class in a pattern", """{ "pattern": "[][a]" }""", "/pattern"),
+        ("an empty negated class before another class in a pattern", """{ "pattern": "[^][a]" }""", "/pattern"),
         ("a ] outside a class in a pattern, which the u flag refuses", """{ "pattern": "^a]$" }""", "/pattern"),
         ("a { that starts no quantifier in a pattern, which the u flag refuses", """{ "pattern": "^a{$" }""",
             "/pattern"),
@@ -2313,9 +2378,32 @@ internal static class SelfTest
             "/pattern"),
         ("a lookahead quantified in braces in a pattern, which the u flag refuses", """{ "pattern": "(?!a){2}b" }""",
             "/pattern"),
+        ("a quantified lookahead that holds a group in a pattern, which the u flag refuses",
+            """{ "pattern": "(?=(a))*a" }""", "/pattern"),
         ("a { without a number in a pattern, which the u flag refuses", """{ "pattern": "^a{,2}$" }""", "/pattern"),
         ("a quantifier after ^ in a pattern, which ECMA-262 refuses", """{ "pattern": "^*a" }""", "/pattern"),
         ("a quantifier after $ in a pattern, which ECMA-262 refuses", """{ "pattern": "a$?" }""", "/pattern"),
+        ("a + after ^ in a pattern, which ECMA-262 refuses", """{ "pattern": "^+a" }""", "/pattern"),
+        ("a quantifier in braces after $ in a pattern, which ECMA-262 refuses", """{ "pattern": "a${1}" }""",
+            "/pattern"),
+        ("a quantifier of one or two after $ in a pattern, which ECMA-262 refuses", """{ "pattern": "a${1,2}" }""",
+            "/pattern"),
+        // .NET fails "a" with each of the first three, which ECMA-262 matches, and its interpreter fails with an
+        // IndexOutOfRangeException on most texts with the fourth.
+        ("an empty last branch of a counted group in a pattern", """{ "pattern": "^(?:a+|){2}$" }""", "/pattern"),
+        ("an empty group as a branch of a counted group in a pattern", """{ "pattern": "^(?:a+|(?:)){2}$" }""",
+            "/pattern"),
+        ("a branch quantified {0} in a counted group in a pattern", """{ "pattern": "^(?:a+|b{0}){2}$" }""",
+            "/pattern"),
+        ("an empty capturing group in a pattern", """{ "pattern": "(?!()+? *?)a" }""", "/pattern"),
+        ("a | at the start of a pattern", """{ "pattern": "|a" }""", "/pattern"),
+        ("a | at the end of a pattern", """{ "pattern": "a|" }""", "/pattern"),
+        ("a | at the start of a group in a pattern", """{ "pattern": "^(?:|a+){2}$" }""", "/pattern"),
+        ("a | next to another in a pattern", """{ "pattern": "a||b" }""", "/pattern"),
+        ("an empty lookahead in a pattern", """{ "pattern": "a(?=)" }""", "/pattern"),
+        ("an empty negative lookahead in a pattern", """{ "pattern": "a(?!)" }""", "/pattern"),
+        ("a quantifier {0,0} in a pattern", """{ "pattern": "ab{0,0}" }""", "/pattern"),
+        ("a ) that closes no group, at the start of a pattern", """{ "pattern": ")a" }""", "/pattern"),
         ("half a surrogate pair in a $comment of a property",
             $$"""{ "properties": { "a": { "$comment": "{{HalfPair}}" } } }""", "/properties/a/$comment"),
         ("half a surrogate pair in a $comment of an allOf branch",
@@ -2325,9 +2413,9 @@ internal static class SelfTest
     // Release tags in ascending order of precedence, the chain of Semantic Versioning 2.0.0 section 11 among them.
     private static readonly string[] s_releaseOrder =
     [
-        "v0.0.9", "v0.1.0", "v0.9.0", "v0.10.0", "v1.0.0-0a", "v1.0.0-RC.1", "v1.0.0-alpha", "v1.0.0-alpha.1",
-        "v1.0.0-alpha.beta", "v1.0.0-beta", "v1.0.0-beta.2", "v1.0.0-beta.11", "v1.0.0-rc.1", "v1.0.0", "v2.0.0",
-        "v2.1.0", "v2.1.1", "v10.0.0", "v99999999999999999999.0.0", "v100000000000000000000.0.0",
+        "v0.0.9", "v0.1.0", "v0.9.0", "v0.10.0", "v1.0.0-0a", "v1.0.0-1-", "v1.0.0-RC.1", "v1.0.0-alpha",
+        "v1.0.0-alpha.1", "v1.0.0-alpha.beta", "v1.0.0-beta", "v1.0.0-beta.2", "v1.0.0-beta.11", "v1.0.0-rc.1",
+        "v1.0.0", "v2.0.0", "v2.1.0", "v2.1.1", "v10.0.0", "v99999999999999999999.0.0", "v100000000000000000000.0.0",
     ];
 
     private static readonly Regex s_modelIdentifier = new("`(iPhone[0-9]+,[0-9]+)`", RegexOptions.CultureInvariant);
@@ -2445,6 +2533,17 @@ internal static class SelfTest
                 $"refused schema, {name}",
                 found ?? "the schema was taken");
         }
+
+        // The refusal of a ] outside a class refuses a class subtraction too, so this case pins the message that
+        // names it.
+        var subtraction = Refusal(
+            () => SchemaValidator.LoadSchema(
+                """{ "pattern": "[a-z-[aeiou]]" }""", "refused schema", SchemaValidator.Everything));
+        tally.Expect(
+            subtraction?.EndsWith(
+                "a [ after a - inside a class, which .NET reads as a subtraction.", StringComparison.Ordinal) == true,
+            "refused schema, a class subtraction in a pattern, named as one",
+            subtraction ?? "the schema was taken");
 
         foreach (var (name, schemaText) in s_loadedSchemas)
         {
@@ -2956,6 +3055,19 @@ internal static class SelfTest
             }
         }
 
+        // A key on the environment allow-list passes, though the translator's allow-list lacks it.
+        var listed = JsonNode.Parse(schemaText)!.AsObject();
+        listed["properties"]!["environment"]!["properties"]!["DXVK_HUD"] = new JsonObject { ["type"] = "string" };
+        var listedProblems = Titles.CheckFile(
+            "case", "steam-4100000703.json",
+            Encoding.UTF8.GetBytes("""
+                { "schemaVersion": 1, "id": { "steamAppId": 4100000703, "slug": "listed" }, "name": "Listed",
+                  "environment": { "DXVK_HUD": "1" } }
+                """),
+            new TitleSchema(listed.ToJsonString()), s_fixtureRecords.Contains);
+        tally.Expect(
+            listedProblems.Count == 0, "drift, a key on the environment allow-list", string.Join(", ", listedProblems));
+
         // An allow-list that is a schema of true, open to any key, fails; a target device that is no text is
         // refused.
         var openTrue = JsonNode.Parse(schemaText)!.AsObject();
@@ -3017,6 +3129,7 @@ internal static class SelfTest
         var cases = new (string Name, string Members, string Rule)[]
         {
             ("a drm marker that is a text", """ "drm": { "steamApi": "yes" } """, "launch"),
+            ("a drm marker that is null", """ "drm": { "steamApi": null } """, "launch"),
             ("a drm that is a list", """ "drm": [false] """, "launch"),
             ("a steamStub that is a text", """ "drm": { "steamStub": "no" } """, "launch"),
             ("a ceg that is a number", """ "drm": { "ceg": 0 } """, "launch"),
@@ -3048,6 +3161,13 @@ internal static class SelfTest
             ("a report whose evidence is a number",
                 $$""" "rating": "boots", "reports": [{ {{Report}}, "rating": "boots", "evidence": 5 }] """,
                 "evidence-file"),
+            ("an earlier report whose evidence record is missing",
+                $$"""
+                 "rating": "boots", "reports": [
+                    { {{Report}}, "rating": "boots", "evidence": "docs/evidence/2026-12-31-missing.md" },
+                    { {{Report}}, "rating": "boots", "evidence": "{{Evidence}}" }]
+                """,
+                "evidence-file"),
         };
         foreach (var (name, members, rule) in cases)
         {
@@ -3066,6 +3186,16 @@ internal static class SelfTest
             }
             tally.Expect(OnlyRule(problems, rule), $"drift, {name}", Found(rule, problems));
         }
+
+        // A member of another type is reported at its own place.
+        var marked = Titles.CheckFile(
+            "case", "steam-4100000702.json",
+            Encoding.UTF8.GetBytes($$"""{ {{Title}}, "drm": { "steamApi": "yes" } }"""), schema,
+            s_fixtureRecords.Contains);
+        tally.Expect(
+            marked is [{ Rule: "launch", Pointer: "/drm/steamApi" }],
+            "drift, a drm marker that is a text, at its place",
+            string.Join(", ", marked));
     }
 
     // The title schema with an environment that takes any key whose value is a text.

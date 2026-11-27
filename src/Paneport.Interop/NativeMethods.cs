@@ -91,7 +91,7 @@ internal static unsafe partial class NativeMethods
     [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_log_with_flags", StringMarshalling = StringMarshalling.Utf8)]
     internal static partial int TestLogWithFlags(int level, uint source, ulong process, uint flags, ulong dropped, string text);
 
-    [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_duplicate_text",StringMarshalling = StringMarshalling.Utf8)]
+    [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_duplicate_text", StringMarshalling = StringMarshalling.Utf8)]
     internal static partial int TestDuplicateText(string text, byte** copy);
 
     [LibraryImport(NativeHost.LibraryName, EntryPoint = "pp_test_signals_check_installed")]

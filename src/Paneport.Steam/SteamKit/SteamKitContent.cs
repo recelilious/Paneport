@@ -129,15 +129,18 @@ internal sealed class SteamKitContent : ISteamContent, IDisposable
         }
     }
 
-    // A failure at the server or on the way, or null for one that is no download failure, such as
-    // the caller's cancellation.
+    // A failure at the server or on the way, which every exception of a download is, whatever its
+    // type: SteamKit2's own length checks throw InvalidDataException, and a chunked response with
+    // more bytes than the entry's length overruns SteamKit2's fixed buffer with
+    // NotSupportedException. Null only for the caller's cancellation and a lack of memory, as in
+    // ProcessOrReject, which are no download failures.
     internal static ContentDownloadException? DownloadFailure(Exception exception, CancellationToken cancellationToken) => exception switch
     {
         OperationCanceledException when cancellationToken.IsCancellationRequested => null,
+        OutOfMemoryException => null,
         SteamKitWebRequestException web => new ContentDownloadException(web.StatusCode, web),
         HttpRequestException http => new ContentDownloadException(http.StatusCode, http),
-        OperationCanceledException or IOException or InvalidDataException => new ContentDownloadException((System.Net.HttpStatusCode?)null, exception),
-        _ => null,
+        _ => new ContentDownloadException((System.Net.HttpStatusCode?)null, exception),
     };
 
     private static DepotManifestData Copy(uint depotId, ulong manifestId, DepotManifest manifest)

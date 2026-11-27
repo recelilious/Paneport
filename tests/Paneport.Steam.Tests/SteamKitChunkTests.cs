@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.IO.Compression;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Text;
 using Paneport.Core.Steam;
 using Paneport.Steam.Content;
 using Paneport.Steam.Ports;
@@ -86,17 +90,112 @@ public sealed class SteamKitChunkTests
     }
 
     [Fact]
+    [SuppressMessage(
+        "Usage",
+        "CA2201:Do not raise reserved exception types",
+        Justification = "The test only hands an OutOfMemoryException to the mapping, which must leave it out; nothing throws it.")]
     public void FailuresOfTheDownloadAreDownloadFailures()
     {
-        // SteamKit2's own length checks of the response throw InvalidDataException: a server that
-        // sends too much or too little, so the next server is asked.
-        foreach (var failure in new Exception[] { new HttpRequestException("refused"), new IOException("cut"), new InvalidDataException("length"), new OperationCanceledException() })
+        // SteamKit2's own length checks of the response throw InvalidDataException, and a chunked
+        // response that is too long overruns its buffer with NotSupportedException: a server that
+        // sends too much or too little, so the next server is asked. So is any other failure.
+        var failures = new Exception[]
+        {
+            new HttpRequestException("refused"),
+            new IOException("cut"),
+            new InvalidDataException("length"),
+            new NotSupportedException("Memory stream is not expandable."),
+            new InvalidOperationException("other"),
+            new OperationCanceledException(),
+        };
+        foreach (var failure in failures)
         {
             Assert.IsType<ContentDownloadException>(SteamKitContent.DownloadFailure(failure, CancellationToken.None));
         }
 
         Assert.Null(SteamKitContent.DownloadFailure(new OperationCanceledException(), new CancellationToken(canceled: true)));
-        Assert.Null(SteamKitContent.DownloadFailure(new ArgumentNullException("server"), CancellationToken.None));
+        Assert.Null(SteamKitContent.DownloadFailure(new OutOfMemoryException(), CancellationToken.None));
+    }
+
+    // The content adapter over SteamKit2's CDN client and a server on the loopback interface that
+    // answers one chunk request. A response of the wrong length is a download failure, so the next
+    // server is asked: a chunked body that is too long or too short, and a Content-Length that is too
+    // long. A response of the right length whose bytes are not the chunk is a rejected chunk. Nothing
+    // leaves the loopback interface, and no proxy is used.
+    [Theory]
+    [InlineData(16, true, false)]
+    [InlineData(-16, true, false)]
+    [InlineData(16, false, false)]
+    [InlineData(0, true, true)]
+    public async Task TheContentAdapterTellsAFailedDownloadFromARejectedChunk(int extraBytes, bool chunked, bool rejected)
+    {
+        const int CompressedLength = 1000;
+        var client = new SteamClient(
+            SteamConfiguration.Create(builder => builder
+                .WithDirectoryFetch(false)
+                .WithHttpClientFactory(_ => new HttpClient(new SocketsHttpHandler { UseProxy = false }))),
+            "Paneport tests");
+        using var content = new SteamKitContent(client);
+        var id = new byte[ManifestChunk.IdLength];
+        id[0] = 1;
+        var entry = new ManifestChunk(id, 1, 0, CompressedLength, 2000);
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try
+        {
+            var serve = ServeOneResponseAsync(listener, RandomNumberGenerator.GetBytes(CompressedLength + extraBytes), chunked);
+            Server server = new IPEndPoint(IPAddress.Loopback, ((IPEndPoint)listener.LocalEndpoint).Port);
+
+            var failure = await Record.ExceptionAsync(() => content
+                .DownloadChunkAsync(4_100_000_101, entry, new ContentServer("127.0.0.1", server), new byte[32], new byte[2000], null, TestContext.Current.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+            Assert.IsType(rejected ? typeof(ChunkRejectedException) : typeof(ContentDownloadException), failure);
+            await serve.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    // Reads one request and answers it with the body, chunked or with its length. The client may
+    // stop reading early, which ends the connection.
+    private static async Task ServeOneResponseAsync(TcpListener listener, byte[] body, bool chunked)
+    {
+        using var connection = await listener.AcceptTcpClientAsync();
+        var stream = connection.GetStream();
+        var request = new StringBuilder();
+        var buffer = new byte[4096];
+        while (!request.ToString().Contains("\r\n\r\n", StringComparison.Ordinal))
+        {
+            var read = await stream.ReadAsync(buffer);
+            if (read == 0)
+            {
+                return;
+            }
+
+            request.Append(Encoding.ASCII.GetString(buffer, 0, read));
+        }
+
+        var header = chunked
+            ? "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" + body.Length.ToString("x", CultureInfo.InvariantCulture) + "\r\n"
+            : string.Create(CultureInfo.InvariantCulture, $"HTTP/1.1 200 OK\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
+        try
+        {
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(header));
+            await stream.WriteAsync(body);
+            if (chunked)
+            {
+                await stream.WriteAsync("\r\n0\r\n\r\n"u8.ToArray());
+            }
+
+            await stream.FlushAsync();
+        }
+        catch (IOException)
+        {
+            // The client ended the connection before the whole body.
+        }
     }
 
     // A chunk entry without a valid ID could be neither downloaded nor checked: the manifest is

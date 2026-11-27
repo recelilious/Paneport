@@ -384,6 +384,35 @@ public sealed class SignInFlowTests : IDisposable
         await second.Completion.WaitAsync(SteamTestKit.Patience, token);
     }
 
+    // SteamKit2 marks the client as not connected before the drop reaches the session. A code round
+    // that starts in between, as on a return from the background, waits for the new connection
+    // instead of beginning on the ended one.
+    [Fact]
+    public async Task ACodeRoundRightAfterADropWaitsForTheNewConnection()
+    {
+        var token = TestContext.Current.CancellationToken;
+        _kit.Authenticator.Connected = () => _kit.Connection.IsConnected;
+        var attempt = _kit.Service.StartPasswordSignIn(_kit.Samples.AccountName, _kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        await _kit.UntilRequested(FakeConnection.Connect, 1);
+        _kit.Connection.Listener.OnConnected();
+        await SteamTestKit.UntilStage(attempt, SignInStage.WaitingForApproval);
+
+        _kit.Connection.IsConnected = false;
+        _kit.Authenticator.DeclineApproval(SteamResult.NoConnection);
+        await Task.Delay(100, token);
+        _kit.Connection.Listener.OnDisconnected(userInitiated: false);
+        await SteamTestKit.Until(() => _kit.Delays.Pending.Count == 1, "the wait before connecting again");
+        _kit.Delays.Release(TimeSpan.FromSeconds(1));
+        await _kit.UntilRequested(FakeConnection.Connect, 2);
+        _kit.Connection.IsConnected = true;
+        _kit.Connection.Listener.OnConnected();
+
+        await SteamTestKit.UntilStage(attempt, SignInStage.WaitingForCode);
+        Assert.Equal(2, _kit.Authenticator.CredentialSessions);
+        attempt.Cancel();
+        await attempt.Completion.WaitAsync(SteamTestKit.Patience, token);
+    }
+
     // A logon that a sign-out cancels is no refusal by Steam either.
     [Fact]
     public async Task AResumeThatASignOutCancelsSaysSo()

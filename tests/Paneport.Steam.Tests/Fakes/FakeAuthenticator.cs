@@ -30,6 +30,10 @@ internal sealed class FakeAuthenticator : ISteamAuthenticator
     // When set, Steam refuses each credentials session at its start with this result.
     public SteamResult? RefuseStart { get; set; }
 
+    // When set, a credentials session begins only while it gives true, and reports NoConnection
+    // otherwise, as the SteamKit2 adapter does on a client that is not connected.
+    public Func<bool>? Connected { get; set; }
+
     // The passwords that the credentials sessions received, in order.
     public IReadOnlyList<string> Passwords
     {
@@ -49,6 +53,11 @@ internal sealed class FakeAuthenticator : ISteamAuthenticator
     public Task<IAuthSession> BeginWithCredentialsAsync(string accountName, string password, ICodeSource codes, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (Connected is { } connected && !connected())
+        {
+            return Task.FromException<IAuthSession>(new SteamAuthException(SteamResult.NoConnection));
+        }
+
         if (RefuseStart is { } refusal)
         {
             throw new SteamAuthException(refusal);

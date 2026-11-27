@@ -24,6 +24,10 @@ internal sealed class FakeConnection : ISteamConnection
 
     public SteamTransport Transport { get; set; } = SteamTransport.WebSocket;
 
+    // Whether the client is connected now; a test sets it false to play a drop that SteamKit2 has
+    // seen before the listener hears of it.
+    public bool IsConnected { get; set; } = true;
+
     public IConnectionListener Listener => _listener ?? throw new InvalidOperationException("No listener is attached.");
 
     public IReadOnlyList<string> Requests

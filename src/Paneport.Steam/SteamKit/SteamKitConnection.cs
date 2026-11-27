@@ -59,6 +59,8 @@ internal sealed class SteamKitConnection : ISteamConnection, IDisposable
 
     public SteamClient Client => _client;
 
+    public bool IsConnected => _client.IsConnected;
+
     // The login ID that every logon sends (steam-service.md section 5).
     public uint LoginId { get; }
 

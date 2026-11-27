@@ -100,7 +100,10 @@ internal sealed class SteamSession : IConnectionListener
         var waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _queue.Post(() =>
         {
-            if (_connected)
+            // SteamKit2 marks the client as not connected before the drop reaches this queue, so a
+            // connection counts only while the client still has it. Otherwise the waiter waits: the
+            // drop that SteamKit2 has posted starts the reconnect, and the next connection answers it.
+            if (_connected && _connection.IsConnected)
             {
                 waiter.TrySetResult();
                 return;

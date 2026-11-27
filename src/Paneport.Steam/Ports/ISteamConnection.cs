@@ -15,6 +15,10 @@ internal interface ISteamConnection
     // How the current or the last connection runs.
     SteamTransport Transport { get; }
 
+    // Whether the client is connected now. SteamKit2 sets it false as soon as the connection ends,
+    // before the listener hears of the drop, so the session asks it before it trusts a connection.
+    bool IsConnected { get; }
+
     // Gives the connection the listener of its results. Called once, before any request.
     void Attach(IConnectionListener listener);
 

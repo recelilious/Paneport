@@ -468,6 +468,8 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
             "Steam refused the code.",
         SteamResult.NoConnection =>
             "The connection to Steam ended during the sign-in. Start it again.",
+        SteamResult.Fail =>
+            "Steam could not complete the sign-in. Start it again.",
         _ => $"Steam refused the sign-in: {SteamResults.Describe(result)}.",
     };
 }

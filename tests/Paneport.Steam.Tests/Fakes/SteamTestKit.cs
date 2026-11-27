@@ -6,6 +6,7 @@ using Paneport.Core.Steam;
 using Paneport.Steam.Content;
 using Paneport.Steam.Gate;
 using Paneport.Steam.Logging;
+using Paneport.Steam.Ports;
 using Paneport.Steam.Session;
 using Paneport.Tests.Fakes;
 using Xunit;
@@ -19,10 +20,17 @@ internal sealed class SteamTestKit : IDisposable
     public static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
 
     public SteamTestKit()
+        : this(authenticator: null)
+    {
+    }
+
+    // With an authenticator of the test's own in the service's place of the fake one, such as the
+    // SteamKit2 adapter's sessions.
+    public SteamTestKit(Func<SteamSamples, ISteamAuthenticator>? authenticator)
     {
         Authenticator = new FakeAuthenticator(Samples);
         Log = new RedactingLog(AppLog);
-        Service = new SteamService(Connection, Authenticator, Store, Delays, ReconnectPolicy.Default, Time, Log);
+        Service = new SteamService(Connection, authenticator?.Invoke(Samples) ?? Authenticator, Store, Delays, ReconnectPolicy.Default, Time, Log);
         DownloadsPath = Path.Combine(Path.GetTempPath(), "paneport-steam-tests-" + Guid.NewGuid().ToString("N"));
         Folder = new TestDownloadFolder(DownloadsPath);
         Gate = new GateSteps(Service.Session, Apps, Content, Folder, Time, Log);

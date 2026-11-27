@@ -305,6 +305,26 @@ public sealed class SignInFlowTests : IDisposable
         Assert.Equal("Paneport could not reach Steam to log on.", result.Problem);
     }
 
+    // A logon that a sign-out cancels is no refusal by Steam either.
+    [Fact]
+    public async Task AResumeThatASignOutCancelsSaysSo()
+    {
+        var token = TestContext.Current.CancellationToken;
+        _kit.Store.SignIn = _kit.SampleSignIn();
+        var resume = _kit.Service.ResumeAsync(token);
+        await _kit.UntilRequested(FakeConnection.Connect, 1);
+        _kit.Connection.Listener.OnConnected();
+        await _kit.UntilRequested(FakeConnection.LogOn, 1);
+
+        var signOut = _kit.Service.SignOutAsync(token);
+        var result = await resume.WaitAsync(SteamTestKit.Patience, token);
+        _kit.Connection.Listener.OnDisconnected(userInitiated: true);
+        await signOut.WaitAsync(SteamTestKit.Patience, token);
+
+        Assert.Equal(SignInOutcome.Failed, result.Outcome);
+        Assert.Equal("The logon was cancelled.", result.Problem);
+    }
+
     // A sign-in cancelled while it waits for its logon gives the logon up: when Steam accepts it
     // after all, the session logs off and never logs on with that token again.
     [Fact]

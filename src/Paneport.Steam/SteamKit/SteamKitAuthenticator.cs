@@ -14,7 +14,8 @@ namespace Paneport.Steam.SteamKit;
 // section 5). Every sign-in asks for a refresh token of the SteamClient platform type, the one
 // that Valve's client accepts (C-0007 section 3), under a fixed device name that is never the
 // device's own; a password sign-in also asks for a persistent session. Steam's refusals arrive as
-// SteamAuthException with Steam's result.
+// SteamAuthException with Steam's result, and so does the end of the connection that a sign-in
+// uses, as NoConnection.
 internal sealed class SteamKitAuthenticator(SteamClient client, string deviceName) : ISteamAuthenticator
 {
     public async Task<IAuthSession> BeginWithCredentialsAsync(
@@ -27,18 +28,16 @@ internal sealed class SteamKitAuthenticator(SteamClient client, string deviceNam
         details.Username = accountName;
         details.Password = password;
         details.Authenticator = new CodeSourceAuthenticator(codes);
-        var session = await TranslateAsync(
-            () => client.Authentication.BeginAuthSessionViaCredentialsAsync(details).WaitAsync(cancellationToken),
-            cancellationToken).ConfigureAwait(false);
-        return new Session(session);
+        var session = await BeginAsync(() => client.Authentication.BeginAuthSessionViaCredentialsAsync(details), Connected, cancellationToken)
+            .ConfigureAwait(false);
+        return new Session(session.PollingWaitForResultAsync, Connected);
     }
 
     public async Task<IQrAuthSession> BeginWithQrCodeAsync(CancellationToken cancellationToken)
     {
-        var session = await TranslateAsync(
-            () => client.Authentication.BeginAuthSessionViaQRAsync(Details(deviceName)).WaitAsync(cancellationToken),
-            cancellationToken).ConfigureAwait(false);
-        return new QrSession(session);
+        var session = await BeginAsync(() => client.Authentication.BeginAuthSessionViaQRAsync(Details(deviceName)), Connected, cancellationToken)
+            .ConfigureAwait(false);
+        return new QrSession(session, Connected);
     }
 
     // What every sign-in asks Steam for. SteamKit2 sends the persistence only with a password
@@ -50,13 +49,50 @@ internal sealed class SteamKitAuthenticator(SteamClient client, string deviceNam
         IsPersistentSession = true,
     };
 
+    // Begins a sign-in on the connection, which must be up. SteamKit2 refuses to begin on a client
+    // that is not connected with InvalidOperationException; the check before the call keeps that
+    // case apart, and the exception counts as the end of the connection only while the client is
+    // not connected, since the connection can end between the check and SteamKit2's own.
+    internal static Task<T> BeginAsync<T>(Func<Task<T>> begin, Func<bool> connected, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(begin);
+        ArgumentNullException.ThrowIfNull(connected);
+        return TranslateAsync(
+            async () =>
+            {
+                if (!connected())
+                {
+                    throw new SteamAuthException(SteamResult.NoConnection);
+                }
+
+                try
+                {
+                    return await begin().WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (InvalidOperationException exception) when (!connected())
+                {
+                    throw new SteamAuthException(SteamResult.NoConnection, exception);
+                }
+            },
+            connected,
+            cancellationToken);
+    }
+
     // Runs one of SteamKit2's authentication calls and gives its failures in Steam's terms: a refusal
-    // as SteamAuthException with Steam's result, and a cancellation that is not the caller's as
-    // NoConnection, because SteamKit2 cancels every pending job when the connection ends, which
-    // also ends a wait for an approval or a QR scan.
-    internal static async Task<T> TranslateAsync<T>(Func<Task<T>> call, CancellationToken cancellationToken)
+    // as SteamAuthException with Steam's result, and the end of the connection as NoConnection.
+    // SteamKit2 ends a call in three ways that are not refusals. When the connection ends, it cancels
+    // every pending job, which also ends a wait for an approval or a QR scan; that is no cancellation
+    // by the caller. A job that starts after the connection ended, such as the next status poll of a
+    // wait or a code that the user submits, fails at once with AsyncJobFailedException. And Steam
+    // itself can fail a job while the connection is up, with the same exception, which is then a
+    // failure of Steam's: Fail, which the page explains in plain words. Whether the client is
+    // connected tells the last two apart: the session connects again only after it has seen the
+    // drop and waited at least a second (ReconnectPolicy), so the client cannot be connected again
+    // by the time the failure arrives here.
+    internal static async Task<T> TranslateAsync<T>(Func<Task<T>> call, Func<bool> connected, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(connected);
         try
         {
             return await call().ConfigureAwait(false);
@@ -69,17 +105,33 @@ internal sealed class SteamKitAuthenticator(SteamClient client, string deviceNam
         {
             throw new SteamAuthException(SteamResult.NoConnection, exception);
         }
+        catch (AsyncJobFailedException exception)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new SteamAuthException(connected() ? SteamResult.Fail : SteamResult.NoConnection, exception);
+        }
     }
 
-    private static async Task<AuthTokens> WaitAsync(AuthSession session, CancellationToken cancellationToken)
+    // Waits for the tokens of a sign-in. SteamKit2's polling wait checks the token only between its
+    // polls: a status request that has gone out ignores it until Steam answers or the job times out
+    // after 10 seconds. So the wait ends at once on a cancel, as a sign-out that waits for the
+    // attempt needs, and SteamKit2's own wait runs out in the background.
+    internal static async Task<AuthTokens> WaitAsync(
+        Func<CancellationToken, Task<AuthPollResult>> poll,
+        Func<bool> connected,
+        CancellationToken cancellationToken)
     {
-        var result = await TranslateAsync(() => session.PollingWaitForResultAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(poll);
+        var result = await TranslateAsync(() => poll(cancellationToken).WaitAsync(cancellationToken), connected, cancellationToken)
+            .ConfigureAwait(false);
         return new AuthTokens(result.AccountName, new Secret(result.RefreshToken));
     }
 
+    private bool Connected() => client.IsConnected;
+
     // Passes SteamKit2's questions on to the sign-in flow. The email hint that SteamKit2 gives with
     // an email code is personal data and is not passed on.
-    private sealed class CodeSourceAuthenticator(ICodeSource codes) : IAuthenticator
+    internal sealed class CodeSourceAuthenticator(ICodeSource codes) : IAuthenticator
     {
         public Task<string> GetDeviceCodeAsync(bool previousCodeWasIncorrect) =>
             codes.GetCodeAsync(SteamCodeKind.Authenticator, previousCodeWasIncorrect);
@@ -90,18 +142,23 @@ internal sealed class SteamKitAuthenticator(SteamClient client, string deviceNam
         public Task<bool> AcceptDeviceConfirmationAsync() => codes.AcceptApprovalAsync();
     }
 
-    private sealed class Session(CredentialsAuthSession session) : IAuthSession
+    // A password sign-in's session: SteamKit2's polling wait, which the tests can stand in for.
+    internal sealed class Session(Func<CancellationToken, Task<AuthPollResult>> poll, Func<bool> connected) : IAuthSession
     {
-        public Task<AuthTokens> WaitForTokensAsync(CancellationToken cancellationToken) => WaitAsync(session, cancellationToken);
+        public Task<AuthTokens> WaitForTokensAsync(CancellationToken cancellationToken) => WaitAsync(poll, connected, cancellationToken);
     }
 
-    private sealed class QrSession : IQrAuthSession
+    internal sealed class QrSession : IQrAuthSession
     {
         private readonly QrAuthSession _session;
+        private readonly Func<bool> _connected;
 
-        public QrSession(QrAuthSession session)
+        public QrSession(QrAuthSession session, Func<bool> connected)
         {
+            ArgumentNullException.ThrowIfNull(session);
+            ArgumentNullException.ThrowIfNull(connected);
             _session = session;
+            _connected = connected;
             _session.ChallengeURLChanged = () => ChallengeChanged?.Invoke(this, EventArgs.Empty);
         }
 
@@ -109,6 +166,7 @@ internal sealed class SteamKitAuthenticator(SteamClient client, string deviceNam
 
         public string Challenge => _session.ChallengeURL;
 
-        public Task<AuthTokens> WaitForTokensAsync(CancellationToken cancellationToken) => WaitAsync(_session, cancellationToken);
+        public Task<AuthTokens> WaitForTokensAsync(CancellationToken cancellationToken) =>
+            WaitAsync(_session.PollingWaitForResultAsync, _connected, cancellationToken);
     }
 }

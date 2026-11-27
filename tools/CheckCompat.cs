@@ -2293,6 +2293,9 @@ internal static class SelfTest
         ("an atomic group in a pattern", """{ "pattern": "(?>a)" }""", "/pattern"),
         ("a back-reference in a pattern", """{ "pattern": "(a)\\1" }""", "/pattern"),
         ("a property escape in a pattern", """{ "pattern": "\\p{L}" }""", "/pattern"),
+        // Outside a class, the { after \p is refused too. Inside one, .NET would read the letters, and ECMA-262 the
+        // characters p, {, L and }.
+        ("a property escape in a class in a pattern", """{ "pattern": "[\\p{L}]" }""", "/pattern"),
         ("a hexadecimal escape in a pattern", """{ "pattern": "\\x41" }""", "/pattern"),
         ("an empty class before a ] in a pattern", """{ "pattern": "[]a]" }""", "/pattern"),
         // Given to .NET, these would be one class of ], [ and a; ECMA-262 reads an empty class, which matches nothing,

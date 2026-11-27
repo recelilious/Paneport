@@ -1,0 +1,184 @@
+{
+  "version": 1,
+  "note": "What a built app must hold (C-0009 section 4), read by tools/CheckBundle.cs. An entry with \"required\": false is checked when the app holds it and not missed when it does not; the stage that brings its piece sets it to true. tools/README.md describes every key.",
+  "frameworks": [
+    {
+      "name": "paneport_host.framework",
+      "required": true
+    },
+    {
+      "name": "libSkiaSharp.framework",
+      "required": false,
+      "note": "SkiaSharp.NativeAssets.iOS; the first build in CI that holds it sets this to true."
+    },
+    {
+      "name": "libHarfBuzzSharp.framework",
+      "required": false,
+      "note": "HarfBuzzSharp.NativeAssets.iOS; the first build in CI that holds it sets this to true."
+    }
+  ],
+  "peFolders": [
+    {
+      "path": "wine/aarch64-windows",
+      "machines": ["0xAA64"],
+      "required": false,
+      "requiredModules": []
+    },
+    {
+      "path": "wine/arm64ec-windows",
+      "machines": ["0x8664", "0xAA64"],
+      "required": false,
+      "requiredModules": [],
+      "note": "ARM64EC images carry the machine 0x8664 with hybrid metadata, and ARM64X images 0xAA64; the first runtime build settles which of the two the folder holds."
+    },
+    {
+      "path": "wine/i386-windows",
+      "machines": ["0x014C"],
+      "required": false,
+      "requiredModules": []
+    }
+  ],
+  "testPrograms": {
+    "folder": "test-programs",
+    "sums": "SHA256SUMS",
+    "machines": ["0x8664"],
+    "names": [
+      "checksum.exe",
+      "console.exe",
+      "cpu_features.exe",
+      "file_io.exe",
+      "seh.exe",
+      "shared_data.exe",
+      "threads.exe"
+    ]
+  },
+  "prefixTemplate": {
+    "path": "wine/prefix-template",
+    "required": false,
+    "userName": "paneport",
+    "allowedUserFolders": ["paneport", "Public"],
+    "computerName": null,
+    "hostPaths": [
+      "/Users/",
+      "/home/",
+      "/private/var/",
+      "/private/tmp/",
+      "/var/folders/",
+      "/tmp/",
+      "/Volumes/"
+    ],
+    "hostNamePatterns": [
+      "[A-Za-z0-9][A-Za-z0-9-]*\\.local\\b",
+      "[A-Za-z0-9][A-Za-z0-9-]*\\.lan\\b",
+      "[A-Za-z0-9][A-Za-z0-9-]*\\.localdomain\\b"
+    ],
+    "forbiddenStrings": [],
+    "note": "The template's user name is the one that the harness's template step will fix (S4.4.6); until then it is paneport. forbiddenStrings holds names that must not appear in any text of the template; CI adds none yet."
+  },
+  "excluded": [
+    {
+      "pattern": "wine-mono*",
+      "reason": "Wine Mono (C-0003 section 8)"
+    },
+    {
+      "pattern": "wine-gecko*",
+      "reason": "Wine Gecko (C-0003 section 8)"
+    },
+    {
+      "pattern": "**/share/wine/mono/**",
+      "reason": "Wine Mono (C-0003 section 8)"
+    },
+    {
+      "pattern": "**/share/wine/gecko/**",
+      "reason": "Wine Gecko (C-0003 section 8)"
+    },
+    {
+      "pattern": "*.msi",
+      "reason": "a Windows Installer package, such as Wine Mono's and Wine Gecko's (C-0003 section 8)"
+    },
+    {
+      "pattern": "steam.exe",
+      "reason": "Valve's client (C-0003 section 8)"
+    },
+    {
+      "pattern": "steamclient*",
+      "reason": "Valve's client (C-0003 section 8)"
+    },
+    {
+      "pattern": "steamservice*",
+      "reason": "Valve's client (C-0003 section 8)"
+    },
+    {
+      "pattern": "steamwebhelper*",
+      "reason": "Valve's client (C-0003 section 8)"
+    },
+    {
+      "pattern": "gameoverlayrenderer*",
+      "reason": "Valve's client (C-0003 section 8)"
+    },
+    {
+      "pattern": "steam_api*.dll",
+      "reason": "Valve's Steamworks library, which games ship (C-0003 section 8)"
+    },
+    {
+      "pattern": "vcruntime*",
+      "unlessWineBuiltin": true,
+      "reason": "a Microsoft Visual C++ runtime (C-0003 section 8)"
+    },
+    {
+      "pattern": "msvcp*",
+      "unlessWineBuiltin": true,
+      "reason": "a Microsoft Visual C++ runtime (C-0003 section 8)"
+    },
+    {
+      "pattern": "msvcr*",
+      "unlessWineBuiltin": true,
+      "reason": "a Microsoft Visual C++ runtime (C-0003 section 8)"
+    },
+    {
+      "pattern": "concrt*",
+      "unlessWineBuiltin": true,
+      "reason": "a Microsoft Visual C++ runtime (C-0003 section 8)"
+    },
+    {
+      "pattern": "ucrtbase*.dll",
+      "unlessWineBuiltin": true,
+      "reason": "Microsoft's Universal C runtime (C-0003 section 8)"
+    },
+    {
+      "pattern": "api-ms-win-*.dll",
+      "unlessWineBuiltin": true,
+      "reason": "a Microsoft API set library (C-0003 section 8)"
+    },
+    {
+      "pattern": "d3dcompiler_*.dll",
+      "unlessWineBuiltin": true,
+      "reason": "Microsoft's shader compiler (C-0003 section 8)"
+    },
+    {
+      "pattern": "d3dx9_*.dll",
+      "unlessWineBuiltin": true,
+      "reason": "a Microsoft DirectX redistributable (C-0003 section 8)"
+    },
+    {
+      "pattern": "d3dx10_*.dll",
+      "unlessWineBuiltin": true,
+      "reason": "a Microsoft DirectX redistributable (C-0003 section 8)"
+    },
+    {
+      "pattern": "d3dx11_*.dll",
+      "unlessWineBuiltin": true,
+      "reason": "a Microsoft DirectX redistributable (C-0003 section 8)"
+    },
+    {
+      "pattern": "xinput1_*.dll",
+      "unlessWineBuiltin": true,
+      "reason": "a Microsoft DirectX redistributable (C-0003 section 8)"
+    },
+    {
+      "pattern": "xaudio2_*.dll",
+      "unlessWineBuiltin": true,
+      "reason": "a Microsoft DirectX redistributable (C-0003 section 8)"
+    }
+  ]
+}

@@ -595,7 +595,7 @@ static void write_numbered_lines(int fd, int first, int last) {
 // PP_GUEST_BUFFER_LINES, drops every line after them and counts exactly those. Once the
 // callback takes lines again, the report of the count comes at the gap, before the next line,
 // and the lines that arrived are in order.
-static void a_burst_beyond_the_buffer_reports_the_dropped_lines(void) {
+static void a_burst_reports_the_dropped_lines(void) {
     enum { TOTAL = 1000 };
     static sequence_t sequence;
     atomic_init(&sequence.hold, true);
@@ -608,8 +608,9 @@ static void a_burst_beyond_the_buffer_reports_the_dropped_lines(void) {
     }
     PP_CHECK_EQUAL(pp_guest_output_dropped(reader), expected);
     atomic_store(&sequence.hold, false);
-    // The report waits for room, so once the buffer's lines are out, the next line follows it.
-    pp_wait_for_count(&sequence.count, PP_GUEST_BUFFER_LINES);
+    // Once the buffer's lines are out, the report follows them at once, and nothing more comes
+    // until the program writes again.
+    pp_wait_for_count(&sequence.count, (uint64_t)PP_GUEST_BUFFER_LINES + 1U);
     write_all(writers[0], "after\n", 6U);
     (void)close(writers[0]);
     (void)close(writers[1]);
@@ -662,8 +663,7 @@ int main(int argc, char **argv) {
         {"nul_bytes_become_replacements", nul_bytes_become_replacements},
         {"a_long_line_splits_into_marked_pieces", a_long_line_splits_into_marked_pieces},
         {"long_line_pieces_reach_the_callback_marked", long_line_pieces_reach_the_callback_marked},
-        {"a_burst_beyond_the_buffer_reports_the_dropped_lines",
-         a_burst_beyond_the_buffer_reports_the_dropped_lines},
+        {"a_burst_reports_the_dropped_lines", a_burst_reports_the_dropped_lines},
         {"normal_output_loses_nothing", normal_output_loses_nothing},
     };
     return pp_run_case(argc, argv, k_cases, PP_CASE_COUNT(k_cases));

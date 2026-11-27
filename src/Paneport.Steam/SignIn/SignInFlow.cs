@@ -33,6 +33,7 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
 
     private string? _accountName;
     private string? _password;
+    private AuthTokens? _registeredTokens;
     private SignInProgress _progress = new(SignInStage.Connecting);
     private TaskCompletionSource<string>? _codeRequest;
     private CancellationTokenSource? _round;
@@ -62,6 +63,10 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
         _accountName = accountName;
         _password = password;
         _confirmation = confirmation;
+
+        // The attempt's own registrations, which it takes out when it drops the values.
+        _log.Protect(accountName);
+        _log.Protect(password);
     }
 
     public event EventHandler? ProgressChanged;
@@ -236,6 +241,11 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
         var started = _time.GetTimestamp();
         var token = _cancel.Token;
         SavedSignIn? loggingOnWith = null;
+
+        // Whether the session holds a logon with the attempt's tokens that no saved sign-in covers,
+        // as when the save failed: the tokens then keep the attempt's registration with the log
+        // filter, which is otherwise taken out when the attempt ends.
+        var keepTokens = false;
         try
         {
             SetProgress(new SignInProgress(SignInStage.Connecting));
@@ -245,9 +255,11 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
                 ? await SignInWithQrCodeAsync(token).ConfigureAwait(false)
                 : await SignInWithPasswordAsync(token).ConfigureAwait(false);
             StopUserWait();
+
+            // The tokens are registered before the account name that the attempt began with is
+            // taken out, so that the name is never out of the filter in between.
+            RegisterTokens(tokens);
             DropPassword();
-            _log.Protect(tokens.AccountName);
-            _log.Protect(tokens.RefreshToken);
 
             SetProgress(new SignInProgress(SignInStage.LoggingOn));
             var signIn = new SavedSignIn(tokens.AccountName, tokens.RefreshToken);
@@ -261,7 +273,11 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
             // A cancellation, such as a sign-out, can land just after the logon. The save waits for
             // the store with the attempt's token, so a cancelled attempt never writes its token
             // after the sign-out deleted the saved sign-in.
+            keepTokens = true;
             await _tokens.SaveAsync(signIn, token).ConfigureAwait(false);
+
+            // The saved sign-in has the store's own registration from now on.
+            keepTokens = false;
             _session.SetSignInSaved(true);
             return End(started, SignInStage.LoggedOn, problem: null);
         }
@@ -273,6 +289,7 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
                 _session.AbandonLogOn(loggingOnWith);
             }
 
+            keepTokens = false;
             return End(started, SignInStage.Cancelled, problem: null);
         }
         catch (SteamAuthException exception)
@@ -291,6 +308,11 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
         finally
         {
             DropPassword();
+            if (!keepTokens)
+            {
+                DropTokens();
+            }
+
             _session.EndSignIn();
         }
     }
@@ -406,8 +428,8 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
         return result;
     }
 
-    // Drops the password, and takes it out of the log filter, which would otherwise keep it for the
-    // service's life.
+    // Drops the password and the account name that the attempt began with, and takes them out of the
+    // log filter, which would otherwise keep them for the service's life.
     private void DropPassword()
     {
         if (Interlocked.Exchange(ref _password, null) is { } password)
@@ -415,7 +437,27 @@ internal sealed class SignInFlow : ISignInAttempt, ICodeSource, IDisposable
             _log.Unprotect(password);
         }
 
-        Volatile.Write(ref _accountName, null);
+        if (Interlocked.Exchange(ref _accountName, null) is { } accountName)
+        {
+            _log.Unprotect(accountName);
+        }
+    }
+
+    private void RegisterTokens(AuthTokens tokens)
+    {
+        _log.Protect(tokens.AccountName);
+        _log.Protect(tokens.RefreshToken);
+        Volatile.Write(ref _registeredTokens, tokens);
+    }
+
+    // Takes the tokens' registration out when the attempt ends: a saved sign-in has the store's.
+    private void DropTokens()
+    {
+        if (Interlocked.Exchange(ref _registeredTokens, null) is { } tokens)
+        {
+            _log.Unprotect(tokens.AccountName);
+            _log.Unprotect(tokens.RefreshToken);
+        }
     }
 
     private void StartUserWait()

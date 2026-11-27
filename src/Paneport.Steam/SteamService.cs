@@ -95,8 +95,9 @@ public sealed class SteamService : ISteamService, IDisposable
     {
         ArgumentException.ThrowIfNullOrEmpty(accountName);
         ArgumentException.ThrowIfNullOrEmpty(password);
-        _log.Protect(accountName);
-        _log.Protect(password);
+
+        // The attempt registers both values with the log filter before it starts, and takes them
+        // out when it drops them.
         var flow = SignInFlow.StartWithPassword(_session, _authenticator, _tokens, _time, _log, accountName, password, confirmation);
         Replace(flow);
         return flow;

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using System.Globalization;
+using System.Security.Cryptography;
 using Paneport.Core.Steam;
 using Paneport.Steam.Content;
 using Paneport.Steam.Ports;
@@ -225,6 +227,55 @@ public sealed class GateStepsTests : IDisposable
         var exception = await Assert.ThrowsAsync<SteamStepException>(() => _kit.Gate.DownloadChunksAsync(1, Token));
         Assert.Equal("Download the manifest first.", exception.Message);
         Assert.All(_kit.Samples.DepotKey, b => Assert.Equal(0, b));
+    }
+
+    // A code that another replaces leaves the filter, as when L2 step 25 chooses a larger depot,
+    // and the last code goes with the test data.
+    [Fact]
+    public async Task AReplacedCodeLeavesTheFilterAndTheLastGoesWithTheTestData()
+    {
+        await GrantAsync();
+        var first = _kit.Samples.ManifestCode.ToString(CultureInfo.InvariantCulture);
+        _kit.Content.ManifestCode = _kit.Samples.ManifestCode + 1;
+        var second = _kit.Content.ManifestCode.ToString(CultureInfo.InvariantCulture);
+
+        Assert.Equal(SteamGrant.Obtained, await _kit.Gate.GetManifestRequestCodeAsync(WindowsDepot, Token));
+        Assert.False(_kit.Log.Holds(first));
+        Assert.True(_kit.Log.Holds(second));
+        await _kit.Gate.DeleteTestDataAsync(Token);
+
+        Assert.False(_kit.Log.Holds(second));
+    }
+
+    [Fact]
+    public async Task AServerTokenGoesWithTheTestData()
+    {
+        _kit.Content.RequiredServerToken = _kit.Samples.ServerToken;
+        await GrantAsync();
+        _kit.Content.Manifest = Manifest().Manifest;
+        await _kit.Gate.DownloadManifestAsync(WindowsDepot, Token);
+        Assert.True(_kit.Log.Holds(_kit.Samples.ServerToken));
+
+        await _kit.Gate.DeleteTestDataAsync(Token);
+
+        Assert.False(_kit.Log.Holds(_kit.Samples.ServerToken));
+    }
+
+    // A key that a key with other bytes replaces leaves the filter in both forms.
+    [Fact]
+    public async Task AReplacedKeyLeavesTheFilter()
+    {
+        await GrantAsync();
+        var hex = Convert.ToHexString(_kit.Samples.DepotKey);
+        var base64 = Convert.ToBase64String(_kit.Samples.DepotKey);
+        var other = RandomNumberGenerator.GetBytes(_kit.Samples.DepotKey.Length);
+        _kit.Apps.DepotKey = new DepotKeyResult(SteamResult.OK, [.. other]);
+
+        Assert.Equal(SteamGrant.Obtained, await _kit.Gate.GetDepotKeyAsync(WindowsDepot, Token));
+
+        Assert.False(_kit.Log.Holds(hex));
+        Assert.False(_kit.Log.Holds(base64));
+        Assert.True(_kit.Log.Holds(Convert.ToHexString(other)));
     }
 
     private async Task ReadAppInfoAsync()

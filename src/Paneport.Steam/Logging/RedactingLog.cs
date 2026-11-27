@@ -22,6 +22,12 @@ internal sealed partial class RedactingLog : ILog
 
     private readonly ILog _inner;
     private readonly Lock _lock = new();
+
+    // How many registrations each value has, ignoring case: each place that registers a value takes
+    // it out once when it drops it, and the value leaves the filter when no registration is left.
+    // So an attempt that ends cannot take out a value that another one still uses, such as the same
+    // password, in this case or another.
+    private readonly Dictionary<string, int> _registrations = new(StringComparer.OrdinalIgnoreCase);
     private string[] _values = [];
 
     public RedactingLog(ILog inner)
@@ -30,7 +36,7 @@ internal sealed partial class RedactingLog : ILog
         _inner = inner;
     }
 
-    // Registers a value that no line may hold from now on.
+    // Registers a value that no line may hold from now on, until its registration is taken out.
     public void Protect(string? value)
     {
         if (value is null || value.Trim().Length < MinProtectedLength)
@@ -40,10 +46,13 @@ internal sealed partial class RedactingLog : ILog
 
         lock (_lock)
         {
-            if (_values.Contains(value, StringComparer.OrdinalIgnoreCase))
+            if (_registrations.TryGetValue(value, out var count))
             {
+                _registrations[value] = count + 1;
                 return;
             }
+
+            _registrations[value] = 1;
 
             // Longest first, so that a value inside a longer one cannot leave the rest behind.
             _values = [.. _values.Append(value).OrderByDescending(v => v.Length)];
@@ -68,9 +77,10 @@ internal sealed partial class RedactingLog : ILog
         Protect(Convert.ToBase64String(key));
     }
 
-    // Takes a value out again once the service has dropped it, such as a password when its attempt
-    // ends, so that the filter does not keep it in memory for the service's life. The shape rules
-    // stay.
+    // Takes one registration of a value out again once the place that registered it has dropped it,
+    // such as a password when its attempt ends, so that the filter does not keep the value in memory
+    // for the service's life. The value leaves the filter with its last registration. The shape
+    // rules stay.
     public void Unprotect(string? value)
     {
         if (value is null)
@@ -80,8 +90,26 @@ internal sealed partial class RedactingLog : ILog
 
         lock (_lock)
         {
+            if (!_registrations.TryGetValue(value, out var count))
+            {
+                return;
+            }
+
+            if (count > 1)
+            {
+                _registrations[value] = count - 1;
+                return;
+            }
+
+            _registrations.Remove(value);
             _values = [.. _values.Where(v => !string.Equals(v, value, StringComparison.OrdinalIgnoreCase))];
         }
+    }
+
+    public void Unprotect(Secret secret)
+    {
+        ArgumentNullException.ThrowIfNull(secret);
+        Unprotect(secret.Reveal());
     }
 
     // Takes out both forms of a key that the service has wiped.

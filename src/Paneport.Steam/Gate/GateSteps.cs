@@ -128,11 +128,9 @@ internal sealed class GateSteps : ISteamGateSteps
         {
             if (_depotKey is { } old && !ReferenceEquals(old, key))
             {
-                if (!old.AsSpan().SequenceEqual(key))
-                {
-                    _log.Unprotect(old);
-                }
-
+                // The replaced key's registration goes. The new key's came first, so a key with the
+                // same bytes is never out of the filter.
+                _log.Unprotect(old);
                 CryptographicOperations.ZeroMemory(old);
             }
 
@@ -159,6 +157,12 @@ internal sealed class GateSteps : ISteamGateSteps
         _log.Protect(code.ToString(CultureInfo.InvariantCulture));
         lock (_lock)
         {
+            if (_manifestCode != 0)
+            {
+                // The replaced code's registration goes; the new code's came first.
+                _log.Unprotect(_manifestCode.ToString(CultureInfo.InvariantCulture));
+            }
+
             _manifestCode = code;
             _codeDepot = depotId;
         }

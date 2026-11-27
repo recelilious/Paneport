@@ -189,4 +189,96 @@ public sealed class RedactingLogTests
         var line = Assert.Single(kit.AppLog.Lines, line => line.Source == "SteamKit2");
         Assert.Equal($"debug line with {Secret.Redacted} and {Secret.Redacted}", line.Message);
     }
+
+    // Each registration of a value is taken out on its own, in any case, and the value leaves the
+    // filter with its last one.
+    [Fact]
+    public void AValueLeavesTheFilterWithItsLastRegistration()
+    {
+        var log = new RedactingLog(new RecordingLog());
+        log.Protect("correct horse");
+        log.Protect("CORRECT HORSE");
+
+        log.Unprotect("correct horse");
+        Assert.True(log.Holds("correct horse"));
+        Assert.Equal($"a {Secret.Redacted} b", log.Scrub("a Correct Horse b"));
+
+        log.Unprotect("Correct Horse");
+        Assert.False(log.Holds("correct horse"));
+
+        log.Unprotect("correct horse");
+        log.Protect("correct horse");
+        Assert.True(log.Holds("correct horse"));
+    }
+
+    // An attempt that ends takes out its own registration of the password, never another
+    // attempt's that uses the same password, in the same case or another.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task APasswordStaysInTheFilterWhileAnotherAttemptUsesIt(bool otherCase)
+    {
+        using var kit = new SteamTestKit();
+        var password = kit.Samples.Password;
+        var first = kit.Service.StartPasswordSignIn(kit.Samples.AccountName, password, SignInConfirmation.ApproveInSteamApp);
+        var second = kit.Service.StartPasswordSignIn(
+            kit.Samples.AccountName,
+            otherCase ? password.ToUpperInvariant() : password,
+            SignInConfirmation.ApproveInSteamApp);
+        Assert.Equal(SignInOutcome.Cancelled, (await first.Completion.WaitAsync(SteamTestKit.Patience, Token)).Outcome);
+
+        kit.Log.Write(LogLevel.Debug, "Test", $"a line with {password} in it");
+
+        Assert.True(kit.Log.Holds(password));
+        Assert.Equal($"a line with {Secret.Redacted} in it", Assert.Single(kit.AppLog.Lines, line => line.Source == "Test").Message);
+        second.Cancel();
+        await second.Completion.WaitAsync(SteamTestKit.Patience, Token);
+        Assert.False(kit.Log.Holds(password));
+        Assert.False(kit.Log.Holds(kit.Samples.AccountName));
+    }
+
+    // At sign-out the service drops the saved sign-in, and its account name and refresh token leave
+    // the filter with it.
+    [Fact]
+    public async Task ASignOutTakesTheSavedSignInOutOfTheFilter()
+    {
+        using var kit = new SteamTestKit();
+        kit.Authenticator.Guard = AccountGuard.None;
+        var attempt = kit.Service.StartPasswordSignIn(kit.Samples.AccountName, kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        await kit.UntilRequested(FakeConnection.Connect, 1);
+        kit.Connection.Listener.OnConnected();
+        await kit.UntilRequested(FakeConnection.LogOn, 1);
+        kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
+        Assert.Equal(SignInOutcome.LoggedOn, (await attempt.Completion.WaitAsync(SteamTestKit.Patience, Token)).Outcome);
+        Assert.True(kit.Log.Holds(kit.Samples.AccountName));
+        Assert.True(kit.Log.Holds(kit.Samples.RefreshToken));
+
+        var signOut = kit.Service.SignOutAsync(Token);
+        await SteamTestKit.Until(() => kit.Service.Status.State == SteamSessionState.SigningOut, "the sign-off");
+        kit.Connection.Listener.OnLoggedOff(SteamResult.OK);
+        kit.Connection.Listener.OnDisconnected(userInitiated: true);
+        await signOut.WaitAsync(SteamTestKit.Patience, Token);
+
+        Assert.False(kit.Log.Holds(kit.Samples.AccountName));
+        Assert.False(kit.Log.Holds(kit.Samples.RefreshToken));
+    }
+
+    [Fact]
+    public async Task ATokenThatSteamRefusesLeavesTheFilterWithTheSavedSignIn()
+    {
+        using var kit = new SteamTestKit();
+        kit.Store.SignIn = kit.SampleSignIn();
+
+        var resume = kit.Service.ResumeAsync(Token);
+        await kit.UntilRequested(FakeConnection.Connect, 1);
+        kit.Connection.Listener.OnConnected();
+        await kit.UntilRequested(FakeConnection.LogOn, 1);
+        Assert.True(kit.Log.Holds(kit.Samples.RefreshToken));
+        kit.Connection.Listener.OnLoggedOn(SteamResult.InvalidPassword);
+        await resume.WaitAsync(SteamTestKit.Patience, Token);
+        await SteamTestKit.Until(() => kit.Store.SignIn is null, "the saved sign-in to be dropped");
+
+        Assert.False(kit.Log.Holds(kit.Samples.AccountName));
+        Assert.False(kit.Log.Holds(kit.Samples.RefreshToken));
+    }
 }

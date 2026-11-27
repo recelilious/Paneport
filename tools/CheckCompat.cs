@@ -878,7 +878,8 @@ internal static class ValueKey
 // an empty group, (), (?:), (?=) or (?!), and a quantifier {0} or {0,0}. .NET reads such a branch otherwise only
 // in a counted group: it fails "a" with ^(?:a+|){2}$, which ECMA-262 matches. The refusal is broader on
 // purpose, since such branches have no use in a schema, and a rule for counted groups alone is harder to get
-// right.
+// right. For the same reasons it refuses a lazy quantifier, such as *?: whether a text matches does not depend
+// on it, and with one .NET misreads ^(?:^|(a))*?x$ and fails on (?!(a?)+? *?)$ with an IndexOutOfRangeException.
 //
 // The meaning is that of ECMA-262 without the u flag, which JSON Schema 2020-12 recommends but does not
 // require: a pattern matches by UTF-16 code units, as .NET and the app's reader match, so . or a negated
@@ -914,10 +915,11 @@ internal static class EcmaPattern
         var shorthand = false;
         var range = false;
         var hyphen = false;
-        // Whether each group that is open is a lookahead, and whether a branch starts here: at the start of the
-        // pattern or of a group, or after a |.
+        // Whether each group that is open is a lookahead, whether a branch starts here: at the start of the
+        // pattern or of a group, or after a |, and whether the last part was a quantifier.
         var lookaheads = new Stack<bool>();
         var branchStart = true;
+        var quantified = false;
         for (var index = 0; index < pattern.Length; index++)
         {
             var current = pattern[index];
@@ -938,6 +940,7 @@ internal static class EcmaPattern
                 range = false;
                 hyphen = false;
                 branchStart = false;
+                quantified = false;
                 continue;
             }
             if (inClass)
@@ -965,8 +968,16 @@ internal static class EcmaPattern
                 continue;
             }
             var opens = false;
+            var quantifies = false;
             switch (current)
             {
+                case '?' when quantified:
+                    throw new ArgumentException(
+                        "a lazy quantifier, with which .NET misreads or fails on some patterns");
+                case '*' or '+' or '?':
+                    text.Append(current);
+                    quantifies = true;
+                    break;
                 case '[':
                     inClass = true;
                     classStart = true;
@@ -1028,6 +1039,7 @@ internal static class EcmaPattern
                     }
                     text.Append(braces.Value);
                     index += braces.Length - 1;
+                    quantifies = true;
                     break;
                 case '}':
                     throw new ArgumentException("a } that ends no quantifier, which the u flag refuses");
@@ -1038,6 +1050,7 @@ internal static class EcmaPattern
                     break;
             }
             branchStart = opens;
+            quantified = quantifies;
         }
         if (inClass)
         {
@@ -1511,7 +1524,10 @@ internal static class Titles
 
     // A member of the file, or Undefined where the file lacks it or where what holds it is not an object. The
     // rules in code rely on the types that the schema gives the members they read, and test each type, so that
-    // a change of the schema that drops a type makes the rule report the member instead of throwing.
+    // a change of the schema that drops a type makes the rule report the member instead of throwing. The root
+    // and the id are left out, as docs/design/compat-db.md section 8.1 says: the rules read a root that is not an
+    // object as an entry without members, and check the file name of an id whose steamAppId or slug has another
+    // type only by its form.
     private static JsonElement Member(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) ? value : default;
 
@@ -2283,6 +2299,7 @@ internal static class SelfTest
         ("a quantified group that holds a lookahead", """{ "pattern": "^((?=a)a)*$" }""", "\"aa\"", null),
         ("a counted group of two branches", """{ "pattern": "^(?:a|b){2}$" }""", "\"ba\"", null),
         ("an escape as the last branch of a group", """{ "pattern": "^(?:a|\\.)$" }""", "\".\"", null),
+        ("a ? after an escape after a quantifier", """{ "pattern": "^a*\\??$" }""", "\"a?\"", null),
         ("an empty pattern", """{ "pattern": "" }""", "\"a\"", null),
         // Inside a class, a [ that does not follow a - is a character in both readings.
         ("a [ alone in a class", """{ "pattern": "^[[]$" }""", "\"[\"", null),
@@ -2405,6 +2422,12 @@ internal static class SelfTest
         ("an empty negative lookahead in a pattern", """{ "pattern": "a(?!)" }""", "/pattern"),
         ("a quantifier {0,0} in a pattern", """{ "pattern": "ab{0,0}" }""", "/pattern"),
         ("a ) that closes no group, at the start of a pattern", """{ "pattern": ")a" }""", "/pattern"),
+        // .NET fails "aaax" with the first, which ECMA-262 matches, and its interpreter fails with an
+        // IndexOutOfRangeException on most texts with the second.
+        ("a lazy * in a pattern", """{ "pattern": "^(?:^|(a))*?x$" }""", "/pattern"),
+        ("a lazy + in a pattern", """{ "pattern": "(?!(a?)+? *?)$" }""", "/pattern"),
+        ("a lazy ? in a pattern", """{ "pattern": "a??" }""", "/pattern"),
+        ("a lazy quantifier in braces in a pattern", """{ "pattern": "a{1,2}?" }""", "/pattern"),
         ("half a surrogate pair in a $comment of a property",
             $$"""{ "properties": { "a": { "$comment": "{{HalfPair}}" } } }""", "/properties/a/$comment"),
         ("half a surrogate pair in a $comment of an allOf branch",

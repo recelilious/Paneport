@@ -37,6 +37,10 @@ static struct {
     _Atomic(bool) accepting;
     _Atomic(uint32_t) posting;
 
+    // How many lines of Windows programs' output wait in the log queue, counted from their post
+    // until the thread has taken them out (pp_event_thread_try_post_guest_line).
+    _Atomic(uint32_t) guest_lines;
+
     // The thread delivers what is queued and ends once stop_requested is true. A new log
     // callback sets flush_requested, so that the buffered lines arrive without waiting for
     // the next line.
@@ -125,6 +129,8 @@ static void deliver_line(const pp_log_entry_t *entry) {
         .text = entry->text,
         .source = entry->source,
         .process = entry->process,
+        .flags = entry->flags,
+        .dropped = entry->dropped,
     };
     s_thread.log_callback(&line, s_thread.log_user_data);
 }
@@ -134,6 +140,9 @@ static void make_notice(pp_log_entry_t *entry, const char *text) {
     entry->source = PP_LOG_SOURCE_HOST;
     entry->thread_id = pp_platform_thread_id();
     entry->process = 0U;
+    entry->flags = 0U;
+    entry->counted = false;
+    entry->dropped = 0U;
     (void)snprintf(entry->text, sizeof entry->text, "%s", text);
 }
 
@@ -154,6 +163,9 @@ static void flush_pending(void) {
         notice.source = PP_LOG_SOURCE_HOST;
         notice.thread_id = pp_platform_thread_id();
         notice.process = 0U;
+        notice.flags = 0U;
+        notice.counted = false;
+        notice.dropped = 0U;
         (void)snprintf(notice.text, sizeof notice.text,
                        "%llu host log lines that came before a log callback was set were "
                        "dropped, because the buffer for them holds %u.",
@@ -186,6 +198,10 @@ static void receive_line(const pp_log_entry_t *entry) {
     (void)pthread_mutex_lock(&s_thread.callback_mutex);
     handle_line(entry);
     (void)pthread_mutex_unlock(&s_thread.callback_mutex);
+    if (entry->counted) {
+        // The line is delivered, held for a callback or dropped: its place is free again.
+        (void)atomic_fetch_sub(&s_thread.guest_lines, 1U);
+    }
 }
 
 static void receive_event(const pp_event_t *event) {
@@ -340,6 +356,7 @@ pp_status_t pp_event_thread_start(void) {
     atomic_store(&s_thread.stop_requested, false);
     atomic_store(&s_thread.flush_requested, false);
     atomic_store(&s_thread.sleeping, 0);
+    atomic_store(&s_thread.guest_lines, 0U);
     s_thread.wake_pending = false;
     s_thread.pending_count = 0U;
     s_thread.pending_dropped = 0U;
@@ -441,26 +458,53 @@ pp_status_t pp_event_thread_post_log(const pp_log_entry_t *entry) {
     return post(&s_thread.logs, entry, NULL);
 }
 
+// One try to queue a line without waiting: PP_OK, PP_E_BUSY when the queue is full, or
+// PP_E_NOT_INITIALIZED. With a limit other than 0, the line counts as a guest line, and is
+// refused while limit guest lines wait.
+static pp_status_t try_post_log(const pp_log_entry_t *entry, uint32_t limit) {
+    (void)atomic_fetch_add(&s_thread.posting, 1U);
+    pp_status_t status = PP_OK;
+    if (!atomic_load(&s_thread.accepting)) {
+        status = PP_E_NOT_INITIALIZED;
+    } else {
+        run_post_hook();
+        pp_log_entry_t counted = *entry;
+        bool posted = false;
+        if (limit == 0U) {
+            posted = pp_queue_try_push(&s_thread.logs, entry);
+        } else if (atomic_fetch_add(&s_thread.guest_lines, 1U) < limit) {
+            counted.counted = true;
+            posted = pp_queue_try_push(&s_thread.logs, &counted);
+            if (!posted) {
+                (void)atomic_fetch_sub(&s_thread.guest_lines, 1U);
+            }
+        } else {
+            (void)atomic_fetch_sub(&s_thread.guest_lines, 1U);
+        }
+        if (!posted) {
+            status = PP_E_BUSY;
+        }
+        // Wake the thread either way: a full queue needs draining too.
+        wake_if_sleeping();
+    }
+    (void)atomic_fetch_sub(&s_thread.posting, 1U);
+    return status;
+}
+
 pp_status_t pp_event_thread_post_log_waiting(const pp_log_entry_t *entry) {
     const struct timespec pause = {.tv_sec = 0, .tv_nsec = 1000000L};
     for (;;) {
-        (void)atomic_fetch_add(&s_thread.posting, 1U);
-        pp_status_t status = PP_OK;
-        bool posted = false;
-        if (!atomic_load(&s_thread.accepting)) {
-            status = PP_E_NOT_INITIALIZED;
-        } else {
-            run_post_hook();
-            posted = pp_queue_try_push(&s_thread.logs, entry);
-            // Wake the thread either way: a full queue needs draining too.
-            wake_if_sleeping();
-        }
-        (void)atomic_fetch_sub(&s_thread.posting, 1U);
-        if (posted || status != PP_OK) {
+        const pp_status_t status = try_post_log(entry, 0U);
+        if (status != PP_E_BUSY) {
             return status;
         }
         (void)nanosleep(&pause, NULL);
     }
+}
+
+pp_status_t pp_event_thread_try_post_guest_line(const pp_log_entry_t *entry, uint32_t limit) {
+    // A limit of 0 would make try_post_log skip the count, so no line fits under it.
+    return limit == 0U ? PP_E_BUSY : try_post_log(entry, limit);
 }
 
 void pp_event_thread_set_event_callback(pp_event_callback_t callback, void *user_data) {

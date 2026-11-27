@@ -46,6 +46,7 @@ static const pp_test_layout_member_t k_log_line_members[] = {
     PP_MEMBER(pp_log_line_t, struct_size), PP_MEMBER(pp_log_line_t, level),
     PP_MEMBER(pp_log_line_t, thread_id),   PP_MEMBER(pp_log_line_t, text),
     PP_MEMBER(pp_log_line_t, source),      PP_MEMBER(pp_log_line_t, process),
+    PP_MEMBER(pp_log_line_t, flags),       PP_MEMBER(pp_log_line_t, dropped),
 };
 
 static const pp_test_layout_member_t k_session_config_members[] = {
@@ -288,6 +289,22 @@ PP_EXPORT pp_status_t pp_test_log_with_source(int32_t level, uint32_t source, ui
     }
     pp_log_entry_t entry;
     pp_log_text(&entry, level, source, process, text, strlen(text));
+    return posted(pp_event_thread_post_log(&entry), "log");
+}
+
+PP_EXPORT pp_status_t pp_test_log_with_flags(int32_t level, uint32_t source, uint64_t process,
+                                             uint32_t flags, uint64_t dropped, const char *text) {
+    pp_error_clear();
+    if (text == NULL || level < PP_LOG_DEBUG || level > PP_LOG_ERROR ||
+        source > PP_LOG_SOURCE_GUEST_ERRORS ||
+        (flags & ~((uint32_t)PP_LOG_FLAG_CONTINUATION | (uint32_t)PP_LOG_FLAG_DROPPED)) != 0U) {
+        return pp_error_set(PP_E_INVALID_ARGUMENT, "pp_test_log_with_flags needs a text, a known "
+                                                   "level, a known source and known flags.");
+    }
+    pp_log_entry_t entry;
+    pp_log_text(&entry, level, source, process, text, strlen(text));
+    entry.flags = flags;
+    entry.dropped = dropped;
     return posted(pp_event_thread_post_log(&entry), "log");
 }
 

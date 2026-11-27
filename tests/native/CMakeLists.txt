@@ -132,7 +132,9 @@ add_dependencies(test_session fake_wine_fork)
 paneport_native_test(test_guest_output CASES
     every_chunking_gives_the_same_lines piece_ends_at_a_character carriage_returns
     empty_lines_and_the_end wake_ends_a_reader_whose_pipes_stay_open
-    woken_reader_takes_at_most_64_kib nul_bytes_become_replacements)
+    woken_reader_takes_at_most_64_kib nul_bytes_become_replacements
+    a_long_line_splits_into_marked_pieces long_line_pieces_reach_the_callback_marked
+    a_burst_beyond_the_buffer_reports_the_dropped_lines normal_output_loses_nothing)
 
 # The main-thread rule of the shipped builds, on the host that src/native/CMakeLists.txt builds
 # without the test exports and without PANEPORT_TEST_BUILD.

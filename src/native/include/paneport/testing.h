@@ -158,6 +158,25 @@ PP_EXPORT pp_status_t pp_test_log_with_source(int32_t level, uint32_t source, ui
                                               const char *text);
 
 /**
+ * Logs a line as pp_test_log_with_source() does, with the flags and the dropped-line count that
+ * version 1.5 appended to pp_log_line_t, so that a binding test can read them. Version 1.5
+ * added it.
+ *
+ * Thread rule: [any]. Memory: the caller keeps ownership of text.
+ *
+ * @param level One of the PP_LOG_ values.
+ * @param source One of the PP_LOG_SOURCE_ values.
+ * @param process The handle of the process that the line names, or 0.
+ * @param flags A combination of the PP_LOG_FLAG_ values.
+ * @param dropped The count that a PP_LOG_FLAG_DROPPED line carries.
+ * @param text The line, UTF-8 and NUL-terminated; a line too long for the pipeline is cut.
+ * @return PP_OK; PP_E_INVALID_ARGUMENT for NULL, an unknown level, source or flag;
+ *         PP_E_NOT_INITIALIZED; PP_E_BUSY when the log queue is full, which the queue counts.
+ */
+PP_EXPORT pp_status_t pp_test_log_with_flags(int32_t level, uint32_t source, uint64_t process,
+                                             uint32_t flags, uint64_t dropped, const char *text);
+
+/**
  * Copies a text into host memory, so that a caller can test pp_free().
  *
  * Thread rule: [any]. Memory: the caller frees *copy with pp_free().

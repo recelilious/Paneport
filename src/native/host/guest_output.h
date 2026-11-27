@@ -6,11 +6,17 @@
 // thread of the host reads the other ends, splits what arrives into lines, and queues each line
 // for the log callback, marked with its source and the process's handle. The splitter is the
 // same whatever the chunks: a line ends at a line feed, a carriage return right before it goes,
-// and a line longer than a log line holds is split into pieces at character boundaries. A log
-// line's text ends at its first NUL, so the reader turns each NUL byte into U+FFFD, the
-// replacement character, and a line that the replacements make too long goes in pieces too; no
-// other byte is lost. When the log queue is full, the reader waits for room, so that a burst
-// slows the program down instead of losing lines (docs/design/single-process-wine.md section 8).
+// and a line longer than a log line holds is split into pieces at character boundaries, each
+// piece after the first flagged as a continuation (PP_LOG_FLAG_CONTINUATION), never marked in
+// its text. A log line's text ends at its first NUL, so the reader turns each NUL byte into
+// U+FFFD, the replacement character, and a line that the replacements make too long goes in
+// pieces too; no other byte is lost.
+//
+// The lines wait in the host's log queue, bounded to PP_GUEST_BUFFER_LINES at a time. When the
+// bound is reached the reader waits up to PP_GUEST_WAIT_MILLISECONDS for room, so that a burst
+// slows the program down and normal output loses nothing. When the wait ends the reader drops
+// lines, counting them, and delivers one report of the count (PP_LOG_FLAG_DROPPED) in order,
+// at the place of the gap, as soon as room returns (docs/design/runtime-ios.md section 8).
 
 #ifndef PANEPORT_HOST_GUEST_OUTPUT_H
 #define PANEPORT_HOST_GUEST_OUTPUT_H
@@ -25,15 +31,31 @@
 // The longest piece of a line that one log line carries, without its NUL.
 #define PP_GUEST_LINE_MAX (PP_LOG_TEXT_SIZE - 1U)
 
-// Receives one line, without its line break, which need not be NUL-terminated.
-typedef void (*pp_line_sink_t)(const char *line, size_t length, void *context);
+// How many lines of Windows programs' output wait for the log callback at most, all processes
+// together: half of the log queue, so that the host's own lines and the runtime's always find
+// room. A line takes 552 bytes of the queue, so the bound holds 138 KiB.
+#define PP_GUEST_BUFFER_LINES (PP_LOG_QUEUE_CAPACITY / 2U)
+
+// How long the reader waits for room, at most, before it drops a line, and how often it tries
+// to deliver a report of dropped lines while no line arrives. 250 ms is far beyond what a
+// callback needs to take one line, and short enough that a program that outruns a stuck
+// callback sees at most a pause of that length before its first line is dropped; once lines
+// are being dropped the reader no longer waits, so a burst is not slowed by the drops.
+#define PP_GUEST_WAIT_MILLISECONDS 250U
+#define PP_GUEST_REPORT_RETRY_MILLISECONDS 10U
+
+// Receives one line, without its line break, which need not be NUL-terminated. continuation is
+// true for a piece of a line that is not its first.
+typedef void (*pp_line_sink_t)(const char *line, size_t length, bool continuation, void *context);
 
 // Splits a stream of bytes into lines. A carriage return waits in carriage_return until the
-// next byte says whether it ends the line.
+// next byte says whether it ends the line, and continued says that a piece of the current line
+// went out already.
 typedef struct pp_line_splitter_t {
     char buffer[PP_GUEST_LINE_MAX];
     size_t used;
     bool carriage_return;
+    bool continued;
 } pp_line_splitter_t;
 
 // Starts a splitter with nothing buffered.
@@ -66,6 +88,10 @@ pp_status_t pp_guest_output_start(int output_fd, int errors_fd, uint64_t process
 // while a writer keeps a pipe from running dry, queues the lines and the last piece of each
 // stream, and ends. Any thread, before pp_guest_output_join; nothing for NULL.
 void pp_guest_output_wake(pp_guest_output_t *reader);
+
+// How many lines the reader has dropped so far, all streams of the reader, whether or not their
+// reports arrived. Any thread.
+uint64_t pp_guest_output_dropped(const pp_guest_output_t *reader);
 
 // Waits for the reader to end, joins its thread and frees it; nothing for NULL.
 void pp_guest_output_join(pp_guest_output_t *reader);

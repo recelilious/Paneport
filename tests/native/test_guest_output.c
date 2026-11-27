@@ -8,7 +8,9 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -25,16 +27,18 @@ enum { MAX_LINES = 64, MAX_LINE = 600 };
 typedef struct lines_t {
     char text[MAX_LINES][MAX_LINE + 1];
     size_t length[MAX_LINES];
+    bool continuation[MAX_LINES];
     size_t count;
 } lines_t;
 
-static void collect(const char *line, size_t length, void *context) {
+static void collect(const char *line, size_t length, bool continuation, void *context) {
     lines_t *lines = context;
     PP_CHECK(lines->count < (size_t)MAX_LINES);
     PP_CHECK(length <= PP_GUEST_LINE_MAX);
     memcpy(lines->text[lines->count], line, length);
     lines->text[lines->count][length] = '\0';
     lines->length[lines->count] = length;
+    lines->continuation[lines->count] = continuation;
     lines->count++;
 }
 
@@ -69,6 +73,7 @@ static void check_same(const lines_t *actual, const lines_t *expected) {
     PP_CHECK_EQUAL(actual->count, expected->count);
     for (size_t index = 0U; index < expected->count; index++) {
         PP_CHECK_EQUAL(actual->length[index], expected->length[index]);
+        PP_CHECK_EQUAL(actual->continuation[index], expected->continuation[index]);
         PP_CHECK(memcmp(actual->text[index], expected->text[index], expected->length[index]) == 0);
     }
 }
@@ -87,6 +92,10 @@ static void every_chunking_gives_the_same_lines(void) {
     check_line(reference, 1U, "second line");
     PP_CHECK_EQUAL(reference->length[2], PP_GUEST_LINE_MAX);
     PP_CHECK_EQUAL(reference->length[3], 600U - PP_GUEST_LINE_MAX);
+    // The second piece of the long line is the only continuation.
+    for (size_t index = 0U; index < reference->count; index++) {
+        PP_CHECK_EQUAL(reference->continuation[index], index == 3U);
+    }
     for (size_t index = 0U; index < reference->length[2]; index++) {
         PP_CHECK_EQUAL(reference->text[2][index], 'x');
     }
@@ -132,6 +141,9 @@ static void piece_ends_at_a_character(void) {
     check_line(lines, 1U,
                "\xc3\xa9"
                "b");
+    // The character that the cut left out starts a piece that says it continues the line.
+    PP_CHECK(!lines->continuation[0]);
+    PP_CHECK(lines->continuation[1]);
     free(lines);
 
     memset(text, 'a', 509U);
@@ -194,6 +206,7 @@ typedef struct guest_lines_t {
     pthread_mutex_t mutex;
     char text[MAX_LINES][MAX_LINE + 1];
     uint32_t source[MAX_LINES];
+    uint32_t flags[MAX_LINES];
     _Atomic(uint64_t) count;
 } guest_lines_t;
 
@@ -208,6 +221,7 @@ static void record_guest_line(const pp_log_line_t *line, void *user_data) {
     PP_CHECK(index < (uint64_t)MAX_LINES);
     (void)snprintf(lines->text[index], sizeof lines->text[index], "%s", line->text);
     lines->source[index] = line->source;
+    lines->flags[index] = line->flags;
     atomic_store(&lines->count, index + 1U);
     (void)pthread_mutex_unlock(&lines->mutex);
 }
@@ -435,7 +449,206 @@ static void nul_bytes_become_replacements(void) {
             PP_CHECK(memcmp(lines.text[piece] + offset, "\xef\xbf\xbd", 3U) == 0);
         }
     }
+    PP_CHECK_EQUAL(lines.flags[0], 0U);
+    PP_CHECK_EQUAL(lines.flags[1], 0U);
+    PP_CHECK_EQUAL(lines.flags[2], (uint32_t)PP_LOG_FLAG_CONTINUATION);
     PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
+// A line over the limit is split into marked pieces: every piece after the first carries
+// PP_LOG_FLAG_CONTINUATION, and the next line starts unmarked, however the bytes arrive.
+static void a_long_line_splits_into_marked_pieces(void) {
+    char text[1220];
+    memset(text, 'a', 1200U);
+    static const char k_tail[] = "\nshort\n";
+    memcpy(text + 1200U, k_tail, sizeof k_tail - 1U);
+    for (size_t chunk = 1U; chunk <= 1U + (size_t)PP_GUEST_LINE_MAX; chunk += 255U) {
+        lines_t *lines = split(text, 1207U, &chunk, 1U);
+        PP_CHECK_EQUAL(lines->count, 4U);
+        PP_CHECK_EQUAL(lines->length[0], PP_GUEST_LINE_MAX);
+        PP_CHECK_EQUAL(lines->length[1], PP_GUEST_LINE_MAX);
+        PP_CHECK_EQUAL(lines->length[2], 1200U - (2U * PP_GUEST_LINE_MAX));
+        PP_CHECK(!lines->continuation[0]);
+        PP_CHECK(lines->continuation[1]);
+        PP_CHECK(lines->continuation[2]);
+        check_line(lines, 3U, "short");
+        PP_CHECK(!lines->continuation[3]);
+        free(lines);
+    }
+    // A last line without a break that needs two pieces ends marked, and the splitter then
+    // starts afresh.
+    lines_t *lines = split(text, 600U, (const size_t[]){0U}, 1U);
+    PP_CHECK_EQUAL(lines->count, 2U);
+    PP_CHECK(!lines->continuation[0]);
+    PP_CHECK(lines->continuation[1]);
+    free(lines);
+}
+
+// The pieces reach the log callback with the flag, and cut between characters: 510 bytes, a
+// two-byte character, and 600 bytes make pieces of 510, 511 and 91 bytes.
+static void long_line_pieces_reach_the_callback_marked(void) {
+    guest_lines_t lines;
+    int writers[2];
+    pp_guest_output_t *reader = start_reader(&lines, writers);
+    char text[1200];
+    memset(text, 'a', 510U);
+    static const char k_accent[] = "\xc3\xa9";
+    memcpy(text + 510U, k_accent, sizeof k_accent - 1U);
+    memset(text + 512U, 'b', 600U);
+    text[1112] = '\n';
+    write_all(writers[0], text, 1113U);
+    write_all(writers[0], "next\n", 5U);
+    write_all(writers[1], "an error\n", 9U);
+    (void)close(writers[0]);
+    (void)close(writers[1]);
+    pp_guest_output_join(reader);
+    pp_wait_for_count(&lines.count, 5U);
+    // The error line may come anywhere between the pieces.
+    size_t seen = 0U;
+    static const size_t k_lengths[] = {510U, 511U, 91U};
+    for (size_t index = 0U; index < 5U; index++) {
+        if (lines.source[index] == PP_LOG_SOURCE_GUEST_ERRORS) {
+            PP_CHECK_TEXT(lines.text[index], "an error");
+            PP_CHECK_EQUAL(lines.flags[index], 0U);
+            continue;
+        }
+        if (seen < 3U) {
+            PP_CHECK_EQUAL(strlen(lines.text[index]), k_lengths[seen]);
+            PP_CHECK_EQUAL(lines.flags[index],
+                           seen == 0U ? 0U : (uint32_t)PP_LOG_FLAG_CONTINUATION);
+            if (seen == 1U) {
+                PP_CHECK(memcmp(lines.text[index], "\xc3\xa9", 2U) == 0);
+            }
+        } else {
+            PP_CHECK_TEXT(lines.text[index], "next");
+            PP_CHECK_EQUAL(lines.flags[index], 0U);
+        }
+        seen++;
+    }
+    PP_CHECK_EQUAL(seen, 4U);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+}
+
+// What the log callback saw of the numbered lines of one process's output, in order: the number
+// of a line "line N", -1 for a drop report, -2 for any other line. While hold is set, the
+// callback does not return from the first line it receives, as a console that stops reading
+// would not.
+enum { SEQUENCE_MAX = 2400 };
+
+typedef struct sequence_t {
+    int32_t number[SEQUENCE_MAX];
+    uint32_t flags[SEQUENCE_MAX];
+    uint64_t dropped[SEQUENCE_MAX];
+    _Atomic(uint64_t) count;
+    _Atomic(bool) hold;
+} sequence_t;
+
+static void record_sequence(const pp_log_line_t *line, void *user_data) {
+    sequence_t *sequence = user_data;
+    if (line->source != PP_LOG_SOURCE_GUEST_OUTPUT) {
+        return;
+    }
+    PP_CHECK_EQUAL(line->process, 5U);
+    const uint64_t index = atomic_load(&sequence->count);
+    PP_CHECK(index < (uint64_t)SEQUENCE_MAX);
+    int32_t number = -2;
+    if ((line->flags & (uint32_t)PP_LOG_FLAG_DROPPED) != 0U) {
+        number = -1;
+    } else if (strncmp(line->text, "line ", 5U) == 0) {
+        number = (int32_t)strtol(line->text + 5, NULL, 10);
+    }
+    sequence->number[index] = number;
+    sequence->flags[index] = line->flags;
+    sequence->dropped[index] = line->dropped;
+    atomic_store(&sequence->count, index + 1U);
+    while (index == 0U && atomic_load(&sequence->hold)) {
+        pp_sleep_milliseconds(1);
+    }
+}
+
+// Starts the host with the sequence's callback and a reader for process 5.
+static pp_guest_output_t *start_sequence_reader(sequence_t *sequence, int writers[2]) {
+    atomic_init(&sequence->count, 0U);
+    pp_start_host(NULL);
+    PP_CHECK_EQUAL(pp_set_log_callback(record_sequence, sequence), PP_OK);
+    int output[2];
+    int errors[2];
+    PP_CHECK_EQUAL(pipe(output), 0);
+    PP_CHECK_EQUAL(pipe(errors), 0);
+    pp_guest_output_t *reader = NULL;
+    PP_CHECK_EQUAL(pp_guest_output_start(output[0], errors[0], 5U, note_end, &reader), PP_OK);
+    writers[0] = output[1];
+    writers[1] = errors[1];
+    return reader;
+}
+
+static void write_numbered_lines(int fd, int first, int last) {
+    for (int number = first; number <= last; number++) {
+        char text[24];
+        const int length = snprintf(text, sizeof text, "line %d\n", number);
+        PP_CHECK(length > 0);
+        write_all(fd, text, (size_t)length);
+    }
+}
+
+// A callback that stops taking lines while the program writes 1000: the reader holds
+// PP_GUEST_BUFFER_LINES, drops every line after them and counts exactly those. Once the
+// callback takes lines again, the report of the count comes at the gap, before the next line,
+// and the lines that arrived are in order.
+static void a_burst_beyond_the_buffer_reports_the_dropped_lines(void) {
+    enum { TOTAL = 1000 };
+    static sequence_t sequence;
+    atomic_init(&sequence.hold, true);
+    int writers[2];
+    pp_guest_output_t *reader = start_sequence_reader(&sequence, writers);
+    write_numbered_lines(writers[0], 1, TOTAL);
+    const uint64_t expected = (uint64_t)TOTAL - PP_GUEST_BUFFER_LINES;
+    for (int round = 0; round < 60000 && pp_guest_output_dropped(reader) < expected; round++) {
+        pp_sleep_milliseconds(1);
+    }
+    PP_CHECK_EQUAL(pp_guest_output_dropped(reader), expected);
+    atomic_store(&sequence.hold, false);
+    // The report waits for room, so once the buffer's lines are out, the next line follows it.
+    pp_wait_for_count(&sequence.count, PP_GUEST_BUFFER_LINES);
+    write_all(writers[0], "after\n", 6U);
+    (void)close(writers[0]);
+    (void)close(writers[1]);
+    PP_CHECK_EQUAL(pp_guest_output_dropped(reader), expected);
+    pp_guest_output_join(reader);
+    pp_wait_for_count(&sequence.count, (uint64_t)PP_GUEST_BUFFER_LINES + 2U);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+    PP_CHECK_EQUAL(atomic_load(&sequence.count), (uint64_t)PP_GUEST_BUFFER_LINES + 2U);
+    for (uint32_t index = 0U; index < PP_GUEST_BUFFER_LINES; index++) {
+        PP_CHECK_EQUAL(sequence.number[index], (int32_t)index + 1);
+        PP_CHECK_EQUAL(sequence.flags[index], 0U);
+    }
+    PP_CHECK_EQUAL(sequence.number[PP_GUEST_BUFFER_LINES], -1);
+    PP_CHECK_EQUAL(sequence.flags[PP_GUEST_BUFFER_LINES], (uint32_t)PP_LOG_FLAG_DROPPED);
+    PP_CHECK_EQUAL(sequence.dropped[PP_GUEST_BUFFER_LINES], expected);
+    PP_CHECK_EQUAL(sequence.number[PP_GUEST_BUFFER_LINES + 1U], -2);
+}
+
+// Output that a taking callback keeps up with loses nothing, in bursts far beyond the buffer:
+// the reader waits for room instead.
+static void normal_output_loses_nothing(void) {
+    enum { TOTAL = 2000 };
+    static sequence_t sequence;
+    atomic_init(&sequence.hold, false);
+    int writers[2];
+    pp_guest_output_t *reader = start_sequence_reader(&sequence, writers);
+    for (int first = 1; first <= TOTAL; first += 100) {
+        write_numbered_lines(writers[0], first, first + 99);
+    }
+    (void)close(writers[0]);
+    (void)close(writers[1]);
+    pp_guest_output_join(reader);
+    pp_wait_for_count(&sequence.count, (uint64_t)TOTAL);
+    PP_CHECK_EQUAL(pp_shutdown(), PP_OK);
+    PP_CHECK_EQUAL(atomic_load(&sequence.count), (uint64_t)TOTAL);
+    for (int index = 0; index < TOTAL; index++) {
+        PP_CHECK_EQUAL(sequence.number[index], index + 1);
+        PP_CHECK_EQUAL(sequence.flags[index], 0U);
+    }
 }
 
 int main(int argc, char **argv) {
@@ -447,6 +660,11 @@ int main(int argc, char **argv) {
         {"wake_ends_a_reader_whose_pipes_stay_open", wake_ends_a_reader_whose_pipes_stay_open},
         {"woken_reader_takes_at_most_64_kib", woken_reader_takes_at_most_64_kib},
         {"nul_bytes_become_replacements", nul_bytes_become_replacements},
+        {"a_long_line_splits_into_marked_pieces", a_long_line_splits_into_marked_pieces},
+        {"long_line_pieces_reach_the_callback_marked", long_line_pieces_reach_the_callback_marked},
+        {"a_burst_beyond_the_buffer_reports_the_dropped_lines",
+         a_burst_beyond_the_buffer_reports_the_dropped_lines},
+        {"normal_output_loses_nothing", normal_output_loses_nothing},
     };
     return pp_run_case(argc, argv, k_cases, PP_CASE_COUNT(k_cases));
 }

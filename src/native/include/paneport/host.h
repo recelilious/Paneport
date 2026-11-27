@@ -78,6 +78,27 @@ enum {
     PP_LOG_SOURCE_GUEST_ERRORS = 3,
 };
 
+/**
+ * What more a log line says, as bits of pp_log_line_t.flags. Version 1.5 added the flags; a
+ * line of an older host has none.
+ */
+enum {
+    /**
+     * The line continues the one before it from the same source and process: a line of a
+     * Windows program that is longer than the host's limit of 511 bytes arrives in pieces cut
+     * at UTF-8 character boundaries, and each piece after the first has this flag. The text
+     * carries no mark of its own.
+     */
+    PP_LOG_FLAG_CONTINUATION = 1,
+    /**
+     * The line reports a gap: the host dropped pp_log_line_t.dropped lines of this source and
+     * process, because the program wrote faster than the log callback took them. The report
+     * comes where the lines are missing, after the last line that arrived and before the next.
+     * Its text says so in English, and its level is PP_LOG_WARNING.
+     */
+    PP_LOG_FLAG_DROPPED = 2,
+};
+
 /** A log line of the host. */
 typedef struct pp_log_line_t {
     /** sizeof(pp_log_line_t) in the host that sent it. */
@@ -99,6 +120,13 @@ typedef struct pp_log_line_t {
      * Version 1.4 appended it.
      */
     uint64_t process;
+    /** A combination of the PP_LOG_FLAG_ values. Version 1.5 appended it. */
+    uint32_t flags;
+    /**
+     * With PP_LOG_FLAG_DROPPED: how many lines were dropped at this place; otherwise 0.
+     * Version 1.5 appended it.
+     */
+    uint64_t dropped;
 } pp_log_line_t;
 
 /**

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
+using System.Collections;
 using System.Reflection;
 using Paneport.Core.Security;
 using Paneport.Core.Steam;
@@ -219,21 +220,42 @@ public sealed class SteamKitAdapterTests
         Assert.Equal(SteamResult.NoConnection, ended.Result);
     }
 
-    // A gate step's job that starts after the connection ended fails at once; the step says so in
-    // plain words, not with SteamKit2's type name.
-    [Fact]
-    public async Task AStepWhoseConnectionEndedSaysSo()
+    // The SteamKit2 jobs of the gate steps, each through its adapter.
+    public static TheoryData<string> StepJobs => ["access token", "app info", "depot key", "manifest code", "servers", "server token"];
+
+    // A gate step's job that SteamKit2 ends because the connection ended says so in plain words, not
+    // with SteamKit2's type name or as a cancel: a job that starts after the end fails at once, and a
+    // job that is out at the end is cancelled, as SteamKit2 cancels every pending job then.
+    [Theory]
+    [MemberData(nameof(StepJobs))]
+    public async Task AStepWhoseConnectionEndedSaysSo(string job)
     {
-        var token = TestContext.Current.CancellationToken;
-        var client = ClientThatNeverConnects();
-        var apps = new SteamKitApps(client);
-        using var content = new SteamKitContent(client);
+        var after = await Assert.ThrowsAsync<SteamStepException>(() => StartStep(job, ClientThatNeverConnects()));
 
-        var key = await Assert.ThrowsAsync<SteamStepException>(() => apps.GetDepotKeyAsync(4_100_000_101, 4_100_000_100, token));
-        var code = await Assert.ThrowsAsync<SteamStepException>(() => content.GetManifestRequestCodeAsync(4_100_000_101, 4_100_000_100, 1, token));
+        var client = ClientMarkedConnected();
+        var pending = StartStep(job, client);
+        await SteamTestKit.Until(() => PendingJobs(client).Count == 1, "the job to be out");
+        EndConnection(client);
+        var cancelled = await Assert.ThrowsAsync<SteamStepException>(() => pending.WaitAsync(SteamTestKit.Patience, TestContext.Current.CancellationToken));
 
-        Assert.Equal(SteamKitJobs.ConnectionEnded, key.Message);
-        Assert.Equal(SteamKitJobs.ConnectionEnded, code.Message);
+        Assert.Equal(SteamKitJobs.ConnectionEnded, after.Message);
+        Assert.Equal(SteamKitJobs.ConnectionEnded, cancelled.Message);
+    }
+
+    // SteamKit2 cancels a job that Steam leaves unanswered for its timeout while the connection
+    // stays up; the step says that Steam did not answer.
+    [Theory]
+    [MemberData(nameof(StepJobs))]
+    public async Task AStepJobThatSteamLeavesUnansweredSaysSo(string job)
+    {
+        var client = ClientMarkedConnected();
+        var step = StartStep(job, client);
+        await SteamTestKit.Until(() => PendingJobs(client).Count == 1, "the job to be out");
+
+        TimeOutPendingJobs(client);
+
+        var timedOut = await Assert.ThrowsAsync<SteamStepException>(() => step.WaitAsync(SteamTestKit.Patience, TestContext.Current.CancellationToken));
+        Assert.Equal(SteamKitJobs.NoAnswer, timedOut.Message);
     }
 
     [Fact]
@@ -245,6 +267,24 @@ public sealed class SteamKitAdapterTests
             CancellationToken.None));
 
         Assert.Equal(SteamKitJobs.SteamFailed, failed.Message);
+    }
+
+    // The caller's own cancel stays a cancel, whatever SteamKit2 did with the job meanwhile, so that
+    // the page says the step was cancelled.
+    [Fact]
+    public async Task AStepThatTheCallerCancelsStaysCancelled()
+    {
+        using var caller = new CancellationTokenSource();
+        await caller.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => SteamKitJobs.StepAsync(
+            () => Task.FromCanceled<int>(caller.Token),
+            () => false,
+            caller.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => SteamKitJobs.StepAsync(
+            () => Task.FromException<int>(new AsyncJobFailedException()),
+            () => false,
+            caller.Token));
     }
 
     // The poll's own refusals, such as an account without a confirmation that SteamKit2 supports,
@@ -439,6 +479,78 @@ public sealed class SteamKitAdapterTests
 
     private static SteamClient ClientThatNeverConnects() =>
         new(SteamConfiguration.Create(builder => builder.WithDirectoryFetch(false)), "Paneport tests");
+
+    // SteamKit2 4.0.0-Beta.2 (commit 082594a) gives CMClient.IsConnected a private setter and keeps a
+    // client's jobs in its internal AsyncJobManager; the tests reach both through reflection, to play
+    // what SteamKit2 does when a connection ends or a job times out. A client marked connected has no
+    // connection, so nothing that it sends leaves the process.
+    private static SteamClient ClientMarkedConnected()
+    {
+        var client = ClientThatNeverConnects();
+        SetConnected(client, connected: true);
+        return client;
+    }
+
+    private static void SetConnected(SteamClient client, bool connected) =>
+        typeof(CMClient).GetProperty(nameof(CMClient.IsConnected))!.SetValue(client, connected);
+
+    private static object JobManager(SteamClient client) =>
+        typeof(SteamClient).GetField("jobManager", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(client)!;
+
+    private static List<AsyncJob> PendingJobs(SteamClient client)
+    {
+        var manager = JobManager(client);
+        var jobs = (IDictionary)manager.GetType().GetField("asyncJobs", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(manager)!;
+        return [.. jobs.Values.Cast<AsyncJob>()];
+    }
+
+    private static void RunJobManager(SteamClient client, string method)
+    {
+        var manager = JobManager(client);
+        manager.GetType().GetMethod(method, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(manager, null);
+    }
+
+    // What SteamKit2 does when the connection ends: it marks the client as not connected, then
+    // cancels every pending job.
+    private static void EndConnection(SteamClient client)
+    {
+        SetConnected(client, connected: false);
+        RunJobManager(client, "CancelPendingJobs");
+    }
+
+    // What SteamKit2's timer does once a job has waited for an answer as long as its timeout allows:
+    // it cancels the job, while the connection stays up.
+    private static void TimeOutPendingJobs(SteamClient client)
+    {
+        foreach (var job in PendingJobs(client))
+        {
+            job.Timeout = TimeSpan.Zero;
+        }
+
+        RunJobManager(client, "CancelTimedoutJobs");
+    }
+
+    // Starts a gate step's job through its adapter.
+    private static Task StartStep(string job, SteamClient client)
+    {
+        var token = TestContext.Current.CancellationToken;
+        var apps = new SteamKitApps(client);
+        var content = new SteamKitContent(client);
+        Task step = job switch
+        {
+            "access token" => apps.GetAppAccessTokenAsync(4_100_000_100, token),
+            "app info" => apps.GetAppInfoAsync(4_100_000_100, 0, token),
+            "depot key" => apps.GetDepotKeyAsync(4_100_000_101, 4_100_000_100, token),
+            "manifest code" => content.GetManifestRequestCodeAsync(4_100_000_101, 4_100_000_100, 1, token),
+            "servers" => content.GetServersAsync(token),
+            "server token" => content.GetServerTokenAsync(4_100_000_100, 4_100_000_101, new ContentServer("cdn.example.invalid", new object()), token),
+            _ => throw new ArgumentOutOfRangeException(nameof(job), job, "No such step job."),
+        };
+
+        // The CDN client goes once the job has ended; only the downloads use it.
+        _ = step.ContinueWith(static (_, state) => ((SteamKitContent)state!).Dispose(), content, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return step;
+    }
 
     // SteamKit2 makes its sessions only from Steam's answer to a begin request, so the tests build
     // them from such an answer through their non-public constructors.

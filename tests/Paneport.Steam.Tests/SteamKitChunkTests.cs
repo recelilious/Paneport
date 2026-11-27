@@ -98,14 +98,13 @@ public sealed class SteamKitChunkTests
     {
         // SteamKit2's own length checks of the response throw InvalidDataException, and a chunked
         // response that is too long overruns its buffer with NotSupportedException: a server that
-        // sends too much or too little, so the next server is asked. So is any other failure.
+        // sends too much or too little, so the next server is asked.
         var failures = new Exception[]
         {
             new HttpRequestException("refused"),
             new IOException("cut"),
             new InvalidDataException("length"),
             new NotSupportedException("Memory stream is not expandable."),
-            new InvalidOperationException("other"),
             new OperationCanceledException(),
         };
         foreach (var failure in failures)
@@ -113,7 +112,12 @@ public sealed class SteamKitChunkTests
             Assert.IsType<ContentDownloadException>(SteamKitContent.DownloadFailure(failure, CancellationToken.None));
         }
 
+        // What no server causes fails the step with its type: the caller's cancel, the manifest's
+        // refusal of a chunk entry without a valid ID, and programming errors.
         Assert.Null(SteamKitContent.DownloadFailure(new OperationCanceledException(), new CancellationToken(canceled: true)));
+        Assert.Null(SteamKitContent.DownloadFailure(new SteamStepException("The manifest names a chunk without a valid ID."), CancellationToken.None));
+        Assert.Null(SteamKitContent.DownloadFailure(new ArgumentNullException("server"), CancellationToken.None));
+        Assert.Null(SteamKitContent.DownloadFailure(new InvalidOperationException("other"), CancellationToken.None));
         Assert.Null(SteamKitContent.DownloadFailure(new OutOfMemoryException(), CancellationToken.None));
     }
 

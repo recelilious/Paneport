@@ -412,6 +412,47 @@ public sealed class SteamSessionTests : IDisposable
         Assert.Equal(TimeSpan.FromSeconds(1), _kit.Delays.Pending[0]);
     }
 
+    // SteamKit2 answers a logon on a client that is no longer connected with NoConnection at once.
+    // That answer is the drop, not the logon's result: the logon goes out again on the next
+    // connection.
+    [Fact]
+    public async Task ANoConnectionAnswerOnAnEndedConnectionIsTheDrop()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var logOn = _kit.Session.LogOnAsync(_kit.SampleSignIn(), token);
+        _kit.Connection.Listener.OnConnected();
+        await _kit.UntilRequested(FakeConnection.LogOn, 1);
+
+        _kit.Connection.IsConnected = false;
+        _kit.Connection.Listener.OnLoggedOn(SteamResult.NoConnection);
+        _kit.Connection.Listener.OnDisconnected(userInitiated: false);
+        await SteamTestKit.Until(() => _kit.Delays.Pending.Count == 1, "the wait to connect again");
+        Assert.False(logOn.IsCompleted);
+        _kit.Delays.Release(TimeSpan.FromSeconds(1));
+        await _kit.UntilRequested(FakeConnection.Connect, 2);
+        _kit.Connection.IsConnected = true;
+        _kit.Connection.Listener.OnConnected();
+        await _kit.UntilRequested(FakeConnection.LogOn, 2);
+        _kit.Connection.Listener.OnLoggedOn(SteamResult.OK);
+
+        Assert.Equal(SteamResult.OK, await logOn.WaitAsync(SteamTestKit.Patience, token));
+    }
+
+    // A connection that SteamKit2 has already lost when the session hears of it gets no logon.
+    [Fact]
+    public async Task ALogonWaitsForALiveConnection()
+    {
+        var logOn = _kit.Session.LogOnAsync(_kit.SampleSignIn(), TestContext.Current.CancellationToken);
+        _kit.Connection.IsConnected = false;
+        _kit.Connection.Listener.OnConnected();
+        _kit.Connection.Listener.OnDisconnected(userInitiated: false);
+
+        await SteamTestKit.Until(() => _kit.Delays.Pending.Count == 1, "the wait to connect again");
+
+        Assert.Equal(0, _kit.Connection.Count(FakeConnection.LogOn));
+        Assert.False(logOn.IsCompleted);
+    }
+
     // The same sign-in read from the store again is a new object: no second connection.
     [Fact]
     public async Task ALogOnWithTheSameSignInReadAgainWaitsForTheSameLogon()

@@ -432,6 +432,15 @@ internal sealed class SteamSession : IConnectionListener
             return;
         }
 
+        if (result == SteamResult.NoConnection && !_connection.IsConnected)
+        {
+            // SteamKit2's answer to a logon on a client that is no longer connected: that is the
+            // drop, whose own notice starts the reconnect, and not the logon's result.
+            _log.Write(LogLevel.Information, LogSource, "The logon met a connection that had ended; the logon waits for the next one.");
+            Publish();
+            return;
+        }
+
         if (result == SteamResult.OK)
         {
             if (_goal != Goal.LoggedOn || _signIn is null)
@@ -579,6 +588,15 @@ internal sealed class SteamSession : IConnectionListener
     private void SendLogOn()
     {
         var signIn = _signIn ?? throw new InvalidOperationException("No sign-in to log on with.");
+        if (!_connection.IsConnected)
+        {
+            // SteamKit2 would answer a logon on a client that is no longer connected with
+            // NoConnection at once. The drop that it has seen is on its way here, and the logon goes
+            // out on the next connection.
+            _log.Write(LogLevel.Information, LogSource, "The client is no longer connected, so the logon waits for the next connection.");
+            return;
+        }
+
         _loggingOn = true;
         _connection.LogOn(signIn.AccountName, signIn.RefreshToken);
     }

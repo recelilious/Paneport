@@ -2282,6 +2282,7 @@ internal static class SelfTest
             "pattern"),
         ("a quantified group that holds a lookahead", """{ "pattern": "^((?=a)a)*$" }""", "\"aa\"", null),
         ("a counted group of two branches", """{ "pattern": "^(?:a|b){2}$" }""", "\"ba\"", null),
+        ("an escape as the last branch of a group", """{ "pattern": "^(?:a|\\.)$" }""", "\".\"", null),
         ("an empty pattern", """{ "pattern": "" }""", "\"a\"", null),
         // Inside a class, a [ that does not follow a - is a character in both readings.
         ("a [ alone in a class", """{ "pattern": "^[[]$" }""", "\"[\"", null),

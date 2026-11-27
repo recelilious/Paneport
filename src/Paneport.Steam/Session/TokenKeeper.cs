@@ -44,13 +44,17 @@ internal sealed class TokenKeeper : IDisposable
 
     // Saves a sign-in. The token cancels only the wait for the store: a sign-in cancelled before its
     // turn, such as by a sign-out, never writes, and a write that has begun completes, so that the
-    // sign-out's delete, which comes after it, finds it.
+    // sign-out's delete, which comes after it, finds it. The token is checked again once the gate is
+    // taken, because a cancelled wait can still be granted the gate: SemaphoreSlim moves a cancelled
+    // waiter to the thread pool before it leaves the queue, and a release that comes first hands it
+    // the gate.
     public async Task SaveAsync(SavedSignIn signIn, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(signIn);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             await _store.WriteAsync(signIn, CancellationToken.None).ConfigureAwait(false);
             _log.Write(LogLevel.Information, LogSource, "The sign-in was saved.");
         }

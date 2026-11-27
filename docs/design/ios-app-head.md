@@ -39,7 +39,8 @@ The head depends on Core, Steam, UI and Interop, and nothing depends on it (C-00
 5. Start Avalonia's platform (section 2).
 6. Turn off Mono's crash chaining with `MonoRuntime.TurnOffCrashChaining`, after the runtime started and before `pp_init` (C-0005 section 4). `CrashChainingState.Run` keeps whether the call resolved and returned, for Diagnostics and the signal gate page, and never stops startup ([signals.md](signals.md) section 5).
 7. Start the host with `HostStartup.Start`: read `pp_abi_version`; when its major version differs from the bindings' (`HostAbi.Major`), stop with a message and never call `pp_init` (C-0005 section 1); otherwise call `pp_init` with `Library/Caches/Paneport/` as the crash record folder, which also installs the signal dispatcher, then set the failure handler, the log handler and the event handler. A host that cannot be loaded, that refuses to start or that refuses its handlers stops startup with a message as well. The messages name versions, never paths.
-8. Build the services and the shell (section 4), with the developer menu in the test flavor (section 10).
+8. Start the prefix installer, `PrefixInstaller.InstallAsync("shared")`, on a worker thread, and keep its task in `AppComposition` without waiting for it: the template prefix is the bundle's `wine/prefix-template/`, and a bundle without one, as today's, makes the installer report that and do nothing ([runtime-ios.md](runtime-ios.md) section 7). The device test flavor takes the same step, because it shares this code.
+9. Build the services and the shell (section 4), with the developer menu in the test flavor (section 10).
 
 An exception at any step ends the composition with a message that names the exception's type, in place of the shell (section 2), and the log keeps the type; the app never ends before anything is on screen.
 

@@ -25,6 +25,9 @@ SPDX-License-Identifier: MIT
     <DataTemplate DataType="vm:DiagnosticsViewModel">
       <views:DiagnosticsPage />
     </DataTemplate>
+    <DataTemplate DataType="vm:SteamGateViewModel">
+      <views:SteamGatePage />
+    </DataTemplate>
   </Application.DataTemplates>
 
   <Application.Styles>
@@ -115,7 +118,8 @@ SPDX-License-Identifier: MIT
     <Style Selector="TextBlock.label">
       <Setter Property="Opacity" Value="0.7" />
     </Style>
-    <Style Selector="TextBlock.timeline">
+    <!-- :is() also matches SelectableTextBlock, such as the Steam gate page's summary. -->
+    <Style Selector=":is(TextBlock).timeline">
       <Setter Property="FontFamily" Value="monospace" />
       <Setter Property="FontSize" Value="12" />
     </Style>

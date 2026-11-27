@@ -130,6 +130,62 @@ SPDX-License-Identifier: MIT
     </ItemGroup>
   </Target>
 
+  <!--
+  protobuf-net and protobuf-net.Core are not marked trimmable, so the SDK keeps them whole and the
+  trimmer analyzes all their code, which reflects over types known only at run time. recelilious
+  approved the list of their warnings in eng/trimming/ (docs/design/repository-checks.md
+  section 7). The SDK passes each file of _ILLinkSuppressions, an internal item of its own, to the
+  trimmer as link attributes; if the item ever goes, the warnings come back and fail the build.
+  TrimmerSingleWarn=false on the two assemblies, the metadata that the SDK also sets on project
+  references, lists each of their warnings by code and method instead of one IL2104 per assembly,
+  so a warning outside the list names itself.
+  -->
+  <ItemGroup>
+    <_ILLinkSuppressions Include="$(MSBuildThisFileDirectory)../../eng/trimming/*.xml" />
+  </ItemGroup>
+
+  <!--
+  The runtime's switch System.ComponentModel.DefaultValueAttribute.IsSupported, off as in every
+  other trimmed app. The SDK turns it off only when PublishTrimmed is true as the project is read,
+  and .NET for iOS sets PublishTrimmed later, in a target, so on iOS the switch stays unset. Unset,
+  the trimmer keeps the attribute's conversion of a string through a TypeConverter, which needs
+  unreferenced code (IL2026 inside System.Private.CoreLib), for SteamKit2's
+  [DefaultValue(typeof(ulong), "...")] on 64-bit fields. Off, the attribute carries no value; the
+  fields have ShouldSerialize methods, which protobuf-net uses instead of a default.
+  _DefaultValueAttributeSupport is the SDK's internal property for the switch; if it ever goes, the
+  warning comes back and fails the build.
+  -->
+  <PropertyGroup>
+    <_DefaultValueAttributeSupport>false</_DefaultValueAttributeSupport>
+  </PropertyGroup>
+
+  <Target Name="PaneportListProtobufWarnings" BeforeTargets="_ComputeManagedAssemblyToLink">
+    <ItemGroup>
+      <ResolvedFileToPublish Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'protobuf-net.dll' Or '%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'protobuf-net.Core.dll'">
+        <TrimmerSingleWarn>false</TrimmerSingleWarn>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+  <!--
+  SteamKit2 picks its machine-information provider at run time with RuntimeInformation.IsOSPlatform,
+  which the trimmer cannot decide, so it keeps the provider for macOS even when the app gives
+  SteamKit2 a provider of its own, as the test flavor does. That provider's P/Invokes name
+  DiskArbitration, a framework that only macOS has. .NET for iOS links every framework that a kept
+  P/Invoke names unless its own table marks the framework unavailable, and the table does not know
+  DiskArbitration, so the native link failed: "ld: framework 'DiskArbitration' not found". On iOS
+  the P/Invokes of an assembly outside the SDK are looked up at run time (dlsym), so no symbol needs
+  the framework when the app is linked, and the provider never runs on iOS. SteamKit2 itself stays
+  unchanged. _NativeExecutableFrameworks is the internal item that the native link takes its
+  frameworks from, the one .NET for iOS removes BrowserEngineKit from; if the item ever goes, the
+  link fails again with the same error.
+  -->
+  <Target Name="PaneportDropDiskArbitration" AfterTargets="_ComputeLinkNativeExecutableInputs">
+    <ItemGroup>
+      <_NativeExecutableFrameworks Remove="DiskArbitration" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Core/Paneport.Core.csproj" />
     <ProjectReference Include="$(MSBuildThisFileDirectory)../Paneport.Steam/Paneport.Steam.csproj" />

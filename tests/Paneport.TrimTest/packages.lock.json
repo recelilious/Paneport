@@ -23,6 +23,21 @@
         "resolved": "0.11.6",
         "contentHash": "NdNWGDiZ6eS/Mf/9+QHR91cj1K7Hy+PX9yrHI/zM7xFYuj9IWT2uxtB6sCHjrnxAeLV9fut1R6zHDUGKX6f9lQ=="
       },
+      "protobuf-net.Core": {
+        "type": "Transitive",
+        "resolved": "3.4.40",
+        "contentHash": "UDQ8fbEKqpQktJfFyqkZ22S7P01sJWNmqkYjzbwZdZUHFwHIDigmWIzxmExF7NjbNoTqmv2Dfsu3rOpRHXK5EA=="
+      },
+      "System.IO.Hashing": {
+        "type": "Transitive",
+        "resolved": "10.0.13",
+        "contentHash": "ZlcywyQ7FJmgOV2nctdfOEPGS0kRK8T2CdOoPr6F4HPYpmjSo6GQfj3yTyOzNO6B+2U84/JKSPkJJMWqLmVsMw=="
+      },
+      "ZstdSharp.Port": {
+        "type": "Transitive",
+        "resolved": "0.8.8",
+        "contentHash": "UIDFkA5DC3en3tOJ3Mof11yBx9kUQLsaeo/oFdvN6Bbkr9E9+VCqfIadHci8cu+I51K2Sl7XYWVl2R/mA75NBQ=="
+      },
       "paneport.core": {
         "type": "Project",
         "dependencies": {
@@ -35,7 +50,9 @@
       "paneport.steam": {
         "type": "Project",
         "dependencies": {
-          "Paneport.Core": "[1.0.0, )"
+          "Paneport.Core": "[1.0.0, )",
+          "SteamKit2": "[4.0.0-Beta.2, )",
+          "protobuf-net": "[3.4.40, )"
         }
       },
       "paneport.ui": {
@@ -43,6 +60,7 @@
         "dependencies": {
           "Avalonia": "[12.1.4, )",
           "Avalonia.Themes.Fluent": "[12.1.4, )",
+          "Net.Codecrete.QrCodeGenerator": "[3.2.1, )",
           "Paneport.Core": "[1.0.0, )"
         }
       },
@@ -71,6 +89,32 @@
         "requested": "[8.4.2, )",
         "resolved": "8.4.2",
         "contentHash": "WadCzGEc2U+3e20avRLng4qNtt4zoOGWrdUISqJWrHe3/FSnrYjuM5Sb4yQb09LhkBXrrI4Zt3dLKgRMbItsrg=="
+      },
+      "Net.Codecrete.QrCodeGenerator": {
+        "type": "CentralTransitive",
+        "requested": "[3.2.1, )",
+        "resolved": "3.2.1",
+        "contentHash": "MLseDo4x2T8+7gbXDt5vLjC4b6v4SavtrwoM+adKjlicnTHAqII4zAWy8VL5D94oB3VA8qz7bvMyOxfVLJnARg=="
+      },
+      "protobuf-net": {
+        "type": "CentralTransitive",
+        "requested": "[3.4.40, )",
+        "resolved": "3.4.40",
+        "contentHash": "Gds96uOs0bZlDfLIYHRMee1xmrWxUTLM9HSOlDzUmyzkTGDcMWw3Lgx9TPUxD94r+/E/Y9OEL5Cf3PiTHn9bfw==",
+        "dependencies": {
+          "protobuf-net.Core": "3.4.40"
+        }
+      },
+      "SteamKit2": {
+        "type": "CentralTransitive",
+        "requested": "[4.0.0-Beta.2, )",
+        "resolved": "4.0.0-Beta.2",
+        "contentHash": "2hfK7nBMEKEyqR49d8pu5dzGuc4noWAdri/ro9niMqfBqd9ZAB1WOUOGqVi8x5HqAW48s2RKvH+/i5YmKeah8w==",
+        "dependencies": {
+          "System.IO.Hashing": "10.0.13",
+          "ZstdSharp.Port": "0.8.8",
+          "protobuf-net": "3.4.40"
+        }
       }
     },
     "net10.0/linux-x64": {},

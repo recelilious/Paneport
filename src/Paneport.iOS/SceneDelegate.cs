@@ -30,4 +30,11 @@ internal sealed class SceneDelegate : UIResponder, IUIWindowSceneDelegate
         };
         Window.MakeKeyAndVisible();
     }
+
+    // UIKit calls it when the scene returns from the background, and also once when the scene
+    // connects (Apple's scene life cycle). Today nothing listens that early: the Steam service
+    // subscribes only when the Steam gate page first opens. A stage that subscribes at launch must
+    // expect that first call, which is no return from the background.
+    [Export("sceneWillEnterForeground:")]
+    public void WillEnterForeground(UIScene scene) => AppDelegate.Composition?.Lifecycle.NotifyEnteredForeground();
 }

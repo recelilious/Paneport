@@ -336,7 +336,7 @@ public sealed partial class ViewTemplatesTests
 
         Assert.DoesNotContain(Application.Current!.DataTemplates, template => template.Match(null));
 
-        Control[] views = [new MainView(), new LibraryPage(), new TitleDetailsPage(), new SettingsPage(), new DiagnosticsPage()];
+        Control[] views = [new MainView(), new LibraryPage(), new TitleDetailsPage(), new SettingsPage(), new DiagnosticsPage(), new SteamGatePage()];
         Assert.All(views, view => Assert.DoesNotContain(view.DataTemplates, template => template.Match(null)));
         AssertNoEntries(warnings.Entries);
     }

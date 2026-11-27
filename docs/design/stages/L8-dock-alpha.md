@@ -213,6 +213,7 @@ _No sessions yet._
 **Notes from earlier stages.**
 
 - S9.1.1 ([L9 brief](L9-first-release.md), M9.1 session log of 2026-11-19): every file that this stage adds to the bundle needs a rule in `eng/release/bundle-components.json`, or the `ios` job warns, and a rule for a new component needs its texts there, such as a fork's license files as `{ "repository": "external/..." }`, or the job fails; a new NuGet package of the app needs a row of `eng/license-map.json` and texts too. `licenses/` at the root of the bundle belongs to the notices generator (`docs/design/release-engineering.md` sections 1 and 5).
+- M2.3 ([L2 brief](L2-phase-0-gates.md#m23-steamkit2-on-the-device), session log of 2026-11-21): Paneport.Steam signs in for a refresh token of the SteamClient platform type, and whether Valve's client accepts it is for this stage to confirm. The session's sign-off keeps the saved sign-in when the service does not delete it, a resume logs on again, and a logoff with `LoggedInElsewhere` ends the session without taking it back. Steam allows one session per logon ID and public address, so both clients signed in at once may need a logon ID of their own ([steam-service.md](../steam-service.md) sections 4, 5 and 14).
 
 **Session log.**
 

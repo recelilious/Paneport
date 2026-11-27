@@ -10,7 +10,7 @@ The device test flavor of the iOS app head (plan section 7.3): the full app plus
 | File | What it is |
 |---|---|
 | `Paneport.DeviceTest.csproj` | The project. It imports the head's build from `src/Paneport.iOS/AppHead.props` and compiles the head's sources and Info.plist, instead of referencing the head's project, on which nothing may depend (C-0004 section 2). |
-| `DeveloperMenu.cs` | The flavor's part of the composition root: it adds the Developer section with its menu. |
+| `DeveloperMenu.cs` | The flavor's part of the composition root: it adds the Developer section with its menu, among it the Steam gate page of L2 steps 16 to 28, whose view model and view live in Paneport.Core and Paneport.UI. The Steam service starts with that page's first opening, with the installation's machine identity from the keychain, and follows the app's returns to the foreground. |
 | `DeveloperMenuViewModel.cs`, `DeveloperEntry.cs` | The menu, one entry per developer page. |
 | `DeveloperToolViewModel.cs`, `DeveloperAction.cs` | A developer page: a description, its actions and the result of the last one. |
 | `DeveloperTools.cs` | The first pages: Interface conformance, Token store and Crash record. |

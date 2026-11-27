@@ -95,16 +95,20 @@ internal static partial class CompositionRoot
             log: log,
             diagnostics: diagnostics);
 
+        // The Steam service of SteamKit2 stays out of the main app's launch until its sign-in pages
+        // come (M7.1); the device test flavor creates it for the Steam gate page (steam-service.md).
+        var lifecycle = new AppLifecycle();
+        var context = new DeveloperContext(services, lifecycle, storage.PathOf(StorageLayout.Downloads));
         Func<INavigator, PageViewModel>? developerPage = null;
-        AddDeveloperMenu(services, ref developerPage);
+        AddDeveloperMenu(context, ref developerPage);
         var shell = new ShellViewModel(services, developerPage);
         var run = new AppStart(shell, memory, (tick, interval) => DispatcherTimer.Run(tick, interval));
-        return AppComposition.Running(shell, run, log);
+        return AppComposition.Running(shell, run, log, lifecycle);
     }
 
     // The device test flavor's developer menu (tests/device). The main app has no implementation,
     // so the call compiles to nothing there.
-    static partial void AddDeveloperMenu(AppServices services, ref Func<INavigator, PageViewModel>? developerPage);
+    static partial void AddDeveloperMenu(DeveloperContext context, ref Func<INavigator, PageViewModel>? developerPage);
 
     // The log file below Library/Caches/Paneport/, or the console when it cannot be opened.
     private static ILog OpenLog(string root)

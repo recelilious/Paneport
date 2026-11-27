@@ -16,4 +16,9 @@ internal static class LocalFolders
     // the folder with its first save.
     public static string DeviceCompat { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Paneport.Desktop", "compat");
+
+    // The downloads folder, beside the device layer, below which the Steam gate's test downloads go
+    // until its page deletes them.
+    public static string Downloads { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Paneport.Desktop", "downloads");
 }

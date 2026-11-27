@@ -12,4 +12,17 @@ SPDX-License-Identifier: MIT
   <ItemGroup>
     <ProjectReference Include="..\Paneport.Core\Paneport.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SteamKit2" />
+    <PackageReference Include="protobuf-net" />
+  </ItemGroup>
+
+  <!--
+  The tests drive the state machines through the internal ports, with hand-written fakes
+  (C-0011 section 1, docs/design/steam-service.md section 9).
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Paneport.Steam.Tests" />
+  </ItemGroup>
 </Project>

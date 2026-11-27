@@ -9,6 +9,7 @@ A minimal program whose trimmed publish checks our libraries together with their
 
 - It references Paneport.Core, Paneport.Steam, Paneport.UI and Paneport.Interop, and roots each of them with `TrimmerRootAssembly`, so that the trimmer analyzes every type in them.
 - `TrimmerSingleWarn` is `false`, so the trimmer lists every warning instead of one per assembly. Warnings are errors, so any warning fails the publish.
+- It passes the files of `eng/trimming/` to the trimmer, which excuse the warnings from inside protobuf-net and protobuf-net.Core that recelilious approved. This app reports 11 of them; the iOS build, which keeps the two assemblies whole, reports more.
 - It is published for the runtime of the machine that builds it. `RuntimeIdentifiers` lists `linux-x64` and `win-x64`, the CI runners and the Windows workstation, so that its lock file covers both.
 - It is not a test project: `dotnet test` skips it. Its program does nothing.
 

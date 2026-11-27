@@ -6,9 +6,9 @@ using Avalonia.Logging;
 using Avalonia.Threading;
 using Paneport.Core;
 using Paneport.Core.Diagnostics;
-using Paneport.Core.Steam;
 using Paneport.Core.ViewModels;
 using Paneport.Desktop.Fakes;
+using Paneport.Steam;
 using Paneport.UI;
 using Paneport.UI.Views;
 
@@ -18,6 +18,12 @@ namespace Paneport.Desktop;
 // hosts the shell's view. The iOS head does the same with the device implementations.
 internal static class CompositionRoot
 {
+    // The name under which Steam lists the desktop run's sign-ins: fixed text, never the computer's name.
+    private const string SteamDeviceName = "Paneport (desktop head)";
+
+    // Where the gate page says the saved sign-in is kept (C-0007 section 3).
+    private const string SteamTokenKept = "in memory only, for this run";
+
     public static Window CreateMainWindow()
     {
         var log = new ConsoleLog();
@@ -34,15 +40,31 @@ internal static class CompositionRoot
             entitlements: [],
             crashRecords: null,
             storage: () => []);
+        // The Steam service on SteamKit2, for the developer Steam page of the desktop run (L2 brief,
+        // M2.3). Its sign-in stays in memory for this run and is never written to disk
+        // (C-0007 section 3); SteamKit2 derives the machine identity from this computer's own.
+        var tokens = new InMemoryTokenStore();
+        var steam = SteamServices.Create(new SteamServiceOptions
+        {
+            Log = log,
+            Tokens = tokens,
+            DeviceName = SteamDeviceName,
+            DownloadsFolder = LocalFolders.Downloads,
+        });
         var services = new AppServices(
             host: host,
             library: new SampleLibrary(),
-            steam: new SignedOutSteamService(),
+            steam: steam.Service,
             settings: new InMemorySettingsStore(),
-            tokens: new InMemoryTokenStore(),
+            tokens: tokens,
             log: log,
             diagnostics: diagnostics);
-        var shell = new ShellViewModel(services);
+
+        // The Developer section opens the Steam gate page; one page for the run keeps its results.
+        SteamGateViewModel? steamGate = null;
+        var shell = new ShellViewModel(
+            services,
+            _ => steamGate ??= new SteamGateViewModel(steam.Service, steam.Gate, SteamTokenKept, DesktopBuild, memory, new AvaloniaUiDispatcher(), log));
 
         var window = new Window
         {
@@ -59,6 +81,7 @@ internal static class CompositionRoot
         // samples the device, and the run starts as the iOS head's does.
         var run = new AppStart(shell, memory, (tick, interval) => DispatcherTimer.Run(tick, interval));
         window.Opened += (_, _) => run.TryStart();
+        window.Closed += (_, _) => steam.Dispose();
         return window;
     }
 

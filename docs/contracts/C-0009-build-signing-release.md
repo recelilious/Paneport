@@ -109,6 +109,16 @@ The bundle identifier is chosen by recelilious.
 - The `ios` CI job uploads the same archives as artifacts of the run that builds the apps, kept as long as the apps, so that every build of the app that CI makes public offers the source of these components from the same place.
 - Release acceptance follows C-0012 section 5.
 
+## Proposed changes for 1.4
+
+**Not yet accepted.** Version 1.3 above stays binding until recelilious approves these changes. They come from stage M4.4, which ships the first Wine prefix and the first Windows test programs in an app bundle. Section 4 has no location for either.
+
+1. **Section 4, the bundle table.** Add two rows after the row of `wine/aarch64-windows/`, `wine/arm64ec-windows/` and `wine/i386-windows/`:
+   - `wine/prefix-template/`: "The template prefix: a folder tree that CI generates on the macOS harness for the same Wine revision as the bundled PE modules, with a fixed generic user name and no host name or absolute host path, and a version marker. The app copies it into `Library/Application Support/Paneport/prefixes/` (C-0004 section 4) on first launch, and again in part when a newer template ships."
+   - `test-programs/`: "Only in the device test flavor: the Windows test programs of `tests/win32/` and a list of their SHA-256 hashes. The main app holds none."
+2. **Section 4, the list under the table.** Add after the item on the signing identity: "`tools/CheckBundle.cs` checks each built app against `eng/bundle-layout.json`: every framework and PE module in its folder with its architecture, nothing missing or misplaced, test programs only in the device test flavor, and a template prefix free of host names and absolute host paths."
+3. **Change log.** On acceptance, add a row for 1.4, dated the day of acceptance, with the notes "Accepted by recelilious. Comes from stage M4.4. Section 4 adds the bundle locations of the template prefix, `wine/prefix-template/`, and of the device test flavor's test programs, `test-programs/`, and the bundle check."
+
 ## Change log
 
 | Version | Date | Notes |

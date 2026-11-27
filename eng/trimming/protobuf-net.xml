@@ -3,8 +3,10 @@ SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 SPDX-License-Identifier: MIT
 -->
 <!--
-The trimming warnings inside protobuf-net 3.4.40 that recelilious approved on 2026-11-21: 63 entries
-in 59 methods, each a warning code in one method. Any other warning still fails the build.
+The trimming warnings inside protobuf-net 3.4.40 that recelilious approved: 63 entries in 59 methods,
+each a warning code in one method. 61 were approved on 2026-11-21 ("Excuse exactly these"), and the
+two IL2045 entries, which only the iOS build gives, on 2026-11-23 ("Excuse both"). Any other warning
+still fails the build.
 eng/trimming/README.md says where they come from, who reads this file and when it changes.
 -->
 <linker>

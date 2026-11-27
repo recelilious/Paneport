@@ -42,14 +42,14 @@ Back to the [development plan](../development-plan.md).
 | S2.3.10 | QR code rendering | Small | Planned | | |
 | S2.3.11 | Secret-free logging | Small | Planned | | |
 | S2.3.12 | Steam service design document | Small | Planned | | |
-| M2.4 | Managed exception record | Medium | Blocked: the contract drafts, C-0005 1.1 and C-0010 1.3, wait for recelilious's review, together with the questions that they do not settle: the host's changes for a SIGABRT, the probe page, the line of `UnobservedTaskException` and the layout on Diagnostics. The implementation starts after the pull requests that were open on 2026-11-26, #24, #33, #37 and #44 | [#51](https://github.com/recelilious/Paneport/pull/51), [#52](https://github.com/recelilious/Paneport/pull/52) | 2026-11-26 |
+| M2.4 | Managed exception record | Medium | Blocked: the implementation starts after #24, #33 and #37 have merged, an order of work that recelilious chose. recelilious accepted the contract drafts and answered the seven questions of their review on 2026-11-27 | [#51](https://github.com/recelilious/Paneport/pull/51), [#52](https://github.com/recelilious/Paneport/pull/52), [#55](https://github.com/recelilious/Paneport/pull/55) | 2026-11-27 |
 | S2.4.1 | The record, its writer and its store | Small | Planned | | |
 | S2.4.2 | Dispatcher and thread entry points | Small | Planned | | |
 | S2.4.3 | Entry point at the native boundary, and startup | Small | Planned | | |
 | S2.4.4 | The host's record of an abort | Small | Planned | | |
 | S2.4.5 | The record on Diagnostics | Small | Planned | | |
 | S2.4.6 | Developer page of exception probes | Small | Planned | | |
-| S2.4.7 | Managed exception record design document | Small | Blocked: the design waits for recelilious's answers to the review of the drafts | [#52](https://github.com/recelilious/Paneport/pull/52) | 2026-11-26 |
+| S2.4.7 | Managed exception record design document | Small | In progress: in #52, which merges after #51 | [#52](https://github.com/recelilious/Paneport/pull/52) | 2026-11-27 |
 
 ## L2 Phase 0 gates
 
@@ -190,7 +190,7 @@ If a gate fails, its record says Fail and what failed, and L2 becomes Blocked. W
 - L0 ([L0 brief](L0-foundation.md), session log of 2026-10-30): S0.0.1 created `docs/evidence/README.md` with the gate table, every gate at "No record yet" where S2.0.1 names "Not run", and with the fields and forbidden items of C-0012 section 4 as a list. S2.0.1 builds its record template on that file; the verdicts still come from step 30 and integration step 7.
 - M2.2 (session log of 2026-11-17): the signal gate page is "Signal gate" in the device test flavor's developer menu. Its startup check is step 11; its ten-minute run serves the smoke run of integration step 4; its result screen and counters can be selected and copied into the record. The hang threshold of step 13 is 2 seconds ([signals.md](../signals.md) section 9).
 - M2.2 (session log of 2026-11-17, fix check): the signal gate raises no fault that Mono chains or ends in its crash path, so a passing gate does not show that Mono chains a native SIGSEGV or SIGBUS to the last-resort handler, nor that it ends a SIGILL or a managed fault above 4 KiB in its crash path with the dispatcher's record still in place. A device check is proposed for the integration session, which decides whether to add it to the steps: in the test flavor, raise one such fault per launch on an unmarked thread, a native load from an unmapped address, a SIGILL and a managed load above 4 KiB, and read the record that the next launch shows on Diagnostics ([signals.md](../signals.md) section 5).
-- M2.4 (session log of 2026-11-26, review round 1 of #51 and #52): if recelilious accepts the page of exception probes (the M2.4 section, Decisions needed), integration step 4 taps each probe once, one per launch, and reads Diagnostics after each. The native boundary's entry point then has run on the device before the signal gate relies on its record. Whether to add this to step 4 is the integration session's decision.
+- M2.4 (session log of 2026-11-26, review round 1 of #51 and #52; recelilious accepted the page of exception probes on 2026-11-27): integration step 4 can tap each probe once, one per launch, and read Diagnostics after each. The native boundary's entry point then has run on the device before the signal gate relies on its record. Whether to add this to step 4 is the integration session's decision.
 
 **Session log.**
 
@@ -542,14 +542,14 @@ _No sessions yet._
 | Level | Medium |
 | Parent | L2 |
 | Depends on | M2.2, M1.3. Its implementation starts after #24, #33, #37 and #44, an order of work (Decisions needed). |
-| Decisions needed | recelilious decided on 2026-11-26 that the record is a stage of its own, added to the plan after the pull requests then open, with its contract changes drafted first. Before the implementation, recelilious accepts the drafts, C-0005 1.1 and C-0010 1.3. They settle the record's own file, the scope of C-0010's new rule, and that nothing goes on after an unhandled exception. recelilious also answers the questions that the drafts do not settle: the host's changes for a SIGABRT (S2.4.4), the page of exception probes (S2.4.6), and a log line only for `UnobservedTaskException` (S2.4.2). recelilious also chooses how Diagnostics shows the record (S2.4.5). The implementation starts after the pull requests that were open on 2026-11-26, #24, #33, #37 and #44. That is an order of work that recelilious chose, not a dependency. Until the answers come, the Scope items marked "subject to recelilious's answer" follow the design's proposal. |
+| Decisions needed | recelilious decided on 2026-11-26 that the record is a stage of its own, added to the plan after the pull requests then open, with its contract changes drafted first. On 2026-11-27 recelilious accepted the drafts, C-0005 1.1 and C-0010 1.3 ([#55](https://github.com/recelilious/Paneport/pull/55)), and answered the seven questions of their review as recommended: the record's own file, C-0010's new rule for the record only, nothing going on after an unhandled exception, the host's changes for a SIGABRT, one section on Diagnostics (layout A of the design), the page of exception probes, and a log line only for `UnobservedTaskException`. The implementation starts after the pull requests that were open on 2026-11-26, #24, #33, #37 and #44. That is an order of work that recelilious chose, not a dependency. |
 | Size | M |
 | Branch | `feat/m2-4-managed-exception-record` |
 | Design documents | `docs/design/managed-exception-record.md` (new, written in the first session). Updates `docs/design/ios-app-head.md` sections 3, 8, 9 and 13, and `docs/design/signals.md` sections 3 and 5. |
 
 **Goal.** Record a .NET exception that goes unhandled before it ends the app, and show it on Diagnostics at the next launch, beside the host's crash record of the abort that follows.
 - **Why.** Neither flavor has a managed hook for unhandled exceptions. An exception that escapes the UI thread or a managed thread ends the app through `abort()`, and Paneport's only trace is the host's last-resort record, "A fault that the runtime did not handle.", with no exception type and no frame. On Diagnostics a managed exception therefore looks like a native fault, and the phase 0 signal gate asks for no native crashes (C-0012 section 3).
-- **What the record holds.** The exception's type and the type and method names of its frames, with those of its inner exceptions, but never its message (C-0010 section 2 as proposed).
+- **What the record holds.** The exception's type and the type and method names of its frames, with those of its inner exceptions, but never its message (C-0010 section 2).
 - **The app still ends.** No entry point marks an exception handled: after a handled layout or render exception, Avalonia 12.1.4 leaves the screen frozen.
 
 **Scope.**
@@ -566,11 +566,11 @@ In:
   - Avalonia's `Dispatcher.UIThread.UnhandledExceptionFilter`, in Paneport.UI, for posted work, layout and rendering on the UI thread, async continuations and input. It leaves `RequestCatch` as it finds it, and nothing subscribes to `UnhandledException`.
   - `ObjCRuntime.Runtime.MarshalManagedException`, in Paneport.iOS, for exceptions that leave managed code into native code: the head's UIKit overrides, and layout passes that UIKit starts, which never reach the dispatcher's events. It leaves the event's `ExceptionMode` as it is, so the build keeps the default `MarshalManagedExceptionMode`, and C-0009 section 3 does not change.
   - `AppDomain.CurrentDomain.UnhandledException`, in Paneport.Core, for an exception that ends a managed thread other than the UI thread. It also sees a UI-thread exception after the native boundary, when its Objective-C exception reaches the catch around `UIApplicationMain` or goes uncaught. The record-once rule then skips it, so one UI-thread exception can reach three entry points.
-  - `TaskScheduler.UnobservedTaskException`, for a log line only, with the types of the task's inner exceptions and never their messages. A faulted task that nothing observed is not an unhandled exception, and it does not end the app. This is subject to recelilious's answer.
+  - `TaskScheduler.UnobservedTaskException`, for a log line only, with the types of the task's inner exceptions and never their messages. A faulted task that nothing observed is not an unhandled exception, and it does not end the app.
   - `CompositionRoot.Compose` installs them once the previous run's records are read.
-- **The host's record of an abort (S2.4.4).** A SIGABRT gets a message of its own, in place of "A fault that the runtime did not handle." and "A fault outside the guest path that nothing handled.". Its record is written before the runtime's handler gets the signal, as for the faults that Mono's crash path may end (`signals.md` section 5), and that first record carries the abort's message too. The host does not learn whether a managed exception caused the abort; Diagnostics pairs the two records by their times. This is subject to recelilious's answer.
-- **Diagnostics (S2.4.5).** The crash record section shows the managed record together with the host's record of the abort, in the layout that recelilious chooses. Every proposed layout has one Dismiss for both records and shows the newer first.
-- **The test flavor (S2.4.6).** A developer page, "Exception probes", for the device check. Each probe but the last ends the app through one entry point, one per tap. The last faults a task that nothing observes, and the app goes on. This is subject to recelilious's answer.
+- **The host's record of an abort (S2.4.4).** A SIGABRT gets a message of its own, in place of "A fault that the runtime did not handle." and "A fault outside the guest path that nothing handled.". Its record is written before the runtime's handler gets the signal, as for the faults that Mono's crash path may end (`signals.md` section 5), and that first record carries the abort's message too. The host does not learn whether a managed exception caused the abort; Diagnostics pairs the two records by their times.
+- **Diagnostics (S2.4.5).** The crash record section shows the managed record together with the host's record of the abort, in one section, layout A of the design, with one Dismiss for both records and the newer record first.
+- **The test flavor (S2.4.6).** A developer page, "Exception probes", for the device check. Each probe but the last ends the app through one entry point, one per tap. The last faults a task that nothing observes, and the app goes on.
 - **Tests.** The sweep's headless probes become UI tests, the record gets unit tests, and the host's record of an abort gets CTest cases (C-0011 section 1).
 
 Out:
@@ -583,7 +583,7 @@ Out:
 
 **Read first.**
 
-- C-0001 section 6; C-0005 sections 1, 2 and 4; C-0004 sections 1 and 4; C-0009 section 3; C-0010 section 2; C-0011 section 1; C-0012 sections 3 and 4; C-0005 1.1 and C-0010 1.3 once accepted.
+- C-0001 section 6; C-0005 sections 1, 2 and 4; C-0004 sections 1 and 4; C-0009 section 3; C-0010 section 2; C-0011 section 1; C-0012 sections 3 and 4.
 - `docs/design/managed-exception-record.md`; `docs/design/signals.md` sections 3 and 5; `docs/design/native-host.md` section 8; `docs/design/ios-app-head.md` sections 3, 8 and 9; `docs/design/single-process-wine.md` section 6.
 - The notes below, from the coordinating session's sweep of the Settings crash.
 
@@ -602,7 +602,7 @@ Out:
 | ID | Module | Location | Independent check |
 |---|---|---|---|
 | S2.4.1 | The record, its writer and its store | `src/Paneport.Core/Diagnostics/`, `src/Paneport.Core/Logging/`, `src/Paneport.Core/Storage/` | xUnit: a round trip; the limits, also a record at the size bound; a generic exception type without assembly names; the file holds none of a planted message, path or token; malformed files of each kind; an exception that reaches two or three entry points is written once, and two objects with one key give one record; a call that finds the gate held by another thread returns only after the rename or the bound; a file system that fails lets no exception out; the store dismisses both records |
-| S2.4.2 | Dispatcher and thread entry points | `src/Paneport.UI/`, `src/Paneport.Core/` | Headless UI tests: each of the sweep's probes (a posted job, an `async void` event handler, an async command, a queued layout pass, rendering on the UI thread, a tap) writes one record and still escapes; a direct layout pass outside any dispatcher operation and the render thread write none. xUnit: in a child process, a worker thread that throws leaves one record with the entry `thread`; after a collection, a faulted task that nothing observes leaves one log line with the inner exceptions' types and no record (subject to recelilious's answer) |
+| S2.4.2 | Dispatcher and thread entry points | `src/Paneport.UI/`, `src/Paneport.Core/` | Headless UI tests: each of the sweep's probes (a posted job, an `async void` event handler, an async command, a queued layout pass, rendering on the UI thread, a tap) writes one record and still escapes; a direct layout pass outside any dispatcher operation and the render thread write none. xUnit: in a child process, a worker thread that throws leaves one record with the entry `thread`; after a collection, a faulted task that nothing observes leaves one log line with the inner exceptions' types and no record |
 | S2.4.3 | Entry point at the native boundary, and startup | `src/Paneport.iOS/`, `tests/Paneport.UI.Tests/` | A source test in the `dotnet` job, as `ViewTemplatesTests` does: it fails, under `src/` and `tests/device/`, on an assignment to `ExceptionMode` or to `RequestCatch`, a call to `SetObserved`, or a subscription to `Dispatcher.UnhandledException`. The `ios` job builds both flavors; the device check |
 | S2.4.4 | The host's record of an abort | `src/native/host/signals/` | CTest: a SIGABRT on an unmarked thread leaves the abort's message, through the last-resort handler and through the default action; with a stand-in runtime handler that does not chain, the first record stays and carries the abort's message; the signal-safe calls check passes unchanged |
 | S2.4.5 | The record on Diagnostics | `src/Paneport.Core/ViewModels/`, `src/Paneport.UI/Views/` | xUnit and headless: the text of each state, the pairing by time, one Dismiss for both records, the newer first |
@@ -696,3 +696,6 @@ The design's section 2 records the sweep's findings on exceptions that these not
   - **The drafts,** still local: C-0010 1.3 defines "unhandled exception" and says what "file name" means. C-0005 1.1 is unchanged. Both are rebased onto `bb29223`.
   - **Not read.** This session did not read the sources of .NET for iOS or Mono. The design takes the native paths from the review, and its section 12 keeps them unverified.
   - **Left.** The coordinating session checks the round and puts the drafts and the seven questions to recelilious.
+- **2026-11-27 (UTC), third session (the answers).** Through the coordinating session, recelilious accepted C-0005 1.1 and C-0010 1.3 and answered the seven questions of their review as recommended.
+  - **Where the work is.** The contract pull request is [#55](https://github.com/recelilious/Paneport/pull/55). The design (#52) now states the seven choices and keeps only layout A on Diagnostics. This brief records the answers, drops the marks of scope that waited for them, and sets the status.
+  - **Left.** Phase B, the implementation, starts after #24, #33 and #37 have merged; #44 has merged. Its first session sets S2.4.7 to Done once #52 has merged.

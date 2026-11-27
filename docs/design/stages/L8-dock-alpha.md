@@ -27,12 +27,12 @@ Back to the [development plan](../development-plan.md).
 | S8.2.5 | Cache cleanup | Small | Planned | | |
 | S8.2.6 | Steam service coordination | Small | Planned | | |
 | S8.2.7 | CEG preparation | Small | Planned | | |
-| M8.3 | Compatibility checks and reports | Medium | Planned | | |
-| S8.3.1 | Validator | Small | Planned | | |
-| S8.3.2 | Rule checks | Small | Planned | | |
-| S8.3.3 | Rating computation | Small | Planned | | |
-| S8.3.4 | Failing fixtures | Small | Planned | | |
-| S8.3.5 | First entries | Small | Planned | | |
+| M8.3 | Compatibility checks and reports | Medium | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-27 |
+| S8.3.1 | Validator | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-27 |
+| S8.3.2 | Rule checks | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-27 |
+| S8.3.3 | Rating computation | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-27 |
+| S8.3.4 | Failing fixtures | Small | Done | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-27 |
+| S8.3.5 | First entries | Small | Done: no title has been tested on the device yet, so there is no entry; M6.6 and S7.0.3 add the first ones | [#44](https://github.com/recelilious/Paneport/pull/44) | 2026-11-24 |
 | M8.4 | AAA performance and launcher-service titles | Medium | Planned | | |
 | S8.4.1 | MetalFX spatial upscaling and render scale | Small | Planned | | |
 | S8.4.2 | Frame rate cap | Small | Planned | | |
@@ -79,6 +79,10 @@ Back to the [development plan](../development-plan.md).
 |---|---|---|---|
 | S8.0.1 | Dock session launch wiring | `src/Paneport.Core`, `src/Paneport.UI`, `src/native/host` | Logic and UI tests: a `dock` title starts a session that launches the Dock host first; a `direct` title still takes the direct path (C-0007 section 5) |
 | S8.0.2 | L8 evidence template and gate update | `docs/evidence/` | Review checklist: the template carries every C-0012 section 4 field and the "never record" list, and the phase 4 row in `docs/evidence/README.md` is updated |
+
+**Notes from earlier stages.**
+
+- M8.3 (session log of 2026-11-23): the first title entries come with M6.6 and S7.0.3 rather than with M8.3, because no title had been tested on the device yet. The entries of the D6 titles that the gate uses pass `tools/CheckCompat.cs` in the `checks` job: a report names the gate's evidence record in the same change, and the rating counts only the reports of a release tag on a target device (`compat-db.md` sections 2.2 and 8.1).
 
 **Session log.**
 
@@ -223,21 +227,21 @@ _No sessions yet._
 | Depends on | M6.4; D8 |
 | Size | M |
 | Branch | `feat/m8-3-compatibility-checks` |
-| Decisions needed | D8 (whether the JsonSchema.Net license terms are acceptable; if not, another validator is chosen, C-0011 section 5) |
+| Decisions needed | D8 (whether the JsonSchema.Net license terms are acceptable; if not, another validator is chosen, C-0011 section 5). D8, decided 2026-11-23: a validator of our own; C-0003 1.10 and C-0011 1.5 record it ([#49](https://github.com/recelilious/Paneport/pull/49)) |
 | Design documents | None new; extends the compatibility database core from M6.4 |
 
 **Goal.** Add the CI compatibility check that enforces C-0008 and the reports that link evidence records, so that every title file in `compat/titles/` is validated and the launch, allow-list and rating rules hold before a change merges (C-0008 section 5, C-0011 section 1).
 
 **Scope.**
 
-- In: the validator, built on JsonSchema.Net or an alternative chosen under D8 (C-0011 section 5), that validates every `compat/titles/*.json` against the title schema; the rule checks of C-0008 section 5 (file names match the `id`, and the launch and allow-list rules); the rating computation of C-0008 section 3 using `targetDevices`; failing fixtures that each break exactly one rule; reports that link evidence records; adding the check to the `checks` CI job; and the first title entries for the titles tested so far.
+- In: the validator, built on JsonSchema.Net or an alternative chosen under D8 (C-0011 section 5; D8 chose a validator of our own, in `tools/CheckCompat.cs`), that validates every `compat/titles/*.json` against the title schema; the rule checks of C-0008 section 5 (file names match the `id`, and the launch and allow-list rules); the rating computation of C-0008 section 3 using `targetDevices`; failing fixtures that each break exactly one rule; reports that link evidence records; adding the check to the `checks` CI job; and the first title entries for the titles tested so far.
 - Out: changing the title schema or adding fields (that belongs with M6.4 or a schema change under C-0008 section 5); device testing of titles (that is the L8 gate and M8.4); the `ios-builds.json` schema check (M6.4 and C-0006 section 6).
 
 **Read first.**
 
 - C-0008 section 2 (the fields), section 3 (ratings and the `targetDevices` computation) and section 5 (the launch, allow-list, file-name and CI rules).
-- C-0011 section 1 (the compatibility-data test level), section 4 (the `checks` job on Ubuntu) and section 5 (JsonSchema.Net registered as under review until D8).
-- C-0003 section 6 (the register entry for JsonSchema.Net and its license terms).
+- C-0011 section 1 (the compatibility-data test level), section 4 (the `checks` job on Ubuntu) and section 5 (JsonSchema.Net registered as under review until D8). Since C-0011 1.5 ([#49](https://github.com/recelilious/Paneport/pull/49)), section 5 says that the compatibility check uses no schema library.
+- C-0003 section 6 (the register entry for JsonSchema.Net and its license terms). C-0003 1.10 ([#49](https://github.com/recelilious/Paneport/pull/49)) dropped that entry, since Paneport does not use the package.
 - C-0007 section 5 (the classification the `drm` and `launch` fields record).
 - Research: none specific; the schema and loader from M6.4 are the basis.
 
@@ -262,7 +266,7 @@ _No sessions yet._
 
 **Done when.** The validator and fixtures are merged, the `checks` job runs the compatibility check and passes on the valid set and fails on every fixture, D8 is recorded (and the chosen validator's license is registered under C-0003), and the change meets the definition of done in C-0012 section 1.
 
-**Risks and fallbacks.** D8 may rule the JsonSchema.Net NuGet terms unacceptable; then the validator uses a library whose package is under an allowed license, chosen under C-0011 section 5, and C-0003 is updated (plan section 8). The rating rule in C-0008 section 3 is precise about ties (the lower rating wins when target devices disagree on the highest release); the fixtures must cover that case.
+**Risks and fallbacks.** D8 may rule the JsonSchema.Net NuGet terms unacceptable; then the validator uses a library whose package is under an allowed license, chosen under C-0011 section 5, and C-0003 is updated (plan section 8). D8 chose a validator of our own instead, on 2026-11-23, and C-0003 1.10 and C-0011 1.5 record it ([#49](https://github.com/recelilious/Paneport/pull/49)). The rating rule in C-0008 section 3 is precise about ties (the lower rating wins when target devices disagree on the highest release); the fixtures must cover that case.
 
 **Hands over to.** The L8 integration session (the first title entries back the gate) and every later title entry and report.
 
@@ -272,7 +276,134 @@ _No sessions yet._
 
 **Session log.**
 
-_No sessions yet._
+- **2026-11-23 (session 1).** The title check, on #40's head `9f4d3e4`, before #40 merged.
+  - **Done.**
+    - D8: asked "For D8, use our own small JSON Schema validator instead of JsonSchema.Net?", recelilious answered "Use our own" on 2026-11-23. Plan section 4.2 records it, and plan section 8 the contract changes it brings.
+    - `tools/CheckCompat.cs`, which M3.1 wrote for `compat/ios-builds.json`, also checks every title file of `compat/titles/` (S8.3.1 to S8.3.3). It reads each file as the app's reader does, validates it against the title schema with the validator, which gains the keywords that the title schema uses and gives each pattern its ECMA-262 meaning, and checks in code the file name, the launch and allow-list rules, the rating and the evidence records ([compat-db.md](../compat-db.md) sections 2.2, 8.1 and 9).
+    - `tests/compat/` (S8.3.4): 9 valid title files and 36 fixtures that each fail exactly one rule.
+    - S8.3.5: no title has been tested on the device yet, so `compat/titles/` holds no entry. M6.6 and S7.0.3 add the first ones; the L6 and L7 briefs and this brief's notes for L8 say what the check asks of them.
+    - compat-db.md sections 2.2, 8.1 and 9, the READMEs of `compat/titles/`, `tests/` and `tests/compat/`, and two test comments of M6.4 that waited for M8.3.
+  - **Verification.** On the workstation: the self-test, 379 cases after the review's fixes; the check of the repository; `dotnet format whitespace tools`; the personal-data scan; and the license check. Each of 25 mutants of the check fails a case. An independent review of the tool found no serious defect and seven small ones. Six are fixed in `97ed608`, which 12 more mutants pin; the seventh, R40IV1, is in the reading of `compat/ios-builds.json`, which #40 owned.
+  - **Decisions.**
+    - The rating ([compat-db.md](../compat-db.md) section 2.2): for each target device its latest report on the highest release counts, the one with the latest date and, of two on one date, the later in the list; the lowest of those wins. A pre-release tag counts as a release tag, ordered by Semantic Versioning 2.0.0. Each model identifier counts as a device, so the two identifiers of the iPhone 18 Pro Max count as two, and where they disagree the lower rating wins.
+    - The check does not use Paneport.Core, though C-0004 section 2 would allow it, so that it and the app's reader check each other ([compat-db.md](../compat-db.md) section 8.1).
+  - **Left.** The contract draft for D8 and `tests/compat/`, on the local branch `contract/m8-3-own-validator`, which recelilious reviews: C-0003 1.10, C-0011 1.4 and C-0004 1.3.
+- **2026-11-24 (session 2).** Pull request [#44](https://github.com/recelilious/Paneport/pull/44), rebased onto main `301471e`, which holds [#40](https://github.com/recelilious/Paneport/pull/40) and [#43](https://github.com/recelilious/Paneport/pull/43).
+  - **Done.**
+    - The rebase keeps #40's rules of the validator and its 60 cases. Each schema has a vocabulary, the keywords and annotations that it uses now, and may use no other: the list's schema still refuses `enum` and `$comment`, which the title schema uses. A case checks that each schema uses all of its vocabulary and that the validator implements nothing that no schema uses. The title schema loads through #40's loader, and `$comment` must be a string. The rebase merged #40's two fix rounds into the first and third commits, so no commit drops one of its rules.
+    - R40IV1, which the coordinator gave this stage: `compat/ios-builds.json` is read through `JsonText.Read`, as the title files are, so half a surrogate pair no longer crashes the tool, and a syntax error is named by its line and byte, never by the file's text (`3577c5c`).
+    - The documents that #40 wrote for the check: tools/README.md, [repository-checks.md](../repository-checks.md), [jit.md](../jit.md) section 9, the READMEs of `compat/`, `compat/schema/` and `.github/workflows/`, and the comments of ci.yml. [compat-db.md](../compat-db.md) section 8.1 says that the validator is #40's, with a vocabulary for each schema.
+    - S8.3.1, S8.3.2, S8.3.3 and S8.3.5 are Done.
+  - **Verification.** On the workstation, the self-test passes 427 cases, the check of the repository passes, and `dotnet format whitespace tools`, the personal-data scan and the license check are clean. Each of 7 mutants of the merge with #40's rules and 2 of R40IV1's fix fails a case. The runs of CI on the final head are in [#44](https://github.com/recelilious/Paneport/pull/44).
+  - **Decisions.** The coordinator decided that R40IV1 goes in this pull request, and that counting each model identifier as a device stays as documented, for recelilious to see.
+  - **Left.**
+    - The contract draft of session 1. The merge needs the whole draft: it records D8 in C-0003 and C-0011, as plan section 8 and the Done-when list expect, and adds `tests/compat/` to C-0004's tree. S8.3.4 is Blocked and M8.3 In progress until it is accepted.
+    - The `paneportVersion` pattern of the title schema accepts `v1.0.0-01`, which is no release tag; the check does not count such a report. A later change of the schema can close it.
+  - **For later sessions.** The notes for M6.6, S7.0.3 and L8 from session 1 stand.
+- **2026-11-25 (session 3).** Fix round 1 of the independent review of [#44](https://github.com/recelilious/Paneport/pull/44), on the same base `301471e`. Main has moved on to `4ad40c8` with [#38](https://github.com/recelilious/Paneport/pull/38), which touches neither the tool nor `compat/`, and the pull request does not conflict with it.
+  - **Done.**
+    - The rating counts the four target devices of C-0001 section 2, as C-0008 section 3 does, not model identifiers. The check names a report's device through a map of the table of [compat-db.md](../compat-db.md) section 2.1, so `iPhone19,3` and `iPhone19,7` are one device, the iPhone 18 Pro Max, whose latest report on the release counts. This replaces the counting in session 1's Decisions. Two cases compare the map with the table and with the schema.
+    - Valid fixtures that tell the rating rule apart: the lower device reporting first, a later report listed first, both identifiers of the iPhone 18 Pro Max, and a device written in another letter case, which does not count.
+    - The launch rule: two invalid fixtures, a Direct title with `steamApi` true and a local title with `steamStub` true, and four valid Dock titles, three whose `drm` closes the Direct path in each way and one without `drm`.
+    - The validator:
+      - An exclusive minimum is compared also against the double that the reader reads, so `1e-400` fails it.
+      - An escaped hyphen in a class may start a range, as in ECMA-262.
+      - The exponent of a number is clamped, so that a huge one cannot overflow.
+      - A pattern that does not finish within 1 s fails `pattern` with its file and pointer.
+      - `uniqueItems` compares numbers, `true`, `false` and `null` through sets.
+      - A schema that escapes half of a surrogate pair, or whose reference leads back to itself without a step into the value, is refused with exit 2.
+      - Patterns are read by UTF-16 code units, as ECMA-262 reads them without the `u` flag, and the documents say so.
+    - The rules in code test the type of each value that they read. A schema that drops a type then makes the rule fail the value instead of throwing, an allow-list of `true` fails `allow-list`, and a target device that is not a text is refused.
+    - More cases:
+      - each Steam variable of C-0008 section 5, and `steamappid`, in the environment allow-list;
+      - the release tags `v1.0.0-0a`, `v1.0.0-RC.1`, `v2.1.0` and `v2.1.1`;
+      - the missing record in a second report;
+      - a `readme.md`, and a file of neither name form;
+      - the size limit at 1 MiB, and two byte-order marks;
+      - the 64 characters of a plain name;
+      - the refusals of the loader below `anyOf`, `oneOf`, `if`, `then` and `else`, and the forms of keywords that no schema uses.
+    - The documents:
+      - [compat-db.md](../compat-db.md) sections 2.2, 8.1, 9 and 11;
+      - [repository-checks.md](../repository-checks.md) sections 6 and 9;
+      - [jit.md](../jit.md) section 13 and the design index;
+      - the READMEs of `compat/titles/` and `tests/compat/`, the L7 note and a comment of ci.yml;
+      - why the merge waits for the whole contract draft.
+  - **Verification.** On the workstation:
+    - The self-test passes 572 cases, and the check of the repository passes.
+    - `dotnet format whitespace tools`, the personal-data scan and the license check are clean.
+    - Each of 63 mutants of this round fails a case or crashes the self-test. The pull request lists them.
+    - The 25 and 12 mutants of session 1 were not kept, so they are not listed.
+  - **Decisions.** The coordinator decided fix round 1:
+    - The rating counts the four devices, as the contract does, so how devices count is no longer a question for recelilious.
+    - The reading that a device's latest report on the release replaces its earlier ones goes to recelilious, with the recommendation to accept it.
+  - **Left.** The contract draft of session 1 and the latest-report reading wait for recelilious.
+- **2026-11-26 (session 4).** Fix round 2 of [#44](https://github.com/recelilious/Paneport/pull/44), after the fix check of round 1, which found no medium or high defect and 18 low ones. Rebased from `301471e` onto main `bb29223`, which adds [#38](https://github.com/recelilious/Paneport/pull/38), [#45](https://github.com/recelilious/Paneport/pull/45), [#46](https://github.com/recelilious/Paneport/pull/46), [#47](https://github.com/recelilious/Paneport/pull/47), [#49](https://github.com/recelilious/Paneport/pull/49), [#50](https://github.com/recelilious/Paneport/pull/50) and [#39](https://github.com/recelilious/Paneport/pull/39).
+  - **Done.**
+    - recelilious approved the contract draft on 2026-11-26; it merged as [#49](https://github.com/recelilious/Paneport/pull/49) (`17aec4d`), so C-0003 1.10, C-0004 1.3 and C-0011 1.5 are in force. recelilious accepted the reading on 2026-11-26: on the highest release, a device's newer report replaces its older ones ([compat-db.md](../compat-db.md) section 2.2).
+    - The rebase conflicted only in `.github/workflows/README.md`, which keeps #39's rows of `native`, `ios` and `runtime` and this pull request's row of `checks`. [repository-checks.md](../repository-checks.md) section 6 still matches the `checks` job step by step.
+    - The validator:
+      - `uniqueItems`, `const` and `enum` compare through a key of each value. A nested number whose exponent is beyond an int no longer crashes the check, and a 1 MiB list of 128,841 distinct one-item lists takes 1.5 s instead of 327 s.
+      - A schema of `true` or `false` loads again.
+      - A pattern that times out below `not`, `anyOf`, `oneOf` or `if` names the value's pointer and its place in the schema.
+      - Half of a surrogate pair in a schema names its place in full.
+      - `\-` outside a class is refused, as the `u` flag refuses it.
+    - The launch rule also tests the type of `executable`.
+    - Fixtures: three invalid Direct titles, with `ceg` `unknown`, without `steamApi` and without `steamStub`; and four valid titles: Dock titles with `ceg` `yes` and without `ceg`, a local title with `ceg` `unknown` and no `launch`, and a Direct title with `steamAppIdFile` true. The app's reader loads the four and rejects each of the three with `Launch` alone.
+    - More cases:
+      - cycles through `anyOf`, `oneOf`, `if`, `then` and `else`, and definitions shared without a cycle;
+      - a timeout below `not`, `anyOf`, `oneOf` and `if`, in `properties` and `items`, and a problem found before a timeout;
+      - `true` and `false`, numbers by their exact value, and nested values under `uniqueItems`;
+      - an escaped hyphen inside a class, and the year 0000;
+      - each type test of the rules in code;
+      - a walk of both schemas that finds none of the validator's stricter readings below `not`, in an `if` or in a `oneOf` branch, and finds those planted in a copy of each.
+    - The documents: [compat-db.md](../compat-db.md) sections 2.2, 8.1 and 9, [repository-checks.md](../repository-checks.md) section 9, [jit.md](../jit.md) section 9, the READMEs of `tools/` and `tests/compat/`, and M8.3's section of this brief, which #49 made stale.
+    - S8.3.4 and M8.3 are Done: only the merge is left.
+  - **Verification.** On the workstation:
+    - The self-test passes 621 cases, and the check of the repository passes.
+    - `dotnet format whitespace tools`, the personal-data scan and the license check are clean.
+    - Every mutant of fix rounds 1 and 2, 98 in all, was run in a copy that keeps `Directory.Build.props` and `.editorconfig`, so that each builds as CI builds the tool. 96 fail a case and 2 crash the self-test; none survives or fails to build. 11 of round 1's 63 were written again for the same fault, because this round changed their code or because they did not build so. The pull request lists them.
+    - The runs of CI on the final head are in [#44](https://github.com/recelilious/Paneport/pull/44).
+  - **Decisions.** The coordinator decided fix round 2, taking each skeptic's fix of the fix check.
+  - **Left.** The merge.
+- **2026-11-27 (session 5).** Fix round 3 of [#44](https://github.com/recelilious/Paneport/pull/44), after the fix check of round 2, which found no medium or high defect and 12 low ones, and three items that held only in part: R44CDV-2, the pull request's body and session 4's entry. Main is still `bb29223`, so there was no rebase.
+  - **Done.**
+    - The pattern translation refuses what the `u` flag refuses and ECMA-262 takes without it: a `]` outside a class, a `{` or `}` that is no part of a quantifier, and a quantifier after a lookahead. It also refuses a quantifier after `^` or `$`, which .NET takes and ECMA-262 refuses. [compat-db.md](../compat-db.md) section 9's sentence on the `u` flag and the validator's comment then hold as written. Neither schema has such a pattern: both load in the self-test.
+    - More cases:
+      - each part of a value's key under `uniqueItems`: the count of a list's items and of an object's members, the letter case of a member name, a number's sign, `null` apart from `false`, and the ordinal sort of the members;
+      - the walk of the stricter readings through `additionalProperties`, `then`, `else`, `allOf` and `anyOf`, planted in the title schema's copy;
+      - the segment rule of `JsonText.Scan`: half a pair in a `$comment` below `properties` and below `allOf`, named in full, and a member twice whose name is not plain, read as the data is, named `/<name not shown>`;
+      - a timeout below `allOf`, `then` and `else`, so that the cases place it directly, in `properties` and `items`, and below `not`, `anyOf`, `oneOf`, `allOf`, `if`, `then` and `else`;
+      - a report whose date is a number, in a title without a rating;
+      - each refusal of the translation, and the quantifiers `{n,}` and `{n,m}`;
+      - an empty class before another class, and a property escape inside a class, which only the refusal of an empty class and of `\p` now refuse.
+    - A valid local title, `local-fixture-shoal`, whose `drm` has no `ceg` and sets `steamAppIdFile` true, with no `launch`. The app's reader loads it, and without its `executable` rejects it.
+    - The documents: [compat-db.md](../compat-db.md) section 8.1, [repository-checks.md](../repository-checks.md) section 9, the README of `tests/compat/`, and session 4's entry above, whose timeout cases it names exactly.
+  - **Verification.** On the workstation:
+    - The self-test passes 648 cases, and the check of the repository passes.
+    - `dotnet format whitespace tools`, the personal-data scan and the license check are clean.
+    - A fuzz of the translation against node 24.19.0: of 150,000 random patterns, each that the translation takes compiles with the `u` flag and matches as node matches it without the flag on 60 texts. Its comparison with the flag was meant for the texts without half of a surrogate pair, but its filter of those texts held two U+FFFD characters in place of the range of halves, so it ran on all 60 texts; it found no difference. Session 6 fixes the filter and says what holds with the flag.
+    - Every mutant of fix rounds 1 to 3, 138 in all, was run in a copy that keeps `Directory.Build.props` and `.editorconfig`, so that each builds as CI builds the tool. 133 fail a case, 2 crash the self-test, and 3 stop it with exit 2 at a pattern that they refuse wrongly; none survives or fails to build. Round 1's mutant that drops the refusal of an empty class survived the first run, since its case `[]a]` is now refused by the refusal of a `]` outside a class, and its case `[]` by .NET; the case `[][a]` kills it. The pull request lists them.
+    - The refusal of a `[` inside a class is redundant for meaning since this round: .NET reads a `[` in a class otherwise than ECMA-262 only in a subtraction, which ends in `]]`, and the second `]` is now refused. The fuzz, with that refusal dropped, finds no difference in meaning in 270,000 patterns. A case can still catch its removal, which lets through patterns that both read alike, such as `[[]`, and changes the message of a subtraction; session 6 narrows the refusal to a subtraction and adds those cases.
+    - The runs of CI on the final head are in [#44](https://github.com/recelilious/Paneport/pull/44).
+  - **Decisions.** The coordinator decided fix round 3, refusing the patterns that the `u` flag refuses, as round 2 refused `\-`. The refusal of a quantifier after `^` or `$`, which the fuzz found, goes beyond the decisions, and the coordinator checks it with the round.
+  - **Left.** The merge.
+- **2026-11-27 (session 6).** Fix round 4 of [#44](https://github.com/recelilious/Paneport/pull/44), after the fix check of round 3, which found no medium or high defect and 12 low ones, and five survivors of rounds 1 and 2 that a case can kill. Main is still `bb29223`, so there was no rebase.
+  - **Done.**
+    - The pattern translation refuses an empty branch: a `|` at the start or end of the pattern or of a group, or next to another `|`, an empty group, and a quantifier `{0}` or `{0,0}`. .NET reads such a branch otherwise only in a counted group: it fails `"a"` with `^(?:a+|){2}$`, which ECMA-262 matches. The refusal is broader on purpose, since such branches have no use in a schema and a rule for counted groups alone is harder to get right. It also refuses `(?!()+? *?)a`, on which .NET's interpreter failed with an `IndexOutOfRangeException`. Both schemas' 17 distinct patterns still load.
+    - It refuses a lazy quantifier too, such as `*?`, for the same reasons: whether a text matches does not depend on it, and the fuzz below found that with one .NET misreads some patterns, such as `^(?:^|(a))*?x$`, which it fails on `aaax`, fails with an `IndexOutOfRangeException` on others, such as `(?!(a?)+? *?)$`, and times out on short texts with still others, such as `^(?:a?|a?)*?$`. No schema uses one.
+    - Any other fault of .NET's regular expressions while they match stops the check with exit 2, naming the pattern and the exception's type, where it ended the check unhandled before.
+    - The refusal of a `[` inside a class is narrowed to a `[` after a `-` that is not the first part of the class, the form that .NET reads as a subtraction: `[[]`, `[a[]` and `[-[a]` read alike in both readings and are taken. A case pins the message that names a subtraction, which the refusal of a `]` outside a class would otherwise give.
+    - More cases: a refused schema for each form of an empty branch; `[^][a]`; `(?=(a))*a` and `^((?=a)a)*$`, for the stack of open groups; `^+a`, `a${1}` and `a${1,2}`; `[true, null]` under `uniqueItems`; and a lazy `*`, `+`, `?` and quantifier in braces.
+    - Cases that kill the survivors of rounds 1 and 2: a key on the environment allow-list (A23), an earlier report whose record is missing (E21), the release tag `v1.0.0-1-` (V37), a `drm` marker that is null (X3 of round 2's fix check), and a marker of another type reported at its own place (X4 of that check).
+    - The documents: [compat-db.md](../compat-db.md) section 9, [repository-checks.md](../repository-checks.md) section 9, the comment on `Member`, which now leaves out the root and the id as section 8.1 does, and session 5's entry above, which takes the fix check's wording.
+  - **Verification.** On the workstation:
+    - The self-test passes 707 cases, and the check of the repository passes.
+    - `dotnet format whitespace tools`, the personal-data scan and the license check are clean.
+    - A fuzz of the translation against node 24.19.0, whose filter of the texts without half of a surrogate pair is now built from the code points: 100,000 random patterns in the base mode (seed 20261127) and 100,000 in the wide mode (seed 20261128), whose parts now include capitals, `_`, a space, every escape, lazy quantifiers, counts of zero and two, and empty branches and groups; 70,700 patterns of counted groups with empty and empty-matching branches; and 35,200 of the shape that made .NET fail. Each pattern that the translation takes, 12,945, 12,614, 15,960 and 3,456 of them, compiles with and without the `u` flag, matches as node matches it without the flag on 80 texts, and makes .NET neither fail nor time out. With the flag, it matches alike on each of those texts without such a half, 76 of the 80 in the wide mode, if it holds no character outside the Basic Multilingual Plane; one that holds such a character can differ even there, as `[\s]` followed by U+1F600 and `*` does on a space. Before the refusal of a lazy quantifier, on `1da39be`, the third set found 8 patterns that .NET misread and 264 that timed out, and the fourth 538 on which it failed. As controls on the base seed: with the refusal of an empty class dropped, 2 patterns match otherwise and 1 that node refuses is taken; with the refusal of a subtraction dropped, none differs, nor on the wide seed.
+    - Every mutant of fix rounds 1 to 4, 174 in all, was run in a copy that keeps `Directory.Build.props` and `.editorconfig`, so that each builds as CI builds the tool. 158 fail a case, 2 crash the self-test, and 13 stop it with exit 2; none fails to build. One survives: G1, which drops the stop on a fault of .NET's regular expressions. No case can reach that stop, since no pattern that the translation takes makes .NET fail, by the fuzz, and a case that relied on a fault of .NET would break once .NET fixes it. The pull request lists them.
+    - The runs of CI on the final head are in [#44](https://github.com/recelilious/Paneport/pull/44).
+  - **Decisions.** The coordinator decided fix round 4. Three parts go beyond the decisions, and the coordinator checks them with the round: the refusal of a lazy quantifier, which the fuzz showed was needed, since with only the empty branch refused .NET still failed on 538 patterns that the translation took; the narrow refusal of a `[`, which leaves out a `-` that is the first part of a class, since .NET does not read it as a subtraction either; and a case of a `)` at the start of a pattern, which .NET refuses.
+  - **Left.** The merge.
 
 ## M8.4 AAA performance and launcher-service titles
 

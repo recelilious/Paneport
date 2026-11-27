@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000502,
+    "slug": "fixture-direct-title"
+  },
+  "name": "Fixture Direct Title",
+  "executable": {
+    "path": "DirectTitle.exe"
+  },
+  "architecture": "x86_64",
+  "drm": {
+    "steamApi": false,
+    "steamStub": false,
+    "steamAppIdFile": false,
+    "ceg": "no"
+  },
+  "launch": "direct",
+  "rating": "playable",
+  "reports": [
+    {
+      "date": "2026-12-01",
+      "device": "iPhone18,2",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "boots",
+      "evidence": "docs/evidence/2026-12-01-fixture-first-run.md"
+    },
+    {
+      "date": "2026-12-08",
+      "device": "iPhone18,2",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "playable",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000655,
+    "slug": "fixture-pre-release"
+  },
+  "name": "Fixture Pre Release",
+  "rating": "perfect",
+  "reports": [
+    {
+      "date": "2026-12-01",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.4.0",
+      "gameBuild": "20261201",
+      "rating": "runs",
+      "evidence": "docs/evidence/2026-12-01-fixture-first-run.md",
+      "fpsMedian": 24,
+      "fpsLow1": 17.5,
+      "peakMemoryMiB": 2210
+    },
+    {
+      "date": "2026-12-08",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.4.0-rc.1",
+      "gameBuild": "20261201",
+      "rating": "perfect",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    }
+  ]
+}

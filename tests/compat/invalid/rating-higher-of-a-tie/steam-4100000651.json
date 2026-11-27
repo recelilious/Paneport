@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000651,
+    "slug": "fixture-higher-of-a-tie"
+  },
+  "name": "Fixture Higher Of A Tie",
+  "rating": "playable",
+  "reports": [
+    {
+      "date": "2026-12-08",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "playable",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    },
+    {
+      "date": "2026-12-08",
+      "device": "iPhone19,2",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "runs",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md",
+      "fpsMedian": 24,
+      "fpsLow1": 17.5,
+      "peakMemoryMiB": 2210
+    }
+  ]
+}

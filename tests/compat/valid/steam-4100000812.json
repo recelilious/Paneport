@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000812,
+    "slug": "fixture-direct-app-id-file"
+  },
+  "name": "Fixture Direct App Id File",
+  "executable": {
+    "path": "DirectAppIdFile.exe"
+  },
+  "drm": {
+    "steamApi": false,
+    "steamStub": false,
+    "steamAppIdFile": true,
+    "ceg": "no"
+  },
+  "launch": "direct"
+}

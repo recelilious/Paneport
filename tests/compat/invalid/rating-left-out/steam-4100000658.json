@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000658,
+    "slug": "fixture-rating-left-out"
+  },
+  "name": "Fixture Rating Left Out",
+  "reports": [
+    {
+      "date": "2026-12-08",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "playable",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    }
+  ]
+}

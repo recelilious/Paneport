@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000624,
+    "slug": "fixture-leading-zero"
+  },
+  "name": "Fixture Leading Zero"
+}

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [
+      "59985abac601aefe64e695404118e7de05ddf855abe653f97f822b4b4f2daca1"
+    ],
+    "slug": "fixture-tide"
+  },
+  "name": "Fixture Tide",
+  "executable": {
+    "path": "Tide.exe"
+  },
+  "drm": {
+    "steamApi": false,
+    "steamStub": false,
+    "ceg": "unknown"
+  }
+}

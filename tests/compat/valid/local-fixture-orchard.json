@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [
+      "0d636a74655deb7830dad58e1712aeb2780ecf568725233c37a72e3fd3d0abad",
+      "6284748a9d961e55bbd306d9097a17d034ecaa93f7c3923c5374d9481e9b730a"
+    ],
+    "slug": "fixture-orchard"
+  },
+  "name": "Fixture Orchard",
+  "executable": {
+    "path": "Orchard.exe"
+  },
+  "architecture": "x86_64",
+  "drm": {
+    "steamApi": false,
+    "steamStub": false,
+    "steamAppIdFile": false,
+    "ceg": "no"
+  },
+  "launch": "direct",
+  "rating": "perfect",
+  "reports": [
+    {
+      "date": "2026-12-08",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.5.0-beta.2",
+      "gameBuild": "6284748a9d961e55bbd306d9097a17d034ecaa93f7c3923c5374d9481e9b730a",
+      "rating": "broken",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md"
+    },
+    {
+      "date": "2026-12-01",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.5.0-beta.10",
+      "gameBuild": "6284748a9d961e55bbd306d9097a17d034ecaa93f7c3923c5374d9481e9b730a",
+      "rating": "perfect",
+      "evidence": "docs/evidence/2026-12-01-fixture-first-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    }
+  ]
+}

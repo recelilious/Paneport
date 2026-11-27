@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000811,
+    "slug": "fixture-dock-without-ceg"
+  },
+  "name": "Fixture Dock Without Ceg",
+  "drm": {
+    "steamApi": false
+  },
+  "launch": "dock"
+}

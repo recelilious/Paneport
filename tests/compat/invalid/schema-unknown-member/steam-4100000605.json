@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000605,
+    "slug": "fixture-unknown-member"
+  },
+  "name": "Fixture Unknown Member",
+  "controllerLayout": "default"
+}

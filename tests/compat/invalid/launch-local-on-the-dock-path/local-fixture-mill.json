@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [
+      "e4a677106424cf55abf9aec223e16f161d812295cbeab6d9997cdb9d083e3ba7"
+    ],
+    "slug": "fixture-mill"
+  },
+  "name": "Fixture Mill",
+  "executable": {
+    "path": "Mill.exe"
+  },
+  "drm": {
+    "steamApi": false,
+    "steamStub": false,
+    "ceg": "unknown"
+  },
+  "launch": "dock"
+}

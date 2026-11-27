@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000641,
+    "slug": "fixture-steam-app-id"
+  },
+  "name": "Fixture Steam App Id",
+  "environment": {
+    "SteamAppId": "4100000641"
+  }
+}

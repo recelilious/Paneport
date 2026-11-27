@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000633,
+    "slug": "fixture-direct-without-executable"
+  },
+  "name": "Fixture Direct Without Executable",
+  "drm": {
+    "steamApi": false,
+    "steamStub": false,
+    "steamAppIdFile": false,
+    "ceg": "no"
+  },
+  "launch": "direct"
+}

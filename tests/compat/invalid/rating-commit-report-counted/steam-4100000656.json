@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000656,
+    "slug": "fixture-commit-report"
+  },
+  "name": "Fixture Commit Report",
+  "rating": "playable",
+  "reports": [
+    {
+      "date": "2026-12-08",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "febc47682d1e3f7d1cf6db929d60ff9bc107a399",
+      "gameBuild": "20261201",
+      "rating": "playable",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000603,
+    "slug": "fixture-february-30"
+  },
+  "name": "Fixture February 30",
+  "rating": "boots",
+  "reports": [
+    {
+      "date": "2026-02-30",
+      "device": "iPhone18,1",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "boots",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md"
+    }
+  ]
+}

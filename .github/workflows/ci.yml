@@ -156,7 +156,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: dotnet run tools/ScanPackage.cs -- --self-test
 
-      # Its fixtures break one rule each, and each must fail naming that rule (M3.1).
+      # Its fixtures, in the tool and in tests/compat, break one rule each, and each must fail
+      # naming that rule; its valid fixtures must pass (M3.1, M8.3).
       - name: Self-test the compatibility check
         if: ${{ !cancelled() }}
         run: dotnet run tools/CheckCompat.cs -- --self-test
@@ -220,8 +221,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: lychee --offline --no-progress --extensions md docs/research
 
-      # compat/ios-builds.json against its schema (C-0006 section 6); the title files join with
-      # M8.3.
+      # The title files of compat/titles against the title schema and the rules of C-0008
+      # (M8.3), and compat/ios-builds.json against its schema (C-0006 section 6).
       - name: Check the compatibility data
         if: ${{ !cancelled() }}
         run: dotnet run tools/CheckCompat.cs

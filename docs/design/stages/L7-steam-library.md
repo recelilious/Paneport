@@ -147,6 +147,7 @@ The L7 session starts when M7.1, M7.2 and M7.3 are Done and D6 and D10 are recor
   - a `local-` entry lists in `exeSha256`, a field that S7.0.3 does not name, the hash of the copy on the device; otherwise the title gets `UnreviewedBuild` and is refused once classified;
   - a `steam-` entry names `executable`, because without a program the title takes the Dock path even when its classification allows the Direct path, and a device `executable` where the entry names none is another program;
   - a `steam-` entry sets only `ceg`, unless it has a reason to set another member, because a reviewed `steamApi` or `steamStub` would also cover a program that an update puts at the same path (`compat-db.md` sections 4 and 5).
+- M8.3 ([L8 brief](L8-dock-alpha.md#m83-compatibility-checks-and-reports), session log of 2026-11-23): `tools/CheckCompat.cs` in the `checks` job checks the entries of S7.0.3 against the schema, and checks their file names, the launch and allow-list rules, the rating and the evidence records. A report names a record that the same change adds or that is merged already. The entry's `rating` is the computed one: `untested` while the reports name commit hashes, and after a release the lowest of what the target devices report on the highest release, each device's latest report replacing its earlier ones (`compat-db.md` sections 2.2 and 8.1).
 
 **Session log.**
 

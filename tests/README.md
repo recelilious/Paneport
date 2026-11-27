@@ -9,6 +9,7 @@ Paneport's automated tests (C-0011 section 1). They use xunit.v3 on Microsoft.Te
 
 | Folder | What it holds |
 |---|---|
+| [compat](compat/README.md) | The title files on which the compatibility check of `tools/CheckCompat.cs` tests itself: a valid set, and one folder for each fixture that breaks one rule |
 | [device](device/README.md) | The device test flavor of the iOS app head, with the developer menu that later stages extend. It runs on the iPhone only, outside `eng/ci.slnf` (C-0011 section 4). |
 | [Paneport.Core.Tests](Paneport.Core.Tests/README.md) | Tests of Paneport.Core |
 | [Paneport.Interop.Tests](Paneport.Interop.Tests/README.md) | Tests of Paneport.Interop, which run on macOS against the host test library, outside `eng/ci.slnf` (C-0011 section 4) |

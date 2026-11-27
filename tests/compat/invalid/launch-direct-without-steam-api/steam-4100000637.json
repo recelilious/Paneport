@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000637,
+    "slug": "fixture-direct-without-steam-api"
+  },
+  "name": "Fixture Direct Without Steam Api",
+  "executable": {
+    "path": "DirectWithoutSteamApi.exe"
+  },
+  "drm": {
+    "steamStub": false,
+    "ceg": "no"
+  },
+  "launch": "direct"
+}

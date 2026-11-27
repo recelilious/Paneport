@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000801,
+    "slug": "fixture-dock-ceg-unknown"
+  },
+  "name": "Fixture Dock Ceg Unknown",
+  "drm": {
+    "steamApi": false,
+    "steamStub": false,
+    "ceg": "unknown"
+  },
+  "launch": "dock"
+}

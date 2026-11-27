@@ -125,7 +125,8 @@ public sealed partial class TitleSchemaTests
     {
         // Besides \s, the pattern names each white-space unit outside ASCII, so that .NET's dialect and
         // its ECMAScript option, whose \s is ASCII only, read it as the code does (compat-db.md
-        // section 9). JsonSchema.Net, the validator registered for M8.3, uses the ECMAScript option.
+        // section 9). JsonSchema.Net, which PowerShell's Test-Json is built on, uses the ECMAScript
+        // option; tools/CheckCompat.cs reads \s as ECMA-262 does.
         var pattern = (string)Properties["name"]!["pattern"]!;
         Regex[] dialects = [new(pattern), new(pattern, RegexOptions.ECMAScript)];
 

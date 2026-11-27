@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000506,
+    "slug": "fixture-one-day"
+  },
+  "name": "Fixture One Day",
+  "rating": "runs",
+  "reports": [
+    {
+      "date": "2026-12-15",
+      "device": "iPhone19,7",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.4.0",
+      "gameBuild": "20261201",
+      "rating": "broken",
+      "evidence": "docs/evidence/2026-12-15-fixture-third-run.md"
+    },
+    {
+      "date": "2026-12-15",
+      "device": "iPhone19,7",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.4.0",
+      "gameBuild": "20261201",
+      "rating": "runs",
+      "evidence": "docs/evidence/2026-12-15-fixture-third-run.md",
+      "fpsMedian": 24,
+      "fpsLow1": 17.5,
+      "peakMemoryMiB": 2210
+    }
+  ]
+}

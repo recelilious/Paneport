@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000623,
+    "slug": "fixture-kiln"
+  },
+  "name": "Fixture Kiln"
+}

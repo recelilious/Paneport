@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "steamAppId": 4100000806,
+    "slug": "fixture-one-device-two-models"
+  },
+  "name": "Fixture One Device Two Models",
+  "rating": "perfect",
+  "reports": [
+    {
+      "date": "2026-12-01",
+      "device": "iPhone19,3",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "boots",
+      "evidence": "docs/evidence/2026-12-01-fixture-first-run.md"
+    },
+    {
+      "date": "2026-12-08",
+      "device": "iPhone19,7",
+      "iosVersion": "27.2 (24B119)",
+      "paneportVersion": "v0.3.0",
+      "gameBuild": "20261201",
+      "rating": "perfect",
+      "evidence": "docs/evidence/2026-12-08-fixture-second-run.md",
+      "fpsMedian": 58,
+      "fpsLow1": 47.5,
+      "peakMemoryMiB": 2210
+    }
+  ]
+}

@@ -38,7 +38,7 @@ To settle: whether iOS zeroes x18 on thread switches, whether PE modules use imp
 
 ## 7. The template prefix and its installer (S4.4.6)
 
-The proposed bundle location is `wine/prefix-template/` (C-0009 1.4, not yet accepted). To settle: how CI generates the template on the harness, its version marker and what a newer template replaces, and the installer in Paneport.Core with its platform parts in Paneport.iOS.
+The bundle location is `wine/prefix-template/` (C-0009 section 4, since 1.4). To settle: how CI generates the template on the harness, its version marker and what a newer template replaces, and the installer in Paneport.Core with its platform parts in Paneport.iOS.
 
 ## 8. Guest console capture (S4.4.7)
 

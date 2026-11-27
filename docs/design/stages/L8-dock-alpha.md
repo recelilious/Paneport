@@ -374,14 +374,16 @@ _No sessions yet._
       - the segment rule of `JsonText.Scan`: half a pair in a `$comment` below `properties` and below `allOf`, named in full, and a member twice whose name is not plain, read as the data is, named `/<name not shown>`;
       - a timeout below `allOf`, `then` and `else`, so that the cases place it directly, in `properties` and `items`, and below `not`, `anyOf`, `oneOf`, `allOf`, `if`, `then` and `else`;
       - a report whose date is a number, in a title without a rating;
-      - each refusal of the translation, the quantifiers `{n,}` and `{n,m}`, and an empty class before another class, which only the refusal of an empty class now refuses.
+      - each refusal of the translation, and the quantifiers `{n,}` and `{n,m}`;
+      - an empty class before another class, and a property escape inside a class, which only the refusal of an empty class and of `\p` now refuse.
     - A valid local title, `local-fixture-shoal`, whose `drm` has no `ceg` and sets `steamAppIdFile` true, with no `launch`. The app's reader loads it, and without its `executable` rejects it.
     - The documents: [compat-db.md](../compat-db.md) section 8.1, [repository-checks.md](../repository-checks.md) section 9, the README of `tests/compat/`, and session 4's entry above, whose timeout cases it names exactly.
   - **Verification.** On the workstation:
-    - The self-test passes 647 cases, and the check of the repository passes.
+    - The self-test passes 648 cases, and the check of the repository passes.
     - `dotnet format whitespace tools`, the personal-data scan and the license check are clean.
     - A fuzz of the translation against node 24.19.0: of 150,000 random patterns, each that the translation takes compiles with the `u` flag, matches as node matches it without the flag on 60 texts, and on those without half of a surrogate pair matches alike with it.
-    - Every mutant of fix rounds 1 to 3, 137 in all, was run in a copy that keeps `Directory.Build.props` and `.editorconfig`, so that each builds as CI builds the tool. 132 fail a case, 2 crash the self-test, and 3 stop it with exit 2 at a pattern that they refuse wrongly; none survives or fails to build. Round 1's mutant that drops the refusal of an empty class survived the first run, since the refusal of a `]` outside a class now refuses its cases too; the case `[][a]` kills it. The pull request lists them.
+    - Every mutant of fix rounds 1 to 3, 138 in all, was run in a copy that keeps `Directory.Build.props` and `.editorconfig`, so that each builds as CI builds the tool. 133 fail a case, 2 crash the self-test, and 3 stop it with exit 2 at a pattern that they refuse wrongly; none survives or fails to build. Round 1's mutant that drops the refusal of an empty class survived the first run, since the refusal of a `]` outside a class now refuses its cases too; the case `[][a]` kills it. The pull request lists them.
+    - The refusal of a `[` inside a class is redundant since this round: .NET reads a `[` in a class otherwise than ECMA-262 only in a subtraction, which ends in `]]`, and the second `]` is now refused. The fuzz, with that refusal dropped, finds no difference in 270,000 patterns, so no case can catch its removal; with the refusal of an empty class dropped instead, it finds eight. It stays, for its clearer message.
     - The runs of CI on the final head are in [#44](https://github.com/recelilious/Paneport/pull/44).
   - **Decisions.** The coordinator decided fix round 3, refusing the patterns that the `u` flag refuses, as round 2 refused `\-`. The refusal of a quantifier after `^` or `$`, which the fuzz found, goes beyond the decisions, and the coordinator checks it with the round.
   - **Left.** The merge.

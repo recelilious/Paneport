@@ -70,6 +70,58 @@ public sealed class SessionBindingTests(HostFixture host)
     }
 
     [Fact]
+    public void ALinesFlagsAndDroppedCountReachTheHandler()
+    {
+        const string Piece = "the second piece of a long line from the binding tests";
+        const string Report = "12 lines dropped";
+        using var lines = new BlockingCollection<HostLogLine>();
+        host.Main.Run(() => NativeHost.SetLogHandler(lines.Add));
+        try
+        {
+            HostTestExports.LogWithFlags(
+                HostLogLevel.Information, HostLogSource.GuestOutput, 7, HostLogMarks.Continuation, 0, Piece);
+            HostTestExports.LogWithFlags(
+                HostLogLevel.Warning, HostLogSource.GuestErrors, 7, HostLogMarks.Dropped, 12, Report);
+
+            var piece = Take(lines, Piece);
+            Assert.Equal(HostLogMarks.Continuation, piece.Marks);
+            Assert.True(piece.IsContinuation);
+            Assert.False(piece.IsDropReport);
+            Assert.Equal(0UL, piece.DroppedLines);
+
+            var report = Take(lines, Report);
+            Assert.Equal(HostLogMarks.Dropped, report.Marks);
+            Assert.True(report.IsDropReport);
+            Assert.False(report.IsContinuation);
+            Assert.Equal(12UL, report.DroppedLines);
+            Assert.Equal(HostLogSource.GuestErrors, report.Source);
+            Assert.Equal(7UL, report.Process);
+            Assert.Equal(HostLogLevel.Warning, report.Level);
+
+            var refused = Assert.Throws<HostException>(() => HostTestExports.LogWithFlags(
+                HostLogLevel.Information, HostLogSource.GuestOutput, 0, (HostLogMarks)4, 0, Piece));
+            Assert.Equal(HostStatus.InvalidArgument, refused.Status);
+        }
+        finally
+        {
+            host.Main.Run(() => NativeHost.SetLogHandler(null));
+        }
+    }
+
+    // The host's own lines may come first.
+    private static HostLogLine Take(BlockingCollection<HostLogLine> lines, string text)
+    {
+        HostLogLine line;
+        do
+        {
+            Assert.True(lines.TryTake(out line, WaitMilliseconds, TestContext.Current.CancellationToken));
+        }
+        while (line.Text != text);
+
+        return line;
+    }
+
+    [Fact]
     public void ALinesSourceAndProcessReachTheHandler()
     {
         const string Text = "a line of a program's standard error from the binding tests";

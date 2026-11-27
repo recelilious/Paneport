@@ -32,6 +32,8 @@ public static class LayoutConformance
             .Member("text", (ref NativeLogLine value) => ref value.Text)
             .Member("source", (ref NativeLogLine value) => ref value.Source)
             .Member("process", (ref NativeLogLine value) => ref value.Process)
+            .Member("flags", (ref NativeLogLine value) => ref value.Flags)
+            .Member("dropped", (ref NativeLogLine value) => ref value.Dropped)
             .Build(),
         new StructLayoutBuilder<NativeMemoryBudget>("pp_memory_budget_t")
             .Member("struct_size", (ref NativeMemoryBudget value) => ref value.StructSize)

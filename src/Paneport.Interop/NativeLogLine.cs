@@ -17,4 +17,8 @@ internal struct NativeLogLine
     // Version 1.4 appended these; a line of an older host ends before them.
     public uint Source;
     public ulong Process;
+
+    // Version 1.5 appended these; a line of an older host ends before them.
+    public uint Flags;
+    public ulong Dropped;
 }

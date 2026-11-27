@@ -2295,6 +2295,9 @@ internal static class SelfTest
         ("a property escape in a pattern", """{ "pattern": "\\p{L}" }""", "/pattern"),
         ("a hexadecimal escape in a pattern", """{ "pattern": "\\x41" }""", "/pattern"),
         ("an empty class before a ] in a pattern", """{ "pattern": "[]a]" }""", "/pattern"),
+        // Given to .NET, these would be one class of ], [ and a; ECMA-262 reads an empty class, which matches nothing,
+        // and then a class.
+        ("an empty class before another class in a pattern", """{ "pattern": "[][a]" }""", "/pattern"),
         ("a ] outside a class in a pattern, which the u flag refuses", """{ "pattern": "^a]$" }""", "/pattern"),
         ("a { that starts no quantifier in a pattern, which the u flag refuses", """{ "pattern": "^a{$" }""",
             "/pattern"),

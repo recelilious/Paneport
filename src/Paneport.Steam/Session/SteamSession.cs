@@ -281,7 +281,13 @@ internal sealed class SteamSession : IConnectionListener
             _goal = _signIns > 0 ? Goal.Connected : Goal.None;
             _reconnecting = false;
             _offline = false;
-            CancelWait();
+            if (_goal == Goal.None)
+            {
+                // A wait to connect again stays while a sign-in needs the connection, such as one
+                // that replaced this one: its own connect returned early because the wait was there.
+                CancelWait();
+            }
+
             CompleteLogOns(SteamResult.Cancelled);
             if (_loggedOn && !_signingOut)
             {

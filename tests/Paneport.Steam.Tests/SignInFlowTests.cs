@@ -305,6 +305,34 @@ public sealed class SignInFlowTests : IDisposable
         Assert.Equal("Paneport could not reach Steam to log on.", result.Problem);
     }
 
+    // A sign-in that replaces one whose logon waits to connect again after a drop connects when the
+    // wait ends: the logon that the first one gives up does not take the wait with it.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ASignInThatReplacesOneWaitingToReconnectConnectsAfterTheWait(bool withQrCode)
+    {
+        var token = TestContext.Current.CancellationToken;
+        _kit.Authenticator.Guard = AccountGuard.None;
+        var first = _kit.Service.StartPasswordSignIn(_kit.Samples.AccountName, _kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        await _kit.UntilRequested(FakeConnection.Connect, 1);
+        _kit.Connection.Listener.OnConnected();
+        await _kit.UntilRequested(FakeConnection.LogOn, 1);
+        _kit.Connection.Listener.OnDisconnected(userInitiated: false);
+        await SteamTestKit.Until(() => _kit.Delays.Pending.Count == 1, "the wait to connect again");
+
+        var second = withQrCode
+            ? _kit.Service.StartQrSignIn()
+            : _kit.Service.StartPasswordSignIn(_kit.Samples.AccountName, _kit.Samples.Password, SignInConfirmation.ApproveInSteamApp);
+        Assert.Equal(SignInOutcome.Cancelled, (await first.Completion.WaitAsync(SteamTestKit.Patience, token)).Outcome);
+        await SteamTestKit.Until(() => _kit.Delays.Pending.Count == 1, "the wait to stay");
+        _kit.Delays.Release(TimeSpan.FromSeconds(1));
+
+        await _kit.UntilRequested(FakeConnection.Connect, 2);
+        second.Cancel();
+        await second.Completion.WaitAsync(SteamTestKit.Patience, token);
+    }
+
     // A logon that a sign-out cancels is no refusal by Steam either.
     [Fact]
     public async Task AResumeThatASignOutCancelsSaysSo()

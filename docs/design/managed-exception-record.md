@@ -2,7 +2,7 @@
 
 | Author | Timestamp (UTC) |
 |---|---|
-| Claude (Anthropic), for the Paneport project | 2026-11-26T14:45Z, revised 2026-11-26T20:55Z after review round 1 |
+| Claude (Anthropic), for the Paneport project | 2026-11-26T14:45Z, revised 2026-11-26T20:55Z after review round 1, and 2026-11-27T15:13Z after recelilious's answers |
 
 Back to the [design index](README.md).
 
@@ -16,15 +16,7 @@ This document describes the managed exception record of stage M2.4 (see the [L2 
 - how the next launch reads both records and shows them;
 - the tests, and what the workstation cannot verify.
 
-It was written in the stage's first session, before any code, and revised after the first round of its review. The changes it needs in C-0005 section 2 and C-0010 section 2 are proposed, as C-0005 1.1 and C-0010 1.3, and are not yet accepted. Until recelilious answers the seven questions of the drafts' review, these parts are proposals and not settled:
-
-- section 5, the record's own file rather than a host function (question 1);
-- the rules of section 6 on what the record may hold, which C-0010's new rule fixes for the record only (question 2);
-- the rule of section 4 that nothing goes on after an unhandled exception (question 3);
-- section 7, the host's changes for a SIGABRT (question 4);
-- section 9, the layout on Diagnostics, for recelilious to choose from (question 5);
-- section 10, the page of exception probes (question 6);
-- section 3's entry for `TaskScheduler.UnobservedTaskException`, a log line only (question 7).
+It was written in the stage's first session, before any code, and revised after the first round of its review. On 2026-11-27 recelilious accepted the contract changes it needs, C-0005 1.1 and C-0010 1.3, and answered the seven questions of their review as recommended. So the record is a file of its own (section 5); C-0010's new rule covers the record only (section 6); nothing goes on after an unhandled exception (section 4); the host's changes for a SIGABRT stand (section 7); Diagnostics shows the record in one section (section 9); the test flavor gets the page of exception probes (section 10); and `TaskScheduler.UnobservedTaskException` writes a log line only (section 3).
 
 [signals.md](signals.md) describes the signal dispatcher and the last-resort handler, [native-host.md](native-host.md) the host's crash record, and [ios-app-head.md](ios-app-head.md) the startup and Diagnostics. Where this document and a contract differ, the [contracts](../contracts/README.md) win.
 
@@ -55,7 +47,7 @@ Out of scope:
 
 ## 2. How an unhandled exception ends the app today
 
-**The term.** In this design, as in the C-0010 1.3 draft, an *unhandled exception* is one that leaves a dispatcher operation, a callback into native code, or a thread, with nothing catching it. A faulted task is not one, and neither is a timer tick whose exception the dispatcher keeps in the tick's task: their exceptions stay in their tasks, and the app goes on.
+**The term.** In this design, as in C-0010 section 2, an *unhandled exception* is one that leaves a dispatcher operation, a callback into native code, or a thread, with nothing catching it. A faulted task is not one, and neither is a timer tick whose exception the dispatcher keeps in the tick's task: their exceptions stay in their tasks, and the app goes on.
 
 The table follows an exception that the app's own code does not catch. In the first four rows it is unhandled; in the last three it is not:
 
@@ -160,7 +152,7 @@ Every entry point calls one recorder, `ManagedExceptionRecorder` in Paneport.Cor
 - **Another exception.** A call with another exception writes a new record over the old one. Because a later exception replaces an earlier record, a record that native code made moot by catching its exception (section 12) never hides the exception that ends the app. The host makes the same trade-off for its own record (signals.md section 3). What it loses is the first cause in a cascade. When the unwinding of one exception throws another, such as one from a `finally` block, or a second thread fails after the first one's write, the record shows the later exception. The log keeps one line for each exception that was recorded (section 5), so the first cause still has its type in the log.
 - **The gate.** An interlocked gate decides which call writes. A call that finds the gate held by another thread waits until that write has renamed its file or failed, at most 2 seconds, as the host's writer does (signals.md section 3). It then returns without writing. In a crash on two threads at once, the first exception's record is therefore on storage before the second thread goes on to the abort. A call never waits when its own thread holds the gate: it returns at once.
 - **It never throws.** Every step of the recorder catches its own failures. A failed write is logged with the failure's type, and the call returns. The exception then does not count as recorded, so a later entry point may try again.
-- **It changes nothing else.** It never sets `RequestCatch` or `Handled`, never changes `ExceptionMode`, and never calls `SetObserved`. It returns once the record is on storage, or once the gate's bound has passed. The runtime then goes on as it would without it. Nothing continues after an unhandled exception, which is one that leaves a dispatcher operation, a callback into native code, or a thread, with nothing catching it. A faulted task is not one (section 2; C-0010 section 2, as proposed).
+- **It changes nothing else.** It never sets `RequestCatch` or `Handled`, never changes `ExceptionMode`, and never calls `SetObserved`. It returns once the record is on storage, or once the gate's bound has passed. The runtime then goes on as it would without it. Nothing continues after an unhandled exception, which is one that leaves a dispatcher operation, a callback into native code, or a thread, with nothing catching it. A faulted task is not one (section 2; C-0010 section 2).
 
 ## 5. The record's file, and how it survives the abort
 
@@ -314,13 +306,13 @@ The pairing can be wrong in two ways:
 
 When the two records do not pair, both are shown, each with its own summary, the newer first. The host's record then keeps its summary from the table.
 
-**Dismissing.** One Dismiss button dismisses both records, in every layout of section 9. Each file is deleted only while it still holds the bytes that the launch read ([ios-app-head.md](ios-app-head.md) section 9).
+**Dismissing.** One Dismiss button dismisses both records (section 9). Each file is deleted only while it still holds the bytes that the launch read ([ios-app-head.md](ios-app-head.md) section 9).
 
-## 9. Diagnostics: the proposed layout
+## 9. Diagnostics
 
-How the page shows the record is recelilious's choice. This section proposes three layouts; once recelilious has chosen, it keeps only the chosen one. Every layout has one Dismiss for both records, and shows the newer record first, as section 8 says.
+recelilious chose this layout on 2026-11-27. It has one Dismiss for both records, and shows the newer record first, as section 8 says.
 
-**Layout A, recommended: one section.** The section keeps its title, "Crash record". Below the summary of section 8, a managed record shows these rows:
+**One section.** The section keeps its title, "Crash record". Below the summary of section 8, a managed record shows these rows:
 
 | Label | Value, with made-up examples |
 |---|---|
@@ -335,15 +327,6 @@ How the page shows the record is recelilious's choice. This section proposes thr
 `Show all frames` shows every frame of the record: the exception's frames, then those of each inner exception under its type, since the throw site of a wrapper such as `TargetInvocationException` or `AggregateException` lies in its inner exception. The other rows show only the outer exception's frames.
 
 When the records pair, the line "The host's record of the abort that followed:" comes next, then the host's rows as today: Time, Signal, Thread, Fault address, Program counter, Test record and Message. When they do not pair, the newer record comes first, with its summary and rows, then the line "An older record from the previous run:", then the other record with its own summary and rows. One button, `Dismiss`, ends the section.
-
-**Layout B: two sections.**
-
-- "Crash record" keeps the host's record as today.
-- A new section, "Managed exception", holds the rows of layout A.
-
-The section of the newer record comes first. One Dismiss, below both sections, dismisses both records. The managed section's summary says whether the host's record in the other section belongs to it.
-
-**Layout C: as A, folded.** As layout A, but when the records pair, the host's rows stay hidden behind a button `Show the host's record`.
 
 ## 10. The developer page of exception probes
 

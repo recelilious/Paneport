@@ -50,14 +50,14 @@ plain_url() {
 
 # Makes an empty repository whose archives hold each file as the commit stores it. The archived
 # tree's attributes must not leave a file out (export-ignore), rewrite one (export-subst, ident,
-# filters) or convert its line endings (text, eol), and neither may core.autocrlf, which Git for
-# Windows turns on, so .git/info/attributes unsets them all; archive also runs with
-# core.autocrlf off.
+# filters), convert its line endings (text, eol) or re-encode it (working-tree-encoding), and
+# neither may core.autocrlf, which Git for Windows turns on. So .git/info/attributes, which wins
+# over the tree's .gitattributes and over the runner's global and system attributes files, unsets
+# them all; archive also runs with core.autocrlf off, which unsetting text already makes moot.
 init_repository() {
     git -c init.defaultBranch=main init -q "$1"
     mkdir -p "$1/.git/info"
-    printf '* -text -ident -filter -export-ignore -export-subst
-' > "$1/.git/info/attributes"
+    printf '* -text -ident -filter -working-tree-encoding -export-ignore -export-subst\n' > "$1/.git/info/attributes"
 }
 
 # git with only the scheme of this run allowed, and no prompt.
@@ -411,23 +411,47 @@ self_test() {
     check "fails on a submodule URL over another scheme" \
         fails_naming "$tmp/out-scheme" "${line//|1.0.0|$up_commit|/|1.0.0-scheme|$other|}" "not one over file"
 
-    # A commit whose attributes would leave out a file, rewrite one and convert line endings, made
-    # into an archive with core.autocrlf on, as Git for Windows has it.
+    # A commit whose attributes would leave out a file, rewrite one by substitution, ident or a
+    # filter, convert line endings and re-encode a file, made into an archive with core.autocrlf on,
+    # as Git for Windows has it, and with a filter driver that changes what it smudges. The encoded
+    # file is added before its attribute exists, so that the commit stores it as it is, and leaves
+    # the working tree, so that git does not try to read it in that encoding.
     quiet -C "$up" checkout -q "$up_commit"
-    printf 'build.props export-ignore\nlib/version.txt export-subst\n' > "$up/.gitattributes"
+    printf 'plain text\n' > "$up/lib/encoded.txt"
+    quiet -C "$up" add lib/encoded.txt
+    rm "$up/lib/encoded.txt"
+    printf '%s\n' 'build.props export-ignore' 'lib/version.txt export-subst' 'lib/*.cs text eol=crlf' \
+        'lib/ident.txt ident' 'lib/filtered.txt filter=upper' 'lib/encoded.txt working-tree-encoding=UTF-16LE' \
+        > "$up/.gitattributes"
     printf '%s\n' "$placeholder" > "$up/lib/version.txt"
-    quiet -C "$up" add .gitattributes lib/version.txt
+    printf '%s\n' '$Id$' > "$up/lib/ident.txt"
+    printf 'lower case\n' > "$up/lib/filtered.txt"
+    quiet -C "$up" add .gitattributes lib/version.txt lib/ident.txt lib/filtered.txt
     quiet -C "$up" commit -q -m attributes
     quiet -C "$up" tag -a 1.0.0-attributes -m attributes
     other=$(git -C "$up" rev-parse HEAD)
     nuspec "$up_url" "$other"
     archived=$tmp/out-attributes/Sample-1.0.0-source.tar.gz
-    if GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=true \
-        make_all "$tmp/out-attributes" "${line//|1.0.0|$up_commit|/|1.0.0-attributes|$other|}" \
+
+    # The settings go to git through assignments before a function call, as make_all is called
+    # below. Without them the case would pass whatever the guards do, so it first asserts that git
+    # sees them, also in the Bash 3.2 of macOS.
+    plant() {
+        GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=true \
+            GIT_CONFIG_KEY_1=filter.upper.smudge GIT_CONFIG_VALUE_1='tr a-z A-Z' "$@"
+    }
+    sees_plant() {
+        [ "$(git config --get core.autocrlf)" = true ] && [ "$(git config --get filter.upper.smudge)" = 'tr a-z A-Z' ]
+    }
+    check "git sees the planted core.autocrlf and filter driver through a function call" plant sees_plant
+    if plant make_all "$tmp/out-attributes" "${line//|1.0.0|$up_commit|/|1.0.0-attributes|$other|}" \
         && entries=$("$tar_tool" -t -f "$archived"); then
         check "keeps a file that the tree's attributes would leave out" holds Sample-1.0.0-source/build.props
         check "keeps a file as the commit stores it, unsubstituted" stores Sample-1.0.0-source/lib/version.txt "$placeholder"
-        check "keeps the line endings that the commit stores, with core.autocrlf on" \
+        check "keeps a file as the commit stores it, with ident unexpanded" stores Sample-1.0.0-source/lib/ident.txt '$Id$'
+        check "keeps a file as the commit stores it, unfiltered" stores Sample-1.0.0-source/lib/filtered.txt 'lower case'
+        check "keeps a file in the encoding that the commit stores" stores Sample-1.0.0-source/lib/encoded.txt 'plain text'
+        check "keeps the line endings that the commit stores, against eol=crlf and core.autocrlf on" \
             stores Sample-1.0.0-source/lib/library.cs 'class Library {}'
     else
         check "makes the archive of a commit with export attributes" false

@@ -858,9 +858,11 @@ internal static class ValueKey
 // separators, its \s, \d and \w take in other characters than ECMA-262's, and in a class it reads \- as a
 // character that cannot start a range. The translation gives each construct its ECMA-262 meaning, and refuses
 // a construct whose meaning differs and that the schemas do not use: a word boundary, an escape other than
-// those below, \- outside a class, a group other than (?:, (?= and (?!, an empty class, a [ inside a class,
-// which .NET reads as a subtraction, \S, \D or \W inside a class, and a range in a class with \s, \d or \w at
-// one end, which .NET reads as a range from or to the shorthand's last character.
+// those below, a group other than (?:, (?= and (?!, an empty class, a [ inside a class, which .NET reads as a
+// subtraction, \S, \D or \W inside a class, and a range in a class with \s, \d or \w at one end, which .NET
+// reads as a range from or to the shorthand's last character. It also refuses a quantifier after ^ or $, which
+// .NET takes and ECMA-262 refuses, and what ECMA-262 takes only without the u flag: \- outside a class, a ]
+// outside a class, a { or } that is no part of a quantifier, and a quantifier after a lookahead.
 //
 // The meaning is that of ECMA-262 without the u flag, which JSON Schema 2020-12 recommends but does not
 // require: a pattern matches by UTF-16 code units, as .NET and the app's reader match, so . or a negated
@@ -876,6 +878,9 @@ internal static class EcmaPattern
 
     private static readonly string s_lineTerminators = Escapes(0x0A, 0x0D, 0x2028, 0x2029);
 
+    // A quantifier in braces, {n}, {n,} or {n,m}, where the match starts.
+    private static readonly Regex s_braces = new("\\G\\{[0-9]+(?:,[0-9]*)?\\}", RegexOptions.CultureInvariant);
+
     private const string Digit = "0-9";
     private const string Word = "A-Za-z0-9_";
 
@@ -887,6 +892,8 @@ internal static class EcmaPattern
         // In a class: whether the last part was \s, \d or \w, and whether the last part was a - that makes a range.
         var shorthand = false;
         var range = false;
+        // Whether each group that is open is a lookahead.
+        var lookaheads = new Stack<bool>();
         for (var index = 0; index < pattern.Length; index++)
         {
             var current = pattern[index];
@@ -941,6 +948,8 @@ internal static class EcmaPattern
                         index++;
                     }
                     break;
+                case '^' or '$' when QuantifierAt(pattern, index + 1):
+                    throw new ArgumentException("a quantifier after ^ or $, which ECMA-262 refuses");
                 case '$':
                     text.Append("\\z");
                     break;
@@ -950,6 +959,31 @@ internal static class EcmaPattern
                 case '(' when index + 1 < pattern.Length && pattern[index + 1] == '?'
                     && !(index + 2 < pattern.Length && pattern[index + 2] is ':' or '=' or '!'):
                     throw new ArgumentException("a group other than (?:, (?= and (?!");
+                case '(':
+                    lookaheads.Push(
+                        index + 2 < pattern.Length && pattern[index + 1] == '?' && pattern[index + 2] is '=' or '!');
+                    text.Append('(');
+                    break;
+                case ')':
+                    if (lookaheads.TryPop(out var lookahead) && lookahead && QuantifierAt(pattern, index + 1))
+                    {
+                        throw new ArgumentException("a quantifier after a lookahead, which the u flag refuses");
+                    }
+                    text.Append(')');
+                    break;
+                case '{':
+                    var braces = s_braces.Match(pattern, index);
+                    if (!braces.Success)
+                    {
+                        throw new ArgumentException("a { that starts no quantifier, which the u flag refuses");
+                    }
+                    text.Append(braces.Value);
+                    index += braces.Length - 1;
+                    break;
+                case '}':
+                    throw new ArgumentException("a } that ends no quantifier, which the u flag refuses");
+                case ']':
+                    throw new ArgumentException("a ] outside a class, which the u flag refuses");
                 default:
                     text.Append(current);
                     break;
@@ -961,6 +995,9 @@ internal static class EcmaPattern
         }
         return text.ToString();
     }
+
+    private static bool QuantifierAt(string pattern, int index) =>
+        index < pattern.Length && (pattern[index] is '*' or '+' or '?' || s_braces.IsMatch(pattern, index));
 
     private static string TranslateEscape(string pattern, ref int index, bool inClass)
     {
@@ -2053,6 +2090,12 @@ internal static class SelfTest
             $$"""{ "a": {{s_slowText}} }""", "/a", "/properties/a/oneOf/0/pattern"),
         ("in an if condition", """{ "properties": { "a": { "if": { "pattern": "^(a+)+$" }, "then": true } } }""",
             $$"""{ "a": {{s_slowText}} }""", "/a", "/properties/a/if/pattern"),
+        ("in an allOf branch", """{ "properties": { "a": { "allOf": [true, { "pattern": "^(a+)+$" }] } } }""",
+            $$"""{ "a": {{s_slowText}} }""", "/a", "/properties/a/allOf/1/pattern"),
+        ("in a then", """{ "properties": { "a": { "if": true, "then": { "pattern": "^(a+)+$" } } } }""",
+            $$"""{ "a": {{s_slowText}} }""", "/a", "/properties/a/then/pattern"),
+        ("in an else", """{ "properties": { "a": { "if": false, "else": { "pattern": "^(a+)+$" } } } }""",
+            $$"""{ "a": {{s_slowText}} }""", "/a", "/properties/a/else/pattern"),
     ];
 
     // Schemas that the validator must load with everything that it implements: a schema of true or false, and
@@ -2169,7 +2212,19 @@ internal static class SelfTest
         ("a const list of a number past every limit, against a list of zero",
             """{ "const": [1e99999999999999999999] }""", "[0]", "const"),
         ("two texts that differ in letter case", """{ "uniqueItems": true }""", "[\"a\", \"A\"]", null),
+        ("two lists whose items would run together alike", """{ "uniqueItems": true }""", "[[[1], 2], [[1, 2]]]", null),
+        ("two objects whose members would run together alike", """{ "uniqueItems": true }""",
+            """[{ "a": { "b": 1 }, "x": 5 }, { "a": { "b": 1, "x": 5 } }]""", null),
+        ("two objects whose names differ in letter case", """{ "uniqueItems": true }""",
+            """[{ "a": 1 }, { "A": 1 }]""", null),
+        ("a number and its negative", """{ "uniqueItems": true }""", "[1, -1]", null),
+        ("false and null", """{ "uniqueItems": true }""", "[false, null]", null),
+        ("an object twice, its names differing in letter case and in another order", """{ "uniqueItems": true }""",
+            """[{ "a": 1, "A": 2 }, { "A": 2, "a": 1 }]""", "uniqueItems"),
         ("a - after \\w at the end of a class", """{ "pattern": "^[\\w-]$" }""", "\"-\"", null),
+        ("a quantifier of at least two, in braces", """{ "pattern": "^a{2,}$" }""", "\"aaa\"", null),
+        ("a quantifier of one or two, in braces, against three", """{ "pattern": "^a{1,2}$" }""", "\"aaa\"",
+            "pattern"),
         ("a missing member", """{ "required": ["a"] }""", "{}", "required"),
         ("a number for type null", """{ "type": "null" }""", "1", "type"),
         ("null for type null", """{ "type": "null" }""", "null", null),
@@ -2240,6 +2295,25 @@ internal static class SelfTest
         ("a property escape in a pattern", """{ "pattern": "\\p{L}" }""", "/pattern"),
         ("a hexadecimal escape in a pattern", """{ "pattern": "\\x41" }""", "/pattern"),
         ("an empty class before a ] in a pattern", """{ "pattern": "[]a]" }""", "/pattern"),
+        ("a ] outside a class in a pattern, which the u flag refuses", """{ "pattern": "^a]$" }""", "/pattern"),
+        ("a { that starts no quantifier in a pattern, which the u flag refuses", """{ "pattern": "^a{$" }""",
+            "/pattern"),
+        ("a } that ends no quantifier in a pattern, which the u flag refuses", """{ "pattern": "^a}$" }""",
+            "/pattern"),
+        ("a quantified lookahead in a pattern, which the u flag refuses", """{ "pattern": "(?=a)*a" }""", "/pattern"),
+        ("a negative lookahead quantified by + in a pattern, which the u flag refuses", """{ "pattern": "(?!a)+b" }""",
+            "/pattern"),
+        ("a lookahead quantified by ? in a pattern, which the u flag refuses", """{ "pattern": "(?=a)?a" }""",
+            "/pattern"),
+        ("a lookahead quantified in braces in a pattern, which the u flag refuses", """{ "pattern": "(?!a){2}b" }""",
+            "/pattern"),
+        ("a { without a number in a pattern, which the u flag refuses", """{ "pattern": "^a{,2}$" }""", "/pattern"),
+        ("a quantifier after ^ in a pattern, which ECMA-262 refuses", """{ "pattern": "^*a" }""", "/pattern"),
+        ("a quantifier after $ in a pattern, which ECMA-262 refuses", """{ "pattern": "a$?" }""", "/pattern"),
+        ("half a surrogate pair in a $comment of a property",
+            $$"""{ "properties": { "a": { "$comment": "{{HalfPair}}" } } }""", "/properties/a/$comment"),
+        ("half a surrogate pair in a $comment of an allOf branch",
+            $$"""{ "allOf": [{ "$comment": "{{HalfPair}}" }] }""", "/allOf/0/$comment"),
     ];
 
     // Release tags in ascending order of precedence, the chain of Semantic Versioning 2.0.0 section 11 among them.
@@ -2415,10 +2489,19 @@ internal static class SelfTest
                     new JsonObject { ["steamAppId"] = new JsonObject { ["type"] = "integer" } };
                 definitions["relativePath"]!["allOf"]![1]!["not"]!["$ref"] = "#/$defs/planted";
                 definitions["planted"] = new JsonObject { ["exclusiveMinimum"] = 0 };
+                // The copy is only walked, so these need not make sense where they sit.
+                definitions["relativePath"]!["allOf"]![1]!["not"]!["additionalProperties"] =
+                    new JsonObject { ["type"] = "integer" };
+                definitions["report"]!["if"]!["then"] = new JsonObject { ["exclusiveMinimum"] = 0 };
+                definitions["report"]!["if"]!["else"] = new JsonObject { ["type"] = "number" };
+                definitions["relativePath"]!["allOf"]![2]!["not"]!["allOf"] =
+                    new JsonArray(new JsonObject { ["anyOf"] = new JsonArray(new JsonObject { ["format"] = "date" }) });
             },
             [
                 "/$defs/report/if/properties/date/format", "/$defs/id/oneOf/0/properties/steamAppId/type",
-                "/$defs/planted/exclusiveMinimum",
+                "/$defs/planted/exclusiveMinimum", "/$defs/relativePath/allOf/1/not/additionalProperties/type",
+                "/$defs/report/if/then/exclusiveMinimum", "/$defs/report/if/else/type",
+                "/$defs/relativePath/allOf/2/not/allOf/0/anyOf/0/format",
             ]),
             (IosBuilds.SchemaPath, schema => schema["not"] = new JsonObject
             {
@@ -2605,6 +2688,14 @@ internal static class SelfTest
                 isValid ? document is not null && problems.Count == 0 : document is null && OnlyRule(problems, "json"),
                 $"reading, {name}", string.Join(", ", problems));
         }
+
+        // A member twice whose name is not a plain one is named as the data's names are, without the name.
+        var twice = new List<Problem>();
+        JsonText.Read("""{ "a b": 1, "a b": 2 }"""u8.ToArray(), "case", twice)?.Dispose();
+        tally.Expect(
+            twice is [{ Rule: "json", Pointer: var at }] && at == "/" + JsonPointer.NameNotShown,
+            "reading, a member twice whose name is not plain",
+            string.Join(", ", twice));
     }
 
     // An object of one text member that takes the given number of bytes, 11 of them around the text.
@@ -2937,6 +3028,10 @@ internal static class SelfTest
             // would find no problem.
             ("a report whose date is a number",
                 $$""" "rating": "boots", "reports": [{ {{dateNumber}}, "rating": "boots", "evidence": "{{Evidence}}" }] """,
+                "rating"),
+            // Without a rating, a report that the rule skipped would leave the file untested, with no problem.
+            ("a report whose date is a number, in a title without a rating",
+                $$""" "reports": [{ {{dateNumber}}, "rating": "boots", "evidence": "{{Evidence}}" }] """,
                 "rating"),
             ("a report whose device is a number",
                 $$""" "reports": [{ {{deviceNumber}}, "rating": "boots", "evidence": "{{Evidence}}" }] """,

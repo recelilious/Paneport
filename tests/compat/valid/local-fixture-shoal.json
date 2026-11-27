@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": {
+    "exeSha256": [
+      "d4e44d1ed7779ec2419c8b08403d5f02cc4bb7a481de96f6be683c651b44efb3"
+    ],
+    "slug": "fixture-shoal"
+  },
+  "name": "Fixture Shoal",
+  "executable": {
+    "path": "Shoal.exe"
+  },
+  "drm": {
+    "steamApi": false,
+    "steamStub": false,
+    "steamAppIdFile": true
+  }
+}

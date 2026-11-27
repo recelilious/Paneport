@@ -15,16 +15,19 @@ internal sealed class SteamKitApps(SteamClient client) : ISteamApps
 
     public async Task<ulong> GetAppAccessTokenAsync(uint appId, CancellationToken cancellationToken)
     {
-        var tokens = await _apps.PICSGetAccessTokens(appId, null).ToTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+        var tokens = await SteamKitJobs.StepAsync(
+            () => SteamKitJobs.WaitAsync(_apps.PICSGetAccessTokens(appId, null).ToTask(), cancellationToken),
+            Connected,
+            cancellationToken).ConfigureAwait(false);
         return tokens.AppTokens.TryGetValue(appId, out var token) ? token : 0;
     }
 
     public async Task<KeyValueNode?> GetAppInfoAsync(uint appId, ulong accessToken, CancellationToken cancellationToken)
     {
-        var results = await _apps.PICSGetProductInfo(new SteamApps.PICSRequest(appId, accessToken), null)
-            .ToTask()
-            .WaitAsync(cancellationToken)
-            .ConfigureAwait(false);
+        var results = await SteamKitJobs.StepAsync(
+            () => SteamKitJobs.WaitAsync(_apps.PICSGetProductInfo(new SteamApps.PICSRequest(appId, accessToken), null).ToTask(), cancellationToken),
+            Connected,
+            cancellationToken).ConfigureAwait(false);
         foreach (var callback in results.Results ?? [])
         {
             if (callback.Apps.TryGetValue(appId, out var info) && info.KeyValues is { } keyValues)
@@ -38,9 +41,14 @@ internal sealed class SteamKitApps(SteamClient client) : ISteamApps
 
     public async Task<DepotKeyResult> GetDepotKeyAsync(uint depotId, uint appId, CancellationToken cancellationToken)
     {
-        var callback = await _apps.GetDepotDecryptionKey(depotId, appId).ToTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+        var callback = await SteamKitJobs.StepAsync(
+            () => SteamKitJobs.WaitAsync(_apps.GetDepotDecryptionKey(depotId, appId).ToTask(), cancellationToken),
+            Connected,
+            cancellationToken).ConfigureAwait(false);
         return new DepotKeyResult((SteamResult)(int)callback.Result, callback.DepotKey);
     }
+
+    private bool Connected() => client.IsConnected;
 
     // A node with children keeps them; any other node keeps its value.
     private static KeyValueNode Copy(KeyValue node) =>

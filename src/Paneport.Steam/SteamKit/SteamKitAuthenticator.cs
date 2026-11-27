@@ -67,7 +67,7 @@ internal sealed class SteamKitAuthenticator(SteamClient client, string deviceNam
 
                 try
                 {
-                    return await begin().WaitAsync(cancellationToken).ConfigureAwait(false);
+                    return await SteamKitJobs.WaitAsync(begin(), cancellationToken).ConfigureAwait(false);
                 }
                 catch (InvalidOperationException exception) when (!connected())
                 {
@@ -122,7 +122,7 @@ internal sealed class SteamKitAuthenticator(SteamClient client, string deviceNam
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(poll);
-        var result = await TranslateAsync(() => poll(cancellationToken).WaitAsync(cancellationToken), connected, cancellationToken)
+        var result = await TranslateAsync(() => SteamKitJobs.WaitAsync(poll(cancellationToken), cancellationToken), connected, cancellationToken)
             .ConfigureAwait(false);
         return new AuthTokens(result.AccountName, new Secret(result.RefreshToken));
     }

@@ -219,6 +219,45 @@ public sealed class SteamKitAdapterTests
         Assert.Equal(SteamResult.NoConnection, ended.Result);
     }
 
+    // A gate step's job that starts after the connection ended fails at once; the step says so in
+    // plain words, not with SteamKit2's type name.
+    [Fact]
+    public async Task AStepWhoseConnectionEndedSaysSo()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var client = ClientThatNeverConnects();
+        var apps = new SteamKitApps(client);
+        using var content = new SteamKitContent(client);
+
+        var key = await Assert.ThrowsAsync<SteamStepException>(() => apps.GetDepotKeyAsync(4_100_000_101, 4_100_000_100, token));
+        var code = await Assert.ThrowsAsync<SteamStepException>(() => content.GetManifestRequestCodeAsync(4_100_000_101, 4_100_000_100, 1, token));
+
+        Assert.Equal(SteamKitJobs.ConnectionEnded, key.Message);
+        Assert.Equal(SteamKitJobs.ConnectionEnded, code.Message);
+    }
+
+    [Fact]
+    public async Task AStepJobThatSteamFailsWhileConnectedSaysSo()
+    {
+        var failed = await Assert.ThrowsAsync<SteamStepException>(() => SteamKitJobs.StepAsync(
+            () => Task.FromException<int>(new AsyncJobFailedException()),
+            () => true,
+            CancellationToken.None));
+
+        Assert.Equal(SteamKitJobs.SteamFailed, failed.Message);
+    }
+
+    // The poll's own refusals, such as an account without a confirmation that SteamKit2 supports,
+    // are no end of the connection.
+    [Fact]
+    public async Task APollsOwnRefusalIsNoEndOfTheConnection()
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(() => SteamKitAuthenticator.WaitAsync(
+            _ => Task.FromException<AuthPollResult>(new InvalidOperationException("There are no allowed confirmations")),
+            () => false,
+            CancellationToken.None));
+    }
+
     // SteamKit2 refuses to begin a sign-in on a client that is not connected; the adapter says why.
     [Fact]
     public async Task ASignInThatBeginsWithoutAConnectionReportsNoConnection()

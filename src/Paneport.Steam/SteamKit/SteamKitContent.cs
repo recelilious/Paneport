@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 recelilious and the Paneport contributors
 // SPDX-License-Identifier: MIT
 
-using System.Buffers;
 using Paneport.Core.Steam;
 using Paneport.Steam.Content;
 using Paneport.Steam.Ports;
@@ -16,23 +15,31 @@ namespace Paneport.Steam.SteamKit;
 // port's own exceptions, whose messages hold no URL, since SteamKit2's carry the server token.
 internal sealed class SteamKitContent : ISteamContent, IDisposable
 {
+    private readonly SteamClient _client;
     private readonly SteamContent _content;
     private readonly Client _cdn;
 
     public SteamKitContent(SteamClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
+        _client = client;
         _content = client.GetRequiredHandler<SteamContent>();
         _cdn = new Client(client);
     }
 
     public Task<ulong> GetManifestRequestCodeAsync(uint depotId, uint appId, ulong manifestId, CancellationToken cancellationToken) =>
-        _content.GetManifestRequestCode(depotId, appId, manifestId, "public").WaitAsync(cancellationToken);
+        SteamKitJobs.StepAsync(
+            () => SteamKitJobs.WaitAsync(_content.GetManifestRequestCode(depotId, appId, manifestId, "public"), cancellationToken),
+            Connected,
+            cancellationToken);
 
     // Content servers and caches that serve every app, the least loaded first.
     public async Task<IReadOnlyList<ContentServer>> GetServersAsync(CancellationToken cancellationToken)
     {
-        var servers = await _content.GetServersForSteamPipe().WaitAsync(cancellationToken).ConfigureAwait(false);
+        var servers = await SteamKitJobs.StepAsync(
+            () => SteamKitJobs.WaitAsync(_content.GetServersForSteamPipe(), cancellationToken),
+            Connected,
+            cancellationToken).ConfigureAwait(false);
         return
         [
             .. servers
@@ -45,7 +52,10 @@ internal sealed class SteamKitContent : ISteamContent, IDisposable
     public async Task<string?> GetServerTokenAsync(uint appId, uint depotId, ContentServer server, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(server);
-        var token = await _content.GetCDNAuthToken(appId, depotId, server.Host).WaitAsync(cancellationToken).ConfigureAwait(false);
+        var token = await SteamKitJobs.StepAsync(
+            () => SteamKitJobs.WaitAsync(_content.GetCDNAuthToken(appId, depotId, server.Host), cancellationToken),
+            Connected,
+            cancellationToken).ConfigureAwait(false);
         return token.Result == EResult.OK && !string.IsNullOrEmpty(token.Token) ? token.Token : null;
     }
 
@@ -61,9 +71,9 @@ internal sealed class SteamKitContent : ISteamContent, IDisposable
         ArgumentNullException.ThrowIfNull(server);
         try
         {
-            var manifest = await _cdn.DownloadManifestAsync(depotId, manifestId, requestCode, (Server)server.Handle, depotKey, null, serverToken)
-                .WaitAsync(cancellationToken)
-                .ConfigureAwait(false);
+            var manifest = await SteamKitJobs.WaitAsync(
+                _cdn.DownloadManifestAsync(depotId, manifestId, requestCode, (Server)server.Handle, depotKey, null, serverToken),
+                cancellationToken).ConfigureAwait(false);
             return Copy(depotId, manifestId, manifest);
         }
         catch (Exception exception) when (DownloadFailure(exception, cancellationToken) is { } failure)
@@ -84,30 +94,28 @@ internal sealed class SteamKitContent : ISteamContent, IDisposable
         ArgumentNullException.ThrowIfNull(chunk);
         ArgumentNullException.ThrowIfNull(server);
         var entry = new DepotManifest.ChunkData(chunk.Id, chunk.Checksum, chunk.Offset, chunk.CompressedLength, chunk.UncompressedLength);
-        var raw = ArrayPool<byte>.Shared.Rent(checked((int)Math.Max(1, chunk.CompressedLength)));
+        // A buffer of this download's own, never one from a pool: SteamKit2's download takes no
+        // token, so after a cancel it may still write into the buffer until its own timeouts, when
+        // a pooled buffer would already be someone else's.
+        var raw = new byte[checked((int)Math.Max(1, chunk.CompressedLength))];
+        int length;
         try
         {
-            int length;
-            try
-            {
-                // The chunk as the server sent it, still encrypted and compressed. A failure here,
-                // SteamKit2's own length checks included, is the server's or the way's.
-                length = await _cdn.DownloadDepotChunkAsync(depotId, entry, (Server)server.Handle, raw, depotKey: null, proxyServer: null, serverToken)
-                    .WaitAsync(cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception exception) when (DownloadFailure(exception, cancellationToken) is { } failure)
-            {
-                throw failure;
-            }
-
-            return ProcessOrReject(() => DepotChunk.Process(entry, raw.AsSpan(0, length), destination, depotKey));
+            // The chunk as the server sent it, still encrypted and compressed. A failure here,
+            // SteamKit2's own length checks included, is the server's or the way's.
+            length = await SteamKitJobs.WaitAsync(
+                _cdn.DownloadDepotChunkAsync(depotId, entry, (Server)server.Handle, raw, depotKey: null, proxyServer: null, serverToken),
+                cancellationToken).ConfigureAwait(false);
         }
-        finally
+        catch (Exception exception) when (DownloadFailure(exception, cancellationToken) is { } failure)
         {
-            ArrayPool<byte>.Shared.Return(raw);
+            throw failure;
         }
+
+        return ProcessOrReject(() => DepotChunk.Process(entry, raw.AsSpan(0, length), destination, depotKey));
     }
+
+    private bool Connected() => _client.IsConnected;
 
     public void Dispose() => _cdn.Dispose();
 

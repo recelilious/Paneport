@@ -41,4 +41,13 @@ int fake_fork_reached_gate(void);
 // Opens the fake's gate, and returns 1.
 int fake_fork_open_gate(void);
 
+// Copies up to capacity of the pool regions that the bridge's get_jit_pool gave the fake at the
+// session's start, and returns their number as the bridge reported it, or -1 when the call
+// failed.
+int fake_fork_pool_copy(pp_wine_jit_region_t *regions, uint32_t capacity);
+
+// 1 when get_jit_pool refuses a NULL count and NULL regions with a capacity, and reports the
+// pool's number of regions to an array that holds none; else 0.
+int fake_fork_pool_argument_checks(void);
+
 #endif // PANEPORT_TESTS_FAKE_WINE_FORK_EXPORTS_H

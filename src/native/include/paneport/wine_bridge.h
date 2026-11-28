@@ -8,7 +8,7 @@
  * Through it the fork logs its diagnostics, has the host create the wineserver's thread,
  * marks its threads and registers its guest address reservations and its guest fault handler
  * with the signal dispatcher (C-0005 section 4), and reports its process events. Later stages
- * append the members they need, such as the JIT code pool (M4.4) and the display (M5.1).
+ * append the members they need: M4.4 appended the JIT code pool, and M5.1 appends the display.
  *
  * This header includes no other Paneport header, so that the Wine fork's build can add
  * src/native/include to its include path and use it alone; the header is never copied into
@@ -30,9 +30,10 @@ extern "C" {
 
 /**
  * The version of the bridge's members. It grows by one whenever a stage appends members. The
- * fork refuses a table whose version is older than the one it was built with.
+ * fork refuses a table whose version is older than the one it was built with. Version 2 (M4.4)
+ * appended get_jit_pool.
  */
-#define PP_WINE_BRIDGE_VERSION 1
+#define PP_WINE_BRIDGE_VERSION 2
 
 /**
  * The results of the bridge's members and of the fork's entry points: 0, or a negative status.
@@ -141,6 +142,21 @@ enum {
     /** A failure. */
     PP_WINE_LOG_ERROR = 3,
 };
+
+/**
+ * One region of the JIT code pool (C-0006 section 3), as get_jit_pool lists it. The same memory
+ * is mapped twice: at exec_address it is readable and executable and never writable, and at
+ * write_address it is readable and writable and never executable. Code is written through
+ * write_address and runs from exec_address.
+ */
+typedef struct pp_wine_jit_region_t {
+    /** The address of the executable view. */
+    uint64_t exec_address;
+    /** The address of the writable alias. */
+    uint64_t write_address;
+    /** The size of the region in bytes, a multiple of the page size. */
+    uint64_t size;
+} pp_wine_jit_region_t;
 
 /**
  * The body of a thread that the host creates for the fork.
@@ -253,6 +269,25 @@ typedef struct pp_wine_bridge_t {
      * @param exit_code The process's exit code, as GetExitCodeProcess reports it.
      */
     void (*process_exited)(uint64_t process, uint32_t exit_code);
+
+    /**
+     * Lists the regions of the JIT code pool, the registry that the JIT provider filled before
+     * the session started (C-0005 section 3, C-0006 section 3). The list no longer changes once
+     * a session can start, so the fork reads it once, at the session's start. A host whose JIT
+     * state is ready without a pool, as a test build can report it, lists no region. Version 2
+     * appended this member.
+     *
+     * Memory: the host writes at most capacity regions into the caller's array.
+     *
+     * @param regions Receives the regions, in the order of the registry. May be NULL when capacity
+     * is 0.
+     * @param capacity How many regions the array holds.
+     * @param count Receives the number of regions of the pool, which is larger than capacity when
+     * the array was too small to hold them all.
+     * @return PP_WINE_OK; PP_WINE_E_INVALID_ARGUMENT for a NULL count, or for NULL regions with a
+     * capacity above 0.
+     */
+    int32_t (*get_jit_pool)(pp_wine_jit_region_t *regions, uint32_t capacity, uint32_t *count);
 } pp_wine_bridge_t;
 
 #ifdef __cplusplus

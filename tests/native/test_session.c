@@ -24,6 +24,8 @@
 #include "event_thread.h"
 #include "fake_wine_fork.h"
 #include "guest_output.h"
+#include "jit/jit_machine.h"
+#include "jit/jit_provider.h"
 #include "paneport/host.h"
 #include "paneport/jit.h"
 #include "paneport/session.h"
@@ -1011,6 +1013,65 @@ static void start_accepts_the_providers_ready_state(void) {
     stop_host();
 }
 
+// The fork receives exactly the registry's regions through the bridge's get_jit_pool (C-0005
+// section 3, C-0006 section 3): the same number, and for each the addresses of both views and
+// the size, in the registry's order.
+static void fork_receives_the_pools_regions(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    PP_CHECK_EQUAL(pp_test_set_memory_stub(UINT64_C(8192) * 1024U * 1024U, 0U), PP_OK);
+    PP_CHECK_EQUAL(pp_jit_set_enabler_opened(1U), PP_OK);
+    wait_for_jit_state(PP_JIT_STATE_DEBUGGER_ATTACHED);
+    PP_CHECK_EQUAL(pp_jit_request_pool(PP_JIT_POOL_DEFAULT_MIB), PP_OK);
+    wait_for_jit_state(PP_JIT_STATE_READY);
+    const pp_session_config_t config = session_config(&fixture, NULL);
+    PP_CHECK_EQUAL(pp_session_start(&config), PP_OK);
+
+    pp_jit_pool_region_t registry[PP_JIT_MAX_REGIONS];
+    uint32_t registry_count = 0U;
+    pp_jit_pool_copy(registry, PP_JIT_MAX_REGIONS, &registry_count);
+    PP_CHECK_EQUAL(registry_count, 4U);
+
+    void *module = dlopen(fixture.library, RTLD_NOW | RTLD_NOLOAD);
+    PP_CHECK(module != NULL);
+    void *symbol = dlsym(module, "fake_fork_pool_copy");
+    PP_CHECK(symbol != NULL);
+    int (*copy)(pp_wine_jit_region_t *, uint32_t) = NULL;
+    memcpy((void *)&copy, (const void *)&symbol, sizeof copy);
+    pp_wine_jit_region_t received[FAKE_FORK_POOL_CAPACITY];
+    memset(received, 0, sizeof received);
+    PP_CHECK_EQUAL(copy(received, FAKE_FORK_POOL_CAPACITY), (int)registry_count);
+    PP_CHECK_EQUAL(dlclose(module), 0);
+    for (uint32_t index = 0U; index < registry_count; index++) {
+        PP_CHECK(received[index].exec_address == registry[index].exec_address);
+        PP_CHECK(received[index].write_address == registry[index].write_address);
+        PP_CHECK(received[index].size == registry[index].size);
+        PP_CHECK(received[index].exec_address != received[index].write_address);
+    }
+    PP_CHECK_EQUAL(call_fake(&fixture, "fake_fork_pool_argument_checks"), 1);
+    stop_host();
+}
+
+// A host whose JIT state is ready only by the answer of the test builds has no pool, and the fork
+// receives no region.
+static void fork_receives_no_region_without_a_pool(void) {
+    fixture_t fixture;
+    make_fixture(&fixture);
+    start_host();
+    start_session(&fixture, NULL);
+    void *module = dlopen(fixture.library, RTLD_NOW | RTLD_NOLOAD);
+    PP_CHECK(module != NULL);
+    void *symbol = dlsym(module, "fake_fork_pool_copy");
+    PP_CHECK(symbol != NULL);
+    int (*copy)(pp_wine_jit_region_t *, uint32_t) = NULL;
+    memcpy((void *)&copy, (const void *)&symbol, sizeof copy);
+    pp_wine_jit_region_t received[FAKE_FORK_POOL_CAPACITY];
+    PP_CHECK_EQUAL(copy(received, FAKE_FORK_POOL_CAPACITY), 0);
+    PP_CHECK_EQUAL(dlclose(module), 0);
+    stop_host();
+}
+
 // pp_shutdown refuses while a session runs, which it could not stop afterwards, and leaves the
 // host and the session as they were; once the session stopped, the host stops.
 static void shutdown_refused_while_a_session_runs(void) {
@@ -1179,6 +1240,8 @@ int main(int argc, char **argv) {
         {"unfinished_start_fails_the_launch", unfinished_start_fails_the_launch},
         {"late_start_check_ends_the_process", late_start_check_ends_the_process},
         {"start_accepts_the_providers_ready_state", start_accepts_the_providers_ready_state},
+        {"fork_receives_the_pools_regions", fork_receives_the_pools_regions},
+        {"fork_receives_no_region_without_a_pool", fork_receives_no_region_without_a_pool},
         {"shutdown_refused_while_a_session_runs", shutdown_refused_while_a_session_runs},
         {"shutdown_collects_a_session_that_ended", shutdown_collects_a_session_that_ended},
         {"load_failure_counts_as_run", load_failure_counts_as_run},

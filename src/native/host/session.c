@@ -24,6 +24,8 @@
 #include "event_thread.h"
 #include "guest_output.h"
 #include "host_state.h"
+#include "jit/jit_machine.h"
+#include "jit/jit_provider.h"
 #include "jit_state.h"
 #include "log.h"
 #include "paneport/host.h"
@@ -445,6 +447,29 @@ static void output_ended(uint64_t process) {
     (void)pthread_mutex_unlock(&s_session.mutex);
 }
 
+// Lists the pool's regions for the fork, without the dispatcher's handles, which stay with the
+// host. The registry is complete, and no longer changes, only in the provider's ready state; a
+// test build that reports ready without a pool lists nothing, and the fork then maps its
+// translator's code as it does without a pool.
+static int32_t bridge_get_jit_pool(pp_wine_jit_region_t *regions, uint32_t capacity,
+                                   uint32_t *count) {
+    if (count == NULL || (regions == NULL && capacity > 0U)) {
+        return PP_WINE_E_INVALID_ARGUMENT;
+    }
+    pp_jit_pool_region_t pool[PP_JIT_MAX_REGIONS];
+    uint32_t pool_count = 0U;
+    if (pp_jit_is_ready()) {
+        pp_jit_pool_copy(pool, PP_JIT_MAX_REGIONS, &pool_count);
+    }
+    for (uint32_t index = 0U; index < pool_count && index < capacity; index++) {
+        regions[index].exec_address = pool[index].exec_address;
+        regions[index].write_address = pool[index].write_address;
+        regions[index].size = pool[index].size;
+    }
+    *count = pool_count;
+    return PP_WINE_OK;
+}
+
 // The table that the fork receives; it stays valid until the process ends.
 static const pp_wine_bridge_t k_bridge = {
     .struct_size = (uint32_t)sizeof(pp_wine_bridge_t),
@@ -458,6 +483,7 @@ static const pp_wine_bridge_t k_bridge = {
     .set_guest_fault_handler = bridge_set_guest_fault_handler,
     .process_started = bridge_process_started,
     .process_exited = bridge_process_exited,
+    .get_jit_pool = bridge_get_jit_pool,
 };
 
 // --- Checks of the arguments -------------------------------------------------------------------

@@ -69,7 +69,7 @@ say "$(bison --version | head -n 1); $(flex --version)"
 # side's CROSSCFLAGS (C-0005 section 3). The header's SHA-256 is written here, so that the
 # runtime job's cache key, which covers this script, follows the header.
 bridge_header="$repo/src/native/include/paneport/wine_bridge.h"
-bridge_sha256=a596fa9b01753dc863e6a847f411957c2a3fba683506b1b431e5416bf8700c52
+bridge_sha256=dc16b791fe090d8e568b520590c7f47c01334c34f62fc1523cba8d07d0842e4a
 [ "$(shasum -a 256 "$bridge_header" | cut -d ' ' -f 1)" = "$bridge_sha256" ] \
     || fail "src/native/include/paneport/wine_bridge.h has changed: write its new SHA-256 into \
 bridge_sha256 in this script, so that the cache of the Wine build follows it."

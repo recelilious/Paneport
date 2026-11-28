@@ -55,6 +55,8 @@
 // returned during the stop of the mode late_thread, 1 until then. fake_fork_reached_gate waits up
 // to a minute until the fake waits at its gate, and fake_fork_open_gate opens the gate. Its
 // terminate refuses a process that is not running.
+// fake_fork_pool_copy gives the pool regions that the bridge listed at the session's start, and
+// fake_fork_pool_argument_checks reports whether get_jit_pool checks its arguments.
 
 #include <pthread.h>
 #include <signal.h>
@@ -77,6 +79,11 @@ static struct {
     pthread_mutex_t mutex;
     pthread_cond_t changed;
     const pp_wine_bridge_t *bridge;
+    // What the bridge's get_jit_pool returned at the session's start: its status, the regions and
+    // their number as the bridge reported it.
+    int32_t pool_status;
+    pp_wine_jit_region_t pool[FAKE_FORK_POOL_CAPACITY];
+    uint32_t pool_count;
     char mode[32];
     bool stop_server;
     bool process_running;
@@ -329,6 +336,10 @@ FAKE_EXPORT int32_t __wine_paneport_session_start(const pp_wine_bridge_t *bridge
     }
     s_fake.bridge = bridge;
     read_mode(session->environment);
+    // The fork reads the pool once, at the session's start; the fake keeps what it got for the
+    // test.
+    s_fake.pool_status =
+        bridge->get_jit_pool(s_fake.pool, FAKE_FORK_POOL_CAPACITY, &s_fake.pool_count);
     if (mode_is("refuse")) {
         bridge->log(PP_WINE_LOG_ERROR, "fake runtime: refusing the session");
         return PP_WINE_E_SYSTEM;
@@ -534,11 +545,39 @@ FAKE_EXPORT int fake_fork_bridge_ok(void) {
         (const void *)bridge->set_guest_fault_handler,
         (const void *)bridge->process_started,
         (const void *)bridge->process_exited,
+        (const void *)bridge->get_jit_pool,
     };
     for (size_t index = 0U; index < sizeof members / sizeof members[0]; index++) {
         if (members[index] == NULL) {
             return 0;
         }
+    }
+    return 1;
+}
+
+FAKE_EXPORT int fake_fork_pool_copy(pp_wine_jit_region_t *regions, uint32_t capacity) {
+    if (s_fake.pool_status != PP_WINE_OK) {
+        return -1;
+    }
+    for (uint32_t index = 0U;
+         index < s_fake.pool_count && index < capacity && index < FAKE_FORK_POOL_CAPACITY;
+         index++) {
+        regions[index] = s_fake.pool[index];
+    }
+    return (int)s_fake.pool_count;
+}
+
+FAKE_EXPORT int fake_fork_pool_argument_checks(void) {
+    const pp_wine_bridge_t *bridge = s_fake.bridge;
+    pp_wine_jit_region_t one;
+    uint32_t count = UINT32_MAX;
+    if (bridge == NULL || bridge->get_jit_pool(&one, 1U, NULL) != PP_WINE_E_INVALID_ARGUMENT ||
+        bridge->get_jit_pool(NULL, 1U, &count) != PP_WINE_E_INVALID_ARGUMENT) {
+        return 0;
+    }
+    // An array that is too small still learns how many regions the pool has.
+    if (bridge->get_jit_pool(NULL, 0U, &count) != PP_WINE_OK || count != s_fake.pool_count) {
+        return 0;
     }
     return 1;
 }

@@ -7,6 +7,10 @@
 #ifndef PANEPORT_TESTS_FAKE_WINE_FORK_H
 #define PANEPORT_TESTS_FAKE_WINE_FORK_H
 
+// How many pool regions the fake keeps of what the bridge's get_jit_pool lists; a pool has at
+// most seven.
+#define FAKE_FORK_POOL_CAPACITY 16U
+
 // The exit code of the process in the mode normal.
 #define FAKE_FORK_EXIT_CODE 3U
 

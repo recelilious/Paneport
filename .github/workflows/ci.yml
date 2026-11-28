@@ -243,7 +243,8 @@ jobs:
   # Plan decision D14: it runs for every pull request and every push to main, and a merge
   # waits for it; a push to another branch skips it, because the pull request's run covers it.
   runtime:
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    # SCRATCH (wip/m4-4-pool, not for merging): the job also runs for pushes to the scratch branch.
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/wip/m4-4-pool'))
     # eng/toolchain.json pins this image as macos-runner-image, and tools/CheckToolchain.cs
     # fails when the two differ.
     runs-on: xcode-27

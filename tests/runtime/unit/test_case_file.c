@@ -44,8 +44,33 @@ static void valid_case(void) {
     PP_CHECK_EQUAL(result.variable_count, 0);
     PP_CHECK_EQUAL(result.runs, 1);
     PP_CHECK_EQUAL(result.kind, PP_CASE_PROGRAM);
+    PP_CHECK(!pp_case_needs_pool(&result));
     pp_case_free(&result);
     PP_CHECK(result.program == NULL);
+
+    // The members of pool mode: the pool's size and the pool check, each of which makes the case
+    // one of pool mode only.
+    PP_CHECK(parse("{\"program\": \"pool.exe\", \"pool_mib\": 256, \"pool_check\": \"evict\", "
+                   "\"timeout_seconds\": 60, \"exit_code\": 0, \"expected\": \"pool_evict.txt\"}",
+                   &result, error, sizeof error));
+    PP_CHECK_EQUAL(result.pool_mib, 256);
+    PP_CHECK_EQUAL(result.pool_check, PP_POOL_CHECK_EVICT);
+    PP_CHECK(pp_case_needs_pool(&result));
+    pp_case_free(&result);
+    PP_CHECK(parse("{\"session\": \"start_stop\", \"pool_mib\": 896, \"timeout_seconds\": 60}",
+                   &result, error, sizeof error));
+    PP_CHECK(pp_case_needs_pool(&result));
+    pp_case_free(&result);
+    PP_CHECK(!parse("{\"program\": \"pool.exe\", \"pool_mib\": 128, \"timeout_seconds\": 60, "
+                    "\"exit_code\": 0, \"expected\": \"pool_evict.txt\"}",
+                    &result, error, sizeof error));
+    PP_CHECK(
+        !parse("{\"program\": \"pool.exe\", \"pool_check\": \"other\", \"timeout_seconds\": 60, "
+               "\"exit_code\": 0, \"expected\": \"pool_evict.txt\"}",
+               &result, error, sizeof error));
+    PP_CHECK(
+        !parse("{\"session\": \"start_stop\", \"pool_check\": \"evict\", \"timeout_seconds\": 60}",
+               &result, error, sizeof error));
 }
 
 // A session case names its kind and runs no program, so it has no program, arguments, exit code

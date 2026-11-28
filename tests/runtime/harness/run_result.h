@@ -16,6 +16,10 @@
 //   failure <text>   something that the child found wrong with the run, for the first
 //                    PP_RESULT_ITEMS; failures_cut says that more were found
 //   failures_cut 1
+//   pool <text>      in pool mode, the counters of the JIT code pool that the runtime logged when
+//                    the program ended, as names and decimal values in turn: pool_fex_bytes,
+//                    pool_pe_bytes, exec_pages_outside_pool and the others of
+//                    docs/design/runtime-ios.md section 4
 //
 // A text holds no control character. trap_count is always there, once, and the trap lines come
 // after it, no more of them than it counts: the parent names the refused calls by the count, so
@@ -45,6 +49,8 @@ typedef struct pp_run_result_t {
     char failures[PP_RESULT_ITEMS][PP_RESULT_TEXT_SIZE];
     size_t failure_count;
     bool failures_cut;
+    bool has_pool;
+    char pool[PP_RESULT_TEXT_SIZE];
 } pp_run_result_t;
 
 // Clears a result: no exit code, no trap and no failure.
@@ -58,6 +64,15 @@ void pp_run_result_add_failure(pp_run_result_t *result, const char *format, ...)
 // Adds the report of a refused call, as pp_run_result_add_failure adds a failure; past
 // PP_RESULT_ITEMS it adds nothing, since trap_count counts every call.
 void pp_run_result_add_trap(pp_run_result_t *result, const char *report);
+
+// Sets the counters of the JIT code pool, cut to fit, with every control character shown as a
+// dot.
+void pp_run_result_set_pool(pp_run_result_t *result, const char *counters);
+
+// Reads the counter called name from a text of names and decimal values in turn, each after one
+// space, such as "regions 4 pool_fex_bytes 65536". Returns false when the text has no such name
+// or its value is not a decimal number.
+bool pp_pool_counter(const char *counters, const char *name, uint64_t *value);
 
 // Writes the result to path, through path with ".new" added and a rename. Returns whether it did.
 bool pp_run_result_write(const pp_run_result_t *result, const char *path);

@@ -19,6 +19,40 @@
 
 void pp_run_result_init(pp_run_result_t *result) { memset(result, 0, sizeof *result); }
 
+bool pp_pool_counter(const char *counters, const char *name, uint64_t *value) {
+    const size_t length = strlen(name);
+    for (const char *next = counters; *next != '\0';) {
+        while (*next == ' ') {
+            next++;
+        }
+        const char *end = next;
+        while (*end != '\0' && *end != ' ') {
+            end++;
+        }
+        const bool named = (size_t)(end - next) == length && strncmp(next, name, length) == 0;
+        // The value follows its name after one space.
+        next = *end == ' ' ? end + 1 : end;
+        end = next;
+        uint64_t number = 0U;
+        while (*end >= '0' && *end <= '9') {
+            number = number * 10U + (uint64_t)(*end - '0');
+            end++;
+        }
+        if (named) {
+            if (end == next || (*end != '\0' && *end != ' ')) {
+                return false;
+            }
+            *value = number;
+            return true;
+        }
+        while (*end != '\0' && *end != ' ') {
+            end++;
+        }
+        next = end;
+    }
+    return false;
+}
+
 // Replaces the control characters of a text with dots, so that it stays on one line.
 static void flatten(char *text) {
     for (char *next = text; *next != '\0'; next++) {
@@ -53,6 +87,12 @@ void pp_run_result_add_trap(pp_run_result_t *result, const char *report) {
     result->trap_lines++;
 }
 
+void pp_run_result_set_pool(pp_run_result_t *result, const char *counters) {
+    (void)snprintf(result->pool, sizeof result->pool, "%s", counters);
+    flatten(result->pool);
+    result->has_pool = true;
+}
+
 bool pp_run_result_write(const pp_run_result_t *result, const char *path) {
     char temporary[PATH_MAX];
     const int length = snprintf(temporary, sizeof temporary, "%s.new", path);
@@ -75,6 +115,9 @@ bool pp_run_result_write(const pp_run_result_t *result, const char *path) {
     }
     if (result->failures_cut) {
         (void)fputs("failures_cut 1\n", file);
+    }
+    if (result->has_pool) {
+        (void)fprintf(file, "pool %s\n", result->pool);
     }
     bool written = ferror(file) == 0;
     if (fclose(file) != 0) {
@@ -142,6 +185,10 @@ static bool read_item(char *line, pp_run_result_t *result, bool *trap_count_seen
     }
     if (strcmp(line, "failures_cut") == 0 && strcmp(value, "1") == 0) {
         result->failures_cut = true;
+        return true;
+    }
+    if (strcmp(line, "pool") == 0 && !result->has_pool) {
+        pp_run_result_set_pool(result, value);
         return true;
     }
     return false;

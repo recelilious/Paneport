@@ -65,6 +65,9 @@ typedef struct options_t {
     const char *template_folder;
     const char *run_single;
     const char *runtime;
+    // "pool" when the child gets its code memory from the JIT code pool; the parent passes it
+    // to the child in pool mode.
+    const char *jit;
     // The harness's own path, as it was started, which single mode starts its children with.
     const char *self;
 } options_t;
@@ -72,7 +75,7 @@ typedef struct options_t {
 static int usage(void) {
     (void)fprintf(stderr, "usage: paneport_harness --case <file> --programs <folder> --expected "
                           "<folder> --prefix <folder> --loader <file> --logs <folder> "
-                          "[--mode single|multi] [--template <folder>]\n");
+                          "[--mode single|pool|multi] [--template <folder>]\n");
     return 2;
 }
 
@@ -107,6 +110,9 @@ static const char **option_slot(options_t *options, const char *name) {
     }
     if (strcmp(name, "--runtime") == 0) {
         return &options->runtime;
+    }
+    if (strcmp(name, "--jit") == 0) {
+        return &options->jit;
     }
     return NULL;
 }
@@ -490,12 +496,22 @@ static int run_multi(const options_t *options, const char *name, const pp_case_t
     return status;
 }
 
-// A session case in multi mode, which has no session API: its line says so, and so does its log.
+// Whether the mode is pool mode: single mode with the JIT code pool.
+static bool is_pool_mode(const options_t *options) { return strcmp(options->mode, "pool") == 0; }
+
+// A session case in multi mode, which has no session API, or a case of pool mode in another
+// mode: its line says so, and so does its log.
 static int skip(const options_t *options, const char *name, const pp_case_t *test) {
     char summary[256];
-    (void)snprintf(summary, sizeof summary,
-                   "SKIP %s: %s is a session case, which runs in single mode only\n", name,
-                   pp_case_kind_name(test->kind));
+    if (pp_case_needs_pool(test) && !is_pool_mode(options)) {
+        (void)snprintf(
+            summary, sizeof summary,
+            "SKIP %s: the case has pool_mib or pool_check, so it runs in pool mode only\n", name);
+    } else {
+        (void)snprintf(summary, sizeof summary,
+                       "SKIP %s: %s is a session case, which runs in single mode only\n", name,
+                       pp_case_kind_name(test->kind));
+    }
     (void)fputs(summary, stdout);
     pp_child_result_t nothing;
     memset(&nothing, 0, sizeof nothing);
@@ -590,11 +606,25 @@ static bool run_single_once(const options_t *options, const single_t *single, co
         (void)snprintf(error, PP_HARNESS_ERROR_SIZE, "cannot remove the last run's result");
         return false;
     }
+    // In pool mode the child takes its code memory from the JIT code pool; "--jit pool" says so.
     char *arguments[] = {
-        (char *)single->self,    "--run-single", (char *)options->case_path, "--prefix",
-        (char *)options->prefix, "--runtime",    (char *)single->runtime,    "--logs",
-        (char *)single->logs,    NULL,
+        (char *)single->self,
+        "--run-single",
+        (char *)options->case_path,
+        "--prefix",
+        (char *)options->prefix,
+        "--runtime",
+        (char *)single->runtime,
+        "--logs",
+        (char *)single->logs,
+        NULL,
+        NULL,
+        NULL,
     };
+    if (is_pool_mode(options)) {
+        arguments[9] = "--jit";
+        arguments[10] = "pool";
+    }
     if (!pp_child_run(arguments, environment, directory, test->timeout_seconds,
                       PP_HARNESS_OUTPUT_LIMIT, &run->child)) {
         (void)snprintf(error, PP_HARNESS_ERROR_SIZE, "%s", run->child.message);
@@ -656,7 +686,8 @@ static int run_case(const options_t *options, const char *name, bool single) {
         (void)printf("ERROR %s: %s: %s\n", name, options->case_path, error);
         return 2;
     }
-    if (!single && test.kind != PP_CASE_PROGRAM) {
+    if ((!single && test.kind != PP_CASE_PROGRAM) ||
+        (pp_case_needs_pool(&test) && !is_pool_mode(options))) {
         const int skipped = skip(options, name, &test);
         pp_case_free(&test);
         return skipped;
@@ -692,11 +723,15 @@ int main(int argc, char **argv) {
         if (options.prefix == NULL || options.runtime == NULL || options.logs == NULL) {
             return usage();
         }
+        if (options.jit != NULL && strcmp(options.jit, "pool") != 0) {
+            return usage();
+        }
         const pp_single_child_t child = {
             .case_path = options.run_single,
             .prefix = options.prefix,
             .runtime = options.runtime,
             .logs = options.logs,
+            .pool = options.jit != NULL,
         };
         return pp_single_child_run(&child);
     }
@@ -706,12 +741,12 @@ int main(int argc, char **argv) {
     char name[256];
     case_name(options.case_path, name, sizeof name);
     int status = 2;
-    if (strcmp(options.mode, "single") == 0) {
+    if (strcmp(options.mode, "single") == 0 || is_pool_mode(&options)) {
         status = run_case(&options, name, true);
     } else if (strcmp(options.mode, "multi") == 0) {
         status = run_case(&options, name, false);
     } else {
-        (void)printf("ERROR %s: there is no mode %s; the modes are single and multi\n", name,
+        (void)printf("ERROR %s: there is no mode %s; the modes are single, pool and multi\n", name,
                      options.mode);
     }
     (void)fflush(stdout);

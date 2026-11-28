@@ -21,6 +21,12 @@
 //                      "jit_not_ready" or "dispatcher_check" (pp_case_kind_t). A session case has
 //                      timeout_seconds and may have environment and runs, but has no program,
 //                      arguments, exit_code or expected
+//   "pool_mib"         optional: the size of the JIT code pool that the run requests in pool mode,
+//                      from 256 to 896, the default pool of 512 MiB when it is left out
+//   "pool_check"       optional, for a program: what the run also checks of the pool's counters
+//                      in pool mode, "refusal" or "evict" (pp_pool_check_t)
+//
+// A case with pool_mib or pool_check runs in pool mode only; the other modes skip it.
 //
 // Any other member, a missing one or a value of another type is an error, so that a typo fails
 // the case instead of being ignored. Strings are ASCII; the reader refuses the JSON escape of a
@@ -37,6 +43,9 @@
 #define PP_CASE_MAX_RUNS 100
 #define PP_CASE_MAX_SIZE ((size_t)64U * 1024U)
 #define PP_CASE_MAX_ENVIRONMENT 4096U
+// The sizes of a JIT code pool, PP_JIT_POOL_MIN_MIB and PP_JIT_POOL_MAX_MIB of paneport/jit.h.
+#define PP_CASE_MIN_POOL_MIB 256
+#define PP_CASE_MAX_POOL_MIB 896
 
 // What a case runs (docs/design/runtime-macos-harness.md section 5.3).
 typedef enum pp_case_kind_t {
@@ -56,6 +65,18 @@ typedef enum pp_case_kind_t {
     PP_CASE_DISPATCHER_CHECK,
 } pp_case_kind_t;
 
+// What a program case of pool mode checks besides its output (docs/design/runtime-ios.md
+// section 4). Every program case of pool mode checks that the runtime logged the pool's counters
+// and that they count no executable page outside the pool.
+typedef enum pp_pool_check_t {
+    PP_POOL_CHECK_NONE = 0,
+    // "refusal": the pool refused at least one request.
+    PP_POOL_CHECK_REFUSAL,
+    // "evict": the pool handed out at least four ranges and got at least one back, as a
+    // translator does whose code buffer filled more than once.
+    PP_POOL_CHECK_EVICT,
+} pp_pool_check_t;
+
 // One case. The strings are owned by the case and freed by pp_case_free. A session case has no
 // program and no expected output, so both are NULL.
 typedef struct pp_case_t {
@@ -70,7 +91,13 @@ typedef struct pp_case_t {
     unsigned timeout_seconds;
     int exit_code;
     char *expected;
+    // The pool's size in MiB, or 0 for the default; and the pool check.
+    unsigned pool_mib;
+    pp_pool_check_t pool_check;
 } pp_case_t;
+
+// Whether a case runs in pool mode only: it has pool_mib or pool_check.
+bool pp_case_needs_pool(const pp_case_t *test);
 
 // Parses the text of a case file, length bytes long. On success it fills result, which the
 // caller frees with pp_case_free; on failure it writes a message with the line number into

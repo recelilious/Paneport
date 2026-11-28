@@ -1,0 +1,3 @@
+= pool: an x86-64 build
+= pool: executable requests: 1 GiB of ARM64EC code refused, 64 KiB served, and PAGE_EXECUTE_READWRITE memory holds and runs x86-64 code: pass
+= result: pass

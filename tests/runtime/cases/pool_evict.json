@@ -1,0 +1,1 @@
+{"program": "pool.exe", "arguments": ["generated"], "environment": {"FEX_MAXCODEBUFFERSIZE": "1024"}, "pool_mib": 256, "pool_check": "evict", "timeout_seconds": 600, "exit_code": 0, "expected": "pool_evict.txt"}

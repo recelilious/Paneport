@@ -6,11 +6,16 @@
 # builds what is missing, prepares a template prefix, then runs each case in a fresh harness
 # process, writes a summary, and exits non-zero on any failure.
 #
-#   eng/mac/run-harness.sh [--mode single|multi] [--planted] [--no-build] [<case> ...]
+#   eng/mac/run-harness.sh [--mode single|pool|multi] [--planted] [--no-build] [<case> ...]
 #
 #   --mode single  the default: the wineserver as a thread and the program as a group of threads
 #                  in one process, the harness's child, started through the native host's session
 #                  API, with a fresh copy of the template prefix for each run (M4.3)
+#   --mode pool    single mode with the JIT code pool (M4.4): the harness's child requests the
+#                  pool from the native host's simulated broker, the Wine fork serves the
+#                  translator's code from it, and nothing else is executable, as on iOS. It
+#                  also runs the cases that have pool_mib or pool_check, which the other modes
+#                  skip, and prints the pool's counters of each program
 #   --mode multi   Wine as upstream runs it, with the wineserver and every Windows process as
 #                  processes of their own and a copy of the template prefix for each case, for
 #                  comparisons; it skips the session cases
@@ -55,10 +60,15 @@ while [ $# -gt 0 ]; do
     esac
 done
 case "$mode" in
-    single | multi) ;;
-    pool) fail "pool mode comes with M4.4." ;;
+    single | pool | multi) ;;
     *) fail "unknown mode $mode." ;;
 esac
+# Single mode and pool mode run the session in the harness's child; pool mode differs only in
+# where the child's code memory comes from.
+in_process=false
+if [ "$mode" = single ] || [ "$mode" = pool ]; then
+    in_process=true
+fi
 
 build_dir=${PANEPORT_BUILD_DIR:-$repo/build}
 case $build_dir in
@@ -187,7 +197,7 @@ WINEPREFIX="$template" "$loader" reg add 'HKLM\Software\Microsoft\Wow64\amd64' /
 WINEPREFIX="$template" "$loader" reg add 'HKCU\Software\Wine\Drivers' /v Graphics /t REG_SZ \
     /d null /f >> "$logs/prefix.log" 2>&1 || fail "reg add for the display driver failed."
 WINEPREFIX="$template" with_timeout 120 "$server" -w >> "$logs/prefix.log" 2>&1 || true
-if [ "$mode" = single ]; then
+if [ "$in_process" = true ]; then
     # Single mode runs no wineboot and no wineserver of its own. The fork publishes the drive
     # letters itself, C: from dosdevices/c:, and no drive maps the host's root (S4.3.7); a
     # .update-timestamp that says disable keeps any later wineboot from updating the prefix.
@@ -231,20 +241,22 @@ summary="$logs/summary.md"
 } > "$summary"
 failed=0
 passed=0
+pool_rows="$logs/pool-rows.md"
+: > "$pool_rows"
 for name in "${names[@]}"; do
     case_file="$case_folder/$name.json"
     [ -f "$case_file" ] || fail "there is no case $name in $case_folder."
     prefix="$runtime/prefixes/$name"
     rm -rf "$prefix"
     mkdir -p "$runtime/prefixes"
-    if [ "$mode" = single ]; then
+    if [ "$in_process" = true ]; then
         # The harness makes the prefix a fresh copy of the template before each run, and its
         # child runs the session in a process of its own, with no wineserver beside it. The
         # child's process group, which Ctrl-C does not reach, ends here when the run is
         # interrupted.
         trap 'end_case_child; exit 130' INT
         trap 'end_case_child; exit 143' TERM
-        line=$("$harness" --mode single --case "$case_file" --programs "$programs" \
+        line=$("$harness" --mode "$mode" --case "$case_file" --programs "$programs" \
             --expected "$expected" --template "$template" --prefix "$prefix" \
             --loader "$loader" --logs "$logs") || true
         trap - INT TERM
@@ -267,6 +279,14 @@ for name in "${names[@]}"; do
     fi
     rm -rf "$prefix"
     printf '%s\n' "$line"
+    # In pool mode the result of a program's last run holds the counters of the JIT code pool.
+    if [ "$mode" = pool ] && [ -f "$logs/$name/run-result.txt" ]; then
+        pool_counters=$(sed -n 's/^pool //p' "$logs/$name/run-result.txt")
+        if [ -n "$pool_counters" ]; then
+            printf '    pool: %s\n' "$pool_counters"
+            printf '| %s | %s |\n' "$name" "$pool_counters" >> "$pool_rows"
+        fi
+    fi
     # A session case has no session to run in multi mode, so it neither passes nor fails there.
     case "$line" in
         "PASS "*) passed=$((passed + 1)) ;;
@@ -281,6 +301,14 @@ for name in "${names[@]}"; do
     printf '| %s | %s |\n' "$name" "$(printf '%s' "$line" | sed 's/|/\\|/g')" >> "$summary"
 done
 printf '\n%s passed, %s failed.\n' "$passed" "$failed" >> "$summary"
+if [ -s "$pool_rows" ]; then
+    {
+        printf '\n### The JIT code pool\n\n'
+        printf '| Case | Counters when the program ended |\n|---|---|\n'
+        cat "$pool_rows"
+    } >> "$summary"
+fi
+rm -f "$pool_rows"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     cat "$summary" >> "$GITHUB_STEP_SUMMARY"
 fi

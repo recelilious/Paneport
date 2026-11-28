@@ -55,6 +55,7 @@ static void round_trip(void) {
     pp_run_result_add_trap(&written, "kill(SIGUSR1) from ntdll.so+0x1c0");
     pp_run_result_add_failure(&written, "pp_session_stop returned %s, not %s", "PP_E_SYSTEM",
                               "PP_OK");
+    pp_run_result_set_pool(&written, "regions 4 pool_fex_bytes 16842752 exec_pages_outside_pool 0");
     PP_CHECK(pp_run_result_write(&written, path));
     // Nothing is left beside the result.
     char temporary[PATH_MAX];
@@ -74,6 +75,17 @@ static void round_trip(void) {
     PP_CHECK_EQUAL(read.failure_count, 1);
     PP_CHECK_TEXT(read.failures[0], "pp_session_stop returned PP_E_SYSTEM, not PP_OK");
     PP_CHECK(!read.failures_cut);
+    // The counters of the JIT code pool, which pool mode adds, and their reader.
+    PP_CHECK(read.has_pool);
+    PP_CHECK_TEXT(read.pool, "regions 4 pool_fex_bytes 16842752 exec_pages_outside_pool 0");
+    uint64_t counter = 1U;
+    PP_CHECK(pp_pool_counter(read.pool, "pool_fex_bytes", &counter));
+    PP_CHECK(counter == 16842752U);
+    PP_CHECK(pp_pool_counter(read.pool, "exec_pages_outside_pool", &counter));
+    PP_CHECK(counter == 0U);
+    PP_CHECK(!pp_pool_counter(read.pool, "regions 4", &counter));
+    PP_CHECK(!pp_pool_counter(read.pool, "fex_bytes", &counter));
+    PP_CHECK(!pp_pool_counter("regions four", "regions", &counter));
     remove_path(folder, path);
 }
 

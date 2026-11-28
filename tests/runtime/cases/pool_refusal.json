@@ -1,0 +1,1 @@
+{"program": "pool.exe", "arguments": ["requests"], "pool_check": "refusal", "timeout_seconds": 300, "exit_code": 0, "expected": "pool_refusal.txt"}

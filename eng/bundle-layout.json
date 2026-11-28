@@ -47,6 +47,7 @@
       "console.exe",
       "cpu_features.exe",
       "file_io.exe",
+      "pool.exe",
       "seh.exe",
       "shared_data.exe",
       "threads.exe"

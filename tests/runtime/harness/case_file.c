@@ -294,6 +294,8 @@ typedef struct seen_t {
     bool exit_code;
     bool expected;
     bool session;
+    bool pool_mib;
+    bool pool_check;
 } seen_t;
 
 // The kinds of session case, by the value of their "session" member.
@@ -308,6 +310,10 @@ static const struct {
 };
 
 #define PP_SESSION_KIND_COUNT (sizeof k_session_kinds / sizeof k_session_kinds[0])
+
+bool pp_case_needs_pool(const pp_case_t *test) {
+    return test->pool_mib != 0U || test->pool_check != PP_POOL_CHECK_NONE;
+}
 
 const char *pp_case_kind_name(pp_case_kind_t kind) {
     for (size_t index = 0; index < PP_SESSION_KIND_COUNT; index++) {
@@ -352,6 +358,42 @@ static void read_bounded(reader_t *reader, long low, long high, long *value, con
     if (read_integer(reader, value) && (*value < low || *value > high)) {
         fail_at(reader, message);
     }
+}
+
+// Reads the value of "pool_check" into the case.
+static void read_pool_check(reader_t *reader, pp_case_t *result) {
+    char *name = read_string(reader);
+    if (name == NULL) {
+        return;
+    }
+    if (strcmp(name, "refusal") == 0) {
+        result->pool_check = PP_POOL_CHECK_REFUSAL;
+    } else if (strcmp(name, "evict") == 0) {
+        result->pool_check = PP_POOL_CHECK_EVICT;
+    } else {
+        fail_at(reader, "\"pool_check\" must be refusal or evict");
+    }
+    free(name);
+}
+
+// Reads a member of pool mode, when name is one: pool_mib or pool_check. Returns whether it was
+// one; a failure shows in reader->failed.
+static bool read_pool_member(reader_t *reader, const char *name, pp_case_t *result, seen_t *seen) {
+    long number = 0;
+    if (strcmp(name, "pool_mib") == 0) {
+        if (first_time(reader, &seen->pool_mib)) {
+            read_bounded(reader, PP_CASE_MIN_POOL_MIB, PP_CASE_MAX_POOL_MIB, &number,
+                         "\"pool_mib\" must be from 256 to 896");
+            result->pool_mib = (unsigned)number;
+        }
+    } else if (strcmp(name, "pool_check") == 0) {
+        if (first_time(reader, &seen->pool_check)) {
+            read_pool_check(reader, result);
+        }
+    } else {
+        return false;
+    }
+    return true;
 }
 
 // Reads a member that describes the program, when name is one: program, arguments, exit_code or
@@ -418,18 +460,20 @@ static void read_member(reader_t *reader, pp_case_t *result, seen_t *seen) {
         return;
     }
     if (!read_program_member(reader, name, result, seen) &&
-        !read_run_member(reader, name, result, seen)) {
+        !read_run_member(reader, name, result, seen) &&
+        !read_pool_member(reader, name, result, seen)) {
         fail_at(reader, "unknown member; a case has program, arguments, environment, runs, "
-                        "timeout_seconds, exit_code, expected and session");
+                        "timeout_seconds, exit_code, expected, session, pool_mib and pool_check");
     }
     free(name);
 }
 
 static void check_complete(reader_t *reader, const pp_case_t *result, const seen_t *seen) {
     if (seen->session) {
-        if (seen->program || seen->arguments || seen->exit_code || seen->expected) {
+        if (seen->program || seen->arguments || seen->exit_code || seen->expected ||
+            seen->pool_check) {
             fail_at(reader, "a session case runs no program, so it has no program, arguments, "
-                            "exit_code or expected");
+                            "exit_code, expected or pool_check");
         } else if (!seen->timeout) {
             fail_at(reader, "a session case needs timeout_seconds");
         }
@@ -450,7 +494,7 @@ bool pp_case_parse(const char *text, size_t length, pp_case_t *result, char *err
     reader_t reader = {text, length, 0U, 1U, error, error_size, false};
     result->runs = 1U;
     result->kind = PP_CASE_PROGRAM;
-    seen_t seen = {false, false, false, false, false, false, false, false};
+    seen_t seen = {false, false, false, false, false, false, false, false, false, false};
     if (take(&reader, '{', "a case is a JSON object")) {
         if (at(&reader, '}')) {
             reader.position++;

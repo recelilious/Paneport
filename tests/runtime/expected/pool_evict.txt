@@ -1,0 +1,3 @@
+= pool: an x86-64 build
+= pool: generated code: 40000 functions in 2 passes return their values: pass
+= result: pass

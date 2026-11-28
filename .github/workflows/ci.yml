@@ -465,6 +465,24 @@ jobs:
             cp -R build/runtime/logs build/runtime-logs/cases
           fi
 
+      # S4.4.3: every case passes in pool mode too, in which the harness's child requests the JIT
+      # code pool from the host's simulated broker and the Wine fork serves the translator's code
+      # from it. The pool's execute view is not writable and nothing else is executable, so a
+      # write of the translator that misses the alias faults here. The cases pool_refusal and
+      # pool_evict run in this mode only (docs/design/runtime-ios.md section 4).
+      - name: Run the harness's cases with the JIT code pool (eng/mac/run-harness.sh --mode pool)
+        id: pool
+        if: ${{ !cancelled() && steps.cases.outcome != 'skipped' }}
+        run: eng/mac/run-harness.sh --mode pool --no-build
+
+      - name: Keep the logs of the cases of pool mode
+        if: ${{ always() && steps.pool.outcome != 'skipped' }}
+        run: |
+          if [ -d build/runtime/logs ]; then
+            mkdir -p build/runtime-logs
+            cp -R build/runtime/logs build/runtime-logs/pool
+          fi
+
       # S4.2.5: each planted case has one wrong expectation, so the run must fail and name both.
       # The job's summary keeps the table of the real cases only. It runs in the mode of the cases
       # above, which name it, since the runner's default became single mode in M4.3.

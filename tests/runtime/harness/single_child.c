@@ -19,6 +19,7 @@
 
 #include "case_file.h"
 #include "paneport/host.h"
+#include "paneport/jit.h"
 #include "paneport/session.h"
 #include "paneport/testing.h"
 #include "run_result.h"
@@ -34,13 +35,27 @@
 // How long a wait for an event sleeps between its checks of the deadline and of the parent.
 #define PP_CHILD_WAIT_STEP_SECONDS 1
 
-// What the host's event thread hands to the child's main thread: the events so far.
+// How long a wait for a JIT state sleeps between two readings, in nanoseconds: 10 ms.
+#define PP_CHILD_JIT_STEP_NANOSECONDS 10000000L
+
+// The memory limit that pool mode plants, in bytes: one eighth of 8 GiB leaves room for the
+// largest pool (C-0006 section 4).
+#define PP_CHILD_MEMORY_LIMIT (UINT64_C(8192) * 1024U * 1024U)
+
+// How a line of the runtime's log starts that holds the counters of the JIT code pool, which
+// the Wine fork logs when the program ends (docs/design/runtime-ios.md section 4).
+#define PP_CHILD_POOL_PREFIX "jit pool: "
+
+// What the host's event thread hands to the child's main thread: the events so far, and the
+// counters of the JIT code pool once the runtime logged them.
 typedef struct child_t {
     pthread_mutex_t mutex;
     pthread_cond_t changed;
     pp_event_t events[PP_CHILD_EVENTS];
     uint32_t event_count;
     bool events_lost;
+    bool pool_seen;
+    char pool[PP_RESULT_TEXT_SIZE];
 } child_t;
 
 // What one run works with: its paths, its case, the session's block of variables, its deadline on
@@ -165,7 +180,7 @@ static void on_event(const pp_event_t *event, void *user_data) {
 // The program's output goes to standard output, which the parent compares; everything else goes
 // to standard error, the run's error output, where the host's own lines are marked.
 static void on_log(const pp_log_line_t *line, void *user_data) {
-    (void)user_data;
+    child_t *child = user_data;
     const char *text = line->text == NULL ? "" : line->text;
     const size_t source_end = offsetof(pp_log_line_t, source) + sizeof line->source;
     const uint32_t source = line->struct_size >= source_end ? line->source : PP_LOG_SOURCE_HOST;
@@ -175,6 +190,13 @@ static void on_log(const pp_log_line_t *line, void *user_data) {
         write_line(STDERR_FILENO, "paneport host: ", text);
     } else {
         write_line(STDERR_FILENO, "", text);
+        const size_t prefix = sizeof PP_CHILD_POOL_PREFIX - 1U;
+        if (source == PP_LOG_SOURCE_RUNTIME && strncmp(text, PP_CHILD_POOL_PREFIX, prefix) == 0) {
+            (void)pthread_mutex_lock(&child->mutex);
+            (void)snprintf(child->pool, sizeof child->pool, "%s", text + prefix);
+            child->pool_seen = true;
+            (void)pthread_mutex_unlock(&child->mutex);
+        }
     }
 }
 
@@ -277,6 +299,119 @@ static pp_status_t start_session(const run_t *run) {
     return pp_session_start(&config);
 }
 
+// Waits until the JIT state is wanted, reading it every 10 ms until the run's deadline; fails the
+// run when the state becomes failed first, or does not come in time.
+static bool wait_for_jit_state(run_t *run, pp_jit_state_t wanted, const char *name) {
+    for (;;) {
+        pp_jit_status_t status;
+        memset(&status, 0, sizeof status);
+        status.struct_size = (uint32_t)sizeof status;
+        if (!expect(run, "pp_jit_get_state", pp_jit_get_state(&status), PP_OK)) {
+            return false;
+        }
+        if (status.state == wanted) {
+            return true;
+        }
+        if (status.state == PP_JIT_STATE_FAILED) {
+            fail(run, "the JIT state became failed, with failure %d, before it became %s",
+                 (int)status.failure, name);
+            return false;
+        }
+        if (past(&run->deadline)) {
+            fail(run, "the JIT state did not become %s within %u s", name,
+                 run->test->timeout_seconds);
+            return false;
+        }
+        const struct timespec step = {0, PP_CHILD_JIT_STEP_NANOSECONDS};
+        (void)nanosleep(&step, NULL);
+    }
+}
+
+// Makes the JIT state ready, the precondition of pp_session_start (C-0005 section 2). Single
+// mode sets the answer of the test builds, because its FEX maps its code with MAP_JIT and no pool
+// exists. Pool mode runs the sequence of C-0006 section 3 against the macOS backend's simulated
+// broker (docs/design/jit.md sections 2, 6 and 11): it plants the memory limit, which the
+// provider reads for the pool's size, opens the enabler, which makes the simulated broker attach,
+// requests the pool once the state is debugger_attached, and waits for ready, after which the
+// provider has mapped every region twice, verified it, and the debugger is gone.
+static bool prepare_jit(run_t *run) {
+    if (!run->paths->pool) {
+        (void)pp_test_jit_set_ready(1U);
+        return true;
+    }
+    const uint32_t pool_mib =
+        run->test->pool_mib != 0U ? (uint32_t)run->test->pool_mib : PP_JIT_POOL_DEFAULT_MIB;
+    pp_status_t status = pp_test_set_memory_stub(PP_CHILD_MEMORY_LIMIT, 0U);
+    if (!expect(run, "pp_test_set_memory_stub", status, PP_OK)) {
+        return false;
+    }
+    status = pp_jit_set_enabler_opened(1U);
+    if (!expect(run, "pp_jit_set_enabler_opened", status, PP_OK) ||
+        !wait_for_jit_state(run, PP_JIT_STATE_DEBUGGER_ATTACHED, "debugger_attached")) {
+        return false;
+    }
+    status = pp_jit_request_pool(pool_mib);
+    return expect(run, "pp_jit_request_pool", status, PP_OK) &&
+           wait_for_jit_state(run, PP_JIT_STATE_READY, "ready");
+}
+
+// Reads a counter of the pool, and fails the run when the runtime's line has none of that name.
+static bool pool_counter(run_t *run, const char *counters, const char *name, uint64_t *value) {
+    if (pp_pool_counter(counters, name, value)) {
+        return true;
+    }
+    fail(run, "the runtime's counters of the JIT code pool have no %s", name);
+    return false;
+}
+
+// In pool mode, after a program ran and the host stopped, so that every log line has arrived:
+// puts the pool's counters into the result and checks them. The translator's code came from the
+// pool, at least its dispatcher and one code buffer, no host page outside the pool became
+// executable besides the native PE images, which the fork counts apart until their code moves
+// into the pool, and the case's pool check holds.
+static void check_pool(run_t *run) {
+    if (!run->paths->pool || run->test->kind != PP_CASE_PROGRAM || !run->result->has_exit_code) {
+        return;
+    }
+    char counters[PP_RESULT_TEXT_SIZE];
+    (void)pthread_mutex_lock(&run->child->mutex);
+    const bool seen = run->child->pool_seen;
+    (void)snprintf(counters, sizeof counters, "%s", run->child->pool);
+    (void)pthread_mutex_unlock(&run->child->mutex);
+    if (!seen) {
+        fail(run, "the runtime logged no counters of the JIT code pool");
+        return;
+    }
+    pp_run_result_set_pool(run->result, counters);
+    uint64_t allocations = 0U;
+    uint64_t frees = 0U;
+    uint64_t refusals = 0U;
+    uint64_t outside = 0U;
+    if (!pool_counter(run, counters, "allocations", &allocations) ||
+        !pool_counter(run, counters, "frees", &frees) ||
+        !pool_counter(run, counters, "refusals", &refusals) ||
+        !pool_counter(run, counters, "exec_pages_outside_pool", &outside)) {
+        return;
+    }
+    if (allocations < 2U) {
+        fail(run, "the JIT code pool handed out %llu ranges, fewer than the translator's two",
+             (unsigned long long)allocations);
+    }
+    if (outside != 0U) {
+        fail(run, "%llu host pages outside the JIT code pool became executable",
+             (unsigned long long)outside);
+    }
+    if (run->test->pool_check == PP_POOL_CHECK_REFUSAL && refusals == 0U) {
+        fail(run, "the JIT code pool refused no request");
+    }
+    if (run->test->pool_check == PP_POOL_CHECK_EVICT && (allocations < 4U || frees == 0U)) {
+        fail(run,
+             "the JIT code pool handed out %llu ranges and got %llu back, which is not what "
+             "a code buffer that filled more than once leaves",
+             (unsigned long long)allocations, (unsigned long long)frees);
+    }
+}
+
 // A program case: the session starts, the program runs in it with its output captured, and the
 // session ends after the program's end, as it does after its one process.
 static void run_program(run_t *run) {
@@ -294,7 +429,10 @@ static void run_program(run_t *run) {
         fail(run, "out of memory");
         return;
     }
-    (void)pp_test_jit_set_ready(1U);
+    if (!prepare_jit(run)) {
+        free(arguments);
+        return;
+    }
     pp_status_t status = start_session(run);
     if (!expect(run, "pp_session_start", status, PP_OK)) {
         free(arguments);
@@ -330,7 +468,9 @@ static void run_program(run_t *run) {
 
 // start_stop: a session with no program starts, stops and ends with 0 (S4.3.2).
 static void run_start_stop(run_t *run) {
-    (void)pp_test_jit_set_ready(1U);
+    if (!prepare_jit(run)) {
+        return;
+    }
     pp_status_t status = start_session(run);
     if (!expect(run, "pp_session_start", status, PP_OK)) {
         return;
@@ -342,7 +482,9 @@ static void run_start_stop(run_t *run) {
 
 // second_start: a launch runs one session, while it runs and after it stopped (C-0004 section 1).
 static void run_second_start(run_t *run) {
-    (void)pp_test_jit_set_ready(1U);
+    if (!prepare_jit(run)) {
+        return;
+    }
     pp_status_t status = start_session(run);
     if (!expect(run, "pp_session_start", status, PP_OK)) {
         return;
@@ -394,7 +536,9 @@ static void plant_segv_handler(void *argument) {
 // PP_E_SYSTEM and a message that names SIGSEGV, and the failed session counts as run (S4.3.4).
 // The dispatcher's handler comes back afterwards, for the child's own check.
 static void run_dispatcher_check(run_t *run) {
-    (void)pp_test_jit_set_ready(1U);
+    if (!prepare_jit(run)) {
+        return;
+    }
     bool planted = false;
     pp_session_set_started_hook(plant_segv_handler, &planted);
     const pp_status_t status = start_session(run);
@@ -478,7 +622,7 @@ static void run_case(run_t *run) {
     status = pp_set_event_callback(on_event, run->child);
     bool callbacks = expect(run, "pp_set_event_callback", status, PP_OK);
     if (callbacks) {
-        status = pp_set_log_callback(on_log, NULL);
+        status = pp_set_log_callback(on_log, run->child);
         callbacks = expect(run, "pp_set_log_callback", status, PP_OK);
     }
     if (callbacks) {
@@ -489,6 +633,7 @@ static void run_case(run_t *run) {
     }
     status = pp_shutdown();
     (void)expect(run, "pp_shutdown", status, PP_OK);
+    check_pool(run);
     if (run->child->events_lost) {
         fail(run, "more than %u events arrived", PP_CHILD_EVENTS);
     }

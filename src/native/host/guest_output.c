@@ -7,8 +7,11 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <pthread.h>
+#include <stdatomic.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "log.h"
@@ -18,6 +21,7 @@
 void pp_line_splitter_init(pp_line_splitter_t *splitter) {
     splitter->used = 0U;
     splitter->carriage_return = false;
+    splitter->continued = false;
 }
 
 // Hands out the first piece of a full buffer: the longest part that ends at a character
@@ -28,7 +32,8 @@ static void emit_piece(pp_line_splitter_t *splitter, pp_line_sink_t sink, void *
         // No character boundary at all, so the bytes are not UTF-8: cut them as they are.
         cut = splitter->used;
     }
-    sink(splitter->buffer, cut, context);
+    sink(splitter->buffer, cut, splitter->continued, context);
+    splitter->continued = true;
     memmove(splitter->buffer, splitter->buffer + cut, splitter->used - cut);
     splitter->used -= cut;
 }
@@ -48,8 +53,9 @@ void pp_line_splitter_feed(pp_line_splitter_t *splitter, const char *data, size_
         if (byte == '\n') {
             // A carriage return right before the line feed goes with it.
             splitter->carriage_return = false;
-            sink(splitter->buffer, splitter->used, context);
+            sink(splitter->buffer, splitter->used, splitter->continued, context);
             splitter->used = 0U;
+            splitter->continued = false;
             continue;
         }
         if (splitter->carriage_return) {
@@ -68,9 +74,10 @@ void pp_line_splitter_finish(pp_line_splitter_t *splitter, pp_line_sink_t sink, 
     // A carriage return at the very end goes, as before a line feed.
     splitter->carriage_return = false;
     if (splitter->used > 0U) {
-        sink(splitter->buffer, splitter->used, context);
+        sink(splitter->buffer, splitter->used, splitter->continued, context);
         splitter->used = 0U;
     }
+    splitter->continued = false;
 }
 
 enum { PP_GUEST_STREAMS = 2 };
@@ -85,12 +92,17 @@ typedef struct stream_t {
     uint32_t source;
     uint64_t process;
     pp_line_splitter_t splitter;
+    // The lines dropped since the last report that arrived: while it is above 0, the stream is
+    // in a gap, and no line goes out before the gap's report does.
+    uint64_t dropped;
+    _Atomic(uint64_t) *dropped_total;
 } stream_t;
 
 struct pp_guest_output_t {
     pthread_t thread;
     pp_guest_output_end_t on_end;
     uint64_t process;
+    _Atomic(uint64_t) dropped_total;
     // The pipe through which pp_guest_output_wake ends the reader: wake[0] is in its poll set.
     int wake[2];
     stream_t streams[PP_GUEST_STREAMS];
@@ -100,20 +112,87 @@ struct pp_guest_output_t {
 static const char k_replacement[] = "\xef\xbf\xbd";
 #define PP_REPLACEMENT_SIZE (sizeof k_replacement - 1U)
 
-static void post_piece(const stream_t *stream, const char *text, size_t length) {
+// What one try to queue a record came to.
+typedef enum post_result_t {
+    POST_QUEUED,
+    // The bound or the queue is full.
+    POST_FULL,
+    // The host stopped, and nobody reads the lines any more.
+    POST_STOPPED,
+} post_result_t;
+
+static post_result_t post_once(const pp_log_entry_t *entry) {
+    const pp_status_t status = pp_event_thread_try_post_guest_line(entry, PP_GUEST_BUFFER_LINES);
+    if (status == PP_OK) {
+        return POST_QUEUED;
+    }
+    return status == PP_E_BUSY ? POST_FULL : POST_STOPPED;
+}
+
+// Tries to queue a record, and while it finds no room, pauses 1 ms and tries again, for at most
+// wait_milliseconds pauses.
+static post_result_t post_within(const pp_log_entry_t *entry, uint32_t wait_milliseconds) {
+    const struct timespec pause = {.tv_sec = 0, .tv_nsec = 1000000L};
+    post_result_t result = post_once(entry);
+    for (uint32_t waited = 0U; result == POST_FULL && waited < wait_milliseconds; waited++) {
+        (void)nanosleep(&pause, NULL);
+        result = post_once(entry);
+    }
+    return result;
+}
+
+// Delivers the report of the lines that the stream dropped, if there is room, and says whether
+// the stream's gap is closed. With wait_milliseconds above 0 it waits for room that long.
+static bool report_gap(stream_t *stream, uint32_t wait_milliseconds) {
+    if (stream->dropped == 0U) {
+        return true;
+    }
+    char text[64];
+    const int written =
+        snprintf(text, sizeof text, "%llu lines dropped", (unsigned long long)stream->dropped);
+    pp_log_entry_t entry;
+    pp_log_text(&entry, PP_LOG_WARNING, stream->source, stream->process, text,
+                written > 0 ? (size_t)written : 0U);
+    entry.flags = (uint32_t)PP_LOG_FLAG_DROPPED;
+    entry.dropped = stream->dropped;
+    if (post_within(&entry, wait_milliseconds) == POST_FULL) {
+        return false;
+    }
+    // Queued, or the host stopped: either way nothing more is owed.
+    stream->dropped = 0U;
+    return true;
+}
+
+// Queues one piece of a line. Once the bound is reached it waits up to
+// PP_GUEST_WAIT_MILLISECONDS for room, and drops the piece if none returns; from then on, until
+// the report of the gap is queued, a piece goes only if room is there at once, behind the
+// report, so a burst is not slowed by its drops.
+static void post_piece(stream_t *stream, const char *text, size_t length, bool continuation) {
+    if (!report_gap(stream, 0U)) {
+        stream->dropped++;
+        (void)atomic_fetch_add(stream->dropped_total, 1U);
+        return;
+    }
     pp_log_entry_t entry;
     pp_log_text(&entry, PP_LOG_INFO, stream->source, stream->process, text, length);
-    // Once the host stops, nobody reads the lines, so they go.
-    (void)pp_event_thread_post_log_waiting(&entry);
+    entry.flags = 0U;
+    if (continuation) {
+        entry.flags = (uint32_t)PP_LOG_FLAG_CONTINUATION;
+    }
+    if (post_within(&entry, PP_GUEST_WAIT_MILLISECONDS) == POST_FULL) {
+        stream->dropped++;
+        (void)atomic_fetch_add(stream->dropped_total, 1U);
+    }
 }
 
 // Queues a line of at most PP_GUEST_LINE_MAX bytes. A log line's text ends at its first NUL, so
 // each NUL byte becomes U+FFFD, and a line that the replacements make longer than a log line
-// holds goes in pieces cut at character boundaries, as the splitter cuts.
-static void post_line(const char *line, size_t length, void *context) {
-    const stream_t *stream = context;
+// holds goes in pieces cut at character boundaries, as the splitter cuts, each after the first
+// flagged as a continuation.
+static void post_line(const char *line, size_t length, bool continuation, void *context) {
+    stream_t *stream = context;
     if (memchr(line, '\0', length) == NULL) {
-        post_piece(stream, line, length);
+        post_piece(stream, line, length, continuation);
         return;
     }
     char text[PP_GUEST_LINE_MAX * PP_REPLACEMENT_SIZE];
@@ -136,13 +215,20 @@ static void post_line(const char *line, size_t length, void *context) {
                 piece = PP_GUEST_LINE_MAX;
             }
         }
-        post_piece(stream, text + offset, piece);
+        // Every piece after the first continues the line.
+        bool continues = continuation;
+        if (offset > 0U) {
+            continues = true;
+        }
+        post_piece(stream, text + offset, piece, continues);
         offset += piece;
     }
 }
 
 static void close_stream(stream_t *stream) {
     pp_line_splitter_finish(&stream->splitter, post_line, stream);
+    // The last report waits for room as a line does, since nothing comes after it.
+    (void)report_gap(stream, PP_GUEST_WAIT_MILLISECONDS);
     (void)close(stream->fd);
     stream->fd = -1;
 }
@@ -194,6 +280,19 @@ static void flush_streams(pp_guest_output_t *reader, char *buffer, size_t size) 
     }
 }
 
+// Tries again the reports that found no room yet, so that a gap shows although the program
+// writes nothing more, and returns how long the reader may wait for its pipes: -1 for as long
+// as it takes, or a short time while a report is still owed.
+static int retry_reports(stream_t *streams[PP_GUEST_STREAMS], nfds_t count) {
+    int timeout = -1;
+    for (nfds_t index = 0U; index < count; index++) {
+        if (!report_gap(streams[index], 0U)) {
+            timeout = (int)PP_GUEST_REPORT_RETRY_MILLISECONDS;
+        }
+    }
+    return timeout;
+}
+
 static void *read_output(void *argument) {
     pp_guest_output_t *reader = argument;
     pp_platform_name_thread("paneport.guest-output");
@@ -210,7 +309,7 @@ static void *read_output(void *argument) {
         waits[count].fd = reader->wake[0];
         waits[count].events = POLLIN;
         waits[count].revents = 0;
-        if (poll(waits, count + 1U, -1) < 0) {
+        if (poll(waits, count + 1U, retry_reports(streams, count)) < 0) {
             if (errno == EINTR) {
                 continue;
             }
@@ -276,6 +375,7 @@ pp_status_t pp_guest_output_start(int output_fd, int errors_fd, uint64_t process
     }
     created->on_end = on_end;
     created->process = process;
+    atomic_init(&created->dropped_total, 0U);
     const uint32_t sources[PP_GUEST_STREAMS] = {
         PP_LOG_SOURCE_GUEST_OUTPUT,
         PP_LOG_SOURCE_GUEST_ERRORS,
@@ -284,6 +384,8 @@ pp_status_t pp_guest_output_start(int output_fd, int errors_fd, uint64_t process
         created->streams[index].fd = fds[index];
         created->streams[index].source = sources[index];
         created->streams[index].process = process;
+        created->streams[index].dropped = 0U;
+        created->streams[index].dropped_total = &created->dropped_total;
         pp_line_splitter_init(&created->streams[index].splitter);
     }
     if (pthread_create(&created->thread, NULL, read_output, created) != 0) {
@@ -305,6 +407,10 @@ void pp_guest_output_wake(pp_guest_output_t *reader) {
     do {
         written = write(reader->wake[1], &k_byte, 1U);
     } while (written < 0 && errno == EINTR);
+}
+
+uint64_t pp_guest_output_dropped(const pp_guest_output_t *reader) {
+    return reader == NULL ? 0U : atomic_load(&reader->dropped_total);
 }
 
 void pp_guest_output_join(pp_guest_output_t *reader) {

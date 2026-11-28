@@ -39,6 +39,9 @@ void pp_log_format(pp_log_entry_t *entry, int32_t level, const char *format, va_
     entry->source = PP_LOG_SOURCE_HOST;
     entry->thread_id = pp_platform_thread_id();
     entry->process = 0U;
+    entry->flags = 0U;
+    entry->counted = false;
+    entry->dropped = 0U;
 
     const int written = vsnprintf(entry->text, sizeof entry->text, format, arguments);
     if (written < 0) {
@@ -62,6 +65,9 @@ void pp_log_text(pp_log_entry_t *entry, int32_t level, uint32_t source, uint64_t
     entry->source = source;
     entry->thread_id = pp_platform_thread_id();
     entry->process = process;
+    entry->flags = 0U;
+    entry->counted = false;
+    entry->dropped = 0U;
 
     if (length < sizeof entry->text) {
         memcpy(entry->text, text, length);

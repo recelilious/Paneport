@@ -116,6 +116,23 @@ public static unsafe class HostTestExports
     }
 
     /// <summary>
+    /// Logs a line with a source, a process and the flags and dropped-line count that version 1.5 appended
+    /// (<c>pp_test_log_with_flags</c>, version 1.5).
+    /// </summary>
+    /// <param name="level">How important the line is.</param>
+    /// <param name="source">Where the line comes from.</param>
+    /// <param name="process">The handle of the process that the line names, or 0.</param>
+    /// <param name="flags">What more the line says.</param>
+    /// <param name="droppedLines">The count that a <see cref="HostLogMarks.Dropped"/> line carries.</param>
+    /// <param name="text">The line; the host cuts a line that is too long.</param>
+    public static void LogWithFlags(
+        HostLogLevel level, HostLogSource source, ulong process, HostLogMarks flags, ulong droppedLines, string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        HostCalls.Check(NativeMethods.TestLogWithFlags((int)level, (uint)source, process, (uint)flags, droppedLines, text));
+    }
+
+    /// <summary>
     /// Copies a text into host memory and back, freeing the host's copy with <c>pp_free</c>
     /// (<c>pp_test_duplicate_text</c>).
     /// </summary>

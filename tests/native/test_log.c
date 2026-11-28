@@ -60,6 +60,9 @@ static void check_line(const pp_log_line_t *line, void *user_data) {
     }
     PP_CHECK(thread < (unsigned long long)THREADS);
     PP_CHECK_EQUAL(line->level, PP_LOG_INFO);
+    // The host's own lines carry no flag and no drop count.
+    PP_CHECK_EQUAL(line->flags, 0U);
+    PP_CHECK_EQUAL(line->dropped, 0U);
     PP_CHECK_EQUAL(number, ordered->next[thread]);
     char expected[LINE_SIZE];
     make_line(expected, sizeof expected, (unsigned)thread, (unsigned)number);

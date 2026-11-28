@@ -275,6 +275,10 @@ public static unsafe class NativeHost
     private const uint SourceEnd = 28;
     private const uint ProcessEnd = 40;
 
+    // Where the members that version 1.5 appended end, 44 for flags and 56 for dropped.
+    private const uint FlagsEnd = 44;
+    private const uint DroppedEnd = 56;
+
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnLogLine(NativeLogLine* line, void* userData)
     {
@@ -284,8 +288,11 @@ public static unsafe class NativeHost
             // A host older than version 1.4 sends a shorter line, without its source and process.
             var source = line->StructSize >= SourceEnd ? (HostLogSource)line->Source : HostLogSource.Host;
             var process = line->StructSize >= ProcessEnd ? line->Process : 0;
-            handler?.Invoke(
-                new HostLogLine((HostLogLevel)line->Level, line->ThreadId, HostCalls.Text(line->Text), source, process));
+            // A host older than version 1.5 sends a line without its flags and its count.
+            var marks = line->StructSize >= FlagsEnd ? (HostLogMarks)line->Flags : HostLogMarks.None;
+            var dropped = line->StructSize >= DroppedEnd ? line->Dropped : 0;
+            handler?.Invoke(new HostLogLine(
+                (HostLogLevel)line->Level, line->ThreadId, HostCalls.Text(line->Text), source, process, marks, dropped));
         }
         catch (Exception exception)
         {

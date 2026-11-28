@@ -3,6 +3,7 @@
 
 using Paneport.Core;
 using Paneport.Core.Logging;
+using Paneport.Core.Prefixes;
 using Paneport.Core.ViewModels;
 
 namespace Paneport.IOS;
@@ -14,10 +15,16 @@ namespace Paneport.IOS;
 // which must not start a second memory timer or load the shell again.
 internal sealed class AppComposition
 {
-    private AppComposition(ShellViewModel? shell, AppStart? start, string? failureMessage, ILog log)
+    private AppComposition(
+        ShellViewModel? shell,
+        AppStart? start,
+        Task<PrefixInstallResult>? prefixInstall,
+        string? failureMessage,
+        ILog log)
     {
         Shell = shell;
         Start = start;
+        PrefixInstall = prefixInstall;
         FailureMessage = failureMessage;
         Log = log;
     }
@@ -27,12 +34,17 @@ internal sealed class AppComposition
     // The start of the run, which keeps the memory timeline's timer; null when the app did not start.
     public AppStart? Start { get; }
 
+    // The run of the prefix installer, which started at launch on a worker thread and reports a failure
+    // as a result rather than throwing; null when the app did not start. The session start awaits it
+    // before it uses a prefix (runtime-ios.md section 7).
+    public Task<PrefixInstallResult>? PrefixInstall { get; }
+
     public string? FailureMessage { get; }
 
     public ILog Log { get; }
 
-    public static AppComposition Running(ShellViewModel shell, AppStart start, ILog log) =>
-        new(shell, start, null, log);
+    public static AppComposition Running(ShellViewModel shell, AppStart start, Task<PrefixInstallResult> prefixInstall, ILog log) =>
+        new(shell, start, prefixInstall, null, log);
 
-    public static AppComposition Failed(string message, ILog log) => new(null, null, message, log);
+    public static AppComposition Failed(string message, ILog log) => new(null, null, null, message, log);
 }

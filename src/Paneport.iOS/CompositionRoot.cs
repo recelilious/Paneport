@@ -10,6 +10,7 @@ using Paneport.Core.Diagnostics;
 using Paneport.Core.Hosting;
 using Paneport.Core.Library;
 using Paneport.Core.Logging;
+using Paneport.Core.Prefixes;
 using Paneport.Core.Security;
 using Paneport.Core.Settings;
 using Paneport.Core.Steam;
@@ -81,6 +82,17 @@ internal static partial class CompositionRoot
             return AppComposition.Failed(start.FailureMessage ?? "Paneport cannot start.", log);
         }
 
+        // The template prefix is a folder tree in the bundle (C-0009 section 4). The install runs on a
+        // worker thread and the main thread never waits for it; a bundle without a template, such as
+        // today's, makes it report that and do nothing.
+        var prefixes = new PrefixInstaller(
+            root,
+            Path.Combine(NSBundle.MainBundle.BundlePath, "wine", "prefix-template"),
+            new PhysicalPrefixFiles(),
+            new BackupMarks(),
+            log);
+        var prefixInstall = prefixes.InstallAsync(PrefixNames.Shared, CancellationToken.None);
+
         var device = new DeviceInfo(nativeHost, log);
         var memory = new MemoryMonitor(host, device, TimeProvider.System, log);
         var entitlements = EntitlementReport.Read(OpenExecutable, ReadEmbeddedProfile, log);
@@ -99,7 +111,7 @@ internal static partial class CompositionRoot
         AddDeveloperMenu(services, ref developerPage);
         var shell = new ShellViewModel(services, developerPage);
         var run = new AppStart(shell, memory, (tick, interval) => DispatcherTimer.Run(tick, interval));
-        return AppComposition.Running(shell, run, log);
+        return AppComposition.Running(shell, run, prefixInstall, log);
     }
 
     // The device test flavor's developer menu (tests/device). The main app has no implementation,

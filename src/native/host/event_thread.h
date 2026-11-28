@@ -29,12 +29,18 @@
 #define PP_LOG_TEXT_SIZE 512U
 
 // A log line as it waits in the queue: its PP_LOG_ level, its PP_LOG_SOURCE_ source, the thread
-// that logged it, and the handle of the Windows process that wrote it, or 0 (paneport/host.h).
+// that logged it, the handle of the Windows process that wrote it, or 0, its PP_LOG_FLAG_ flags,
+// and the count of lines that a drop report names (paneport/host.h). counted is set by
+// pp_event_thread_try_post_guest_line alone: the entry holds one place of the guest budget,
+// which the event thread gives back once the line left the queue.
 typedef struct pp_log_entry_t {
     int32_t level;
     uint32_t source;
     uint64_t thread_id;
     uint64_t process;
+    uint32_t flags;
+    bool counted;
+    uint64_t dropped;
     char text[PP_LOG_TEXT_SIZE];
 } pp_log_entry_t;
 
@@ -58,10 +64,18 @@ pp_status_t pp_event_thread_post_event(const pp_event_t *event);
 pp_status_t pp_event_thread_post_log(const pp_log_entry_t *entry);
 
 // Queues a log line as pp_event_thread_post_log does, but waits for room while the queue is
-// full instead of refusing the line, so that a reader of a Windows program's output slows the
-// program down instead of losing lines (guest_output.h). Any thread except the event thread
-// itself. Returns PP_OK or PP_E_NOT_INITIALIZED when the thread does not run or stops.
+// full instead of refusing the line, so that the runtime's diagnostics are not lost (session.c).
+// Any thread except the event thread itself. Returns PP_OK or PP_E_NOT_INITIALIZED when the
+// thread does not run or stops.
 pp_status_t pp_event_thread_post_log_waiting(const pp_log_entry_t *entry);
+
+// Queues a line of a Windows program's output without waiting, if fewer than limit such lines
+// are in the queue, all processes together, and counts it among them until the event thread has
+// taken it out. The bound keeps a flood of output from filling the queue that the host's own
+// lines share (guest_output.h). Any thread except the event thread itself. Returns PP_OK;
+// PP_E_BUSY when the limit is reached or the queue is full, which nothing counts; or
+// PP_E_NOT_INITIALIZED when the thread does not run or stops.
+pp_status_t pp_event_thread_try_post_guest_line(const pp_log_entry_t *entry, uint32_t limit);
 
 // Replace a callback. Once they return, the previous callback is not running and is never
 // called again. The main thread.

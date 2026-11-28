@@ -34,15 +34,13 @@ if(PANEPORT_SANITIZERS)
     target_link_options(paneport_trap PRIVATE -fno-sanitize=all)
 endif()
 
-# The harness, which in single mode is the process's main executable and runs Wine's code, so it
-# is linked as built against the macOS 12 SDK, as Wine's loader is: macOS keeps x18, which holds
-# the TEB, only for such a main executable (sections 2.1 and 9). The test presets build it only to
-# compile and analyze it.
+# The harness, which in single mode is the process's main executable and runs Wine's code. It is
+# linked with the SDK that builds it, as an app is, so macOS zeroes x18 on every return to user
+# mode, as iOS does: the forks keep the TEB pointer in the thread's TSD, and a use of x18 that
+# is left in a PE module or in generated code fails the cases (runtime-ios.md section 6). The
+# test presets build it only to compile and analyze it.
 add_executable(paneport_harness harness/main.c harness/single_child.c)
 target_link_libraries(paneport_harness PRIVATE paneport_harness_core paneport_host paneport_trap)
-if(PANEPORT_HARNESS)
-    target_link_options(paneport_harness PRIVATE "LINKER:-platform_version,macos,12.0,12.0")
-endif()
 
 if(PANEPORT_TESTS)
     # One test program per part, with one CTest case per check, as in tests/native, whose

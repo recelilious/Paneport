@@ -27,4 +27,26 @@ SPDX-License-Identifier: MIT
              LinkBase="AppHead" />
     <None Include="../../src/Paneport.iOS/Info.plist" Link="Info.plist" />
   </ItemGroup>
+
+  <!--
+  The x86-64 Win32 test programs of tests/win32, bundled as test-programs/ with their list of
+  SHA-256 hashes (C-0009 section 4). eng/mac/stage-test-programs.sh puts them into the folder that
+  PaneportTestProgramsDir names, build/test-programs by default, after eng/mac/build-win32-tests.sh
+  built them. Only this flavor bundles them; tools/CheckBundle.cs fails a main app that holds any.
+  Outside CI the flavor builds without them, as a developer may not have llvm-mingw; in CI the
+  build fails without the folder.
+  -->
+  <PropertyGroup>
+    <PaneportTestProgramsDir Condition="'$(PaneportTestProgramsDir)' == ''">$(MSBuildThisFileDirectory)../../build/test-programs</PaneportTestProgramsDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(PaneportTestProgramsDir)/SHA256SUMS')">
+    <BundleResource Include="$(PaneportTestProgramsDir)/*.exe;$(PaneportTestProgramsDir)/SHA256SUMS"
+                    Link="test-programs/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="PaneportRequireTestPrograms" BeforeTargets="BeforeBuild"
+          Condition="'$(GITHUB_ACTIONS)' == 'true' And !Exists('$(PaneportTestProgramsDir)/SHA256SUMS')">
+    <Error Text="The device test flavor bundles the Win32 test programs, and $(PaneportTestProgramsDir) holds none. Run eng/mac/build-win32-tests.sh x86_64 and eng/mac/stage-test-programs.sh first." />
+  </Target>
 </Project>
